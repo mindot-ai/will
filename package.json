@@ -1,0 +1,70 @@
+{
+  "name": "@mindot/will",
+  "version": "0.1.0",
+  "description": "Will — an engine for persistent machine minds. A Will is a continuously-ticking synthetic mind built from 38 cognitive faculties, a learning agency pipeline, and a dual-process executive — deterministic, persistent, and portable (PMA).",
+  "author": "Fabrice <fabrice8@github.com>",
+  "license": "Apache-2.0",
+  "packageManager": "bun@1.3.9",
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "homepage": "https://github.com/mindot-ai/will#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mindot-ai/will.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mindot-ai/will/issues"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "ai-agents",
+    "cognitive-architecture",
+    "generative-agents",
+    "persistent-memory",
+    "simulation",
+    "autonomous-agent",
+    "llm",
+    "npc",
+    "mind",
+    "deterministic"
+  ],
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsup",
+    "build:types": "tsc --project tsconfig.build.json",
+    "dev": "bun --env-file=.env run src/runners/thin-shim.runner.ts",
+    "dev:build": "tsup --watch",
+    "run:social": "bun --env-file=.env run src/runners/social.runner.ts",
+    "run:outreach": "bun --env-file=.env run src/runners/outreach.runner.ts",
+    "start": "bun --env-file=.env run src/runners/thin-shim.runner.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:integration": "vitest run src/tests/integration"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1048.0"
+  },
+  "optionalDependencies": {
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.5"
+  }
+}

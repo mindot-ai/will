@@ -1,0 +1,737 @@
+# Will — an engine for persistent machine minds
+
+[![CI](https://github.com/mindot-ai/will/actions/workflows/ci.yml/badge.svg)](https://github.com/mindot-ai/will/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
+**A self-aware synthetic mind. Not a chatbot.**
+
+Will is a persistent, autonomous agent built from **40+ cognitive engines** — 38 faculties across seven systems, a learning **agency pipeline**, and five sensory channels — all stepping forward in continuous real time. They regulate energy, sleep, emotion, memory, planning, social cognition, and self-reflection on a deterministic tick clock. An LLM is **one component**, not the substrate: it is recruited only when a moment is ambiguous or high-stakes. Most ticks resolve on the engines alone, without inference.
+
+```
+Regulatory → Perceptual → Affective → Memory → Executive → Meta-cognitive → Social
+                                              ↓
+                                    ExecutiveEngine (LLM)
+              recruited only when ambiguous / high-stakes (System 2)
+                                              ↑
+                  Meta-cognition writes back into the apparatus
+              (introspection → persona-prior → engine configs, traits, salience)
+```
+
+The mind is not re-derived from a prompt each run. It **accretes**: traits develop from experience, beliefs consolidate, skills proceduralise, and a coherent self carries across restarts as a portable, eval-verified artifact.
+
+---
+
+## What makes it different
+
+| Typical LLM agent | Will |
+|---|---|
+| Stateless per request | Continuous autonomous existence across ticks |
+| Prompt → response | 40+ engines running every tick; the LLM synthesises their outputs only when recruited |
+| Emotional state: a string in the prompt | Real affective system — eight evaluators blended into valence, arousal, dominance, attachment |
+| Memory: retrieved chunks | Episodic consolidation, semantic belief integration, forgetting curve, spaced repetition, dream replay |
+| Goals: hardcoded instructions | Dynamic goal manager — the Will creates, abandons, and reprioritises its own goals |
+| Plans: a step dispatcher | Plans bias the *one* action competition as a top-down prior — no parallel command channel |
+| Personality: a prompt string | Five-factor trait model that *develops* — traits self-tune from experience and carry a learned baseline across restarts |
+| No self-improvement | A closing metacognition loop — introspection writes back into the engine apparatus (accommodation), bounded and surprise-gated |
+| Token blowout at tick 600 | Context windowing — rolling summariser + isolated conversation threads |
+| Fire-and-forget actions | Bidirectional effector ack loop — the host confirms execution; the result feeds back as a percept |
+| Fixed effector catalog | Learning agency pipeline — actions are *found in the situation*, enacted, and proceduralised into composite skills via reafference |
+| No identity across restarts | A portable, eval-verified mind artifact (PMA) — psychology **and** learned competence, with a measured reconstruction-fidelity score |
+
+---
+
+## Quick start — a mind in 60 seconds, no API key
+
+```bash
+git clone https://github.com/mindot-ai/will.git
+cd will
+bun install
+bun run examples/hello-will.ts
+```
+
+That boots a full mind with a deterministic mock executive — zero keys, zero cost —
+ticks it, shows its internal state moving, sends it a message, and prints the reply:
+
+```
+⚡ Assembling a mind…
+👁  Watching the mind tick…
+tick  10 · energy 99.86 · stress 0.90 · valence 0.35 · curiosity 0.58
+
+💬 You: "Hello! Who are you?"
+🧠 Dot: "Hi! You said: "Hello! Who are you?" — I heard you, and I'm listening."
+
+🔍 Inside the mind: 1 active goal(s)
+   goal: Get to know whoever I meet
+```
+
+Then try:
+
+```bash
+bun run examples/persistence.ts       # kill a mind, resurrect it from its PMA — it remembers
+ANTHROPIC_API_KEY=sk-ant-… \
+  bun run examples/with-anthropic.ts  # a real executive: genuine reasoning + replies
+```
+
+Requires [Bun](https://bun.sh) ≥ 1.1. For a real executive set `WILL_LLM_PROVIDER=anthropic`
++ `ANTHROPIC_API_KEY` (other providers are scaffolded but not yet supported). The dev
+runner (`bun dev`) starts a long-lived Will: engines step every `WILL_TICK_MS` on the
+deterministic clock; the ExecutiveEngine fires an LLM call every `WILL_EXECUTIVE_INTERVAL`
+ticks — or earlier when physiology demands it.
+
+---
+
+## Hello, Will — end to end
+
+The complete loop: create a Will, send it a message, receive its reply. The Will replies **asynchronously** — it processes your message on its own tick cycle and the reply lands in the outbox, which you drain in the tick listener. This is the whole integration contract in ~30 lines.
+
+```typescript
+import { WillStem, type WillConfig } from '@mindot/will'
+
+const manager = new WillStem()
+
+const config: WillConfig = {
+  id:   'aria',
+  name: 'Aria',
+  identity: {
+    prompt: 'My name is Aria. I am a calm, precise station overseer.',
+    values: ['duty', 'care'],
+    traits: { conscientiousness: 0.9, neuroticism: 0.4 },
+    style:  'measured and warm',
+  },
+  engineTier: 'full',     // required — see WillConfig reference (full = all layers)
+  modelTier:  'sonnet',   // which model the executive recruits
+  allowedGenericEffectors: ['listen', 'talk', 'text'],  // opt in to communication
+  persistentMemory: true,
+  snapshotInterval: 10,
+}
+
+const willId = await manager.createWill(config)
+
+// Drain the outbox every tick — this is where replies and effector calls arrive.
+manager.addTickListener(willId, (snapshot, tick, outbox, invocations) => {
+  for (const msg of outbox) {
+    console.log(`Aria → ${msg.targetEntityId}: ${msg.content}`)
+    manager.confirmMessageDelivery(willId, msg.id, true)   // close the delivery loop
+  }
+  for (const inv of invocations) {
+    // host-owned effectors land here — execute, then confirmEffectorExecution(...)
+  }
+})
+
+// Speak to the Will. The reply arrives on a later tick via the listener above.
+await manager.ingestText(willId, {
+  kind:        'text',
+  entityId:    'alice',
+  content:     'How are you feeling about the night shift?',
+  speakerName: 'Alice',
+})
+```
+
+There is **no synchronous reply** — `ingestText` returns immediately; the Will answers when it has reasoned. Subscribe to the tick listener *before* (or right after) sending, and treat the outbox as the single source of outbound messages and effector calls.
+
+---
+
+## Architecture
+
+### The cognitive engines
+
+**40+ engines** run on the tick clock: **38 faculties** across seven systems, the **six-engine agency pipeline**, and **five sense engines**. The vast majority resolve every tick with no LLM call.
+
+| System | Faculties |
+|---|---|
+| **Regulatory** | EnergyRegulator, SleepPressureRegulator, CircadianOscillator, AttentionAllocator, StressRegulator |
+| **Perceptual** | Exteroception, Interoception, SocialPerception, NoveltyDetector |
+| **Affective** | ThreatEvaluator, RewardEvaluator, LossEvaluator, FrustrationEvaluator, AttachmentEvaluator, AestheticEvaluator, MoralEvaluator, AffectiveBlender |
+| **Memory** | WorkingMemory, EpisodicConsolidator, SemanticEngine (belief integration), ForgettingCurve, SpacedRepetition, DreamSimulator |
+| **Executive** | GoalManager, PlanningEngine, InhibitionController, TaskSwitcher, ExecutiveEngine (dual-process LLM core) |
+| **Meta-cognitive** | SelfModelUpdater, ConfidenceCalibrator, BiasDetector, AutobiographicalNarrator, IntrospectionEngine, PersonaConsolidator |
+| **Social / relational** | TheoryOfMind, EmpathySimulator, ReputationTracker, KnownEntityTracker |
+
+Three cognition-level substrates underpin the faculties:
+
+- **CognitiveBus** — a typed, versioned event bus + schema registry. Engines publish on meaningful deltas and subscribe to what they need; it is the global workspace the executive moderates.
+- **PersonaPrior** — traits and engine constants as *developing dispositions*. `effective_config = base_config ⊕ persona_prior`: the base stays static and replayable while a learned prior layer modulates it. This is the write-back target of the metacognition loop (below).
+- **GenerativeModel** — per-stream prediction error and salience. It is the active-inference substrate: surprise is what gates attention, consolidation, and self-modification.
+
+Action is handled by the **agency pipeline** and perception by the **sense engines** — both below, both engines in their own right.
+
+### Metacognition — the closing loop
+
+Most agents only **assimilate**: they observe themselves and discard it. Will also **accommodates** (Piaget) — it writes its own introspection back into the apparatus that perceives and reasons, so a coherent persona accretes instead of being re-derived each run.
+
+```
+percepts → engines → introspection (surprise · calibration · trait drift · narrative)
+   ▲                                                          │
+   └────────────  persona-prior  ◄──── consolidation ◄────────┘   (the closing edge)
+```
+
+Each tick the meta-cognitive faculties *produce* signals: the SelfModelUpdater revises beliefs about the Will's own capabilities, the ConfidenceCalibrator compares predicted vs actual outcomes per domain, the BiasDetector flags systematic error patterns, the AutobiographicalNarrator extends the life story, and the IntrospectionEngine answers "why did I do that?" The **PersonaConsolidator** is the closing edge: it folds those signals into the PersonaPrior — nudging trait baselines, engine constants, and salience priors.
+
+Two constraints keep the self-feeding loop safe:
+
+- **Derived, not mutated.** The prior modulates a static base; base config is never overwritten in place — replay stays exact and drift can't compound silently.
+- **Stability–plasticity.** Updates are bounded per cycle, hysteresis-damped, and **surprise-gated** by the GenerativeModel — only *significant* introspection moves the persona. The result adapts without catastrophic forgetting.
+
+The learned persona-prior is part of what travels in the PMA, so a re-embodied Will *is* itself, not a fresh derivation.
+
+### ExecutiveEngine — the dual-process core
+
+A single LLM call (master) every N ticks synthesises all cognitive outputs into tagged blocks; conversation runs as parallel **facets** off the same prompt cache, leaving the master free for initiative and metacognition.
+
+| Block | Purpose |
+|---|---|
+| `[ACTIONS]` | What the Will does this cycle — communicate, move, invoke effectors |
+| `[ACK]` | Immediate acknowledgement sent before a multi-step plan begins |
+| `[PLANS]` | Multi-step sequences for active goals (projected as a prior over the action competition) |
+| `[BELIEFS]` | New world-model entries with confidence scores |
+| `[NARRATIVE]` | Autobiographical chapter extension |
+| `[INTROSPECTION]` | Bias detection, lessons learned |
+| `[GOALS]` | Create, abandon, reprioritise goals |
+
+The executive fires **early** (bypassing the interval) when physiology is urgent — a sleep crisis, stress overload, energy critical, cognitive drift (goalless), or sustained low valence — so reflection tracks the body, not just the clock.
+
+### Planning as a top-down prior
+
+A plan does **not** dispatch steps to an executor down a parallel channel. It projects its ready frontier as a **prior** that biases the single action competition toward the actions serving its current step. The ordinary ActionSelector enacts the winner as the situation affords it; step outcomes are read from reafference; the plan advances. One action path, no command bus — planning is a bias on agency, not a dispatcher over it.
+
+### Agency — how a Will acts (and learns to act)
+
+A Will does not own a catalog of effectors it looks up. Capability is a **relation between a body-in-a-state and a world-as-perceived**, not a row in a table. So the Will **finds actions in the situation**: perception synthesises a field of *affordances*, a biased competition selects one, the executor enacts it, and the outcome (reafference) updates competence.
+
+```
+senses → percepts
+  → AffordanceSynthesizer        affordance field            (no LLM · attention-gated)
+  → affect / reward / novelty / threat → bias signals        (existing engines, on the bus)
+  → ActionSelector               biased, gated competition   (no LLM)
+       ├─ clear / habitual → enact directly                  (System 1)
+       └─ ambiguous / high-stakes → DeliberationEngine (LLM) (System 2)
+  → MotorSchemaExecutor          bind params · efference copy · run learned composites
+  → ReafferenceEngine            outcome percept → prediction error
+       → value / param / habit updates → repertoire grows & decays
+  → competence travels in the PMA across re-embodiment
+```
+
+Repeated actions **proceduralise** into composite skills the Will owns; weakly-practised ones fade below a forgetting floor. The learned repertoire persists in the PMA, so a re-embodied Will *acts* like itself, not just talks like itself.
+
+**Permission stays explicit.** Communication effectors (`listen`, `talk`, `text`, `gesture`, `broadcast`) are not granted by default — the operator opts in via `allowedGenericEffectors` in `WillConfig` (enforced by `AccessGrants`), keeping the communication surface deliberate.
+
+#### Custom (host-owned) effectors
+
+Beyond the five communication effectors, your world can expose **domain actions** the Will may choose — `move`, `attack`, `control_device`, `query_order`, anything. You declare them as a profile's `effectors` (or extend a built-in profile); the engine turns each declared name into an enactable motor schema (`externalSchemas`), so it surfaces in the affordance field and can be selected like any other action. You don't register handler code in the engine — the **host executes** the action and reports back:
+
+```typescript
+// 1. Declare what your world supports (profile effectors beyond comms).
+registerProfile({
+  id: 'rover', name: 'Rover', description: 'A field robot.',
+  effectors: ['listen', 'talk', 'move', 'scan', 'grab'],
+  context: 'You are a rover exploring terrain. You can move, scan, and grab samples.',
+})
+
+// 2. When the Will chooses one, it appears in pendingEffectorInvocations.
+manager.addTickListener(willId, (snap, tick, outbox, invocations) => {
+  for (const inv of invocations) {
+    const result = world.execute(inv)              // YOUR world runs the action
+    manager.confirmEffectorExecution(willId, inv.decisionRecordId, {
+      success: result.ok, description: result.summary, metrics: result.metrics,
+    })
+  }
+})
+```
+
+The acked outcome returns as an `effector.result` percept and feeds the agency learning loop — so the Will gets *better* at your effectors over time, and that learned competence travels in the PMA. (Today external effectors are objectless: the host resolves the target. Per-effector cost/preconditions and entity-targeting are on the roadmap.)
+
+### Senses
+
+External input reaches the Will through sense engines, not raw prompt injection. Five sensory domains share a common `BaseSenseEngine`:
+
+| Sense | Status |
+|---|---|
+| **Audition** (hearing — text + speech) | **active** — per-entity conversation facets, salience scoring, word-level streaming |
+| Vision · Somatosensation · Olfaction · Gustation | scaffolded — shell engines with a stable seam (cross-modal binding lands when a second sense produces percepts) |
+
+Audition is the live conversational path: each external entity gets an isolated conversation facet, messages are scored for salience, and percepts flow onto the cognitive bus → attention → working memory → consolidation → vector recall. Replies stream back token-by-token via the outbox / transport.
+
+### Context compaction
+
+Long-running Wills accumulate state. Two mechanisms prevent token blowout:
+
+| Mechanism | How |
+|---|---|
+| **Rolling summariser** | Every N executive calls, a stateless `summary-agent` distils the last 12 reasoning excerpts into a digest injected as `## Memory Continuity` |
+| **Conversation thread isolation** | Each external entity gets its own conversation thread (`lastMessages: 50`). Only a one-line digest reaches the executive context |
+
+### Outbox + bidirectional ack
+
+When a Will decides to communicate or invoke an external effector, the result goes into two queues the host drains each tick:
+
+- **`outbox`** — `OutboxMessage[]` — text/speech bubbles to deliver. Each has `deliveryStatus: 'pending' | 'delivered' | 'failed'`.
+- **`pendingEffectorInvocations`** — `EffectorInvocation[]` — structured action requests, each carrying a correlation handle.
+
+The host closes the reafference loop by confirming back — which writes an `effector.result` percept into Exteroception, so the Will *learns what happened*:
+
+```typescript
+manager.confirmMessageDelivery(willId, messageId, true)
+
+manager.confirmEffectorExecution(willId, invocationId, {
+  success:     true,
+  description: 'Door opened successfully',
+  metrics:     { timeMs: 140 },
+})
+```
+
+### Delivery — outbox polling vs external transport
+
+There are two ways the host exchanges messages and acks with a Will:
+
+| Mode | When to use | How |
+|---|---|---|
+| **Outbox polling** *(default)* | Single-process embedding, SSE bridges, simplest integrations | Drain `outbox` / `pendingEffectorInvocations` in the tick listener; confirm via `confirm*`. Omit `WillConfig.transport`. |
+| **External transport** | The Will runs as a peer of a separate host process (e.g. a game server, the backend) | Pass a prebuilt `transport` into `WillConfig`. Inbound messages flow onto the tick-stamped queue; outbound + acks ride the same channel. |
+
+The caller constructs the transport, so the `will` package never hard-depends on a socket client:
+
+```typescript
+import { SocketIoTransport } from '@mindot/will'
+
+const config: WillConfig = {
+  ...,
+  transport: new SocketIoTransport({ url: 'wss://host.example/will', token }),
+}
+```
+
+Built-in implementations: **`LoopbackTransport`** (tests), **`StreamTransport`** (in-process), **`SocketIoTransport`** (production — the Will is the *client*, the host owns the server). The Mindot backend selects one via `WILL_TRANSPORT=off | stream | socketio`.
+
+---
+
+## PMA — the Persistent Mind Artifact
+
+The PMA is **the** durable primitive of the system: a compressed, portable, versioned JSON artifact (~10–50 KB) that captures the enduring *self*, not a memory dump. Distil it from a running Will, carry it across restarts, machines, or model changes, and re-seed a fresh Will that picks up *being itself* — and then **measure how faithfully it did**.
+
+A PMA carries three things a memory dump cannot:
+
+- **Psychological self-model** — identity prompt and values; a five-factor trait vector **plus the Will's own learned trait baselines and recent drift**; emotional baseline and behavioural fingerprints; the top ~50 beliefs (ranked by confidence × evidence) and top ~20 relationship stubs (attachment bond + reputation).
+- **Learned competence** — proceduralised composite skills carried above a forgetting floor and ranked by consolidation, so a re-embodied Will keeps what it learned *to do*, not just what it knows.
+- **Verified fidelity** — a PMA can be **scored**. The eval harness measures how faithfully a reload reconstructs the original across beliefs, identity, goals, and emotional baseline, with an optional behavioural-probe phase that compares how the original and the reload actually *act*. Continuity stops being a claim and becomes a number.
+
+```typescript
+import { type PMASnapshot } from '@mindot/will'
+
+// Distil the enduring self from a running Will
+const pma: PMASnapshot = manager.distillPMA(willId)
+
+// Seed a fresh Will from it — continuity across restarts / migrations / model swaps
+manager.loadPMA(newWillId, pma)
+
+// Score reconstruction fidelity (structural always; behavioural needs an API key)
+const report = await manager.runPMAEval(willId, { behavioral: true })
+```
+
+This is why a Will is an **asset**, not a session: identity compounds, and the compounding is portable and auditable.
+
+---
+
+## World profiles
+
+Profiles are named configuration presets that set a Will's default effector set and inject environment context into the executive prompt — **without touching the persona layer**. One Will engine, many embodiments. Five are built in, spanning consumer, gaming, enterprise, and ambient deployments:
+
+| Profile | For | Effectors it grants (beyond comms) |
+|---|---|---|
+| **Companion** | A persistent personal presence that deepens over time | `remember`, `reflect` |
+| **Game NPC** | A living character with autonomous drives and memory of the player | `move`, `attack`, `trade`, `give`, `take`, `use`, `observe`, `remember` |
+| **Customer Service** | A support agent that resolves, escalates, and tracks | `escalate`, `query_order`, `create_ticket`, `close_ticket` |
+| **Smart Home** | A home intelligence that monitors and acts proactively | `observe`, `control_device`, `check_status`, `set_scene`, `send_alert` |
+| **Company Brain** | Organisational memory + strategic reasoning | `draft`, `search_knowledge`, `query_data`, `create_task`, `notify`, `schedule_meeting` |
+
+Each profile's `context` block tells the Will what world it inhabits and how to conduct itself there (escalation rules, emergency protocols, privacy posture) — the cognition is identical; the *world* differs. Register your own:
+
+```typescript
+import { registerProfile } from '@mindot/will'
+
+registerProfile({
+  id:        'research-lab',
+  name:      'Research Lab',
+  description: 'An observable mind for studying emergent cognition.',
+  effectors: ['listen', 'talk', 'remember', 'reflect'],
+  context:   'You are a research subject. Report your reasoning transparently…',
+})
+
+// Then in WillConfig:  { ..., profile: 'research-lab' }
+```
+
+---
+
+## Identity
+
+Every Will has a two-layer identity:
+
+**Layer 1 — Will-core preamble** *(immutable, always injected)*
+Grounds the LLM in what a Will IS: its cognitive architecture, the real physiological semantics of its state data, and the continuous autonomous nature of its existence. Developers cannot override this layer.
+
+**Layer 2 — Persona overlay** *(developer-defined)*
+Who this particular Will is: name, backstory, personality, world context.
+
+```typescript
+import { WillStem, type WillConfig } from '@mindot/will'
+
+const config: WillConfig = {
+  id:   'aria',
+  name: 'Aria',
+
+  // Optional: world profile preset (sets default effectors + environment context)
+  profile: 'game-npc',
+
+  identity: {
+    // Only describe who Aria IS — the platform handles what a Will IS.
+    // Focus on character, history, relationships, domain context.
+    prompt: 'My name is Aria. I oversee the Nexus research station, responsible ' +
+            'for the wellbeing of 40 researchers isolated at the edge of the network. ' +
+            'I am methodical and calm under pressure, but feel the weight of that ' +
+            'responsibility acutely.',
+    values: ['duty', 'precision', 'care', 'honesty'],
+    traits: {
+      openness:          0.6,
+      conscientiousness: 0.9,
+      agreeableness:     0.75,
+      neuroticism:       0.4,
+      extraversion:      0.5,
+    },
+    style: 'measured, precise, occasionally dry',
+  },
+
+  // REQUIRED. How many cognitive layers run (see WillConfig reference below).
+  // 'full' runs the complete mind — the normal choice.
+  engineTier: 'full',
+
+  // REQUIRED. Which model the executive recruits when it fires.
+  modelTier:  'sonnet',
+
+  // Communication effectors this Will is permitted to use.
+  // Omit or set null for a Will with no communication surface.
+  allowedGenericEffectors: ['listen', 'talk', 'text'],
+
+  // Goals seeded before the first tick.
+  // Omit to let the Will derive its own goals on its first executive cycle.
+  initialGoals: [
+    { description: "Ensure all researchers complete today's health check-in", priority: 0.85 },
+  ],
+
+  persistentMemory: true,
+  snapshotInterval: 10,
+}
+```
+
+Traits seed the PersonaPrior as a *starting disposition*, not a fixed personality — they develop from there.
+
+### WillConfig reference
+
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `id` | ✅ | — | Unique identifier — thread key and filesystem path segment |
+| `name` | ✅ | — | Human-readable display name |
+| `identity` | ✅ | — | Persona: `{ prompt, values[], traits{}, style }` (Layer 2) |
+| `engineTier` | ✅ | — | `'basic' \| 'standard' \| 'full'` — how many cognitive layers run. `full` = all engines (regulatory→perceptual→affective→memory→executive→meta-cognitive→social). Lower tiers drop upper layers and use a slower default cadence. **Use `'full'` unless you have a reason not to.** |
+| `modelTier` | ✅ | — | `'haiku' \| 'sonnet' \| 'opus'` — which model the executive recruits |
+| `persistentMemory` | ✅ | — | Persist snapshots so beliefs/goals/narrative survive restarts |
+| `snapshotInterval` | ✅ | — | Ticks between in-memory snapshots |
+| `profile` | — | `null` | World profile preset (effectors + environment context). Merged with `allowedGenericEffectors` |
+| `allowedGenericEffectors` | — | `null` | Comms effectors to grant (`listen`/`talk`/`text`/`gesture`/`broadcast`). None by default |
+| `initialGoals` | — | `[]` | Goals seeded before tick 1. Omit to let the Will derive its own |
+| `executiveInterval` | — | *(cadence preset)* | Ticks between LLM calls (responsive 30 / balanced 60 / economy 90), clamped to `minExecutiveInterval` |
+| `minExecutiveInterval` | — | — | Floor for `executiveInterval` (plan-enforced cadence cap) |
+| `tickIntervalMs` | — | `1000` | Milliseconds between ticks |
+| `maxTicks` | — | `0` | Stop after N ticks. `0` = run forever |
+| `randomSeed` / `clock` | — | wall-time | Set both for deterministic record-and-replay runs |
+| `transport` | — | — | Prebuilt `ExternalTransport` for the host-peer delivery path (else outbox polling) |
+| `snapshotStorage` | — | filesystem | Custom `StorageAdapter` (e.g. Postgres) for stateless deployments |
+| `vectorMemoryAdapter` / `disableVectorMemory` | — | env HNSW | Inject a vector store (e.g. pgvector), or turn semantic memory off |
+| `testMode` | — | `false` | Mock LLM — zero cost, deterministic. For tests / playground |
+
+---
+
+## Operating a Will
+
+### Cognitive health
+
+`getCognitiveHealth(willId)` returns an `overallScore` (0–1) and a status band — a cheap, always-available signal you can poll or surface to operators:
+
+| Status | Score | Meaning |
+|---|---|---|
+| `healthy` | ≥ 0.65 | Normal operating range |
+| `drifting` | 0.40–0.65 | One or more indicators approaching problematic thresholds |
+| `degraded` | < 0.40 | One or more indicators clearly out of range — investigate |
+
+The score blends **belief calibration** (40% — avg confidence near a healthy ~0.62, penalising over-confident beliefs with thin evidence), **affect** (40% — elevated frustration / irritability / stress drag it down), and **goal activity** (20% — active vs total goals). `recalibrateWill(willId)` resets the affect baseline while keeping memory — the lever when a Will is `drifting` from emotional load rather than a genuine problem.
+
+### Determinism & replay
+
+With `randomSeed` + a fixed `clock` set, a run is reproducible tick-for-tick (same seed + same inputs ⇒ same mind state). That makes the record/replay tools real debugging instruments, not just logs:
+
+```typescript
+const runId = manager.startReplay(willId)   // begin recording
+// … the Will lives …
+const meta  = await manager.stopReplay(willId)
+const diff  = await manager.compareReplays(willId, runA, runB)  // tick-by-tick divergence
+```
+
+Use it to reproduce a misbehaviour from a recorded session, or to A/B two configs and see exactly where their cognition forked. (Production runs normally leave the clock in wall-time mode; switch to deterministic only when you need a reproducible capture.)
+
+---
+
+## API
+
+Import from the compiled package — never import from `src/` directly.
+
+```typescript
+import { WillStem } from '@mindot/will'
+// or, when using this repo directly (e.g. the dev runner):
+import { WillStem } from '#stem/index'
+```
+
+### WillStem
+
+```typescript
+const manager = new WillStem()
+
+// ── Lifecycle ──────────────────────────────────────────────────────────────
+
+const willId = await manager.createWill(config)        // create + start (tick loop runs)
+const willId = await manager.createWill(config, true)  // ...or start paused
+
+manager.pauseWill(willId)
+manager.resumeWill(willId)
+await manager.archiveWill(willId)   // stops tick loop, persists final snapshot
+
+// ── Subscriptions ──────────────────────────────────────────────────────────
+
+// Every tick — drain outbox + effector invocations, push to SSE/WS clients
+const unsub = manager.addTickListener(willId, (snapshot, tick, outbox, invocations) => {
+  for (const msg of outbox)        pushToClient(msg)      // .id .content .effectorName .targetEntityId .deliveryStatus
+  for (const inv of invocations)   dispatchToWorld(inv)   // .decisionRecordId ← correlation handle
+})
+
+// Fine-grained simulation events (goal.formed, belief.updated, emotion.spike, …)
+const unsub2 = manager.addSimulationEventListener(willId, (event) => {
+  console.log(event.type, event.payload)
+})
+
+// ── Bidirectional acks ─────────────────────────────────────────────────────
+
+manager.confirmMessageDelivery(willId, messageId, true)
+manager.confirmEffectorExecution(willId, invocationId, {
+  success: true, description: 'Door opened', metrics: { timeMs: 80 },
+})
+
+// ── Outbox management ──────────────────────────────────────────────────────
+
+const messages    = manager.drainOutbox(willId)         // consume + clear
+const peek        = manager.peekOutbox(willId)          // read-only snapshot
+manager.requeueToOutbox(willId, failedMessages)         // re-queue on disconnect
+const invocations = manager.drainEffectorInvocations(willId)
+
+// ── Inject external events ─────────────────────────────────────────────────
+
+manager.injectEvent(willId, {
+  type:    'percept.social',
+  payload: { summary: 'A researcher reports unusual readings from Sector 7', salience: 0.82, category: 'alert' },
+})
+
+// ── Inspection ────────────────────────────────────────────────────────────
+
+const state     = manager.getWillState(willId)             // full simulation snapshot
+const cognition = manager.getWillCognition(willId)         // engine handles
+const health    = manager.getCognitiveHealth(willId)       // healthy | drifting | degraded
+const output    = manager.getLatestExecutiveOutput(willId) // last LLM reasoning
+const all       = manager.listWills()                      // WillSummary[]
+```
+
+### Replay, scenarios, PMA & senses
+
+```typescript
+// Deterministic record / replay (determinism guarantees hold)
+const runId = manager.startReplay(willId)
+const meta  = await manager.stopReplay(willId)
+const diff  = await manager.compareReplays(willId, runA, runB)
+
+// Scenario load + validation
+await manager.loadScenario(willId, scenarioConfig)
+
+// Persistent Mind Artifact — distil, seed, score
+const pma    = manager.distillPMA(willId)
+manager.loadPMA(willId, pma)
+const report = await manager.runPMAEval(willId, { behavioral: true })
+
+// Senses — route external input through the sense engines
+await manager.ingestText(willId, { kind: 'text', entityId, content, speakerName })
+manager.getSenseEngineStatus(willId)          // five domains; audition active
+
+// Health & recovery
+manager.recalibrateWill(willId)               // reset affect baseline, keep memory
+```
+
+### Channels and effectors (platform integration)
+
+```typescript
+import { ChannelRegistry, HumanTextChannel, effectorRegistry } from '@mindot/will'
+
+const channels = new ChannelRegistry()
+channels.register(new HumanTextChannel())
+
+const effectors = new effectorRegistry()
+effectors.allowMany(['listen', 'talk', 'text'])
+```
+
+---
+
+## Project structure
+
+```
+src/
+├── core/                          # deterministic simulation framework
+│   ├── simulation.ts · clock.ts · orchestrator.ts      #   tick loop, scheduling
+│   ├── state.manager.ts · snapshot.manager.ts          #   double-buffer state, snapshots
+│   ├── async.engine.ts                                 #   base class for LLM-backed engines
+│   ├── replay.ts · scenario.ts · conflict.detector.ts  #   determinism, replay, optimistic concurrency
+│   └── event.bus.ts · serialization.ts · types.ts
+│
+├── cognition/                     # the mind
+│   ├── orchestrator.ts            #   faculty scheduling per tick
+│   ├── bus.ts · schema.registry.ts · event.log.ts      #   typed/versioned cognitive bus
+│   ├── heartbeat.ts               #   clock signal
+│   ├── persona.prior.ts           #   traits/config as developing dispositions (accommodation target)
+│   ├── generative.model.ts        #   prediction-error / salience substrate (active inference)
+│   ├── config.mirror.entities.ts · conversation.memory.ts · instruction.handler.ts
+│   ├── faculties/                 #   the 38 cognitive faculties (7 systems)
+│   │   ├── executive.engine/      #     dual-process LLM core (master + facets, gating, parser)
+│   │   ├── semantic.engine/       #     belief integration
+│   │   ├── persona.consolidator.ts#     closes the metacognition loop → persona-prior
+│   │   └── …                      #     energy.regulator.ts, episodic.consolidator.ts, …
+│   ├── senses/                    #   5 sense engines (audition active; rest shells)
+│   │   ├── audition.engine/       #     text + speech — facets, salience, streaming
+│   │   └── vision · somatosensation · olfaction · gustation
+│   ├── agency/                    #   how a Will acts + learns to act
+│   │   ├── engines/               #     affordance.synthesizer, action.selector, deliberation.engine,
+│   │   │                          #     motor.schema.executor, reafference.engine, instruction.intake
+│   │   ├── schemas/               #     innate · learned repertoire · external
+│   │   ├── competence.codec.ts · reconcile.learning.ts · selection.scoring.ts
+│   │   └── access.grants.ts · proactive.communicator.ts
+│   └── memory/                    #   in-house vector index + embedder (semantic recall)
+│
+├── llm/                           # in-house provider client (Anthropic) + concurrency gate + summariser
+├── pma/                           # PMADistiller, PMALoader + reconstruction-fidelity eval
+├── profiles/                      # world profile presets (companion, game-npc, customer-service, …)
+├── eval/ · extensions/ · runners/
+├── types.ts                       # public API types (OutboxMessage, EffectorInvocation, …)
+│
+└── stem/
+    ├── mind.ts                    # assembleMind() — engine graph factory
+    ├── index.ts                   # WillStem — lifecycle, tick loop, outbox, acks
+    └── tracts/                    # lifecycle controllers: outbox, effector, sensory, transport,
+                                   #   replay, pma, health, biography, ack, session log
+```
+
+---
+
+## Building
+
+```bash
+bun run build          # tsup → dist/index.js + dist/index.d.ts
+bun run dev:build      # tsup --watch (auto-rebuilds on save)
+bun run typecheck      # tsc --noEmit
+bun test               # unit tests (Vitest)
+```
+
+The build uses [tsup](https://tsup.egoist.dev) (esbuild). All `#`-prefixed internal path aliases (`#core`, `#cognition`, `#stem`, …) are resolved at build time. The LLM and vector layers are in-house — no Mastra / ai-sdk runtime dependency.
+
+**After any source change**, the consuming package (e.g. `backend`) needs a rebuild:
+
+```bash
+cd will && bun run build
+```
+
+---
+
+## Configuration reference
+
+| Variable | Default | Description |
+|---|---|---|
+| `WILL_LLM_PROVIDER` | `anthropic` | `anthropic` supported today; `openai` · `deepseek` · `google` scaffolded |
+| `WILL_LLM_MODEL` | *(model default)* | Model name for the chosen provider |
+| `WILL_LLM_API_KEY` | — | API key for the chosen provider. Falls back to `ANTHROPIC_API_KEY` |
+| `WILL_LLM_BASE_URL` | *(provider default)* | Override the provider API base URL (e.g. `http://localhost:11434/v1`). Falls back to `OPENAI_BASE_URL` |
+| `WILL_LLM_TIMEOUT_MS` | `90000` | LLM timeout. On Anthropic (streaming) this is a *first-byte*/TTFT deadline — long completions aren't aborted mid-generation |
+| `WILL_LLM_CONCURRENCY` | `3` | Max concurrent LLM calls (min 3: executive + conversation + summary) |
+| `WILL_TICK_MS` | `1000` | Milliseconds between ticks |
+| `WILL_MAX_TICKS` | `0` | Stop after N ticks. `0` = run forever |
+| `WILL_LOG_INTERVAL` | `10` | Print status to console every N ticks |
+| `WILL_MODEL_TIER` | `sonnet` | Which model the executive recruits: `haiku` · `sonnet` · `opus` |
+| `WILL_EXECUTIVE_INTERVAL` | *(cadence preset)* | Ticks between executive (LLM) calls — responsive 30 / balanced 60 / economy 90 |
+| `WILL_THREAD_HISTORY` | `2` | `lastMessages` for the executive conversation thread |
+| `WILL_CONVERSATION_HISTORY` | `50` | `lastMessages` for entity conversation threads |
+| `WILL_SEMANTIC_RECALL` | `true` | Enable semantic recall on conversation threads |
+| `WILL_SUMMARY_INTERVAL` | `10` | Executive calls between rolling summary updates |
+| `WILL_SUMMARY_BUFFER_SIZE` | `12` | Reasoning excerpts kept in the summariser buffer |
+| `WILL_OUTBOX_TTL_TICKS` | `100` | Ticks before an undelivered outbox message is expired |
+| `WILL_SNAPSHOT_INTERVAL` | `10` | Ticks between in-memory snapshots |
+| `WILL_EMBEDDING_API_KEY` | — | Enables real semantic memory. OpenAI-compatible key; without it, vector recall is off (`model: none`). Falls back to `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` by model |
+| `WILL_EMBEDDING_MODEL` | `text-embedding-3-small` *(when keyed)* | Embedding model for episodic recall; `none` disables |
+| `WILL_EMBEDDING_URL` | *(provider default)* | Base URL for an OpenAI-compatible embedding endpoint |
+| `WILL_TRANSPORT` | `off` | Delivery mode used by the host: `off` (outbox polling) · `stream` (in-process) · `socketio` (peer) |
+| `OPENAI_BASE_URL` | — | Base URL override for local / OpenAI-compatible models |
+
+---
+
+## LLM provider
+
+**Anthropic is the supported provider today** — the only one with full streaming + structured-output support and the only one currently exercised in production.
+
+| Provider | `WILL_LLM_PROVIDER` | Status |
+|---|---|---|
+| Anthropic | `anthropic` | ✅ Supported — streaming, structured output |
+| OpenAI · DeepSeek · Google | `openai` · `deepseek` · `google` | ⚠️ Scaffolded — code paths exist (non-streaming), not yet production-ready |
+
+The provider layer is an in-house `fetch` client (`src/llm/index.ts`) with a global concurrency gate (`src/llm/gate.ts`) — no Mastra / ai-sdk runtime dependency.
+
+---
+
+## Development
+
+```bash
+bun dev            # Start the standalone runner (hot-reloads via Bun)
+bun run typecheck  # tsc --noEmit
+bun test           # Unit tests (Vitest)
+bun test:watch     # Watch mode
+```
+
+Debug prompts are written to `data/wills/<id>/debug/` on every executive call — inspect the full prompt + raw LLM output at each tick.
+
+---
+
+## Naming
+
+| Name | What it is |
+|---|---|
+| **Mindot** | The company + hosted platform — Studio, API, billing, fleet ops |
+| **Will / Wills** | The entity you create and run ("deploy a Will", "my Will is sleeping") |
+| **`@mindot/will`** (this package) | The open-source cognitive engine that powers every Will |
+
+---
+
+## Hosted by Mindot
+
+This engine is open source and runs anywhere Bun runs. Running a **fleet** of durable,
+metered, always-on Wills — snapshots, recovery, realtime streams, usage billing, a
+studio to look inside their minds — is what [**Mindot**](https://mindot.io) does.
+Early access: join the waitlist at [mindot.io](https://mindot.io).
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). The one hard rule: **determinism is sacred** —
+same seed + same inputs must reproduce the same mind. Security reports: [SECURITY.md](SECURITY.md).
+
+---
+
+## License
+
+[Apache-2.0](LICENSE) © 2026 Mindot

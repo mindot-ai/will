@@ -1,0 +1,384 @@
+// ─────────────────────────────────────────────────────────────
+// src/agency/affordance.synthesizer.ts  —  head of the agency pipeline
+// ─────────────────────────────────────────────────────────────
+//
+// The AffordanceSynthesizer is the Gibsonian move: instead of a static catalog
+// the executive selects from, perception *emits* the field of what is possible
+// right now, for this body, in this state. It runs every tick with no LLM.
+//
+// Each tick it draws on:
+//   • the innate floor    — reflexive, objectless possibilities (always present)
+//   • salient percepts    — "inspect this", bound to what perception surfaced
+//   • known sentient minds — "reach out to them", bound to the relationship
+//   • (Phase 3) the repertoire of learned composite skills
+//
+// Two properties make it mind-shaped, not framework-shaped:
+//   1. Parameters are bound *at perception time* from the evoking thing, so an
+//      affordance can never arrive at execution with empty arguments.
+//   2. Attention gates the WIDTH of the field — a depleted or unfocused mind
+//      literally has fewer possibilities available to it. The body shapes the
+//      option set, not just the choice.
+//
+// Output: transient `affordance` entities (the field is rebuilt every tick),
+// plus metrics and an `affordance.field.synthesized` bus event for the selector
+// and telemetry. See AGENCY_PIPELINE_TODO.md.
+// ─────────────────────────────────────────────────────────────
+
+import { logger } from '#core/logger'
+import type {
+  Duration, Tick, SimulationContext,
+  ReadonlySimulationState, StateCommands, EntityInput,
+} from '#core/types'
+import type { CognitiveBus } from '#cognition/bus'
+import type { CognitiveEngine, EngineResult } from '#cognition/types'
+import type { CognitiveEventSchema } from '#cognition/schema.registry'
+import type { Affordance, AffordanceSource, MotorSchema, LearnedSkill, SchemaPrecondition } from '#agency/types'
+import type { SchemaRepertoire } from '#agency/schemas/repertoire'
+import { INNATE_SCHEMAS } from '#agency/schemas/innate'
+import { collectGoalTargets } from '#agency/selection.scoring'
+
+/** Default field width for non-innate affordances when no attention metric exists. */
+const DEFAULT_ATTENTION_CAP = 5
+/** Hard ceiling so a flood of percepts can never explode the field. */
+const MAX_ATTENTION_CAP = 12
+/** Pre-activation floor for an ideomotor candidate — the executive deliberately willed
+ *  it, so it should reliably reach the field, but it still competes in the selector. */
+const IDEOMOTOR_BASE_SALIENCE = 0.5
+
+type SkillAccessor = () => ReadonlyMap<string, LearnedSkill>
+
+interface Candidate {
+  /** Coarse evoke-salience used only for attention budgeting (selection scores later). */
+  salience:   number
+  affordance: Affordance
+}
+
+export class AffordanceSynthesizer implements CognitiveEngine {
+  readonly name = 'affordance-synthesizer'
+
+  private _schemas:     MotorSchema[]
+  private _skills:      SkillAccessor | null = null
+  private _repertoire:  SchemaRepertoire | null = null
+  private _bus:         CognitiveBus | null = null
+  private _defaultCap:  number
+  private _lastFieldSize = 0
+
+  constructor( schemas: MotorSchema[] = INNATE_SCHEMAS, defaultCap = DEFAULT_ATTENTION_CAP ){
+    this._schemas    = schemas
+    this._defaultCap = defaultCap
+  }
+
+  // ── wiring ────────────────────────────────────────────────────
+  attachBus( bus: CognitiveBus ): void { this._bus = bus }
+  /** Inject the repertoire's learned-skill accessor (Phase 3). */
+  attachSkills( accessor: SkillAccessor ): void { this._skills = accessor }
+  /**
+   * Attach the live repertoire — its templates (innate floor + learned composites)
+   * become the schema set, and its skills feed the affordance priors. This is how
+   * a newly-learned composite shows up in the field without a restart.
+   */
+  attachRepertoire( repertoire: SchemaRepertoire ): void { this._repertoire = repertoire }
+  /** Register an additional schema template (e.g. a learned composite). */
+  registerSchema( schema: MotorSchema ): void { this._schemas.push( schema ) }
+
+  // ── CognitiveEngine interface ─────────────────────────────────
+  publishes(): CognitiveEventSchema[] {
+    return [ { type: 'affordance.field.synthesized', version: 1, validate: () => null } ]
+  }
+  subscribes(): string[] { return [] }
+  onCognitiveEvent(): void { /* pull model — reads frozen state each tick */ }
+  snapshot(): Record<string, unknown> { return { lastFieldSize: this._lastFieldSize } }
+
+  // ── react ─────────────────────────────────────────────────────
+  async react(
+    _delta:   Duration,
+    tick:     Tick,
+    state:    ReadonlySimulationState,
+    _context: SimulationContext,
+  ): Promise<EngineResult> {
+    // Rehydrate learned composites the executor needs to resolve. After a
+    // snapshot/restore the repertoire is rebuilt innate-only; the composite
+    // *definitions* come back as `agency.schema` entities (written by the
+    // ReafferenceEngine). Doing this here — the first agency engine each tick —
+    // means the executor, which ticks later in the SAME tick, sees a whole
+    // repertoire and can expand a restored mid-flight macro. Idempotent.
+    this._repertoire?.restoreComposites( state.entities )
+
+    const schemas   = this._repertoire?.schemas() ?? this._schemas
+    const skills    = this._skills?.() ?? this._repertoire?.skills() ?? null
+    const valence   = metric( state, 'affect.valence', 0 )
+    const energyLow = metric( state, 'energy.level', 0 ) < 30
+
+    const set:    EntityInput[] = []
+    const del:    string[]      = []
+
+    // Clear the previous tick's field — affordances are transient.
+    for( const [ id, e ] of state.entities )
+      if( e.type === 'affordance' ) del.push( id )
+
+    // ── 1. innate floor — always emitted, never attention-capped ──
+    const floor = schemas.filter( s => s.binds === 'none' )
+    for( const schema of floor )
+      set.push( this._toEntity(
+        this._build( schema, tick, state, valence, energyLow, skills, {} ),
+      ) )
+
+    // ── 2. perception-bound candidates, attention-budgeted ───────
+    // Goal-relevance counts at the CAP, not only at selection: an affordance whose
+    // target an active goal is directed at is lifted here so goal-driven outreach
+    // isn't out-competed by ambient rumination before the selector (which also
+    // scores goalRelevance) ever sees it. Same `goalTargets` notion as the selector.
+    const candidates:  Candidate[]           = []
+    const goalTargets: Map<string, number>   = collectGoalTargets( state )
+
+    const perceptSchema = schemas.find( s => s.binds === 'percept' )
+    if( perceptSchema )
+      for( const [ id, e ] of state.entities ){
+        if( e.type !== 'percept' ) continue
+        const m        = e.metadata
+        const salience = num( m?.['salience'], 0 )
+        const summary  = str( m?.['summary'] ) ?? str( m?.['category'] ) ?? 'something'
+        const target   = str( m?.['entityId'] ) ?? str( m?.['targetEntityId'] )
+        candidates.push({
+          salience: salience + ( target ? goalTargets.get( target ) ?? 0 : 0 ),
+          affordance: this._build( perceptSchema, tick, state, valence, energyLow, skills, {
+            evokedBy:       id,
+            targetEntityId: target,
+            parameters:     { focus: summary },
+          } ),
+        })
+      }
+
+    const entitySchema = schemas.find( s => s.binds === 'entity' )
+    if( entitySchema )
+      for( const [ id, e ] of state.entities ){
+        if( e.type !== 'known-entity' ) continue
+        const m = e.metadata
+        if( str( m?.['kind'] ) !== 'sentient' ) continue
+        const keid = str( m?.['keid'] ) ?? id
+        const fam  = num( m?.['familiarity'], 0 )
+        const val  = num( m?.['valence'], 0 )
+        const res  = num( m?.['resolutionConfidence'], 0 )
+        candidates.push({
+          salience: fam * 0.6 + Math.max( 0, val ) * 0.3 + res * 0.1 + ( goalTargets.get( keid ) ?? 0 ),
+          affordance: this._build( entitySchema, tick, state, valence, energyLow, skills, {
+            evokedBy:       id,
+            targetEntityId: keid,
+            parameters:     { targetEntityName: str( m?.['name'] ) ?? keid },
+          } ),
+        })
+      }
+
+    // ── ideomotor candidates: the executive's imagined actions, pre-activated ──
+    // The executive writes `ideomotor.intent` entities for the actions it imagines
+    // (its "what if I…"). They enter the field as HIGH-salience candidates — it
+    // deliberately willed them — but still COMPETE in the selector; they never bypass
+    // it. This is the AffordanceSource.ideomotor leg: executive intention → an
+    // affordance that competes like any other.
+    for( const [ id, e ] of state.entities ){
+      if( e.type !== 'ideomotor.intent' ) continue
+      const m        = e.metadata
+      const schemaId = str( m?.['schema'] )
+      const schema   = schemaId ? schemas.find( s => s.id === schemaId ) : undefined
+      if( !schema ) continue
+      candidates.push({
+        salience: IDEOMOTOR_BASE_SALIENCE + num( m?.['priority'], 0.8 ),
+        affordance: this._build( schema, tick, state, valence, energyLow, skills, {
+          evokedBy:       id,
+          targetEntityId: str( m?.['targetEntityId'] ),
+          parameters:     ( m?.['parameters'] as Record<string, unknown> ) ?? {},
+          source:         'ideomotor',
+        } ),
+      })
+    }
+
+    // ── plan priors: an executing plan's frontier step, pre-activated ──────────
+    // A plan does not dispatch its steps; it BIASES the competition toward the
+    // action its current frontier needs. The PlanningEngine writes one `plan.prior`
+    // per ready frontier step; each enters the field as a HIGH-salience candidate
+    // (the frontier is willed) carrying a `planBias` the scorer weighs and the
+    // planId/stepId provenance that flows through to action.outcome so the plan
+    // advances when the field actually enacts it. Like ideomotor, it never bypasses
+    // the selector — if a more pressing affordance wins, the plan simply re-projects
+    // next tick. The suggested schema must resolve in the repertoire; if it does not,
+    // the prior cannot surface as an action and the plan waits / replans.
+    for( const [ id, e ] of state.entities ){
+      if( e.type !== 'plan.prior' ) continue
+      const m        = e.metadata
+      const schemaId = str( m?.['schema'] )
+      const schema   = schemaId ? schemas.find( s => s.id === schemaId ) : undefined
+      if( !schema ) continue
+      const planBias = clamp01( num( m?.['planBias'], 0.6 ) )
+      candidates.push({
+        salience: IDEOMOTOR_BASE_SALIENCE + planBias,
+        affordance: this._build( schema, tick, state, valence, energyLow, skills, {
+          evokedBy:       id,
+          targetEntityId: str( m?.['targetEntityId'] ),
+          parameters:     ( m?.['parameters'] as Record<string, unknown> ) ?? {},
+          source:         'plan',
+          planBias,
+          planId:         str( m?.['planId'] ),
+          stepId:         str( m?.['stepId'] ),
+        } ),
+      })
+    }
+
+    // Attention gates the WIDTH of the field: keep only the top-salient few.
+    const cap = this._attentionCap( state )
+    candidates.sort( ( a, b ) => b.salience - a.salience )
+    for( const c of candidates.slice( 0, cap ) )
+      set.push( this._toEntity( c.affordance ) )
+
+    // ── 3. metrics + telemetry ───────────────────────────────────
+    const fieldSize      = set.length
+    const availableCount = set.reduce( ( n, e ) => n + ( e.metadata?.['available'] ? 1 : 0 ), 0 )
+    this._lastFieldSize  = fieldSize
+
+    const commands: StateCommands = {
+      set,
+      delete:  del,
+      metrics: [
+        [ 'affordance.field_size',      fieldSize ],
+        [ 'affordance.available_count', availableCount ],
+      ],
+    }
+
+    if( this._bus ){
+      try {
+        this._bus.publish({
+          type:         'affordance.field.synthesized',
+          version:      1,
+          sourceEngine: this.name,
+          salience:     0.3,
+          payload:      { size: fieldSize, availableCount, tick },
+        })
+      }
+      catch( err ){
+        logger.warn( `[affordance] bus publish failed: ${ err instanceof Error ? err.message : String( err ) }` )
+      }
+    }
+
+    return { commands }
+  }
+
+  // ── internals ─────────────────────────────────────────────────
+
+  /** Compose an Affordance from a schema + the evoking context, folding in learned priors. */
+  private _build(
+    schema:   MotorSchema,
+    tick:     Tick,
+    state:    ReadonlySimulationState,
+    valence:  number,
+    energyLow: boolean,
+    skills:   ReadonlyMap<string, LearnedSkill> | null,
+    ctx: {
+      evokedBy?:       string
+      targetEntityId?: string
+      parameters?:     Record<string, unknown>
+      source?:         AffordanceSource
+      planBias?:       number
+      planId?:         string
+      stepId?:         string
+    },
+  ): Affordance {
+    const skill = skills?.get( schema.id )
+
+    // Learned value if known, else the schema's intrinsic prior mapped to 0..1.
+    const expectedReward = skill?.valueEstimate
+      ?? clamp01( ( ( schema.baseValence ?? 0 ) + 1 ) / 2 )
+    const expectedValence = schema.baseValence ?? valence
+    const habitStrength   = skill?.habitStrength ?? 0
+    // Low energy makes everything feel costlier.
+    const cost            = clamp01( schema.cost * ( energyLow ? 1.5 : 1 ) )
+
+    const key    = ctx.targetEntityId ?? ctx.evokedBy ?? schema.id
+    const source = ctx.source ?? schema.source
+    // A non-default-source candidate (ideomotor) gets a distinct id so it can coexist
+    // with a same-schema/target candidate evoked from another source (e.g. entity-bound).
+    const idTag  = ctx.source && ctx.source !== schema.source ? `-${ ctx.source }` : ''
+
+    return {
+      id:              `affordance-${ tick }-${ schema.id }-${ key }${ idTag }`,
+      schema:          schema.id,
+      source,
+      parameters:      { ...( skill?.paramPriors ?? {} ), ...( ctx.parameters ?? {} ) },
+      targetEntityId:  ctx.targetEntityId,
+      evokedBy:        ctx.evokedBy,
+      expectedValence,
+      expectedReward,
+      cost,
+      habitStrength,
+      available:       this._available( schema.preconditions, ( k ) => metric( state, k, 0 ) ),
+      tags:            schema.tags ?? [],
+      planBias:        ctx.planBias,
+      planId:          ctx.planId,
+      stepId:          ctx.stepId,
+      tick,
+    }
+  }
+
+  private _toEntity( a: Affordance ): EntityInput {
+    return {
+      id:   a.id,
+      type: 'affordance',
+      metadata: {
+        schema:          a.schema,
+        source:          a.source,
+        parameters:      a.parameters,
+        targetEntityId:  a.targetEntityId,
+        evokedBy:        a.evokedBy,
+        expectedValence: a.expectedValence,
+        expectedReward:  a.expectedReward,
+        cost:            a.cost,
+        habitStrength:   a.habitStrength,
+        available:       a.available,
+        tags:            a.tags,
+        planBias:        a.planBias,
+        planId:          a.planId,
+        stepId:          a.stepId,
+        tick:            a.tick,
+      },
+    }
+  }
+
+  private _available(
+    preconditions: SchemaPrecondition[] | undefined,
+    read: ( metric: string ) => number,
+  ): boolean {
+    if( !preconditions ) return true
+    return preconditions.every( pc => {
+      const cur = read( pc.metric )
+      switch( pc.op ){
+        case 'gt':  return cur >  pc.value
+        case 'lt':  return cur <  pc.value
+        case 'gte': return cur >= pc.value
+        case 'lte': return cur <= pc.value
+        case 'eq':  return cur === pc.value
+        default:    return false
+      }
+    })
+  }
+
+  private _attentionCap( state: ReadonlySimulationState ): number {
+    const cap = state.metrics.get( 'attention.capacity' ) ?? this._defaultCap
+    return Math.max( 1, Math.min( MAX_ATTENTION_CAP, Math.round( cap ) ) )
+  }
+}
+
+// ─── module helpers ──────────────────────────────────────────────────────────
+
+function metric( state: ReadonlySimulationState, key: string, fallback: number ): number {
+  return state.metrics.get( key ) ?? fallback
+}
+
+function num( v: unknown, fallback: number ): number {
+  return typeof v === 'number' && Number.isFinite( v ) ? v : fallback
+}
+
+function str( v: unknown ): string | undefined {
+  return typeof v === 'string' ? v : undefined
+}
+
+function clamp01( n: number ): number {
+  return n < 0 ? 0 : n > 1 ? 1 : n
+}

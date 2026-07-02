@@ -1,0 +1,31 @@
+{
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"skipLibCheck": true,
+		"paths": {
+			"#cognition/*": ["src/cognition/*"],
+			"#faculties/*": ["src/cognition/faculties/*"],
+			"#agency/*": ["src/cognition/agency/*"],
+			"#senses/*": ["src/cognition/senses/*"],
+			"#memory/*": ["src/cognition/memory/*"],
+			"#extensions/*": ["src/extensions/*"],
+			"#effectors/*": ["src/effectors/*"],
+			"#sandboxes/*": ["src/sandboxes/*"],
+			"#channels/*": ["src/channels/*"],
+			"#profiles/*": ["src/profiles/*"],
+			"#runners/*": ["src/runners/*"],
+			"#core/*": ["src/core/*"],
+			"#stem/*": ["src/stem/*"],
+			"#llm/*": ["src/llm/*"],
+			"#pma/*": ["src/pma/*"],
+			"#types": ["src/types"],
+			"#root/*": ["src/*"]
+		},
+		"baseUrl": "."
+	},
+	"include": ["src/**/*", "tests/**/*"]
+}

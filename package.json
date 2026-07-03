@@ -30,7 +30,9 @@
     "mind",
     "deterministic"
   ],
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -51,6 +53,7 @@
     "start": "bun --env-file=.env run src/runners/thin-shim.runner.ts",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
+    "prepublishOnly": "bun run typecheck && bun test && bun run build",
     "test": "vitest run",
     "test:watch": "vitest watch",
     "test:integration": "vitest run src/tests/integration"

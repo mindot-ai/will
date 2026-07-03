@@ -26,3 +26,17 @@ jobs:
 
       - name: Build
         run: bun run build
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # All development happens in the open — every push gets the same scan the
+      # original publish script ran. Scans full history + working tree.
+      - name: Scan for secrets (gitleaks)
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz | tar xz gitleaks
+          ./gitleaks detect --source . --redact -v

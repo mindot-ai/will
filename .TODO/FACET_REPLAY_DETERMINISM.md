@@ -2,55 +2,67 @@
 
 **Status:** OPEN — `tests/integration/replay.equivalence.test.ts` is `it.skip`'d on this.
 **Found:** 2026-07-02, while making the suite CI-green for the public release.
+**Updated:** 2026-07-03 — two of three layers fixed; the remaining work is precisely scoped.
 
-## The gap
+## The gap — three layers
 
-The R2-d capstone test (record a run's LLM completions → re-feed them into a fresh
-same-seed run → assert byte-identical state) no longer holds. Diagnosed root cause,
-in increasing depth:
+1. **Landing** ✅ **FIXED** (`cognition/completion.inbox.ts`). Facet decision effects
+   (PlanningEngine plan mutations, AuditionEngine outbox writes via the direct
+   `facet.subscribe` listeners) used to apply at raw LLM-promise resolution — an
+   arbitrary wall-clock moment that could interleave with a tick in flight. They now
+   stage in a `CompletionInbox` and land at the top of Phase 2, tick-quantized and
+   FIFO, alongside the (already tick-aligned) bus events. This also restores the
+   frozen-snapshot invariant: nothing mutates shared state while engines read.
+   Facet spawning/reasoning flexibility is untouched — only the return path is
+   disciplined. Chunk streaming stays real-time (client flow, not sim state).
 
-1. **Off-tick reasoning.** The facet-era executive runs its LLM chains asynchronously
-   across ticks (real timers + promise chains), so *when* a completion lands is
-   wall-clock — not seed — determined. (The test now pins this per tick by draining
-   to quiescence; that part is fixed in the harness.)
-2. **Concurrent chain interleaving — the real blocker.** Around the same tick, the
-   MASTER executive and a DELIBERATION FACET both issue LLM calls concurrently. The
-   record/re-feed seam (`core/completion.recorder`) matches completions by
-   *(tick, call order)* — but the order in which the two chains reach the LLM is a
-   race. Observed directly: run A recorded `master` first at tick 1; run B's first
-   call at tick 1 was the `facet` (system prompts differ: "unified cognitive core"
-   vs "focused facet … Deliberation"), so the strict source threw
-   `prompt diverged at tick 1`.
-3. **State bleed between racing chains.** Because completions mutate state when they
-   land, a different interleaving also changes the *content* of the next prompt
-   (observed: `## Active Ruminations` empty vs populated with affordance percepts) —
-   divergence compounds.
+2. **Pairing** ✅ **FIXED** (`core/completion.recorder.ts`). `RecordedCompletionSource`
+   matched completions to calls by strict per-tick sequence, so a master/facet
+   issue-order flip mispaired the whole tail (phantom `prompt diverged`). It now
+   matches by **byte-identical prompt within the tick** — order-independent, still
+   strict (a real divergence has no matching record and throws; identical duplicate
+   prompts consume FIFO).
+
+3. **Issue** ⬜ **REMAINING — the real work.** Facet reasoning *starts* at raw
+   report/resolution time (`facet.report()` → fire-and-forget `_reason()`), and
+   `_reason()` builds its prompt from `_currentStateRef` — the **live** state at that
+   wall-clock moment. Both the issue tick and the prompt bytes are therefore
+   race-dependent. Observed empirically (2026-07-03, with layers 1+2 fixed): run B's
+   tick-1 facet prompt has **no byte-identical record** in run A, and run B issues
+   calls at ticks (7, 47) that run A never recorded — A recorded 12 completions, B
+   consumed 2 before its chains died on misses.
+
+## The remaining fix — input-side quantization (symmetric to the landing inbox)
+
+Quantize reasoning **start** to tick boundaries:
+
+- `facet.report()` enqueues the report into a pending-report queue instead of firing
+  `_reason()` immediately;
+- the queue drains at a deterministic tick point (Phase 2, after the completion
+  inbox — or start-of-tick), launching `_reason()` with **that tick's frozen
+  snapshot** rather than the live ref;
+- prompt inputs then become pure functions of (tick, seed, recorded external
+  inputs): issue tick, prompt bytes, and (with layer 1) landing tick are all
+  deterministic. `_masterSyncHistory` is already tick-aligned (it arrives via the
+  bus), so no change there.
+
+Effort: medium. Touches `facet.ts` (report queue + snapshot capture), the
+orchestrator drain point, and the `stepSettled` quiescence contract in the test
+(reasoning now spans: report tick → issue tick → land tick).
+
+Note: live conversation latency is unaffected in practice — a report waits at most
+one tick (≤1 s) before reasoning starts, noise against multi-second LLM latency.
 
 ## Why this matters beyond the test
 
 Deterministic replay is a core product lever (audit/AI-Act story, PMA fork/restore,
 forensic "why did it do X"). Today that guarantee holds for the deterministic core
-(seeded RNG, fixed clock, tick-pure engines — R2-a/b/c all still pass) but NOT for
-the multi-chain LLM layer above it.
-
-## Fix directions (in preference order)
-
-1. **Order-independent completion matching.** Key recorded completions by
-   `(tick, callerId, hash(systemPrompt))` instead of FIFO-per-tick. Handles
-   master/facet races without touching cognition. Does NOT fix state-bleed (3):
-   two runs may still interleave *landings* differently. Probably combine with (2).
-2. **Deterministic completion landing.** Queue completion effects and apply them at
-   a deterministic point (start of the next tick, ordered by callerId) instead of
-   wherever the promise resolves. This makes (3) disappear and is the architecturally
-   right move: the LLM stays an async oracle, but its *effects* enter the simulation
-   on the tick clock. Medium effort, touches executive/facet effect application.
-3. **Serialized replay mode.** A replay-only flag that serializes all LLM chains
-   through a single-flight queue ordered by (tick, callerId). Cheapest correct
-   option; replay runs slower than live (fine — replay is offline).
+(seeded RNG, fixed clock, tick-pure engines — R2-a/b/c all still pass) and for
+*effect landing* (layer 1), but NOT yet for multi-chain LLM issue timing.
 
 ## Re-enable criteria
 
-Un-skip `replay.equivalence.test.ts` when (1)+(2) or (3) lands. The test harness is
-already correct (per-tick quiescence draining, 100 ms quiet windows — see the file's
-comments for the heisentest history) and asserts the right thing; only the engine
-guarantee is missing.
+Un-skip `replay.equivalence.test.ts` when layer 3 lands. The harness is already
+correct (per-tick quiescence draining, 100 ms quiet windows — see the file's
+comments for the heisentest history) and asserts the right thing; only the
+issue-side guarantee is missing.

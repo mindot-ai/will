@@ -71,10 +71,17 @@ export interface LLMCompletionSource {
 
 /**
  * Strict re-feed source backed by an array of recorded completions. Matches by
- * tick (FIFO within a tick, so multiple same-tick calls replay in record order)
- * and verifies the prompt is byte-identical to the recorded one. A missing tick
- * or a diverged prompt throws — either signals upstream non-determinism that
- * would invalidate the replay, so it fails loudly rather than masking it.
+ * tick, then by BYTE-IDENTICAL PROMPT within the tick — order-independent.
+ *
+ * Why prompt-keyed, not FIFO: concurrent LLM chains (the master executive and
+ * a deliberation facet) can ISSUE their same-tick calls in either order — that
+ * interleaving is scheduler timing, not seed-pinned state, so it may flip
+ * between the recording run and the replay run. Positional matching mispairs
+ * at the first flip and reports a phantom "prompt diverged". Keying each call
+ * to its own record by exact prompt makes the pairing insensitive to issue
+ * order while remaining strict: the prompts themselves are pure functions of
+ * deterministic state, so a real divergence still has no matching record and
+ * throws. Identical duplicate prompts within a tick consume FIFO.
  */
 export class RecordedCompletionSource implements LLMCompletionSource {
   private _byTick = new Map<number, LLMCompletionRecord[]>()
@@ -90,13 +97,13 @@ export class RecordedCompletionSource implements LLMCompletionSource {
   nextCompletion( tick: number, systemPrompt: string, userMessage: string ): LLMCompletionRecord {
     const queue = this._byTick.get( tick )
     if( !queue || queue.length === 0 )
-      throw new Error( `replay: no recorded LLM completion for tick ${tick} (recording is incomplete or call order diverged)` )
+      throw new Error( `replay: no recorded LLM completion for tick ${tick} (recording is incomplete or call timing diverged)` )
 
-    const record = queue.shift()!
-    if( record.systemPrompt !== systemPrompt || record.userMessage !== userMessage )
-      throw new Error( `replay: LLM prompt diverged at tick ${tick} — the recorded run is not reproducible (upstream non-determinism)` )
+    const idx = queue.findIndex( r => r.systemPrompt === systemPrompt && r.userMessage === userMessage )
+    if( idx === -1 )
+      throw new Error( `replay: LLM prompt diverged at tick ${tick} — no recorded completion matches this call (upstream non-determinism)` )
 
-    return record
+    return queue.splice( idx, 1 )[ 0 ]!
   }
 }
 

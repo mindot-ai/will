@@ -36,6 +36,7 @@ import type { PlanningEngine } from '#faculties/planning.engine'
 import type { TokenTracker } from '#cognition/utilities/token.tracker'
 import type { CognitiveEngine } from '#cognition/types'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
+import type { CompletionInbox } from '#cognition/completion.inbox'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import { GenerativeModel } from '#cognition/generative.model'
 import { ExecutiveSummarizer } from '#llm/summarizer'
@@ -154,6 +155,8 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   private _summarizer: ExecutiveSummarizer | null = null
   private _sessionLogger: SessionLogger | null = null
   private _bus: CognitiveBus | null = null
+  /** Tick-boundary landing for facet decisions — injected by the orchestrator. */
+  private _inbox: CompletionInbox | null = null
   // Per-Will token tracker (R4), injected and threaded into the LLMDirector so
   // LLM usage records into this mind's instance — never a process global.
   private _tokenTracker: TokenTracker | null = null
@@ -247,6 +250,15 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     this._ensureFacetSyncSubscription()
   }
 
+  /**
+   * Called by CognitiveOrchestrator.addEngine() — injects the completion inbox
+   * so facet decision effects land at tick boundaries (Phase 2) instead of at
+   * raw LLM-promise resolution. See cognition/completion.inbox.ts.
+   */
+  attachCompletionInbox( inbox: CompletionInbox ): void {
+    this._inbox = inbox
+  }
+
   set willId( willId: string ){ this._willId = willId }
 
   /** Per-Will model id (from modelTier). Must be set before the first tick. */
@@ -286,6 +298,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       llmDirector: this._llmDirector,
       stateRef:    this._lastStateRef,
       willId:      this._willId,
+      inbox:       this._inbox,
       contextDeps: {
         workingMemory:        this._workingMemory,
         goalManager:          this._goalManager,

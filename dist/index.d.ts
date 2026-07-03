@@ -4189,6 +4189,30 @@ declare class PlanningEngine implements SimulationEngine, CognitiveEngine {
     addActivityListener(entityId: string, handler: ActivityEventHandler): () => void;
 }
 
+declare class CompletionInbox {
+    private _queue;
+    /** Number of completions waiting to land. */
+    get size(): number;
+    /**
+     * Stage a completion effect for the next tick boundary. Called from async
+     * resolution contexts (facet decision emission); never applies inline.
+     */
+    enqueue(label: string, apply: () => void): void;
+    /**
+     * Apply every staged completion in FIFO order. Called by the
+     * CognitiveOrchestrator at the top of Phase 2, before the bus flush — so any
+     * bus events a thunk publishes deliver in the same phase. A throwing thunk is
+     * isolated: it never blocks the rest of the queue or the tick.
+     *
+     * Thunks enqueued DURING the drain (e.g. a listener triggering another facet
+     * whose mock resolves synchronously) land next tick — the snapshot taken this
+     * drain cycle stays coherent.
+     */
+    drain(tick: number): number;
+    /** Drop staged completions (mind teardown). Returns how many were discarded. */
+    clear(): number;
+}
+
 type LLMProvider = 'anthropic' | 'deepseek' | 'openai' | 'google';
 interface LLMDirectorConfig {
     willId: string;
@@ -4727,6 +4751,8 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     private _summarizer;
     private _sessionLogger;
     private _bus;
+    /** Tick-boundary landing for facet decisions — injected by the orchestrator. */
+    private _inbox;
     private _tokenTracker;
     private readonly _facetSupervisor;
     private _facetSyncSubscribed;
@@ -4752,6 +4778,12 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     setTestMode(enabled: boolean): void;
     /** Called by CognitiveOrchestrator.addEngine() — injects the shared bus. */
     attachBus(bus: CognitiveBus): void;
+    /**
+     * Called by CognitiveOrchestrator.addEngine() — injects the completion inbox
+     * so facet decision effects land at tick boundaries (Phase 2) instead of at
+     * raw LLM-promise resolution. See cognition/completion.inbox.ts.
+     */
+    attachCompletionInbox(inbox: CompletionInbox): void;
     set willId(willId: string);
     /** Per-Will model id (from modelTier). Must be set before the first tick. */
     set modelId(id: string | null);

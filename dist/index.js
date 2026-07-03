@@ -10991,6 +10991,14 @@ var ExecutiveFacet = class {
   _listeners = /* @__PURE__ */ new Set();
   _destroyed = false;
   _sessionLogger = null;
+  /**
+   * Tick-boundary landing (see cognition/completion.inbox.ts). When present,
+   * subscriber notification is STAGED at LLM-promise resolution and applied by
+   * the CognitiveOrchestrator in Phase 2 — so PlanningEngine / AuditionEngine
+   * effects (plan mutations, outbox writes) never interleave with a tick in
+   * flight. Null = legacy direct notification (bare facets in unit tests).
+   */
+  _inbox = null;
   /** Current focus for this facet — set by creator (PlanningEngine, etc.) */
   _currentFocus = null;
   /** Accumulated reasoning history for continuity across report() calls */
@@ -11018,13 +11026,14 @@ var ExecutiveFacet = class {
    * Independent from the master's global _chunkBroadcaster.
    */
   _chunkHandler = null;
-  constructor(facetId, bus, llmDirector, contextDeps, promptDeps, willId) {
+  constructor(facetId, bus, llmDirector, contextDeps, promptDeps, willId, inbox = null) {
     this.facetId = facetId;
     this._bus = bus;
     this._llmDirector = llmDirector;
     this._contextDeps = contextDeps;
     this._promptDeps = promptDeps;
     this._willId = willId;
+    this._inbox = inbox;
     this._bus.subscribe(
       `executive-facet-${facetId}`,
       ["executive.master.sync"],
@@ -11291,12 +11300,16 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         tick: currentState.tick
       }
     });
-    for (const listener of this._listeners)
-      try {
-        listener(decision);
-      } catch (err) {
-        logger.error(`[executive.facet] ${this.facetId} listener error:`, err);
-      }
+    const notify = () => {
+      for (const listener of this._listeners)
+        try {
+          listener(decision);
+        } catch (err) {
+          logger.error(`[executive.facet] ${this.facetId} listener error:`, err);
+        }
+    };
+    if (this._inbox) this._inbox.enqueue(`${this.facetId}:decision`, notify);
+    else notify();
   }
   /**
    * Extract the decision payload from the executive output.
@@ -12299,7 +12312,8 @@ var FacetSupervisor = class {
       deps.llmDirector,
       deps.contextDeps,
       deps.promptDeps,
-      deps.willId
+      deps.willId,
+      deps.inbox ?? null
     );
     if (this._sessionLogger)
       facet.attachSessionLogger(this._sessionLogger);
@@ -12387,6 +12401,8 @@ var ExecutiveEngine = class extends AsyncEngine {
   _summarizer = null;
   _sessionLogger = null;
   _bus = null;
+  /** Tick-boundary landing for facet decisions — injected by the orchestrator. */
+  _inbox = null;
   // Per-Will token tracker (R4), injected and threaded into the LLMDirector so
   // LLM usage records into this mind's instance — never a process global.
   _tokenTracker = null;
@@ -12478,6 +12494,14 @@ var ExecutiveEngine = class extends AsyncEngine {
     this._bus = bus;
     this._ensureFacetSyncSubscription();
   }
+  /**
+   * Called by CognitiveOrchestrator.addEngine() — injects the completion inbox
+   * so facet decision effects land at tick boundaries (Phase 2) instead of at
+   * raw LLM-promise resolution. See cognition/completion.inbox.ts.
+   */
+  attachCompletionInbox(inbox) {
+    this._inbox = inbox;
+  }
   set willId(willId) {
     this._willId = willId;
   }
@@ -12511,6 +12535,7 @@ var ExecutiveEngine = class extends AsyncEngine {
       llmDirector: this._llmDirector,
       stateRef: this._lastStateRef,
       willId: this._willId,
+      inbox: this._inbox,
       contextDeps: {
         workingMemory: this._workingMemory,
         goalManager: this._goalManager,
@@ -20069,6 +20094,51 @@ function createProductionBus(log = null, registry = globalSchemaRegistry) {
   return new DefaultCognitiveBus(new InProcessCognitiveTransport(), registry, log);
 }
 
+// src/cognition/completion.inbox.ts
+var CompletionInbox = class {
+  _queue = [];
+  /** Number of completions waiting to land. */
+  get size() {
+    return this._queue.length;
+  }
+  /**
+   * Stage a completion effect for the next tick boundary. Called from async
+   * resolution contexts (facet decision emission); never applies inline.
+   */
+  enqueue(label, apply) {
+    this._queue.push({ label, apply });
+  }
+  /**
+   * Apply every staged completion in FIFO order. Called by the
+   * CognitiveOrchestrator at the top of Phase 2, before the bus flush — so any
+   * bus events a thunk publishes deliver in the same phase. A throwing thunk is
+   * isolated: it never blocks the rest of the queue or the tick.
+   *
+   * Thunks enqueued DURING the drain (e.g. a listener triggering another facet
+   * whose mock resolves synchronously) land next tick — the snapshot taken this
+   * drain cycle stays coherent.
+   */
+  drain(tick) {
+    if (this._queue.length === 0) return 0;
+    const batch = this._queue;
+    this._queue = [];
+    for (const { label, apply } of batch) {
+      try {
+        apply();
+      } catch (err) {
+        logger.error(`[completion-inbox] "${label}" failed while landing at tick ${tick}:`, err);
+      }
+    }
+    return batch.length;
+  }
+  /** Drop staged completions (mind teardown). Returns how many were discarded. */
+  clear() {
+    const n = this._queue.length;
+    this._queue = [];
+    return n;
+  }
+};
+
 // src/cognition/types.ts
 function isCognitiveEngine(engine) {
   return typeof engine.publishes === "function" && typeof engine.subscribes === "function" && typeof engine.onCognitiveEvent === "function" && typeof engine.snapshot === "function";
@@ -20116,13 +20186,20 @@ var HeartbeatPublisher = class {
 var CognitiveOrchestrator = class extends DefaultOrchestrator {
   _bus;
   _heartbeat;
+  _inbox;
   constructor(clock, eventBus, stateManager, config) {
     super(clock, eventBus, stateManager, config);
     this._bus = config.cognitiveBus ?? createProductionBus();
     this._heartbeat = new HeartbeatPublisher(this._bus);
+    this._inbox = new CompletionInbox();
+  }
+  /** The tick-boundary landing queue for async completion effects. */
+  get completionInbox() {
+    return this._inbox;
   }
   // ── Phase 2 hook ─────────────────────────────────────────────
   async _onAfterPhase1(tick, state, _ctx) {
+    this._inbox.drain(tick);
     this._bus.flush();
     this._heartbeat.publishTick(tick, state);
     this._bus.flush();
@@ -20137,6 +20214,9 @@ var CognitiveOrchestrator = class extends DefaultOrchestrator {
     super.addEngine(engine);
     if ("attachBus" in engine && typeof engine.attachBus === "function") {
       engine.attachBus(this._bus);
+    }
+    if ("attachCompletionInbox" in engine && typeof engine.attachCompletionInbox === "function") {
+      engine.attachCompletionInbox(this._inbox);
     }
     if (isCognitiveEngine(engine)) {
       const topics = engine.subscribes();

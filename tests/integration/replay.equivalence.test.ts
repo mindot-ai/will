@@ -167,13 +167,25 @@ describe( 'Replay equivalence — LLM-as-oracle re-feed (R2-d)', () => {
   }
 
   // SKIPPED — the test caught a REAL engine gap (kept skipped, not deleted, so the
-  // harness + assertions are ready the moment the engine fix lands):
-  // the facet-era executive runs the MASTER and DELIBERATION-FACET LLM chains
-  // concurrently, and their interleaving is a wall-clock race, not seed-pinned.
-  // Recording matches completions by (tick, call order), so run B diverges at the
-  // first master/facet race (observed: A recorded master first at tick 1; B's
-  // first tick-1 call was the facet → strict source throws 'prompt diverged').
-  // Fix directions + re-enable criteria: .TODO/FACET_REPLAY_DETERMINISM.md.
+  // harness + assertions are ready the moment the engine fix lands).
+  //
+  // The gap has THREE layers; two are fixed, one remains:
+  //   1. LANDING ✅ (CompletionInbox): facet decision effects used to apply at
+  //      raw LLM-promise resolution, interleaving with ticks in flight. They now
+  //      land tick-quantized in Phase 2 (cognition/completion.inbox.ts).
+  //   2. PAIRING ✅ (prompt-keyed re-feed): RecordedCompletionSource matched
+  //      completions to calls by strict sequence, so a master/facet issue-order
+  //      flip mispaired the whole tail. It now matches by byte-identical prompt
+  //      within the tick — order-independent, still strict.
+  //   3. ISSUE ⬜ (remaining — the real work): facet reasoning STARTS at raw
+  //      report/resolution time and builds its prompt from the LIVE state ref at
+  //      that wall-clock moment. Both the issue tick and the prompt bytes are
+  //      therefore race-dependent (observed: B's tick-1 facet prompt has no
+  //      byte-identical record in A; B issues calls at ticks 7/47 that A never
+  //      recorded). Fix direction: quantize reasoning START to tick boundaries
+  //      (pending-report queue drained per tick, symmetric to the landing inbox)
+  //      and build prompts from that tick's frozen snapshot, not the live ref.
+  //      See .TODO/FACET_REPLAY_DETERMINISM.md.
   // (R2-a/b/c — seeded RNG, fixed clock, tick-pure engines — all still hold.)
   it.skip( 'reproduces byte-identical state by re-feeding recorded LLM completions', async () => {
     // ── Run A: record ──────────────────────────────────────────

@@ -40,6 +40,7 @@ import type { CognitiveBus } from '#cognition/bus'
 import type { LLMDirector } from '#llm/index'
 import type { SessionLogger } from '#stem/tracts/session.logger'
 import { ExecutiveFacet, type ExecutiveFacetHandle } from '#faculties/executive.engine/facet'
+import type { CompletionInbox } from '#cognition/completion.inbox'
 import type { ContextDependencies } from '#faculties/executive.engine/context'
 import type { PromptDependencies } from '#faculties/executive.engine/prompt.factory'
 
@@ -55,6 +56,8 @@ export interface FacetSpawnDeps {
   contextDeps:  ContextDependencies
   promptDeps:   PromptDependencies
   willId:       string | null
+  /** Tick-boundary landing for decision effects (see cognition/completion.inbox). */
+  inbox?:       CompletionInbox | null
 }
 
 export type SpawnResult =
@@ -201,7 +204,8 @@ export class FacetSupervisor {
       deps.llmDirector,
       deps.contextDeps,
       deps.promptDeps,
-      deps.willId!
+      deps.willId!,
+      deps.inbox ?? null
     )
 
     // Attach session logger if available

@@ -23,6 +23,7 @@ import { logger } from '#core/logger'
 import type { ReadonlySimulationState } from '#core/types'
 import { wallClock } from '#core/wall.clock'
 import type { CognitiveBus } from '#cognition/bus'
+import type { CompletionInbox } from '#cognition/completion.inbox'
 import type { LLMDirector, LLMCallMeta } from '#llm/index'
 import type { ExecutiveOutputFull, IdeationCandidate } from '#faculties/executive.engine/types'
 import type { ContextDependencies } from '#faculties/executive.engine/context'
@@ -111,6 +112,15 @@ export class ExecutiveFacet {
   private _destroyed = false
   private _sessionLogger: SessionLogger | null = null
 
+  /**
+   * Tick-boundary landing (see cognition/completion.inbox.ts). When present,
+   * subscriber notification is STAGED at LLM-promise resolution and applied by
+   * the CognitiveOrchestrator in Phase 2 — so PlanningEngine / AuditionEngine
+   * effects (plan mutations, outbox writes) never interleave with a tick in
+   * flight. Null = legacy direct notification (bare facets in unit tests).
+   */
+  private _inbox: CompletionInbox | null = null
+
   /** Current focus for this facet — set by creator (PlanningEngine, etc.) */
   private _currentFocus: FocusSection | null = null
 
@@ -146,7 +156,8 @@ export class ExecutiveFacet {
     llmDirector: LLMDirector,
     contextDeps: ContextDependencies,
     promptDeps: PromptDependencies,
-    willId: string
+    willId: string,
+    inbox: CompletionInbox | null = null
   ){
     this.facetId = facetId
     this._bus = bus
@@ -154,6 +165,7 @@ export class ExecutiveFacet {
     this._contextDeps = contextDeps
     this._promptDeps = promptDeps
     this._willId = willId
+    this._inbox = inbox
 
     // Subscribe to master sync events
     this._bus.subscribe(
@@ -529,10 +541,22 @@ export class ExecutiveFacet {
       }
     } )
 
-    // Notify all listeners (PlanningEngine, etc.)
-    for( const listener of this._listeners )
-      try { listener( decision ) }
-      catch( err ){ logger.error( `[executive.facet] ${this.facetId} listener error:`, err ) }
+    // Notify all listeners (PlanningEngine, AuditionEngine, etc.).
+    //
+    // Through the CompletionInbox when attached: this runs at LLM-promise
+    // resolution — an arbitrary wall-clock moment — and listeners mutate shared
+    // state (plans, the outbox). Staging the notification quantizes the landing
+    // to the next tick's Phase 2, alongside the bus events published above, so
+    // the whole decision (events + listener effects) lands atomically at one
+    // tick boundary. Without an inbox (bare facets in tests): direct, as before.
+    const notify = (): void => {
+      for( const listener of this._listeners )
+        try { listener( decision ) }
+        catch( err ){ logger.error( `[executive.facet] ${this.facetId} listener error:`, err ) }
+    }
+
+    if( this._inbox ) this._inbox.enqueue( `${this.facetId}:decision`, notify )
+    else notify()
   }
 
   /**

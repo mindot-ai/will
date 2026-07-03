@@ -24,6 +24,7 @@ import type { StateManager } from '#core/state.manager'
 import type { CognitiveBus } from '#cognition/bus'
 import { DefaultOrchestrator } from '#core/orchestrator'
 import { createProductionBus } from '#cognition/bus'
+import { CompletionInbox } from '#cognition/completion.inbox'
 import { isCognitiveEngine } from '#cognition/types'
 import { HeartbeatPublisher } from '#cognition/heartbeat'
 
@@ -39,6 +40,7 @@ export interface CognitiveOrchestratorConfig extends OrchestratorConfig {
 export class CognitiveOrchestrator extends DefaultOrchestrator {
   private readonly _bus: CognitiveBus
   private readonly _heartbeat: HeartbeatPublisher
+  private readonly _inbox: CompletionInbox
 
   constructor(
     clock:        SimulationClock,
@@ -47,10 +49,14 @@ export class CognitiveOrchestrator extends DefaultOrchestrator {
     config:       CognitiveOrchestratorConfig
   ){
     super( clock, eventBus, stateManager, config )
-    
+
     this._bus       = config.cognitiveBus ?? createProductionBus()
     this._heartbeat = new HeartbeatPublisher( this._bus )
+    this._inbox     = new CompletionInbox()
   }
+
+  /** The tick-boundary landing queue for async completion effects. */
+  get completionInbox(): CompletionInbox { return this._inbox }
 
   // ── Phase 2 hook ─────────────────────────────────────────────
 
@@ -59,6 +65,12 @@ export class CognitiveOrchestrator extends DefaultOrchestrator {
     state:   ReadonlySimulationState,
     _ctx:    SimulationContext
   ): Promise<void> {
+    // Pass 0: land async completion effects (facet decisions staged at LLM-
+    // promise resolution). FIRST — so listener effects (plan mutations, outbox
+    // writes) and any bus events those listeners publish deliver in THIS phase,
+    // keeping each decision's landing atomic at one tick boundary.
+    this._inbox.drain( tick )
+
     // Pass 1: deliver events engines queued during react()
     this._bus.flush()
 
@@ -85,6 +97,12 @@ export class CognitiveOrchestrator extends DefaultOrchestrator {
     // Phase F: give the engine a direct bus reference for publishing
     if( 'attachBus' in engine && typeof ( engine as any ).attachBus === 'function' ){
       ( engine as any ).attachBus( this._bus )
+    }
+
+    // Tick-boundary landing: engines that stage async completion effects
+    // (the ExecutiveEngine, for its facets) receive the shared inbox.
+    if( 'attachCompletionInbox' in engine && typeof ( engine as any ).attachCompletionInbox === 'function' ){
+      ( engine as any ).attachCompletionInbox( this._inbox )
     }
 
     // Wire delivery: subscribe the engine to its declared topics

@@ -116,6 +116,22 @@ export class FacetSupervisor {
     this._reapIdle( state.tick as unknown as number )
   }
 
+  /**
+   * Per-tick pump — called from ExecutiveEngine.react() with the tick's frozen
+   * snapshot. Refreshes every facet's state reference AND launches reasoning for
+   * their queued reports (tick-discipline mode), in facet-creation order — a
+   * fixed point in the serial engine schedule, so issue timing is deterministic.
+   * Subsumes broadcastStateRef for the per-tick path; broadcastStateRef remains
+   * for the master's mid-reasonAsync refresh.
+   */
+  pump( state: ReadonlySimulationState ): void {
+    this._lastStateRef = state
+    for( const facet of this._facets.values() )
+      facet.pump( state )
+
+    this._reapIdle( state.tick as unknown as number )
+  }
+
   private _reapIdle( tick: number ): void {
     for( const [ id, facet ] of [ ...this._facets ] )
       if( tick - facet.lastActiveTick > this._idleTtlTicks )

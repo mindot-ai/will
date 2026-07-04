@@ -104,7 +104,15 @@ class CountingSource implements LLMCompletionSource {
 const ENV_OVERRIDES: Record<string, string | undefined> = {
   WILL_SUMMARY_INTERVAL:  '100000',
   WILL_VECTOR_MEMORY:     '',
+  // Recall must be FULLY off, not just key-less: a dev .env (auto-loaded by bun)
+  // can carry WILL_SEMANTIC_RECALL=true + a google/… embedding model + a live
+  // GOOGLE key, silently turning "offline" runs into real network embeds inside
+  // buildExecutiveContext — chains hang/settle on network latency and the run
+  // stops being deterministic. (This hole is what masked layer 3 for a while.)
+  WILL_SEMANTIC_RECALL:   'false',
+  WILL_EMBEDDING_MODEL:   'none',
   WILL_EMBEDDING_API_KEY: undefined,
+  GOOGLE_GENERATIVE_AI_API_KEY: undefined,
   WILL_LLM_API_KEY:       undefined,
   ANTHROPIC_API_KEY:      undefined,
 }
@@ -166,28 +174,19 @@ describe( 'Replay equivalence — LLM-as-oracle re-feed (R2-d)', () => {
     }
   }
 
-  // SKIPPED — the test caught a REAL engine gap (kept skipped, not deleted, so the
-  // harness + assertions are ready the moment the engine fix lands).
-  //
-  // The gap has THREE layers; two are fixed, one remains:
-  //   1. LANDING ✅ (CompletionInbox): facet decision effects used to apply at
-  //      raw LLM-promise resolution, interleaving with ticks in flight. They now
-  //      land tick-quantized in Phase 2 (cognition/completion.inbox.ts).
-  //   2. PAIRING ✅ (prompt-keyed re-feed): RecordedCompletionSource matched
-  //      completions to calls by strict sequence, so a master/facet issue-order
-  //      flip mispaired the whole tail. It now matches by byte-identical prompt
-  //      within the tick — order-independent, still strict.
-  //   3. ISSUE ⬜ (remaining — the real work): facet reasoning STARTS at raw
-  //      report/resolution time and builds its prompt from the LIVE state ref at
-  //      that wall-clock moment. Both the issue tick and the prompt bytes are
-  //      therefore race-dependent (observed: B's tick-1 facet prompt has no
-  //      byte-identical record in A; B issues calls at ticks 7/47 that A never
-  //      recorded). Fix direction: quantize reasoning START to tick boundaries
-  //      (pending-report queue drained per tick, symmetric to the landing inbox)
-  //      and build prompts from that tick's frozen snapshot, not the live ref.
-  //      See .TODO/FACET_REPLAY_DETERMINISM.md.
-  // (R2-a/b/c — seeded RNG, fixed clock, tick-pure engines — all still hold.)
-  it.skip( 'reproduces byte-identical state by re-feeding recorded LLM completions', async () => {
+  // RE-ENABLED (2026-07-04) — this test was skipped while the facet-era engine
+  // had a real determinism gap. All three layers are now closed:
+  //   1. LANDING (CompletionInbox): facet decision effects land tick-quantized
+  //      in Phase 2 instead of at raw LLM-promise resolution.
+  //   2. PAIRING (prompt-keyed re-feed): RecordedCompletionSource matches by
+  //      byte-identical prompt within the tick — order-independent, still strict.
+  //   3. ISSUE (per-tick facet pump): reasoning launches from the ExecutiveEngine
+  //      react() pump with the tick's frozen snapshot, never at raw report time —
+  //      issue tick and prompt bytes are pure functions of (tick, seed, inputs).
+  // History + design record: .TODO/FACET_REPLAY_DETERMINISM.md.
+  // NOTE the env-isolation lesson in ENV_OVERRIDES: recall must be FULLY off or
+  // a dev .env silently turns this offline test into live network embeds.
+  it( 'reproduces byte-identical state by re-feeding recorded LLM completions', async () => {
     // ── Run A: record ──────────────────────────────────────────
     const recordsA: LLMCompletionRecord[] = []
     setCompletionRecorder( WILL_ID, { recordCompletion: r => recordsA.push({ ...r }) } )

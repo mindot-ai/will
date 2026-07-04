@@ -3981,41 +3981,24 @@ interface PlanningEngineConfig {
     surpriseOutcomeQuality?: number;
     maxStepRetries?: number;
 }
+
 declare class PlanningEngine implements SimulationEngine, CognitiveEngine {
     readonly name = "planning-engine";
     private _planRetentionTicks;
-    private _deliberateGoalPriority;
-    private _lowPlanConfidence;
-    private _surpriseOutcomeQuality;
-    private _maxStepRetries;
-    /** Channel A: how hard the plan asserts its frontier in the action competition
-     *  (base 1 ⊕ conscientiousness prior). Multiplies the projected plan-prior bias. */
-    private _planBiasGain;
+    /**
+     * Trait-driven dispositions (Channel A) — ONE mutable object, refreshed from
+     * the persona-prior mirror each tick (_readConfigFromState) and read live by
+     * the supervisor + frontier projection. See PlanningDispositions.
+     */
+    private readonly _dispositions;
     private _goalManager;
     private _executiveEngine;
-    /**
-     * Canonical plan store, keyed by plan.id ("plan-N") — the id the execution,
-     * outcome (`action.outcome.planId`) and facet (`_activeFacets`) paths all use.
-     */
-    private _plans;
-    /**
-     * Secondary index goalId → ordered plan.ids (creation order). Multiple plans
-     * per goal supported (P4); terminal plans stay in the list as history and are
-     * filtered out by _activePlanForGoal. Goal-scoped reads route through the
-     * helpers below.
-     */
-    private _planByGoal;
-    /**
-     * Plan ids already persisted in a terminal state. Terminal plans never change
-     * again, so they are persisted once and then skipped by _persistPlans — avoids
-     * unbounded state-write amplification as completed/failed plans accumulate. (P5)
-     */
-    private _persistedTerminal;
-    /** planId → sim tick it became terminal; drives retention GC (_gcTerminalPlans). */
-    private _terminalAt;
+    /** Canonical plan state — store, goal index, terminal bookkeeping, GC, persistence. */
+    private readonly _store;
+    /** Deliberate-tier judgment — facet lifecycle, reports, directive dispatch. */
+    private readonly _supervisor;
     /** Plan ids needing a recall descriptor emitted (created/revised this cycle). */
     private _newPlanDescriptors;
-    private _planCounter;
     /**
      * Last tick react() ran — used only to stamp session-log telemetry (never
      * replay state) from off-tick callbacks like _activateStep / _onStepOutcome.
@@ -4029,15 +4012,6 @@ declare class PlanningEngine implements SimulationEngine, CognitiveEngine {
      * replaces Math.random() here (R2).
      */
     private _subCounter;
-    private _activeFacets;
-    /**
-     * Cumulative count of each supervisory directive the facet has issued
-     * (continue/retry/skip/pause/replan/escalate/abandon/complete). Pure observability —
-     * surfaced as `planning.supervision.*` metrics so the planning-quality eval harness
-     * can measure how the mind supervises execution (how often it corrects course). Not
-     * restored from snapshot; re-accrues deterministically as the same decisions replay.
-     */
-    private _supervisionCounts;
     private _energyLevel;
     private _bus;
     private _sessionLogger;
@@ -4054,19 +4028,6 @@ declare class PlanningEngine implements SimulationEngine, CognitiveEngine {
      * plan.completed) never published and addActivityListener no-op'd.
      */
     attachBus(bus: CognitiveBus): void;
-    private static readonly _TERMINAL;
-    /** All plans for a goal, in creation order (any status). */
-    private _plansForGoal;
-    /** The most-recently-created non-terminal plan for a goal, if any. */
-    private _activePlanForGoal;
-    /**
-     * Resolve which plan an executive plan-op targets. Prefers an explicit
-     * `planId` (must belong to the same goal); otherwise falls back to the goal's
-     * active plan. Returns undefined when neither resolves (caller may create one).
-     */
-    private _resolveIngestTarget;
-    /** Register a plan in both the canonical store and the goal index. */
-    private _indexPlan;
     subscribes(): string[];
     publishes(): CognitiveEventSchema[];
     onCognitiveEvent(e: CognitiveEvent): StateCommands | void;
@@ -4080,33 +4041,6 @@ declare class PlanningEngine implements SimulationEngine, CognitiveEngine {
     private _cancelPlansForGoal;
     snapshot(): Record<string, unknown>;
     react(_delta: Duration, tick: Tick, state: ReadonlySimulationState, context: SimulationContext): Promise<EngineResult>;
-    private _ingestExecutivePlans;
-    private _createPlan;
-    private _executePlans;
-    private _computeReadySet;
-    /**
-     * Move a ready step onto the frontier: it starts biasing the competition (via
-     * `_projectFrontier`) instead of being dispatched. Emits `plan.step.activated`
-     * for the activity stream — the awareness analog of the old `plan.step.dispatched`.
-     */
-    private _activateStep;
-    /**
-     * Project every executing plan's active frontier as transient `plan.prior`
-     * entities — the top-down bias the AffordanceSynthesizer reads. Rebuilt each tick
-     * (cleared then re-emitted, like the affordance field), so a frontier that
-     * advances or a plan that ends stops biasing automatically. The prior carries the
-     * planId/stepId provenance that flows affordance → intent → action.outcome, and a
-     * `planBias` strength from the goal's importance ⊕ the plan's confidence. It never
-     * forces an action — if a more pressing affordance wins, the plan re-projects next
-     * tick (no orphaning).
-     */
-    private _projectFrontier;
-    private _onStepOutcome;
-    /**
-     * Top-down initial supervision mode for a plan being launched. Important
-     * (high-priority goal) or uncertain (low-confidence) plans are supervised from
-     * the first step; everything else runs automatically. Pure + deterministic.
-     */
     /**
      * Channel A (subconscious disposition): refresh trait-driven supervision params
      * from the persona-prior mirror (base `engine-config-planning` ⊕ metacog deltas).
@@ -4118,37 +4052,16 @@ declare class PlanningEngine implements SimulationEngine, CognitiveEngine {
      * dispositions, no wall-clock, no RNG.
      */
     private _readConfigFromState;
-    private _inferInitialTier;
+    private _ingestExecutivePlans;
+    private _createPlan;
+    private _executePlans;
     /**
-     * Bottom-up: should an AUTOMATIC plan recruit deliberate supervision on this step
-     * outcome? Surprise (failure / outcome well below expectation) captures attention.
-     * EXTENSION POINT — add triggers here (timeouts, prediction error, repeated
-     * retries, threat/stress spikes, …) as more edge cases surface.
+     * Move a ready step onto the frontier: it starts biasing the competition (via
+     * `projectFrontier`) instead of being dispatched. Emits `plan.step.activated`
+     * for the activity stream — the awareness analog of the old `plan.step.dispatched`.
      */
-    private _shouldEscalate;
-    private _activateFacet;
-    /**
-     * Build the plan-specific focus section for the facet.
-     * Provided to the facet via setFocus() before any reports.
-     *
-     * Uses the STANDARD executive output format (no custom outputFormat).
-     * The facet LLM expresses its directive as the FIRST action type
-     * (e.g. { type: "continue" }), which the extractDecision callback reads.
-     * A [PLANS] tagged block in reasoning carries revised steps for "replan".
-     */
-    private _buildPlanFocusSection;
-    /**
-     * Per-report status for the facet: FACTS ONLY — what happened — not coaching on
-     * which directive to pick. The facet IS the executive's cognition and already has
-     * the decision vocabulary from its focus instructions; the engine's job is to
-     * report state, not prescribe the decision. (Lean guidance — the engine no longer
-     * does the mind's thinking for it.)
-     */
-    private _buildDecisionGuidance;
-    private _reportToFacet;
-    private _onFacetDecision;
-    private _buildFacetPlanContext;
-    private _cleanupFacet;
+    private _activateStep;
+    private _onStepOutcome;
     private _onPlanCompleted;
     private _onPlanFailed;
     /**
@@ -4162,14 +4075,6 @@ declare class PlanningEngine implements SimulationEngine, CognitiveEngine {
      * accrete. Follows the established external-injection pattern (AuditionEngine).
      */
     private _flushPlanDescriptors;
-    /**
-     * Evict terminal plans (and delete their state entity) once they've been
-     * terminal longer than the retention window. Terminal plans never change, so
-     * retaining them forever accretes memory + state entities on a long-lived mind.
-     * Deterministic: the window is compared against sim ticks (R2-safe).
-     */
-    private _gcTerminalPlans;
-    private _persistPlans;
     /** The goal's active plan, or its most-recent plan if all are terminal. */
     getPlan(goalId: string): Plan | undefined;
     /** All plans for a goal (any status), in creation order. (P4) */

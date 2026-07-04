@@ -13074,102 +13074,53 @@ var ExecutiveEngine = class extends AsyncEngine {
   }
 };
 
-// src/cognition/faculties/planning.engine.ts
-var PlanningEngine = class _PlanningEngine {
-  name = "planning-engine";
-  _planRetentionTicks;
-  _deliberateGoalPriority;
-  _lowPlanConfidence;
-  _surpriseOutcomeQuality;
-  _maxStepRetries;
-  /** Channel A: how hard the plan asserts its frontier in the action competition
-   *  (base 1 ⊕ conscientiousness prior). Multiplies the projected plan-prior bias. */
-  _planBiasGain = 1;
-  _goalManager = null;
-  _executiveEngine = null;
+// src/cognition/faculties/planning/types.ts
+var TERMINAL_STATUSES = ["completed", "failed", "rejected"];
+function clamp013(n) {
+  return n < 0 ? 0 : n > 1 ? 1 : n;
+}
+
+// src/cognition/faculties/planning/plan.store.ts
+var PlanStore = class {
   /**
    * Canonical plan store, keyed by plan.id ("plan-N") — the id the execution,
-   * outcome (`action.outcome.planId`) and facet (`_activeFacets`) paths all use.
+   * outcome (`action.outcome.planId`) and facet paths all use.
    */
   _plans = /* @__PURE__ */ new Map();
   /**
    * Secondary index goalId → ordered plan.ids (creation order). Multiple plans
    * per goal supported (P4); terminal plans stay in the list as history and are
-   * filtered out by _activePlanForGoal. Goal-scoped reads route through the
+   * filtered out by activePlanForGoal. Goal-scoped reads route through the
    * helpers below.
    */
   _planByGoal = /* @__PURE__ */ new Map();
   /**
    * Plan ids already persisted in a terminal state. Terminal plans never change
-   * again, so they are persisted once and then skipped by _persistPlans — avoids
+   * again, so they are persisted once and then skipped by persist() — avoids
    * unbounded state-write amplification as completed/failed plans accumulate. (P5)
    */
   _persistedTerminal = /* @__PURE__ */ new Set();
-  /** planId → sim tick it became terminal; drives retention GC (_gcTerminalPlans). */
+  /** planId → sim tick it became terminal; drives retention GC (gcTerminal). */
   _terminalAt = /* @__PURE__ */ new Map();
-  /** Plan ids needing a recall descriptor emitted (created/revised this cycle). */
-  _newPlanDescriptors = [];
   _planCounter = 0;
-  /**
-   * Last tick react() ran — used only to stamp session-log telemetry (never
-   * replay state) from off-tick callbacks like _activateStep / _onStepOutcome.
-   */
-  _lastTick = 0;
-  /**
-   * Monotonic suffix counter for activity-listener subscription ids. These ids
-   * are transient bus-subscription keys (HTTP/SSE-driven, never entering the
-   * event log or snapshot), so they must NOT draw from the seeded PRNG — that
-   * would consume sim-random draws and perturb determinism. A plain counter
-   * replaces Math.random() here (R2).
-   */
-  _subCounter = 0;
-  // ── Facet management (Tier 1) ──────────────────────────────
-  _activeFacets = /* @__PURE__ */ new Map();
-  /**
-   * Cumulative count of each supervisory directive the facet has issued
-   * (continue/retry/skip/pause/replan/escalate/abandon/complete). Pure observability —
-   * surfaced as `planning.supervision.*` metrics so the planning-quality eval harness
-   * can measure how the mind supervises execution (how often it corrects course). Not
-   * restored from snapshot; re-accrues deterministically as the same decisions replay.
-   */
-  _supervisionCounts = /* @__PURE__ */ new Map();
-  _energyLevel = 100;
-  _bus = null;
-  _sessionLogger = null;
-  _model = new GenerativeModel();
-  // Tracks the last executive output object we ingested so we only process
-  // each executive cycle once — prevents re-logging on every non-executive tick.
-  _lastIngestedOutput = null;
-  constructor(config = {}) {
-    this._bus = config.bus ?? null;
-    this._planRetentionTicks = config.planRetentionTicks ?? 300;
-    this._deliberateGoalPriority = config.deliberateGoalPriority ?? 0.7;
-    this._lowPlanConfidence = config.lowPlanConfidence ?? 0.5;
-    this._surpriseOutcomeQuality = config.surpriseOutcomeQuality ?? 0.25;
-    this._maxStepRetries = config.maxStepRetries ?? 3;
+  // ── Reads ──────────────────────────────────────────────────
+  get size() {
+    return this._plans.size;
   }
-  attachGoalManager(gm) {
-    this._goalManager = gm;
+  get(planId) {
+    return this._plans.get(planId);
   }
-  attachExecutiveEngine(oe) {
-    this._executiveEngine = oe;
+  has(planId) {
+    return this._plans.has(planId);
   }
-  attachSessionLogger(logger2) {
-    this._sessionLogger = logger2;
+  all() {
+    return this._plans.values();
   }
-  /**
-   * Give the engine its CognitiveBus. Called by the orchestrator's addEngine()
-   * during assembly (every other faculty already exposes this). Without it the
-   * bus stayed null, so plan-lifecycle events (plan.started / plan.step.* /
-   * plan.completed) never published and addActivityListener no-op'd.
-   */
-  attachBus(bus) {
-    this._bus = bus;
+  isTerminal(plan) {
+    return TERMINAL_STATUSES.includes(plan.status);
   }
-  // ── Goal-scoped plan lookups (P4: multiple plans per goal) ──
-  static _TERMINAL = ["completed", "failed", "rejected"];
   /** All plans for a goal, in creation order (any status). */
-  _plansForGoal(goalId) {
+  plansForGoal(goalId) {
     const ids = this._planByGoal.get(goalId);
     if (!ids) return [];
     const out = [];
@@ -13180,10 +13131,10 @@ var PlanningEngine = class _PlanningEngine {
     return out;
   }
   /** The most-recently-created non-terminal plan for a goal, if any. */
-  _activePlanForGoal(goalId) {
-    const all = this._plansForGoal(goalId);
+  activePlanForGoal(goalId) {
+    const all = this.plansForGoal(goalId);
     for (let i = all.length - 1; i >= 0; i--)
-      if (!_PlanningEngine._TERMINAL.includes(all[i].status)) return all[i];
+      if (!TERMINAL_STATUSES.includes(all[i].status)) return all[i];
     return void 0;
   }
   /**
@@ -13191,452 +13142,174 @@ var PlanningEngine = class _PlanningEngine {
    * `planId` (must belong to the same goal); otherwise falls back to the goal's
    * active plan. Returns undefined when neither resolves (caller may create one).
    */
-  _resolveIngestTarget(goalId, planId) {
+  resolveIngestTarget(goalId, planId) {
     if (planId) {
       const p = this._plans.get(planId);
       if (p && p.goalId === goalId) return p;
     }
-    return this._activePlanForGoal(goalId);
+    return this.activePlanForGoal(goalId);
+  }
+  // ── Writes ─────────────────────────────────────────────────
+  /** Next sequential plan id ("plan-N") — deterministic, never PRNG. */
+  nextId() {
+    this._planCounter++;
+    return `plan-${this._planCounter}`;
   }
   /** Register a plan in both the canonical store and the goal index. */
-  _indexPlan(plan) {
+  index(plan) {
     this._plans.set(plan.id, plan);
     const ids = this._planByGoal.get(plan.goalId) ?? [];
     ids.push(plan.id);
     this._planByGoal.set(plan.goalId, ids);
   }
-  // ── CognitiveEngine interface ──────────────────────────────
-  subscribes() {
-    return [
-      "energy.state.changed",
-      "executive.prediction.formed",
-      "action.outcome",
-      // Goal lifecycle — a terminal goal makes its plans moot; cancel them so they
-      // stop dispatching steps for a goal that's already done/dropped.
-      "goal.achieved",
-      "goal.abandoned"
-    ];
+  /** Record the tick a plan entered a terminal status (drives retention GC). */
+  markTerminal(planId, tick) {
+    this._terminalAt.set(planId, tick);
   }
-  publishes() {
-    return [
-      { type: "plan.started", version: 1, validate: () => null },
-      { type: "plan.step.activated", version: 1, validate: () => null },
-      { type: "plan.step.outcome", version: 1, validate: () => null },
-      { type: "plan.completed", version: 1, validate: () => null },
-      { type: "plan.failed", version: 1, validate: () => null },
-      { type: "plan.cancelled", version: 1, validate: () => null },
-      { type: "plan.escalated", version: 1, validate: () => null },
-      { type: "plan.replanned", version: 1, validate: () => null },
-      { type: "planning.plan.created", version: 1, validate: () => null }
-    ];
-  }
-  onCognitiveEvent(e) {
-    this._model.observe(e.type, e.salience);
-    switch (e.type) {
-      case "energy.state.changed":
-        this._energyLevel = e.payload["level"] ?? this._energyLevel;
-        break;
-      case "executive.prediction.formed": {
-        const p = e.payload;
-        if (p.predictedDomains.includes("planning"))
-          this._model.setPrecision("planning.plans", 1 + p.confidence * 0.5);
-        break;
-      }
-      case "action.outcome": {
-        const p = e.payload;
-        if (!p.planId || !p.stepId) return;
-        if (!this._plans.has(p.planId)) return;
-        this._onStepOutcome(p.planId, p.stepId, {
-          success: p.success,
-          description: p.description ?? (p.success ? "Completed" : "Failed"),
-          outcomeQuality: p.outcomeQuality
-        });
-        break;
-      }
-      case "goal.achieved":
-        this._cancelPlansForGoal(e.payload.goalId, "goal achieved");
-        break;
-      case "goal.abandoned":
-        this._cancelPlansForGoal(e.payload.goalId, "goal abandoned");
-        break;
-    }
-  }
+  // ── Retention GC ───────────────────────────────────────────
   /**
-   * Cancel every still-active plan for a goal that has reached a terminal state
-   * (achieved/abandoned). Marks them rejected (→ retention GC cleans the entity)
-   * and tears down any step-aware facet. A plan whose own completion triggered the
-   * goal is already terminal and is skipped, so this only reaps siblings still
-   * pursuing a goal that's now done/dropped. (planning↔goal sync)
+   * Evict terminal plans (and delete their state entity) once they've been
+   * terminal longer than the retention window. Terminal plans never change, so
+   * retaining them forever accretes memory + state entities on a long-lived mind.
+   * Deterministic: the window is compared against sim ticks (R2-safe).
+   * `onEvict` lets the engine tear down any facet still keyed to the plan.
    */
-  _cancelPlansForGoal(goalId, reason) {
-    if (!goalId) return;
-    for (const plan of this._plansForGoal(goalId)) {
-      if (_PlanningEngine._TERMINAL.includes(plan.status)) continue;
-      plan.status = "rejected";
-      this._terminalAt.set(plan.id, this._lastTick);
-      this._cleanupFacet(plan.id);
-      this._bus?.publish({
-        type: "plan.cancelled",
-        version: 1,
-        sourceEngine: this.name,
-        salience: 0.6,
-        payload: {
-          planId: plan.id,
+  gcTerminal(tick, commands, retentionTicks, onEvict) {
+    const now = tick;
+    let evicted = 0;
+    for (const [id, plan] of this._plans) {
+      if (!TERMINAL_STATUSES.includes(plan.status)) continue;
+      const since = this._terminalAt.get(id) ?? now;
+      if (now - since <= retentionTicks) continue;
+      this._plans.delete(id);
+      this._persistedTerminal.delete(id);
+      this._terminalAt.delete(id);
+      onEvict(id);
+      const ids = this._planByGoal.get(plan.goalId);
+      if (ids) {
+        const next = ids.filter((x) => x !== id);
+        if (next.length) this._planByGoal.set(plan.goalId, next);
+        else this._planByGoal.delete(plan.goalId);
+      }
+      commands.delete.push(id);
+      evicted++;
+    }
+    if (evicted > 0)
+      commands.metrics.push(["planning.plans_evicted", evicted]);
+  }
+  // ── Persistence ────────────────────────────────────────────
+  persist(commands, tick) {
+    for (const plan of this._plans.values()) {
+      const terminal = TERMINAL_STATUSES.includes(plan.status);
+      if (terminal && this._persistedTerminal.has(plan.id)) continue;
+      commands.set.push({
+        id: plan.id,
+        type: "plan",
+        createdAt: plan.createdAt,
+        updatedAt: tick,
+        metadata: {
           goalId: plan.goalId,
-          reason,
-          completedSteps: plan.steps.filter((s) => s.status === "completed").length,
-          totalSteps: plan.steps.length,
-          requestingEntityId: plan.requestingEntityId,
-          requestingThreadId: plan.requestingThreadId
-        }
-      });
-      logger.info(`[planning] plan ${plan.id} cancelled \u2014 ${reason} (goal ${goalId})`);
-    }
-  }
-  snapshot() {
-    return {
-      energyLevel: this._energyLevel,
-      totalPlans: this._plans.size,
-      activeFacets: this._activeFacets.size
-    };
-  }
-  // ── Engine react ──────────────────────────────────────────
-  async react(_delta, tick, state, context) {
-    this._lastTick = tick;
-    const commands = { set: [], delete: [], metrics: [] };
-    this._readConfigFromState(state);
-    this._ingestExecutivePlans(tick);
-    this._executePlans();
-    this._projectFrontier(commands, tick, state);
-    this._flushPlanDescriptors(commands);
-    this._gcTerminalPlans(tick, commands);
-    this._persistPlans(commands, tick);
-    const executingPlans = Array.from(this._plans.values()).filter((p) => p.status === "executing" || p.status === "ready");
-    commands.metrics.push(
-      ["planning.total_plans", this._plans.size],
-      ["planning.executing_plans", executingPlans.length],
-      ["planning.active_facets", this._activeFacets.size],
-      // Supervision distribution — how the mind corrects course mid-execution. The
-      // raw signal the planning-quality eval harness reads (replan/abandon rates etc).
-      ["planning.supervision.replan", this._supervisionCounts.get("replan") ?? 0],
-      ["planning.supervision.retry", this._supervisionCounts.get("retry") ?? 0],
-      ["planning.supervision.skip", this._supervisionCounts.get("skip") ?? 0],
-      ["planning.supervision.escalate", this._supervisionCounts.get("escalate") ?? 0],
-      ["planning.supervision.abandon", this._supervisionCounts.get("abandon") ?? 0]
-    );
-    const _bus = this._bus;
-    if (_bus && this._plans.size > 0) {
-      const predErr = this._model.observe("planning.plans", this._plans.size);
-      if (!predErr.gated)
-        _bus.publish({
-          type: "planning.plan.created",
-          version: 1,
-          sourceEngine: this.name,
-          salience: Math.max(0.3, predErr.salience),
-          payload: { totalPlans: this._plans.size }
-        });
-    }
-    return { commands };
-  }
-  // ── Plan ingestion ─────────────────────────────────────────
-  _ingestExecutivePlans(tick) {
-    const executiveOutput = this._executiveEngine?.latestOutput;
-    if (!executiveOutput?.plans || executiveOutput.plans.length === 0) return;
-    if (!this._executiveEngine?.isFresh(tick)) return;
-    if (executiveOutput === this._lastIngestedOutput) return;
-    this._lastIngestedOutput = executiveOutput;
-    for (const planData of executiveOutput.plans) {
-      const existingPlan = this._resolveIngestTarget(planData.goalId, planData.planId);
-      switch (planData.action) {
-        case "draft": {
-          const expected = planData.expectedOutcome ?? "";
-          const isReassertion = expected.length > 0 && this._plansForGoal(planData.goalId).some(
-            (p) => p.expectedOutcome === expected && !_PlanningEngine._TERMINAL.includes(p.status)
-          );
-          if (isReassertion) {
-            logger.info(
-              `[planning] draft for goal ${planData.goalId} skipped \u2014 matches active plan "${expected.slice(0, 40)}"`
-            );
-            break;
-          }
-          this._createPlan(planData, tick, "draft");
-          break;
-        }
-        case "validate": {
-          if (!existingPlan) {
-            this._createPlan(planData, tick, "validated");
-            break;
-          }
-          existingPlan.status = "validated";
-          logger.info(`[planning] plan ${existingPlan.id} validated`);
-          break;
-        }
-        case "execute": {
-          if (!existingPlan) {
-            const newPlan = this._createPlan(planData, tick, "approved");
-            newPlan.status = "ready";
-            newPlan.executionTier = this._inferInitialTier(newPlan);
-            if (newPlan.executionTier === "deliberate" && this._executiveEngine)
-              this._activateFacet(newPlan);
-            break;
-          }
-          existingPlan.status = "ready";
-          existingPlan.executionTier = this._inferInitialTier(existingPlan);
-          existingPlan.expectedOutcome = planData.expectedOutcome ?? existingPlan.expectedOutcome;
-          logger.info(
-            `[planning] plan ${existingPlan.id} approved for execution (tier=${existingPlan.executionTier} \u2014 inferred)`
-          );
-          if (existingPlan.executionTier === "deliberate" && this._executiveEngine) {
-            this._activateFacet(existingPlan);
-          }
-          break;
-        }
-        case "revise": {
-          if (!existingPlan) {
-            this._createPlan(planData, tick, "revised");
-            break;
-          }
-          existingPlan.steps = planData.steps.map((s, i) => ({
-            id: `step-${i}`,
-            order: i,
+          steps: plan.steps.map((s) => ({
+            id: s.id,
+            order: s.order,
             action: s.action,
             description: s.description,
             expectedOutcome: s.expectedOutcome,
-            prerequisites: s.prerequisites ?? (i > 0 ? [`step-${i - 1}`] : []),
+            prerequisites: s.prerequisites,
             estimatedDuration: s.estimatedDuration,
-            status: "pending"
-          }));
-          existingPlan.status = existingPlan.status === "executing" ? "executing" : "ready";
-          existingPlan.expectedOutcome = planData.expectedOutcome ?? existingPlan.expectedOutcome;
-          logger.info(
-            `[planning] plan ${existingPlan.id} revised (${existingPlan.steps.length} steps, status=${existingPlan.status})`
-          );
-          this._newPlanDescriptors.push(existingPlan.id);
-          break;
+            status: s.status,
+            outcome: s.outcome
+          })),
+          estimatedCost: plan.estimatedCost,
+          confidence: plan.confidence,
+          status: plan.status,
+          executionTier: plan.executionTier,
+          expectedOutcome: plan.expectedOutcome,
+          requestingEntityId: plan.requestingEntityId,
+          requestingThreadId: plan.requestingThreadId,
+          source: "planning-engine"
         }
-        case "cancel": {
-          if (!existingPlan) continue;
-          existingPlan.status = "rejected";
-          this._terminalAt.set(existingPlan.id, this._lastTick);
-          this._cleanupFacet(existingPlan.id);
-          logger.info(`[planning] plan ${existingPlan.id} cancelled`);
-          break;
-        }
-      }
-    }
-  }
-  _createPlan(planData, tick, status) {
-    this._planCounter++;
-    const planId = `plan-${this._planCounter}`;
-    const steps = planData.steps.map((s, i) => ({
-      id: `step-${i}`,
-      order: i,
-      action: s.action,
-      description: s.description,
-      expectedOutcome: s.expectedOutcome,
-      prerequisites: s.prerequisites ?? (i > 0 ? [`step-${i - 1}`] : []),
-      estimatedDuration: s.estimatedDuration,
-      status: "pending"
-    }));
-    const goalState = this._goalManager?.getGoal(planData.goalId);
-    const plan = {
-      id: planId,
-      goalId: planData.goalId,
-      steps,
-      estimatedCost: planData.estimatedCost,
-      confidence: planData.feasibility,
-      status,
-      executionTier: "automatic",
-      // engine-inferred at execute (emergent tier), not executive-set
-      expectedOutcome: planData.expectedOutcome ?? "",
-      createdAt: tick,
-      requestingEntityId: goalState?.requestingEntityId,
-      requestingThreadId: goalState?.requestingThreadId
-    };
-    this._indexPlan(plan);
-    this._newPlanDescriptors.push(plan.id);
-    logger.info(
-      `[planning] plan created: ${planId} \u2192 goal ${plan.goalId} (${steps.length} steps, status=${status}, tier=${plan.executionTier}${plan.requestingEntityId ? `, requester=${plan.requestingEntityId}` : ""})`
-    );
-    return plan;
-  }
-  // ── Plan execution ─────────────────────────────────────────
-  _executePlans() {
-    for (const plan of this._plans.values()) {
-      if (plan.status !== "ready" && plan.status !== "executing") continue;
-      if (plan.status === "ready") {
-        plan.status = "executing";
-        this._bus?.publish({
-          type: "plan.started",
-          version: 1,
-          sourceEngine: this.name,
-          salience: 0.65,
-          payload: {
-            planId: plan.id,
-            goalId: plan.goalId,
-            totalSteps: plan.steps.length,
-            executionTier: plan.executionTier,
-            requestingEntityId: plan.requestingEntityId,
-            requestingThreadId: plan.requestingThreadId
-          }
-        });
-      }
-      const readySteps = this._computeReadySet(plan);
-      if (readySteps.length > 0)
-        for (const step of readySteps)
-          this._activateStep(plan, step);
-      const allDone = plan.steps.every((s) => s.status === "completed" || s.status === "skipped");
-      const anyFailed = plan.steps.some((s) => s.status === "failed");
-      if (allDone && !anyFailed)
-        this._onPlanCompleted(plan);
-      else if (anyFailed && plan.executionTier === "automatic")
-        this._onPlanFailed(plan, "One or more steps failed");
-    }
-  }
-  _computeReadySet(plan) {
-    const ready = [];
-    for (const step of plan.steps) {
-      if (step.status !== "pending") continue;
-      const allPrereqsSatisfied = step.prerequisites.every((prereqId) => {
-        const prereqStep = plan.steps.find((s) => s.id === prereqId);
-        return prereqStep && (prereqStep.status === "completed" || prereqStep.status === "skipped");
       });
-      allPrereqsSatisfied && ready.push(step);
+      if (terminal) this._persistedTerminal.add(plan.id);
     }
-    return ready;
   }
+};
+
+// src/cognition/faculties/planning/plan.frontier.ts
+function computeReadySet(plan) {
+  const ready = [];
+  for (const step of plan.steps) {
+    if (step.status !== "pending") continue;
+    const allPrereqsSatisfied = step.prerequisites.every((prereqId) => {
+      const prereqStep = plan.steps.find((s) => s.id === prereqId);
+      return prereqStep && (prereqStep.status === "completed" || prereqStep.status === "skipped");
+    });
+    allPrereqsSatisfied && ready.push(step);
+  }
+  return ready;
+}
+function projectFrontier(plans, commands, tick, state, goalPriority, biasGain) {
+  for (const [id, e] of state.entities)
+    if (e.type === "plan.prior") commands.delete.push(id);
+  for (const plan of plans) {
+    if (plan.status !== "executing") continue;
+    const strength = clamp013((0.5 * goalPriority(plan.goalId) + 0.5 * plan.confidence) * biasGain);
+    for (const step of plan.steps) {
+      if (step.status !== "active") continue;
+      commands.set.push({
+        // tick in the id (like the affordance field) so this tick's fresh prior
+        // never collides with last tick's cleared one in the same command batch.
+        id: `plan-prior-${tick}-${plan.id}-${step.id}`,
+        type: "plan.prior",
+        metadata: {
+          schema: step.action,
+          // advisory suggested schema (not dispatched)
+          planId: plan.id,
+          stepId: step.id,
+          planBias: strength,
+          targetEntityId: step.targetEntityId,
+          parameters: {},
+          tick
+        }
+      });
+    }
+  }
+}
+
+// src/cognition/faculties/planning/plan.supervision.ts
+var PlanSupervisor = class {
+  constructor(_host, _dispositions) {
+    this._host = _host;
+    this._dispositions = _dispositions;
+  }
+  _host;
+  _dispositions;
+  _activeFacets = /* @__PURE__ */ new Map();
   /**
-   * Move a ready step onto the frontier: it starts biasing the competition (via
-   * `_projectFrontier`) instead of being dispatched. Emits `plan.step.activated`
-   * for the activity stream — the awareness analog of the old `plan.step.dispatched`.
+   * Cumulative count of each supervisory directive the facet has issued
+   * (continue/retry/skip/pause/replan/escalate/abandon/complete). Pure observability —
+   * surfaced as `planning.supervision.*` metrics so the planning-quality eval harness
+   * can measure how the mind supervises execution (how often it corrects course). Not
+   * restored from snapshot; re-accrues deterministically as the same decisions replay.
    */
-  _activateStep(plan, step) {
-    step.status = "active";
-    this._bus?.publish({
-      type: "plan.step.activated",
-      version: 1,
-      sourceEngine: this.name,
-      salience: 0.6,
-      payload: {
-        planId: plan.id,
-        stepId: step.id,
-        action: step.action,
-        description: step.description,
-        expectedOutcome: step.expectedOutcome,
-        reasoning: `Pursuing plan step: ${step.description}`,
-        stepIndex: step.order,
-        requestingEntityId: plan.requestingEntityId,
-        requestingThreadId: plan.requestingThreadId
-      }
-    });
-    this._sessionLogger?.write({
-      type: "plan.step.activated",
-      tick: this._lastTick,
-      planId: plan.id,
-      stepId: step.id,
-      action: step.action,
-      description: step.description,
-      stepIndex: step.order,
-      totalSteps: plan.steps.length
-    });
-    logger.info(`[planning] step active: ${plan.id}/${step.id}=${step.action} (biasing the field)`);
+  _supervisionCounts = /* @__PURE__ */ new Map();
+  _executiveEngine = null;
+  _goalManager = null;
+  attachExecutiveEngine(oe) {
+    this._executiveEngine = oe;
   }
-  /**
-   * Project every executing plan's active frontier as transient `plan.prior`
-   * entities — the top-down bias the AffordanceSynthesizer reads. Rebuilt each tick
-   * (cleared then re-emitted, like the affordance field), so a frontier that
-   * advances or a plan that ends stops biasing automatically. The prior carries the
-   * planId/stepId provenance that flows affordance → intent → action.outcome, and a
-   * `planBias` strength from the goal's importance ⊕ the plan's confidence. It never
-   * forces an action — if a more pressing affordance wins, the plan re-projects next
-   * tick (no orphaning).
-   */
-  _projectFrontier(commands, tick, state) {
-    for (const [id, e] of state.entities)
-      if (e.type === "plan.prior") commands.delete.push(id);
-    for (const plan of this._plans.values()) {
-      if (plan.status !== "executing") continue;
-      const goalPriority = this._goalManager?.getGoal(plan.goalId)?.priority ?? 0.5;
-      const strength = clamp013((0.5 * goalPriority + 0.5 * plan.confidence) * this._planBiasGain);
-      for (const step of plan.steps) {
-        if (step.status !== "active") continue;
-        commands.set.push({
-          // tick in the id (like the affordance field) so this tick's fresh prior
-          // never collides with last tick's cleared one in the same command batch.
-          id: `plan-prior-${tick}-${plan.id}-${step.id}`,
-          type: "plan.prior",
-          metadata: {
-            schema: step.action,
-            // advisory suggested schema (not dispatched)
-            planId: plan.id,
-            stepId: step.id,
-            planBias: strength,
-            targetEntityId: step.targetEntityId,
-            parameters: {},
-            tick
-          }
-        });
-      }
-    }
+  attachGoalManager(gm) {
+    this._goalManager = gm;
   }
-  // ── Step outcome handling ──────────────────────────────────
-  _onStepOutcome(planId, stepId, outcome) {
-    const plan = this._plans.get(planId);
-    if (!plan) return;
-    if (plan.status !== "executing") {
-      logger.info(`[planning] ignoring late step outcome ${planId}/${stepId} \u2014 plan is ${plan.status}, not executing`);
-      return;
-    }
-    const step = plan.steps.find((s) => s.id === stepId);
-    if (!step) return;
-    step.status = outcome.success ? "completed" : "failed";
-    step.outcome = outcome;
-    logger.info(
-      `[planning] step outcome: ${planId}/${stepId} ${outcome.success ? "\u2713" : "\u2717"} (quality=${outcome.outcomeQuality.toFixed(2)})`
-    );
-    this._bus?.publish({
-      type: "plan.step.outcome",
-      version: 1,
-      sourceEngine: this.name,
-      salience: 0.6,
-      payload: {
-        planId,
-        stepId,
-        action: step.action,
-        success: outcome.success,
-        outcomeQuality: outcome.outcomeQuality,
-        description: outcome.description.slice(0, 300),
-        completedSteps: plan.steps.filter((s) => s.status === "completed" || s.status === "skipped").length,
-        totalSteps: plan.steps.length,
-        requestingEntityId: plan.requestingEntityId,
-        requestingThreadId: plan.requestingThreadId
-      }
-    });
-    this._sessionLogger?.write({
-      type: "plan.step.outcome",
-      tick: this._lastTick,
-      planId,
-      stepId,
-      action: step.action,
-      success: outcome.success,
-      outcomeQuality: outcome.outcomeQuality,
-      description: outcome.description.slice(0, 300),
-      completedSteps: plan.steps.filter((s) => s.status === "completed" || s.status === "skipped").length,
-      totalSteps: plan.steps.length
-    });
-    if (plan.executionTier !== "deliberate" && this._shouldEscalate(plan, step, outcome)) {
-      plan.executionTier = "deliberate";
-      logger.info(`[planning] plan ${planId} escalated to deliberate (surprise on ${stepId})`);
-      this._activateFacet(plan, false);
-    }
-    if (plan.executionTier === "deliberate") {
-      const facet = this._activeFacets.get(planId);
-      if (facet) this._reportToFacet(facet, plan, step, outcome);
-      else {
-        logger.warn(`[planning] no facet to supervise plan ${planId}; continuing automatically`);
-        this._executePlans();
-      }
-    }
+  // ── Observability ──────────────────────────────────────────
+  get activeFacetCount() {
+    return this._activeFacets.size;
+  }
+  supervisionCount(directive) {
+    return this._supervisionCounts.get(directive) ?? 0;
+  }
+  hasFacet(planId) {
+    return this._activeFacets.has(planId);
   }
   // ── Supervision inference (emergent tier) ──────────────────
   /**
@@ -13644,26 +13317,10 @@ var PlanningEngine = class _PlanningEngine {
    * (high-priority goal) or uncertain (low-confidence) plans are supervised from
    * the first step; everything else runs automatically. Pure + deterministic.
    */
-  /**
-   * Channel A (subconscious disposition): refresh trait-driven supervision params
-   * from the persona-prior mirror (base `engine-config-planning` ⊕ metacog deltas).
-   * Demonstrated conscientiousness develops planning follow-through — it raises
-   * `maxStepRetries` (re-attempt a stuck step more before giving up) and
-   * `surpriseOutcomeQuality` (vigilance: escalate to deliberate supervision on
-   * smaller quality dips). Only present params override; absent config/prior leaves
-   * the constructor defaults standing. Pure + deterministic (R2): same state ⇒ same
-   * dispositions, no wall-clock, no RNG.
-   */
-  _readConfigFromState(state) {
-    const p = readEffectiveParams(state, "engine-config-planning");
-    if (typeof p.maxStepRetries === "number") this._maxStepRetries = p.maxStepRetries;
-    if (typeof p.surpriseOutcomeQuality === "number") this._surpriseOutcomeQuality = p.surpriseOutcomeQuality;
-    if (typeof p.planBiasGain === "number") this._planBiasGain = p.planBiasGain;
-  }
-  _inferInitialTier(plan) {
+  inferInitialTier(plan) {
     const priority = this._goalManager?.getGoal(plan.goalId)?.priority ?? 0;
-    if (priority >= this._deliberateGoalPriority) return "deliberate";
-    if (plan.confidence < this._lowPlanConfidence) return "deliberate";
+    if (priority >= this._dispositions.deliberateGoalPriority) return "deliberate";
+    if (plan.confidence < this._dispositions.lowPlanConfidence) return "deliberate";
     return "automatic";
   }
   /**
@@ -13672,13 +13329,13 @@ var PlanningEngine = class _PlanningEngine {
    * EXTENSION POINT — add triggers here (timeouts, prediction error, repeated
    * retries, threat/stress spikes, …) as more edge cases surface.
    */
-  _shouldEscalate(_plan, _step, outcome) {
+  shouldEscalate(_plan, _step, outcome) {
     if (!outcome.success) return true;
-    if (outcome.outcomeQuality < this._surpriseOutcomeQuality) return true;
+    if (outcome.outcomeQuality < this._dispositions.surpriseOutcomeQuality) return true;
     return false;
   }
-  // ── Facet management (Tier 1) ───────────────────────────────
-  _activateFacet(plan, prime = true) {
+  // ── Facet lifecycle ────────────────────────────────────────
+  activateFacet(plan, prime = true) {
     if (!this._executiveEngine) return;
     try {
       const { attention, handle: facet } = this._executiveEngine.spawnFacet();
@@ -13720,6 +13377,14 @@ var PlanningEngine = class _PlanningEngine {
       plan.executionTier = "automatic";
     }
   }
+  cleanupFacet(planId) {
+    const facet = this._activeFacets.get(planId);
+    if (facet) {
+      facet.destroy();
+      this._activeFacets.delete(planId);
+    }
+  }
+  // ── Focus + guidance (the judgment vocabulary) ─────────────
   /**
    * Build the plan-specific focus section for the facet.
    * Provided to the facet via setFocus() before any reports.
@@ -13824,7 +13489,10 @@ Plan initialized and ready for execution.`;
 Progress update.`;
     }
   }
-  _reportToFacet(facet, plan, step, outcome) {
+  // ── Step reporting ─────────────────────────────────────────
+  reportToFacet(plan, step, outcome) {
+    const facet = this._activeFacets.get(plan.id);
+    if (!facet) return false;
     const allDone = plan.steps.every((s) => s.status === "completed" || s.status === "skipped");
     const anyFailed = plan.steps.some((s) => s.status === "failed");
     const pendingCount = plan.steps.filter((s) => s.status !== "completed" && s.status !== "skipped").length;
@@ -13850,109 +13518,7 @@ Progress update.`;
       }
     };
     facet.report(report);
-  }
-  _onFacetDecision(plan, decision) {
-    const payload = decision.decision;
-    const directive = payload.directive ?? "continue";
-    this._supervisionCounts.set(directive, (this._supervisionCounts.get(directive) ?? 0) + 1);
-    logger.info(
-      `[planning] facet decision: plan=${plan.id} ${directive} (confidence=${decision.confidence.toFixed(2)})`
-    );
-    switch (directive) {
-      case "continue":
-        this._executePlans();
-        break;
-      case "skip": {
-        const failedStep = plan.steps.find((s) => s.status === "failed");
-        if (failedStep) failedStep.status = "skipped";
-        this._executePlans();
-        break;
-      }
-      case "abandon": {
-        this._onPlanFailed(plan, `Facet abandoned: ${decision.reasoning.slice(0, 100)}`);
-        this._cleanupFacet(plan.id);
-        break;
-      }
-      case "replan": {
-        if (payload.updatedSteps && payload.updatedSteps.length > 0) {
-          plan.steps = payload.updatedSteps.map((s, i) => ({
-            id: `step-${i}`,
-            order: i,
-            action: s.action,
-            description: s.description,
-            expectedOutcome: s.expectedOutcome,
-            prerequisites: s.prerequisites,
-            estimatedDuration: 5,
-            status: "pending"
-          }));
-          logger.info(`[planning] plan ${plan.id} replanned (${plan.steps.length} steps)`);
-          this._bus?.publish({
-            type: "plan.replanned",
-            version: 1,
-            sourceEngine: this.name,
-            salience: 0.7,
-            payload: {
-              planId: plan.id,
-              goalId: plan.goalId,
-              reason: decision.reasoning.slice(0, 120),
-              stepCount: plan.steps.length,
-              requestingEntityId: plan.requestingEntityId,
-              requestingThreadId: plan.requestingThreadId
-            }
-          });
-        }
-        this._executePlans();
-        break;
-      }
-      case "complete": {
-        this._onPlanCompleted(plan);
-        this._cleanupFacet(plan.id);
-        break;
-      }
-      case "retry": {
-        let retried = 0;
-        for (const s of plan.steps) {
-          if (s.status !== "failed") continue;
-          const n = s.retries ?? 0;
-          if (n >= this._maxStepRetries) {
-            logger.info(`[planning] step ${s.id} retry exhausted (${n}/${this._maxStepRetries}); left failed`);
-            continue;
-          }
-          s.retries = n + 1;
-          s.status = "pending";
-          s.outcome = void 0;
-          retried++;
-        }
-        logger.info(`[planning] plan ${plan.id} retrying ${retried} step(s)`);
-        this._executePlans();
-        break;
-      }
-      case "pause": {
-        plan.status = "paused";
-        this._cleanupFacet(plan.id);
-        logger.info(`[planning] plan ${plan.id} paused by facet`);
-        break;
-      }
-      case "escalate": {
-        plan.status = "paused";
-        this._cleanupFacet(plan.id);
-        this._bus?.publish({
-          type: "plan.escalated",
-          version: 1,
-          sourceEngine: this.name,
-          salience: 0.85,
-          payload: {
-            planId: plan.id,
-            goalId: plan.goalId,
-            reason: decision.reasoning.slice(0, 120),
-            requestingEntityId: plan.requestingEntityId,
-            requestingThreadId: plan.requestingThreadId
-          }
-        });
-        logger.info(`[planning] plan ${plan.id} escalated to master`);
-        break;
-      }
-    }
+    return true;
   }
   _buildFacetPlanContext(plan) {
     return {
@@ -13973,17 +13539,594 @@ Progress update.`;
       executionTier: plan.executionTier
     };
   }
-  _cleanupFacet(planId) {
-    const facet = this._activeFacets.get(planId);
-    if (facet) {
-      facet.destroy();
-      this._activeFacets.delete(planId);
+  // ── Directive dispatch ─────────────────────────────────────
+  _onFacetDecision(plan, decision) {
+    const payload = decision.decision;
+    const directive = payload.directive ?? "continue";
+    this._supervisionCounts.set(directive, (this._supervisionCounts.get(directive) ?? 0) + 1);
+    logger.info(
+      `[planning] facet decision: plan=${plan.id} ${directive} (confidence=${decision.confidence.toFixed(2)})`
+    );
+    switch (directive) {
+      case "continue":
+        this._host.executePlans();
+        break;
+      case "skip": {
+        const failedStep = plan.steps.find((s) => s.status === "failed");
+        if (failedStep) failedStep.status = "skipped";
+        this._host.executePlans();
+        break;
+      }
+      case "abandon": {
+        this._host.planFailed(plan, `Facet abandoned: ${decision.reasoning.slice(0, 100)}`);
+        this.cleanupFacet(plan.id);
+        break;
+      }
+      case "replan": {
+        if (payload.updatedSteps && payload.updatedSteps.length > 0) {
+          plan.steps = payload.updatedSteps.map((s, i) => ({
+            id: `step-${i}`,
+            order: i,
+            action: s.action,
+            description: s.description,
+            expectedOutcome: s.expectedOutcome,
+            prerequisites: s.prerequisites,
+            estimatedDuration: 5,
+            status: "pending"
+          }));
+          logger.info(`[planning] plan ${plan.id} replanned (${plan.steps.length} steps)`);
+          this._host.publish({
+            type: "plan.replanned",
+            version: 1,
+            salience: 0.7,
+            payload: {
+              planId: plan.id,
+              goalId: plan.goalId,
+              reason: decision.reasoning.slice(0, 120),
+              stepCount: plan.steps.length,
+              requestingEntityId: plan.requestingEntityId,
+              requestingThreadId: plan.requestingThreadId
+            }
+          });
+        }
+        this._host.executePlans();
+        break;
+      }
+      case "complete": {
+        this._host.planCompleted(plan);
+        this.cleanupFacet(plan.id);
+        break;
+      }
+      case "retry": {
+        let retried = 0;
+        for (const s of plan.steps) {
+          if (s.status !== "failed") continue;
+          const n = s.retries ?? 0;
+          if (n >= this._dispositions.maxStepRetries) {
+            logger.info(`[planning] step ${s.id} retry exhausted (${n}/${this._dispositions.maxStepRetries}); left failed`);
+            continue;
+          }
+          s.retries = n + 1;
+          s.status = "pending";
+          s.outcome = void 0;
+          retried++;
+        }
+        logger.info(`[planning] plan ${plan.id} retrying ${retried} step(s)`);
+        this._host.executePlans();
+        break;
+      }
+      case "pause": {
+        plan.status = "paused";
+        this.cleanupFacet(plan.id);
+        logger.info(`[planning] plan ${plan.id} paused by facet`);
+        break;
+      }
+      case "escalate": {
+        plan.status = "paused";
+        this.cleanupFacet(plan.id);
+        this._host.publish({
+          type: "plan.escalated",
+          version: 1,
+          salience: 0.85,
+          payload: {
+            planId: plan.id,
+            goalId: plan.goalId,
+            reason: decision.reasoning.slice(0, 120),
+            requestingEntityId: plan.requestingEntityId,
+            requestingThreadId: plan.requestingThreadId
+          }
+        });
+        logger.info(`[planning] plan ${plan.id} escalated to master`);
+        break;
+      }
+    }
+  }
+};
+
+// src/cognition/faculties/planning.engine.ts
+var PlanningEngine = class {
+  name = "planning-engine";
+  _planRetentionTicks;
+  /**
+   * Trait-driven dispositions (Channel A) — ONE mutable object, refreshed from
+   * the persona-prior mirror each tick (_readConfigFromState) and read live by
+   * the supervisor + frontier projection. See PlanningDispositions.
+   */
+  _dispositions;
+  _goalManager = null;
+  _executiveEngine = null;
+  /** Canonical plan state — store, goal index, terminal bookkeeping, GC, persistence. */
+  _store = new PlanStore();
+  /** Deliberate-tier judgment — facet lifecycle, reports, directive dispatch. */
+  _supervisor;
+  /** Plan ids needing a recall descriptor emitted (created/revised this cycle). */
+  _newPlanDescriptors = [];
+  /**
+   * Last tick react() ran — used only to stamp session-log telemetry (never
+   * replay state) from off-tick callbacks like _activateStep / _onStepOutcome.
+   */
+  _lastTick = 0;
+  /**
+   * Monotonic suffix counter for activity-listener subscription ids. These ids
+   * are transient bus-subscription keys (HTTP/SSE-driven, never entering the
+   * event log or snapshot), so they must NOT draw from the seeded PRNG — that
+   * would consume sim-random draws and perturb determinism. A plain counter
+   * replaces Math.random() here (R2).
+   */
+  _subCounter = 0;
+  _energyLevel = 100;
+  _bus = null;
+  _sessionLogger = null;
+  _model = new GenerativeModel();
+  // Tracks the last executive output object we ingested so we only process
+  // each executive cycle once — prevents re-logging on every non-executive tick.
+  _lastIngestedOutput = null;
+  constructor(config = {}) {
+    this._bus = config.bus ?? null;
+    this._planRetentionTicks = config.planRetentionTicks ?? 300;
+    this._dispositions = {
+      deliberateGoalPriority: config.deliberateGoalPriority ?? 0.7,
+      lowPlanConfidence: config.lowPlanConfidence ?? 0.5,
+      surpriseOutcomeQuality: config.surpriseOutcomeQuality ?? 0.25,
+      maxStepRetries: config.maxStepRetries ?? 3,
+      planBiasGain: 1
+    };
+    const host = {
+      executePlans: () => this._executePlans(),
+      planCompleted: (plan) => this._onPlanCompleted(plan),
+      planFailed: (plan, reason) => this._onPlanFailed(plan, reason),
+      publish: (event) => this._bus?.publish({ ...event, sourceEngine: this.name })
+    };
+    this._supervisor = new PlanSupervisor(host, this._dispositions);
+  }
+  attachGoalManager(gm) {
+    this._goalManager = gm;
+    this._supervisor.attachGoalManager(gm);
+  }
+  attachExecutiveEngine(oe) {
+    this._executiveEngine = oe;
+    this._supervisor.attachExecutiveEngine(oe);
+  }
+  attachSessionLogger(logger2) {
+    this._sessionLogger = logger2;
+  }
+  /**
+   * Give the engine its CognitiveBus. Called by the orchestrator's addEngine()
+   * during assembly (every other faculty already exposes this). Without it the
+   * bus stayed null, so plan-lifecycle events (plan.started / plan.step.* /
+   * plan.completed) never published and addActivityListener no-op'd.
+   */
+  attachBus(bus) {
+    this._bus = bus;
+  }
+  // ── CognitiveEngine interface ──────────────────────────────
+  subscribes() {
+    return [
+      "energy.state.changed",
+      "executive.prediction.formed",
+      "action.outcome",
+      // Goal lifecycle — a terminal goal makes its plans moot; cancel them so they
+      // stop dispatching steps for a goal that's already done/dropped.
+      "goal.achieved",
+      "goal.abandoned"
+    ];
+  }
+  publishes() {
+    return [
+      { type: "plan.started", version: 1, validate: () => null },
+      { type: "plan.step.activated", version: 1, validate: () => null },
+      { type: "plan.step.outcome", version: 1, validate: () => null },
+      { type: "plan.completed", version: 1, validate: () => null },
+      { type: "plan.failed", version: 1, validate: () => null },
+      { type: "plan.cancelled", version: 1, validate: () => null },
+      { type: "plan.escalated", version: 1, validate: () => null },
+      { type: "plan.replanned", version: 1, validate: () => null },
+      { type: "planning.plan.created", version: 1, validate: () => null }
+    ];
+  }
+  onCognitiveEvent(e) {
+    this._model.observe(e.type, e.salience);
+    switch (e.type) {
+      case "energy.state.changed":
+        this._energyLevel = e.payload["level"] ?? this._energyLevel;
+        break;
+      case "executive.prediction.formed": {
+        const p = e.payload;
+        if (p.predictedDomains.includes("planning"))
+          this._model.setPrecision("planning.plans", 1 + p.confidence * 0.5);
+        break;
+      }
+      case "action.outcome": {
+        const p = e.payload;
+        if (!p.planId || !p.stepId) return;
+        if (!this._store.has(p.planId)) return;
+        this._onStepOutcome(p.planId, p.stepId, {
+          success: p.success,
+          description: p.description ?? (p.success ? "Completed" : "Failed"),
+          outcomeQuality: p.outcomeQuality
+        });
+        break;
+      }
+      case "goal.achieved":
+        this._cancelPlansForGoal(e.payload.goalId, "goal achieved");
+        break;
+      case "goal.abandoned":
+        this._cancelPlansForGoal(e.payload.goalId, "goal abandoned");
+        break;
+    }
+  }
+  /**
+   * Cancel every still-active plan for a goal that has reached a terminal state
+   * (achieved/abandoned). Marks them rejected (→ retention GC cleans the entity)
+   * and tears down any step-aware facet. A plan whose own completion triggered the
+   * goal is already terminal and is skipped, so this only reaps siblings still
+   * pursuing a goal that's now done/dropped. (planning↔goal sync)
+   */
+  _cancelPlansForGoal(goalId, reason) {
+    if (!goalId) return;
+    for (const plan of this._store.plansForGoal(goalId)) {
+      if (TERMINAL_STATUSES.includes(plan.status)) continue;
+      plan.status = "rejected";
+      this._store.markTerminal(plan.id, this._lastTick);
+      this._supervisor.cleanupFacet(plan.id);
+      this._bus?.publish({
+        type: "plan.cancelled",
+        version: 1,
+        sourceEngine: this.name,
+        salience: 0.6,
+        payload: {
+          planId: plan.id,
+          goalId: plan.goalId,
+          reason,
+          completedSteps: plan.steps.filter((s) => s.status === "completed").length,
+          totalSteps: plan.steps.length,
+          requestingEntityId: plan.requestingEntityId,
+          requestingThreadId: plan.requestingThreadId
+        }
+      });
+      logger.info(`[planning] plan ${plan.id} cancelled \u2014 ${reason} (goal ${goalId})`);
+    }
+  }
+  snapshot() {
+    return {
+      energyLevel: this._energyLevel,
+      totalPlans: this._store.size,
+      activeFacets: this._supervisor.activeFacetCount
+    };
+  }
+  // ── Engine react ──────────────────────────────────────────
+  async react(_delta, tick, state, context) {
+    this._lastTick = tick;
+    const commands = { set: [], delete: [], metrics: [] };
+    this._readConfigFromState(state);
+    this._ingestExecutivePlans(tick);
+    this._executePlans();
+    projectFrontier(
+      this._store.all(),
+      commands,
+      tick,
+      state,
+      (goalId) => this._goalManager?.getGoal(goalId)?.priority ?? 0.5,
+      this._dispositions.planBiasGain
+    );
+    this._flushPlanDescriptors(commands);
+    this._store.gcTerminal(tick, commands, this._planRetentionTicks, (id) => this._supervisor.cleanupFacet(id));
+    this._store.persist(commands, tick);
+    const executingPlans = Array.from(this._store.all()).filter((p) => p.status === "executing" || p.status === "ready");
+    commands.metrics.push(
+      ["planning.total_plans", this._store.size],
+      ["planning.executing_plans", executingPlans.length],
+      ["planning.active_facets", this._supervisor.activeFacetCount],
+      // Supervision distribution — how the mind corrects course mid-execution. The
+      // raw signal the planning-quality eval harness reads (replan/abandon rates etc).
+      ["planning.supervision.replan", this._supervisor.supervisionCount("replan")],
+      ["planning.supervision.retry", this._supervisor.supervisionCount("retry")],
+      ["planning.supervision.skip", this._supervisor.supervisionCount("skip")],
+      ["planning.supervision.escalate", this._supervisor.supervisionCount("escalate")],
+      ["planning.supervision.abandon", this._supervisor.supervisionCount("abandon")]
+    );
+    const _bus = this._bus;
+    if (_bus && this._store.size > 0) {
+      const predErr = this._model.observe("planning.plans", this._store.size);
+      if (!predErr.gated)
+        _bus.publish({
+          type: "planning.plan.created",
+          version: 1,
+          sourceEngine: this.name,
+          salience: Math.max(0.3, predErr.salience),
+          payload: { totalPlans: this._store.size }
+        });
+    }
+    return { commands };
+  }
+  /**
+   * Channel A (subconscious disposition): refresh trait-driven supervision params
+   * from the persona-prior mirror (base `engine-config-planning` ⊕ metacog deltas).
+   * Demonstrated conscientiousness develops planning follow-through — it raises
+   * `maxStepRetries` (re-attempt a stuck step more before giving up) and
+   * `surpriseOutcomeQuality` (vigilance: escalate to deliberate supervision on
+   * smaller quality dips). Only present params override; absent config/prior leaves
+   * the constructor defaults standing. Pure + deterministic (R2): same state ⇒ same
+   * dispositions, no wall-clock, no RNG.
+   */
+  _readConfigFromState(state) {
+    const p = readEffectiveParams(state, "engine-config-planning");
+    if (typeof p.maxStepRetries === "number") this._dispositions.maxStepRetries = p.maxStepRetries;
+    if (typeof p.surpriseOutcomeQuality === "number") this._dispositions.surpriseOutcomeQuality = p.surpriseOutcomeQuality;
+    if (typeof p.planBiasGain === "number") this._dispositions.planBiasGain = p.planBiasGain;
+  }
+  // ── Plan ingestion ─────────────────────────────────────────
+  _ingestExecutivePlans(tick) {
+    const executiveOutput = this._executiveEngine?.latestOutput;
+    if (!executiveOutput?.plans || executiveOutput.plans.length === 0) return;
+    if (!this._executiveEngine?.isFresh(tick)) return;
+    if (executiveOutput === this._lastIngestedOutput) return;
+    this._lastIngestedOutput = executiveOutput;
+    for (const planData of executiveOutput.plans) {
+      const existingPlan = this._store.resolveIngestTarget(planData.goalId, planData.planId);
+      switch (planData.action) {
+        case "draft": {
+          const expected = planData.expectedOutcome ?? "";
+          const isReassertion = expected.length > 0 && this._store.plansForGoal(planData.goalId).some(
+            (p) => p.expectedOutcome === expected && !TERMINAL_STATUSES.includes(p.status)
+          );
+          if (isReassertion) {
+            logger.info(
+              `[planning] draft for goal ${planData.goalId} skipped \u2014 matches active plan "${expected.slice(0, 40)}"`
+            );
+            break;
+          }
+          this._createPlan(planData, tick, "draft");
+          break;
+        }
+        case "validate": {
+          if (!existingPlan) {
+            this._createPlan(planData, tick, "validated");
+            break;
+          }
+          existingPlan.status = "validated";
+          logger.info(`[planning] plan ${existingPlan.id} validated`);
+          break;
+        }
+        case "execute": {
+          if (!existingPlan) {
+            const newPlan = this._createPlan(planData, tick, "approved");
+            newPlan.status = "ready";
+            newPlan.executionTier = this._supervisor.inferInitialTier(newPlan);
+            if (newPlan.executionTier === "deliberate" && this._executiveEngine)
+              this._supervisor.activateFacet(newPlan);
+            break;
+          }
+          existingPlan.status = "ready";
+          existingPlan.executionTier = this._supervisor.inferInitialTier(existingPlan);
+          existingPlan.expectedOutcome = planData.expectedOutcome ?? existingPlan.expectedOutcome;
+          logger.info(
+            `[planning] plan ${existingPlan.id} approved for execution (tier=${existingPlan.executionTier} \u2014 inferred)`
+          );
+          if (existingPlan.executionTier === "deliberate" && this._executiveEngine) {
+            this._supervisor.activateFacet(existingPlan);
+          }
+          break;
+        }
+        case "revise": {
+          if (!existingPlan) {
+            this._createPlan(planData, tick, "revised");
+            break;
+          }
+          existingPlan.steps = planData.steps.map((s, i) => ({
+            id: `step-${i}`,
+            order: i,
+            action: s.action,
+            description: s.description,
+            expectedOutcome: s.expectedOutcome,
+            prerequisites: s.prerequisites ?? (i > 0 ? [`step-${i - 1}`] : []),
+            estimatedDuration: s.estimatedDuration,
+            status: "pending"
+          }));
+          existingPlan.status = existingPlan.status === "executing" ? "executing" : "ready";
+          existingPlan.expectedOutcome = planData.expectedOutcome ?? existingPlan.expectedOutcome;
+          logger.info(
+            `[planning] plan ${existingPlan.id} revised (${existingPlan.steps.length} steps, status=${existingPlan.status})`
+          );
+          this._newPlanDescriptors.push(existingPlan.id);
+          break;
+        }
+        case "cancel": {
+          if (!existingPlan) continue;
+          existingPlan.status = "rejected";
+          this._store.markTerminal(existingPlan.id, this._lastTick);
+          this._supervisor.cleanupFacet(existingPlan.id);
+          logger.info(`[planning] plan ${existingPlan.id} cancelled`);
+          break;
+        }
+      }
+    }
+  }
+  _createPlan(planData, tick, status) {
+    const planId = this._store.nextId();
+    const steps = planData.steps.map((s, i) => ({
+      id: `step-${i}`,
+      order: i,
+      action: s.action,
+      description: s.description,
+      expectedOutcome: s.expectedOutcome,
+      prerequisites: s.prerequisites ?? (i > 0 ? [`step-${i - 1}`] : []),
+      estimatedDuration: s.estimatedDuration,
+      status: "pending"
+    }));
+    const goalState = this._goalManager?.getGoal(planData.goalId);
+    const plan = {
+      id: planId,
+      goalId: planData.goalId,
+      steps,
+      estimatedCost: planData.estimatedCost,
+      confidence: planData.feasibility,
+      status,
+      executionTier: "automatic",
+      // engine-inferred at execute (emergent tier), not executive-set
+      expectedOutcome: planData.expectedOutcome ?? "",
+      createdAt: tick,
+      requestingEntityId: goalState?.requestingEntityId,
+      requestingThreadId: goalState?.requestingThreadId
+    };
+    this._store.index(plan);
+    this._newPlanDescriptors.push(plan.id);
+    logger.info(
+      `[planning] plan created: ${planId} \u2192 goal ${plan.goalId} (${steps.length} steps, status=${status}, tier=${plan.executionTier}${plan.requestingEntityId ? `, requester=${plan.requestingEntityId}` : ""})`
+    );
+    return plan;
+  }
+  // ── Plan execution ─────────────────────────────────────────
+  _executePlans() {
+    for (const plan of this._store.all()) {
+      if (plan.status !== "ready" && plan.status !== "executing") continue;
+      if (plan.status === "ready") {
+        plan.status = "executing";
+        this._bus?.publish({
+          type: "plan.started",
+          version: 1,
+          sourceEngine: this.name,
+          salience: 0.65,
+          payload: {
+            planId: plan.id,
+            goalId: plan.goalId,
+            totalSteps: plan.steps.length,
+            executionTier: plan.executionTier,
+            requestingEntityId: plan.requestingEntityId,
+            requestingThreadId: plan.requestingThreadId
+          }
+        });
+      }
+      const readySteps = computeReadySet(plan);
+      if (readySteps.length > 0)
+        for (const step of readySteps)
+          this._activateStep(plan, step);
+      const allDone = plan.steps.every((s) => s.status === "completed" || s.status === "skipped");
+      const anyFailed = plan.steps.some((s) => s.status === "failed");
+      if (allDone && !anyFailed)
+        this._onPlanCompleted(plan);
+      else if (anyFailed && plan.executionTier === "automatic")
+        this._onPlanFailed(plan, "One or more steps failed");
+    }
+  }
+  /**
+   * Move a ready step onto the frontier: it starts biasing the competition (via
+   * `projectFrontier`) instead of being dispatched. Emits `plan.step.activated`
+   * for the activity stream — the awareness analog of the old `plan.step.dispatched`.
+   */
+  _activateStep(plan, step) {
+    step.status = "active";
+    this._bus?.publish({
+      type: "plan.step.activated",
+      version: 1,
+      sourceEngine: this.name,
+      salience: 0.6,
+      payload: {
+        planId: plan.id,
+        stepId: step.id,
+        action: step.action,
+        description: step.description,
+        expectedOutcome: step.expectedOutcome,
+        reasoning: `Pursuing plan step: ${step.description}`,
+        stepIndex: step.order,
+        requestingEntityId: plan.requestingEntityId,
+        requestingThreadId: plan.requestingThreadId
+      }
+    });
+    this._sessionLogger?.write({
+      type: "plan.step.activated",
+      tick: this._lastTick,
+      planId: plan.id,
+      stepId: step.id,
+      action: step.action,
+      description: step.description,
+      stepIndex: step.order,
+      totalSteps: plan.steps.length
+    });
+    logger.info(`[planning] step active: ${plan.id}/${step.id}=${step.action} (biasing the field)`);
+  }
+  // ── Step outcome handling ──────────────────────────────────
+  _onStepOutcome(planId, stepId, outcome) {
+    const plan = this._store.get(planId);
+    if (!plan) return;
+    if (plan.status !== "executing") {
+      logger.info(`[planning] ignoring late step outcome ${planId}/${stepId} \u2014 plan is ${plan.status}, not executing`);
+      return;
+    }
+    const step = plan.steps.find((s) => s.id === stepId);
+    if (!step) return;
+    step.status = outcome.success ? "completed" : "failed";
+    step.outcome = outcome;
+    logger.info(
+      `[planning] step outcome: ${planId}/${stepId} ${outcome.success ? "\u2713" : "\u2717"} (quality=${outcome.outcomeQuality.toFixed(2)})`
+    );
+    this._bus?.publish({
+      type: "plan.step.outcome",
+      version: 1,
+      sourceEngine: this.name,
+      salience: 0.6,
+      payload: {
+        planId,
+        stepId,
+        action: step.action,
+        success: outcome.success,
+        outcomeQuality: outcome.outcomeQuality,
+        description: outcome.description.slice(0, 300),
+        completedSteps: plan.steps.filter((s) => s.status === "completed" || s.status === "skipped").length,
+        totalSteps: plan.steps.length,
+        requestingEntityId: plan.requestingEntityId,
+        requestingThreadId: plan.requestingThreadId
+      }
+    });
+    this._sessionLogger?.write({
+      type: "plan.step.outcome",
+      tick: this._lastTick,
+      planId,
+      stepId,
+      action: step.action,
+      success: outcome.success,
+      outcomeQuality: outcome.outcomeQuality,
+      description: outcome.description.slice(0, 300),
+      completedSteps: plan.steps.filter((s) => s.status === "completed" || s.status === "skipped").length,
+      totalSteps: plan.steps.length
+    });
+    if (plan.executionTier !== "deliberate" && this._supervisor.shouldEscalate(plan, step, outcome)) {
+      plan.executionTier = "deliberate";
+      logger.info(`[planning] plan ${planId} escalated to deliberate (surprise on ${stepId})`);
+      this._supervisor.activateFacet(plan, false);
+    }
+    if (plan.executionTier === "deliberate") {
+      const reported = this._supervisor.reportToFacet(plan, step, outcome);
+      if (!reported) {
+        logger.warn(`[planning] no facet to supervise plan ${planId}; continuing automatically`);
+        this._executePlans();
+      }
     }
   }
   // ── Plan completion / failure ──────────────────────────────
   _onPlanCompleted(plan) {
     plan.status = "completed";
-    this._terminalAt.set(plan.id, this._lastTick);
+    this._store.markTerminal(plan.id, this._lastTick);
     this._bus?.publish({
       type: "plan.completed",
       version: 1,
@@ -14003,7 +14146,7 @@ Progress update.`;
   }
   _onPlanFailed(plan, reason) {
     plan.status = "failed";
-    this._terminalAt.set(plan.id, this._lastTick);
+    this._store.markTerminal(plan.id, this._lastTick);
     this._bus?.publish({
       type: "plan.failed",
       version: 1,
@@ -14035,7 +14178,7 @@ Progress update.`;
    */
   _flushPlanDescriptors(commands) {
     for (const id of this._newPlanDescriptors) {
-      const plan = this._plans.get(id);
+      const plan = this._store.get(id);
       if (!plan) continue;
       commands.set.push({
         id: `wm-plan-${plan.id}`,
@@ -14058,83 +14201,17 @@ Progress update.`;
     }
     this._newPlanDescriptors.length = 0;
   }
-  // ── Retention GC ───────────────────────────────────────────
-  /**
-   * Evict terminal plans (and delete their state entity) once they've been
-   * terminal longer than the retention window. Terminal plans never change, so
-   * retaining them forever accretes memory + state entities on a long-lived mind.
-   * Deterministic: the window is compared against sim ticks (R2-safe).
-   */
-  _gcTerminalPlans(tick, commands) {
-    const now = tick;
-    let evicted = 0;
-    for (const [id, plan] of this._plans) {
-      if (!_PlanningEngine._TERMINAL.includes(plan.status)) continue;
-      const since = this._terminalAt.get(id) ?? now;
-      if (now - since <= this._planRetentionTicks) continue;
-      this._plans.delete(id);
-      this._persistedTerminal.delete(id);
-      this._terminalAt.delete(id);
-      this._cleanupFacet(id);
-      const ids = this._planByGoal.get(plan.goalId);
-      if (ids) {
-        const next = ids.filter((x) => x !== id);
-        if (next.length) this._planByGoal.set(plan.goalId, next);
-        else this._planByGoal.delete(plan.goalId);
-      }
-      commands.delete.push(id);
-      evicted++;
-    }
-    if (evicted > 0)
-      commands.metrics.push(["planning.plans_evicted", evicted]);
-  }
-  // ── Persistence ────────────────────────────────────────────
-  _persistPlans(commands, tick) {
-    for (const plan of this._plans.values()) {
-      const terminal = _PlanningEngine._TERMINAL.includes(plan.status);
-      if (terminal && this._persistedTerminal.has(plan.id)) continue;
-      commands.set.push({
-        id: plan.id,
-        type: "plan",
-        createdAt: plan.createdAt,
-        updatedAt: tick,
-        metadata: {
-          goalId: plan.goalId,
-          steps: plan.steps.map((s) => ({
-            id: s.id,
-            order: s.order,
-            action: s.action,
-            description: s.description,
-            expectedOutcome: s.expectedOutcome,
-            prerequisites: s.prerequisites,
-            estimatedDuration: s.estimatedDuration,
-            status: s.status,
-            outcome: s.outcome
-          })),
-          estimatedCost: plan.estimatedCost,
-          confidence: plan.confidence,
-          status: plan.status,
-          executionTier: plan.executionTier,
-          expectedOutcome: plan.expectedOutcome,
-          requestingEntityId: plan.requestingEntityId,
-          requestingThreadId: plan.requestingThreadId,
-          source: "planning-engine"
-        }
-      });
-      if (terminal) this._persistedTerminal.add(plan.id);
-    }
-  }
   // ── Public API ─────────────────────────────────────────────
   /** The goal's active plan, or its most-recent plan if all are terminal. */
   getPlan(goalId) {
-    const active = this._activePlanForGoal(goalId);
+    const active = this._store.activePlanForGoal(goalId);
     if (active) return active;
-    const all = this._plansForGoal(goalId);
+    const all = this._store.plansForGoal(goalId);
     return all.length > 0 ? all[all.length - 1] : void 0;
   }
   /** All plans for a goal (any status), in creation order. (P4) */
   getPlansForGoal(goalId) {
-    return this._plansForGoal(goalId);
+    return this._store.plansForGoal(goalId);
   }
   /**
    * Subscribe to plan activity events for a specific requesting entity.
@@ -14188,9 +14265,6 @@ Progress update.`;
     return () => this._bus?.unsubscribe(subId);
   }
 };
-function clamp013(n) {
-  return n < 0 ? 0 : n > 1 ? 1 : n;
-}
 
 // src/cognition/faculties/inhibition.controller.ts
 var COMMUNICATION_EFFECTORS = /* @__PURE__ */ new Set(["talk", "text", "listen", "gesture", "broadcast"]);

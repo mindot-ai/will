@@ -407,10 +407,28 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
     // ranked just outside the top-`limit` by pure similarity.
     const fetch = useAffect ? Math.min( limit * 3, 50 ) : limit
 
-    const results = await this._vectorMemory.search( query, {
-      maxResults:    fetch,
-      minSimilarity: filters?.minSimilarity,
-    } )
+    // Timeout guard — recall is BEST-EFFORT. The search embeds the query, which
+    // can be a real network call (OpenAI/Google embedder); a hanging endpoint
+    // must degrade to "no recall this time", never block a reasoning chain —
+    // facet chains await this inside prompt building, so an unbounded hang here
+    // stalls the mind's reasoning and everything downstream of it.
+    // WILL_RECALL_TIMEOUT_MS (default 5000) — read lazily for tests/live tuning.
+    const timeoutMs = parseInt( process.env.WILL_RECALL_TIMEOUT_MS ?? '5000' )
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timedOut = Symbol('recall-timeout')
+
+    const results = await Promise.race( [
+      this._vectorMemory.search( query, {
+        maxResults:    fetch,
+        minSimilarity: filters?.minSimilarity,
+      } ),
+      new Promise<typeof timedOut>( resolve => { timer = setTimeout( () => resolve( timedOut ), timeoutMs ) } ),
+    ] ).finally( () => clearTimeout( timer ) )
+
+    if( results === timedOut ){
+      logger.warn( `[EpisodicConsolidator] semanticQuery timed out after ${timeoutMs}ms — returning no recall (embedder slow/unreachable?)` )
+      return []
+    }
 
     const resolved: Array<{ episode: EpisodicMemory; similarity: number }> = []
     for( const r of results ){

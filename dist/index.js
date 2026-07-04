@@ -10999,6 +10999,11 @@ var ExecutiveFacet = class {
    * flight. Null = legacy direct notification (bare facets in unit tests).
    */
   _inbox = null;
+  /**
+   * Reports waiting for the per-tick pump (tick-discipline mode only). Reasoning
+   * launches from pump(), never from report() — see report() for why.
+   */
+  _pendingReports = [];
   /** Current focus for this facet — set by creator (PlanningEngine, etc.) */
   _currentFocus = null;
   /** Accumulated reasoning history for continuity across report() calls */
@@ -11069,9 +11074,31 @@ var ExecutiveFacet = class {
     logger.info(
       `[executive.facet] ${this.facetId} received report: type=${report.type}`
     );
+    if (this._inbox) {
+      this._pendingReports.push(report);
+      return;
+    }
     this._reason(report).catch(
       (err) => logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err)
     );
+  }
+  /**
+   * Per-tick pump — called by the FacetSupervisor from the ExecutiveEngine's
+   * react() with the tick's FROZEN snapshot. Refreshes the state reference,
+   * then launches reasoning for every queued report, FIFO. The launch happens
+   * at a fixed point in the serial engine order, so prompt inputs are a pure
+   * function of (tick, seed, recorded external inputs) — replayable.
+   */
+  pump(state) {
+    if (this._destroyed) return;
+    this.setStateRef(state);
+    if (this._pendingReports.length === 0) return;
+    const batch = this._pendingReports;
+    this._pendingReports = [];
+    for (const report of batch)
+      this._reason(report).catch(
+        (err) => logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err)
+      );
   }
   subscribe(listener) {
     this._listeners.add(listener);
@@ -12236,6 +12263,20 @@ var FacetSupervisor = class {
       facet.setStateRef(state);
     this._reapIdle(state.tick);
   }
+  /**
+   * Per-tick pump — called from ExecutiveEngine.react() with the tick's frozen
+   * snapshot. Refreshes every facet's state reference AND launches reasoning for
+   * their queued reports (tick-discipline mode), in facet-creation order — a
+   * fixed point in the serial engine schedule, so issue timing is deterministic.
+   * Subsumes broadcastStateRef for the per-tick path; broadcastStateRef remains
+   * for the master's mid-reasonAsync refresh.
+   */
+  pump(state) {
+    this._lastStateRef = state;
+    for (const facet of this._facets.values())
+      facet.pump(state);
+    this._reapIdle(state.tick);
+  }
   _reapIdle(tick) {
     for (const [id, facet] of [...this._facets])
       if (tick - facet.lastActiveTick > this._idleTtlTicks)
@@ -12583,6 +12624,7 @@ var ExecutiveEngine = class extends AsyncEngine {
   async react(delta, tick, state, context) {
     this._deferred.flush(state, tick);
     this._deferred.markReactTick(tick);
+    this._facetSupervisor.pump(state);
     return super.react(delta, tick, state, context);
   }
   shouldAct(state, tick, _context) {

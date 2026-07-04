@@ -1,6 +1,6 @@
 # Facet-era replay determinism gap (R2-d regression)
 
-**Status:** OPEN — `tests/integration/replay.equivalence.test.ts` is `it.skip`'d on this.
+**Status:** CLOSED (2026-07-04) — all three layers fixed; `replay.equivalence.test.ts` is RE-ENABLED and passing (3× verified). Kept as the design record.
 **Found:** 2026-07-02, while making the suite CI-green for the public release.
 **Updated:** 2026-07-03 — two of three layers fixed; the remaining work is precisely scoped.
 
@@ -23,7 +23,7 @@
    strict (a real divergence has no matching record and throws; identical duplicate
    prompts consume FIFO).
 
-3. **Issue** ⬜ **REMAINING — the real work.** Facet reasoning *starts* at raw
+3. **Issue** ✅ **FIXED** (per-tick facet pump — ExecutiveEngine.react() → FacetSupervisor.pump() → facet.pump()): reports queue at report() and reasoning launches once per tick with the frozen snapshot. Original diagnosis: Facet reasoning *starts* at raw
    report/resolution time (`facet.report()` → fire-and-forget `_reason()`), and
    `_reason()` builds its prompt from `_currentStateRef` — the **live** state at that
    wall-clock moment. Both the issue tick and the prompt bytes are therefore

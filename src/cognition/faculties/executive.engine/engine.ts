@@ -359,6 +359,11 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   ): Promise<EngineResult> {
     this._deferred.flush( state, tick as unknown as number )
     this._deferred.markReactTick( tick as unknown as number )
+    // Per-tick facet pump: refresh every facet's state ref to THIS tick's frozen
+    // snapshot and launch reasoning for queued reports (tick-discipline mode).
+    // Sits at a fixed point in the serial engine order — the issue-side twin of
+    // the CompletionInbox drain in Phase 2. See .TODO/FACET_REPLAY_DETERMINISM.md.
+    this._facetSupervisor.pump( state )
     return super.react( delta, tick, state, context )
   }
 

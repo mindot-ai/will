@@ -121,6 +121,12 @@ export class ExecutiveFacet {
    */
   private _inbox: CompletionInbox | null = null
 
+  /**
+   * Reports waiting for the per-tick pump (tick-discipline mode only). Reasoning
+   * launches from pump(), never from report() — see report() for why.
+   */
+  private _pendingReports: FacetReport[] = []
+
   /** Current focus for this facet — set by creator (PlanningEngine, etc.) */
   private _currentFocus: FocusSection | null = null
 
@@ -214,10 +220,46 @@ export class ExecutiveFacet {
       `[executive.facet] ${this.facetId} received report: type=${report.type}`
     )
 
-    // Trigger reasoning asynchronously — don't block the caller
+    // Tick-discipline mode (inbox attached — the same signal that quantizes
+    // decision LANDING): reasoning must not START at raw report time either.
+    // A report can arrive from any wall-clock context (an ingest chain, another
+    // chain's resolution), and launching _reason() there makes both the issue
+    // tick and the prompt bytes race-dependent — the prompt reads live manager
+    // state at whatever moment the chain happened to run. Queue instead; the
+    // ExecutiveEngine pumps every facet once per tick (react() → supervisor
+    // .pump()) with that tick's frozen snapshot, so reasoning launches at a
+    // deterministic point with deterministic inputs. See
+    // .TODO/FACET_REPLAY_DETERMINISM.md (layer 3).
+    if( this._inbox ){
+      this._pendingReports.push( report )
+      return
+    }
+
+    // Legacy (bare facets in unit tests): trigger reasoning immediately.
     this._reason( report ).catch( err =>
       logger.error( `[executive.facet] ${this.facetId} reasoning error:`, err )
     )
+  }
+
+  /**
+   * Per-tick pump — called by the FacetSupervisor from the ExecutiveEngine's
+   * react() with the tick's FROZEN snapshot. Refreshes the state reference,
+   * then launches reasoning for every queued report, FIFO. The launch happens
+   * at a fixed point in the serial engine order, so prompt inputs are a pure
+   * function of (tick, seed, recorded external inputs) — replayable.
+   */
+  pump( state: ReadonlySimulationState ): void {
+    if( this._destroyed ) return
+    this.setStateRef( state )
+
+    if( this._pendingReports.length === 0 ) return
+    const batch = this._pendingReports
+    this._pendingReports = []
+
+    for( const report of batch )
+      this._reason( report ).catch( err =>
+        logger.error( `[executive.facet] ${this.facetId} reasoning error:`, err )
+      )
   }
 
   subscribe( listener: FacetEventListener ): () => void {

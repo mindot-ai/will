@@ -7305,10 +7305,22 @@ var EpisodicConsolidator = class {
     const bias = filters?.affectiveBias;
     const useAffect = !!bias && bias.weight > 0;
     const fetch2 = useAffect ? Math.min(limit * 3, 50) : limit;
-    const results = await this._vectorMemory.search(query, {
-      maxResults: fetch2,
-      minSimilarity: filters?.minSimilarity
-    });
+    const timeoutMs = parseInt(process.env.WILL_RECALL_TIMEOUT_MS ?? "5000");
+    let timer;
+    const timedOut = /* @__PURE__ */ Symbol("recall-timeout");
+    const results = await Promise.race([
+      this._vectorMemory.search(query, {
+        maxResults: fetch2,
+        minSimilarity: filters?.minSimilarity
+      }),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(timedOut), timeoutMs);
+      })
+    ]).finally(() => clearTimeout(timer));
+    if (results === timedOut) {
+      logger.warn(`[EpisodicConsolidator] semanticQuery timed out after ${timeoutMs}ms \u2014 returning no recall (embedder slow/unreachable?)`);
+      return [];
+    }
     const resolved = [];
     for (const r of results) {
       const episode = this._storeMap.get(r.episodeId);

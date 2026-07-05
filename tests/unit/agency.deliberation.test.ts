@@ -120,6 +120,20 @@ describe( 'DeliberationEngine — Channel B: owns a preemption in-character', ()
     }), CTX )
     expect( cap.focus().toLowerCase() ).toContain( "plan's next step" )
   })
+
+  it( "surfaces each candidate's MEANING so the facet weighs what it's for, not bare labels", async () => {
+    const eng = new DeliberationEngine()
+    const cap = capturingProvider( 'give' )
+    eng.attachExecutive( cap.provider )
+    await eng.react( 0, 1, deliberating({
+      candidates: [
+        { schema: 'give',  targetEntityId: 'ada', description: 'Offer an item to someone present' },
+        { schema: 'shove', targetEntityId: 'ada', description: 'Push someone away from you' },
+      ],
+    }), CTX )
+    expect( cap.focus() ).toContain( 'give toward ada — Offer an item to someone present' )
+    expect( cap.focus() ).toContain( 'shove toward ada — Push someone away from you' )
+  })
 })
 
 describe( 'DeliberationEngine — graceful System-1 degradation', () => {

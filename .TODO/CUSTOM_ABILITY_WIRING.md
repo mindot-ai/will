@@ -67,8 +67,12 @@ feeds the agency learning loop like any other action.
   `ExecutiveContext.abilities` (context.ts `extractAbilities`) and rendered as
   "## Abilities Available Now" in the executive prompt — framed as self-knowledge
   (what you can do), NOT a tool-call menu. `description` now also rides onto the
-  affordance entity. Tests: executive.abilities-awareness. Still open: `tags` in
-  the declaration.
+  affordance entity. AND the DeliberationEngine's candidate list (the specific
+  options System 2 chooses between when a competition is contested) now renders
+  each candidate's meaning too — `ActionSelector` carries `description` onto the
+  deliberating candidates and `_buildFocusContent` shows `give toward ada —
+  <meaning>` instead of a bare label. Tests: executive.abilities-awareness,
+  agency.deliberation. Still open: `tags` in the declaration.
 - **Field width.** N custom effectors all enter the floor uncapped. If hosts
   declare large catalogs, gate external affordances by attention/preconditions
   rather than emitting all of them every tick.

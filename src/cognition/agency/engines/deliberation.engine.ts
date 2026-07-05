@@ -50,6 +50,8 @@ interface Candidate {
   targetEntityId?: string
   parameters?:     Record<string, unknown>
   activation?:     number
+  /** The ability's declared meaning (external effectors) — what it is for. */
+  description?:    string
   /** Channel B: this candidate is an active plan's current frontier step. */
   fromPlan?:       boolean
 }
@@ -212,10 +214,13 @@ export class DeliberationEngine implements CognitiveEngine {
       lines.push( 'Your automatic action-selection was uncertain. Candidate actions:' )
     candidates.forEach( ( c, i ) => {
       const to   = c.targetEntityId ? ` toward ${ c.targetEntityId }` : ''
+      // The ability's meaning, so the facet weighs what each option IS FOR rather
+      // than choosing among bare labels ("give" vs "attack" is a real difference).
+      const what = c.description ? ` — ${ c.description }` : ''
       // Channel B: name the plan link so the facet chooses as the self pursuing it,
       // not blindly among labels ("this one is the next step of the plan I'm on").
-      const plan = c.fromPlan ? " — your current plan's next step" : ''
-      lines.push( `${ i + 1 }. ${ c.schema }${ to }${ plan }` )
+      const plan = c.fromPlan ? " (your current plan's next step)" : ''
+      lines.push( `${ i + 1 }. ${ c.schema }${ to }${ what }${ plan }` )
     })
     return lines.join( '\n' )
   }

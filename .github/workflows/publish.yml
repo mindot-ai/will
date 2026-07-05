@@ -1,0 +1,83 @@
+name: Publish to npm
+
+# Publishes @mindot/will to npm with build provenance.
+#
+# Trigger: publish a GitHub Release (the human gate) — or run manually via
+# "Run workflow" for the first publish / a re-run.
+#
+# The version that ships is package.json's `version`. Bump it + create a Release
+# to publish a new version; the workflow no-ops if that version is already on npm.
+#
+# Auth: a repo secret NPM_TOKEN (a granular access token with read+write on
+# @mindot, or an automation token — either bypasses account 2FA in CI).
+# Provenance: signed via GitHub OIDC (id-token: write) — the npm page shows a
+# verified "built and published from mindot-ai/will" badge. No token is used for
+# the attestation itself.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # required for --provenance (OIDC attestation)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Node provides `npm publish --provenance` and writes the auth .npmrc.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          scope: '@mindot'
+
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+
+      - name: Fail early if NPM_TOKEN is missing
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "::error::NPM_TOKEN repo secret is not set — add it in Settings → Secrets → Actions."
+            exit 1
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Skip if this version is already published
+        id: check
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if npm view "@mindot/will@${VERSION}" version >/dev/null 2>&1; then
+            echo "::notice::@mindot/will@${VERSION} is already on npm — skipping publish."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # `npm publish` runs prepublishOnly (typecheck + tests + fresh build) — a
+      # stale or broken dist can never ship. --access public is also set via
+      # package.json publishConfig; both are belt-and-suspenders.
+      - name: Publish
+        if: steps.check.outputs.skip == 'false'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.check.outputs.skip }}" = "true" ]; then
+            echo "### ⏭️ @mindot/will@${{ steps.check.outputs.version }} already published — no-op" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ✅ Published @mindot/will@${{ steps.check.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "https://www.npmjs.com/package/@mindot/will/v/${{ steps.check.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          fi

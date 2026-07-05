@@ -293,6 +293,9 @@ export class ActionSelector implements CognitiveEngine {
               targetEntityId: s.affordance.targetEntityId,
               parameters:     s.affordance.parameters,
               activation:     s.activation,
+              // Carry the ability's meaning so the Deliberator weighs what each
+              // option is FOR, not bare labels.
+              ...( s.affordance.description ? { description: s.affordance.description } : {} ),
               // Channel B: flag a candidate that is an active plan's frontier step, so
               // the deliberation facet can own "this is my plan's next step" in-character.
               ...( s.affordance.source === 'plan' ? { fromPlan: true } : {} ),

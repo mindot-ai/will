@@ -15,6 +15,7 @@
 
 import { DefaultSimulation } from '#core/simulation'
 import { logger } from '#core/logger'
+import { auditAssemblyWiring } from '#stem/assembly.audit'
 import { fileLoggingEnabled } from '#stem/tracts/transport/stream.transport'
 import type { ClockConfig } from '#core/clock'
 import { CognitiveOrchestrator } from '#cognition/orchestrator'
@@ -522,6 +523,16 @@ export function assembleMind( willId: string, config: WillConfig ): MindAssembly
   // ── Register ─────────────────────────────────────────────
   // Tier controls which engines actively tick; priority controls tick order.
   _registerEngines( simulation, cognition, engineTier )
+
+  // ── Wiring audit ─────────────────────────────────────────
+  // Surface any attach-point left null after assembly (the silent-no-op bug
+  // class — see stem/assembly.audit.ts). debug-level: the expected unwired set
+  // is nonzero by design (tier gating + stem-side late wiring like
+  // sessionLogger/grants); tests/unit/assembly.order.test.ts pins that set per
+  // tier, so a NEW unwired attachment fails loudly in CI, not here.
+  for( const rec of auditAssemblyWiring( simulation.orchestrator.engines ) )
+    if( rec.status === 'unwired' )
+      logger.debug( `[assembly] ${willId}: ${rec.engine}.${rec.method} unwired at assembly (tier=${engineTier})` )
 
   // ── Seed readable simulation state ───────────────────────
   // Identity, optional initial goals, and the engine-config mirror.

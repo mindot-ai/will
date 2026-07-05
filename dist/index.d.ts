@@ -506,6 +506,10 @@ interface Orchestrator {
     addEngine(engine: SimulationEngine): void;
     removeEngine(name: string): boolean;
     hasPendingAsyncWork(): boolean;
+    /** Engine names in execution order (assembly-order snapshot artifact). */
+    readonly engineNames: string[];
+    /** Registered engine instances, execution-ordered (assembly wiring audit). */
+    readonly engines: readonly SimulationEngine[];
     start(context: SimulationContext): Promise<void>;
     stop(): void;
     pause(): void;
@@ -582,6 +586,16 @@ declare class DefaultOrchestrator implements Orchestrator {
      */
     updateConfig(config: Partial<Omit<OrchestratorConfig, 'onBeforeTick' | 'onAfterTick' | 'onBeforeCommit'>>): void;
     addEngine(engine: SimulationEngine): void;
+    /**
+     * Registered engine names IN EXECUTION ORDER. Registration order = serial
+     * tick order = replay determinism — this getter makes the order observable
+     * so the assembly-order snapshot test can pin it as a reviewed artifact
+     * (the true order comes from priority fields scattered across engine files;
+     * without this it is visible nowhere).
+     */
+    get engineNames(): string[];
+    /** The registered engine instances, execution-ordered (assembly audit). */
+    get engines(): readonly SimulationEngine[];
     removeEngine(name: string): boolean;
     /**
      * Returns true if any registered engine is an AsyncEngine

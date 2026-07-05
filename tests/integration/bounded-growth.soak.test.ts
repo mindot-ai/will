@@ -25,7 +25,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { assembleMind } from '#stem/mind'
-import { setLogger } from '#core/logger'
+import { setLogger, resetLogger } from '#core/logger'
 import type { WillConfig } from '#stem/mind'
 
 const ENV_OVERRIDES: Record<string, string | undefined> = {
@@ -68,7 +68,6 @@ function census( state: { tick: number; entities: Map<string, { type: string }>;
 }
 
 async function runSoak( id: string, totalTicks: number ): Promise<void> {
-  setLogger( { debug: () => {}, info: () => {}, warn: () => {}, error: console.error } )
   const { simulation } = assembleMind( id, makeConfig( id ) )
 
   const quarter = totalTicks / 4
@@ -113,6 +112,10 @@ async function runSoak( id: string, totalTicks: number ): Promise<void> {
 
 describe( 'bounded growth — the persistence soak', () => {
   beforeAll( () => {
+    // Quiet the engine for the long run — RESTORED in afterAll: setLogger is a
+    // process-global sink, and leaving it installed pollutes later test files
+    // that spy on the default logger (caught by CI file-order differences).
+    setLogger( { debug: () => {}, info: () => {}, warn: () => {}, error: console.error } )
     for( const k of Object.keys( ENV_OVERRIDES ) ){
       _saved[ k ] = process.env[ k ]
       const v = ENV_OVERRIDES[ k ]
@@ -121,6 +124,7 @@ describe( 'bounded growth — the persistence soak', () => {
     }
   })
   afterAll( () => {
+    resetLogger()
     for( const k of Object.keys( ENV_OVERRIDES ) ){
       const v = _saved[ k ]
       if( v === undefined ) delete process.env[ k ]

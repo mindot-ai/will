@@ -19,7 +19,7 @@ import { describe, it, expect } from 'vitest'
 import type {
   ReadonlySimulationState, SimulationContext, StateCommands, SimulationEntity,
 } from '#core/types'
-import { PlanningEngine }        from '#faculties/planning.engine'
+import { PlanningEngine }        from '#cognition/faculties/planning.engine/engine'
 import { SchemaRepertoire }      from '#agency/schemas/repertoire'
 import { INNATE_SCHEMAS }        from '#agency/schemas/innate'
 import { AffordanceSynthesizer } from '#agency/engines/affordance.synthesizer'

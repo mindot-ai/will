@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// src/cognition/faculties/planning/plan.frontier.ts — the ready frontier
+// src/cognition/faculties/planning.engine/plan.frontier.ts — the ready frontier
 // ─────────────────────────────────────────────────────────────
 //
 // Planning-as-prior's mechanical heart: resolve the prerequisite DAG to find the
@@ -12,7 +12,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { Tick, ReadonlySimulationState, StateCommands } from '#core/types'
-import { clamp01, type Plan, type PlanStep } from '#faculties/planning/types'
+import { clamp01, type Plan, type PlanStep } from '#faculties/planning.engine/types'
 
 /** Steps whose prerequisites are all completed/skipped — ready to activate. */
 export function computeReadySet( plan: Plan ): PlanStep[] {

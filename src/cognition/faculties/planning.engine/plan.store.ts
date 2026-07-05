@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// src/cognition/faculties/planning/plan.store.ts — canonical plan state
+// src/cognition/faculties/planning.engine/plan.store.ts — canonical plan state
 // ─────────────────────────────────────────────────────────────
 //
 // Owns every map the engine used to hold: the canonical plan store, the
@@ -11,7 +11,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { Tick, StateCommands } from '#core/types'
-import { TERMINAL_STATUSES, type Plan } from '#faculties/planning/types'
+import { TERMINAL_STATUSES, type Plan } from '#faculties/planning.engine/types'
 
 export class PlanStore {
   /**

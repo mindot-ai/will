@@ -13074,13 +13074,13 @@ var ExecutiveEngine = class extends AsyncEngine {
   }
 };
 
-// src/cognition/faculties/planning/types.ts
+// src/cognition/faculties/planning.engine/types.ts
 var TERMINAL_STATUSES = ["completed", "failed", "rejected"];
 function clamp013(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
-// src/cognition/faculties/planning/plan.store.ts
+// src/cognition/faculties/planning.engine/plan.store.ts
 var PlanStore = class {
   /**
    * Canonical plan store, keyed by plan.id ("plan-N") — the id the execution,
@@ -13235,7 +13235,7 @@ var PlanStore = class {
   }
 };
 
-// src/cognition/faculties/planning/plan.frontier.ts
+// src/cognition/faculties/planning.engine/plan.frontier.ts
 function computeReadySet(plan) {
   const ready = [];
   for (const step of plan.steps) {
@@ -13276,7 +13276,7 @@ function projectFrontier(plans, commands, tick, state, goalPriority, biasGain) {
   }
 }
 
-// src/cognition/faculties/planning/plan.supervision.ts
+// src/cognition/faculties/planning.engine/plan.supervision.ts
 var PlanSupervisor = class {
   constructor(_host, _dispositions) {
     this._host = _host;
@@ -13643,7 +13643,7 @@ Progress update.`;
   }
 };
 
-// src/cognition/faculties/planning.engine.ts
+// src/cognition/faculties/planning.engine/engine.ts
 var PlanningEngine = class {
   name = "planning-engine";
   _planRetentionTicks;

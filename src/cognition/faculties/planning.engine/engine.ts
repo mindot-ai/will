@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// src/cognition/faculties/planning.engine.ts
+// src/cognition/faculties/planning.engine/engine.ts
 // ─────────────────────────────────────────────────────────────
 
 /**
@@ -52,12 +52,11 @@ import {
   TERMINAL_STATUSES,
   type Plan, type PlanStep, type PlanContext, type PlanningDispositions,
   type ActivityEvent, type ActivityEventHandler, type PlanningEngineConfig,
-} from '#faculties/planning/types'
-import { PlanStore } from '#faculties/planning/plan.store'
-import { computeReadySet, projectFrontier } from '#faculties/planning/plan.frontier'
-import { PlanSupervisor, type SupervisionHost } from '#faculties/planning/plan.supervision'
+} from './types'
+import { PlanStore } from './plan.store'
+import { computeReadySet, projectFrontier } from './plan.frontier'
+import { PlanSupervisor, type SupervisionHost } from './plan.supervision'
 
-// Public surface — external importers keep using '#faculties/planning.engine'.
 export type {
   Plan, PlanStep, PlanContext,
   ActivityEvent, ActivityEventHandler, PlanningEngineConfig,

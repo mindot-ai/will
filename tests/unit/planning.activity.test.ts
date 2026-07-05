@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { PlanningEngine, type ActivityEvent }   from '#faculties/planning.engine'
+import { PlanningEngine, type ActivityEvent }   from '#cognition/faculties/planning.engine/engine'
 import { createTestBus }                         from '#cognition/bus'
 
 // ── Helpers ──────────────────────────────────────────────────

@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { PlanningEngine }        from '#faculties/planning.engine'
+import { PlanningEngine }        from '#cognition/faculties/planning.engine/engine'
 import { createTestBus }         from '#cognition/bus'
 import { buildExecutiveContext } from '#faculties/executive.engine/context'
 

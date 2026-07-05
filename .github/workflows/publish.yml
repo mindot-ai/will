@@ -15,8 +15,7 @@ name: Publish to npm
 # Provenance attestations are generated automatically (no --provenance flag), so
 # the npm page shows the verified "built and published from mindot-ai/will" badge.
 #
-# Requires npm >= 11.5.1 (trusted-publishing support). The Node-bundled npm can
-# lag that, so we upgrade npm explicitly below rather than trust the default.
+# Requires npm >= 11.5.1 (trusted-publishing support) — Node 24 ships npm 11.16.
 
 on:
   release:
@@ -37,16 +36,17 @@ jobs:
         with:
           bun-version: latest
 
-      # Node provides `npm` + the registry .npmrc. No auth token is written —
-      # trusted publishing supplies short-lived credentials via the OIDC exchange.
+      # IMPORTANT: intentionally NO `registry-url`/`scope`. setup-node's
+      # `registry-url` writes an .npmrc with
+      #   //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}
+      # and sets NODE_AUTH_TOKEN to a placeholder — npm then sees a (garbage)
+      # token, uses token auth, and SKIPS the OIDC trusted-publishing exchange,
+      # failing with E404. With no token configured, npm (>= 11.5.1; node 24
+      # ships 11.16) performs the OIDC exchange itself. npm defaults to
+      # registry.npmjs.org, and package.json's publishConfig handles scope+access.
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
-          scope: '@mindot'
-
-      - name: Upgrade npm to a trusted-publishing-capable version (>= 11.5.1)
-        run: npm install -g npm@latest
 
       - name: Install (frozen lockfile)
         run: bun install --frozen-lockfile

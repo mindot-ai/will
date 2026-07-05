@@ -338,6 +338,20 @@ var DefaultOrchestrator = class {
   addEngine(engine) {
     this._engines.push(engine);
   }
+  /**
+   * Registered engine names IN EXECUTION ORDER. Registration order = serial
+   * tick order = replay determinism — this getter makes the order observable
+   * so the assembly-order snapshot test can pin it as a reviewed artifact
+   * (the true order comes from priority fields scattered across engine files;
+   * without this it is visible nowhere).
+   */
+  get engineNames() {
+    return this._engines.map((e) => e.name);
+  }
+  /** The registered engine instances, execution-ordered (assembly audit). */
+  get engines() {
+    return this._engines;
+  }
   removeEngine(name) {
     const index = this._engines.findIndex((e) => e.name === name);
     if (index === -1) return false;
@@ -19894,6 +19908,43 @@ function num4(v, fallback) {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
 
+// src/stem/assembly.audit.ts
+function fieldForAttach(method) {
+  const stem = method.slice("attach".length);
+  return "_" + stem.charAt(0).toLowerCase() + stem.slice(1);
+}
+function attachMethods(engine) {
+  const seen = /* @__PURE__ */ new Set();
+  let proto = engine;
+  while (proto && proto !== Object.prototype) {
+    for (const name of Object.getOwnPropertyNames(proto))
+      if (/^attach[A-Z]/.test(name) && typeof engine[name] === "function")
+        seen.add(name);
+    proto = Object.getPrototypeOf(proto);
+  }
+  return [...seen].sort();
+}
+function auditAssemblyWiring(engines) {
+  const records = [];
+  for (const engine of engines) {
+    for (const method of attachMethods(engine)) {
+      const field = fieldForAttach(method);
+      const bag = engine;
+      if (!(field in bag)) {
+        records.push({ engine: engine.name, method, status: "unverifiable" });
+        continue;
+      }
+      const value = bag[field];
+      records.push({
+        engine: engine.name,
+        method,
+        status: value === null || value === void 0 ? "unwired" : "wired"
+      });
+    }
+  }
+  return records;
+}
+
 // src/stem/tracts/transport/stream.transport.ts
 var StreamTransport = class {
   willId;
@@ -22489,6 +22540,9 @@ function assembleMind(willId, config) {
   const simulation = _buildSimulation(willId, config, randomSeed);
   const { cognition, outbox } = _constructCognition({ simulation, willId, config, randomSeed, executiveInterval, profile });
   _registerEngines(simulation, cognition, engineTier);
+  for (const rec of auditAssemblyWiring(simulation.orchestrator.engines))
+    if (rec.status === "unwired")
+      logger.debug(`[assembly] ${willId}: ${rec.engine}.${rec.method} unwired at assembly (tier=${engineTier})`);
   _seedIdentity(simulation, config, profile);
   _seedInitialGoals(simulation, config);
   _seedEngineConfigs(simulation, buildEngineConfigEntities(config, executiveInterval));

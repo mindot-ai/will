@@ -31,6 +31,7 @@ import { WillStem } from '#stem/index'
 import type { WillConfig, WillIdentity, EngineTier, ModelTier, InitialGoal } from '#stem/mind'
 import type { PMASnapshot } from '#pma/index'
 import type { effectorInvocation } from '#types'
+import type { EffectorDeclaration, SchemaPrecondition } from '#agency/types'
 
 // ── Public surface ────────────────────────────────────────────
 
@@ -97,8 +98,32 @@ export type EffectorResult = string | {
 /** Your implementation of an ability the Will can choose to use. */
 export type EffectorHandler = (
   args: Record<string, unknown>,
-  ctx: { reasoning: string; targetEntityId?: string },
+  ctx: { reasoning: string; targetEntityId?: string; description?: string },
 ) => EffectorResult | Promise<EffectorResult>
+
+/**
+ * A richer effector declaration — the ability seeded as a *learnable affordance*.
+ * `description` is its meaning (carried to perception + your handler); `cost`,
+ * `valence`, and `preconditions` are the intrinsic priors the mind starts from,
+ * refined by reafference through use. Args still bind from the situation — this
+ * is not a tool-call parameter form. Declare rich effectors in `create()`'s
+ * `effectors` map (that is where they enter the affordance repertoire).
+ */
+export interface EffectorSpec {
+  /** What the ability is for. */
+  description?: string
+  /** Intrinsic effort / energy demand 0..1 (default 0.15). */
+  cost?: number
+  /** Intrinsic reward prior −1..1 the mind expects before learning (default 0). */
+  valence?: number
+  /** Body-state gates; the ability is unavailable unless all pass. */
+  preconditions?: SchemaPrecondition[]
+  /** Your implementation. */
+  handler: EffectorHandler
+}
+
+/** An effectors-map value: a bare handler, or a spec carrying meaning + priors. */
+export type EffectorEntry = EffectorHandler | EffectorSpec
 
 /** A compact read of the mind's current inner state. */
 export interface WillStateSummary {
@@ -129,8 +154,13 @@ export interface CreateWillOptions {
    * (needs ANTHROPIC_API_KEY / WILL_LLM_* env). Omit to auto-detect.
    */
   llm?: 'mock' | 'anthropic'
-  /** Abilities the Will can choose to enact. name → your handler. */
-  effectors?: Record<string, EffectorHandler>
+  /**
+   * Abilities the Will can choose to enact. `name → handler`, or
+   * `name → { handler, description?, cost?, valence?, preconditions? }` to seed
+   * the ability with meaning + intrinsic priors (see EffectorSpec). Declared
+   * here (create time) so they enter the affordance repertoire.
+   */
+  effectors?: Record<string, EffectorEntry>
   /** Goals seeded before the first tick. Usually leave empty — the Will forms its own. */
   initialGoals?: InitialGoal[]
   /** Persist snapshots to disk across restarts (default false). */
@@ -166,6 +196,8 @@ export class Will {
   readonly name: string
 
   private readonly _effectors = new Map<string, EffectorHandler>()
+  /** Rich declarations for create-time effectors → seed the affordance repertoire. */
+  private readonly _effectorDecls = new Map<string, EffectorDeclaration>()
   private readonly _messageHandlers  = new Set<( m: WillMessage ) => void>()
   private readonly _stateHandlers    = new Set<( s: WillStateSummary ) => void>()
   private readonly _effectorHandlers = new Set<( a: WillEffectorAct ) => void>()
@@ -187,8 +219,8 @@ export class Will {
     const stem = new WillStem()
     const will = new Will( stem, id, opts.name )
 
-    for( const [ name, handler ] of Object.entries( opts.effectors ?? {} ) )
-      will._effectors.set( name, handler )
+    for( const [ name, entry ] of Object.entries( opts.effectors ?? {} ) )
+      will._register( name, entry )
 
     await stem.createWill( will._buildConfig( id, opts ) )
     will._attach()
@@ -208,8 +240,8 @@ export class Will {
     const stem = new WillStem()
     const will = new Will( stem, id, opts.name )
 
-    for( const [ name, handler ] of Object.entries( opts.effectors ?? {} ) )
-      will._effectors.set( name, handler )
+    for( const [ name, entry ] of Object.entries( opts.effectors ?? {} ) )
+      will._register( name, entry )
 
     await stem.createWill(
       will._buildConfig( id, { ...opts, identity: { prompt: '', ...opts.identity } } ),
@@ -283,16 +315,39 @@ export class Will {
    * is fed back as the outcome (closing the reafference loop that lets the Will
    * learn the ability). Registering makes the effector available immediately.
    *
-   * NOTE: this is the name-only form (`CUSTOM_ABILITY_WIRING.md` Phase 1) — the
-   * Will perceives the ability as an objectless affordance. Rich, schema'd
-   * effectors (`{ name, description, parameters, cost, … }` that feed affordance
-   * perception + deliberation) are a separate agency-layer increment (Phase 2).
+   * This post-create form registers the handler and grants the ability at
+   * runtime (name-only). To seed an ability with *meaning + intrinsic priors*
+   * (`description`, `cost`, `valence`, `preconditions`), declare it in
+   * `create()`'s `effectors` map — that is where it enters the affordance
+   * repertoire. (Rebuilding the repertoire for a runtime-added rich effector is
+   * a follow-up; see `CUSTOM_ABILITY_WIRING.md`.)
    */
   effector( name: string, handler: EffectorHandler ): this {
     this._effectors.set( name, handler )
     // Communication effectors + every registered custom name.
     this.stem.setAllowedEffectors( this.id, [ ...COMMUNICATION, ...this._effectors.keys() ] )
     return this
+  }
+
+  /** Split an effectors-map entry into a handler + an EffectorDeclaration. */
+  private _register( name: string, entry: EffectorEntry ): void {
+    if( typeof entry === 'function' ){
+      this._effectors.set( name, entry )
+      this._effectorDecls.set( name, name )          // bare name — uniform prior
+      return
+    }
+    this._effectors.set( name, entry.handler )
+    const hasMeta = entry.description !== undefined || entry.cost !== undefined
+      || entry.valence !== undefined || entry.preconditions !== undefined
+    this._effectorDecls.set( name, hasMeta
+      ? {
+          name,
+          ...( entry.description   !== undefined ? { description:   entry.description   } : {} ),
+          ...( entry.cost          !== undefined ? { cost:          entry.cost          } : {} ),
+          ...( entry.valence       !== undefined ? { valence:       entry.valence       } : {} ),
+          ...( entry.preconditions !== undefined ? { preconditions: entry.preconditions } : {} ),
+        }
+      : name )
   }
 
   // ── Introspection ──────────────────────────────────────────
@@ -387,7 +442,7 @@ export class Will {
       persistentMemory: opts.persist ?? false,
       snapshotInterval: 100,
       tickIntervalMs:   opts.tickMs ?? 1000,
-      allowedGenericEffectors: [ ...COMMUNICATION, ...this._effectors.keys() ],
+      allowedGenericEffectors: [ ...COMMUNICATION, ...this._effectorDecls.values() ],
       initialGoals: opts.initialGoals ?? [],
       ...( opts.seed !== undefined ? { randomSeed: opts.seed, clock: { fixedDeltaMs: 1000, startTime: 0 } } : {} ),
     }
@@ -433,7 +488,11 @@ export class Will {
     }
 
     try {
-      const raw = await handler( inv.parameters, { reasoning: inv.reasoning, targetEntityId: inv.targetEntityId } )
+      const raw = await handler( inv.parameters, {
+        reasoning: inv.reasoning,
+        targetEntityId: inv.targetEntityId,
+        ...( inv.description ? { description: inv.description } : {} ),
+      } )
       const result = typeof raw === 'string' ? { success: true, description: raw } : raw
       this.stem.confirmEffectorExecution( this.id, inv.decisionRecordId, result )
     }

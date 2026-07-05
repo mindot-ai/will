@@ -464,6 +464,8 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         payload: {
           schema: intent.schema, intentId: intent.id,
           targetEntityId: intent.targetEntityId, parameters: intent.parameters, tick,
+          // The ability's declared meaning, carried to the host handler.
+          description: this._resolve( intent.schema )?.description,
         },
       })
     }

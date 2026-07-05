@@ -91,4 +91,7 @@ export type {
   WillStateSummary,
   EffectorHandler,
   EffectorResult,
+  EffectorSpec,
+  EffectorEntry,
 } from '#sdk/will'
+export type { SchemaPrecondition, EffectorDeclaration } from '#agency/types'

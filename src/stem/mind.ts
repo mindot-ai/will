@@ -40,6 +40,7 @@ import { InstructionIntake }     from '#agency/engines/instruction.intake'
 import { SchemaRepertoire }      from '#agency/schemas/repertoire'
 import { INNATE_SCHEMAS }        from '#agency/schemas/innate'
 import { externalSchemas }       from '#agency/schemas/external'
+import { effectorName, type EffectorDeclaration } from '#agency/types'
 
 
 import {
@@ -260,8 +261,12 @@ export interface WillConfig {
    *
    * null or omitted = no communication effectors (minimal default).
    * Example: ['listen', 'talk', 'text'] enables inbound + text outbound.
+   *
+   * A domain effector may be a bare name or an object carrying its meaning +
+   * intrinsic priors: `{ name, description?, cost?, valence?, preconditions? }`
+   * (see EffectorDeclaration). Comms names are always bare.
    */
-  allowedGenericEffectors?: string[] | null
+  allowedGenericEffectors?: EffectorDeclaration[] | null
 
   /**
    * When true the executive engine uses a canned mock LLM response instead of
@@ -506,7 +511,7 @@ export function assembleMind( willId: string, config: WillConfig ): MindAssembly
   // creation; warnings surface; safe issues are sanitized in place.
   const idGuard = validateWillIdentity({
     identity:       config.identity,
-    effectors:      Array.isArray( config.allowedGenericEffectors ) ? config.allowedGenericEffectors : ( profile?.effectors ?? null ),
+    effectors:      ( Array.isArray( config.allowedGenericEffectors ) ? config.allowedGenericEffectors : ( profile?.effectors ?? null ) )?.map( effectorName ) ?? null,
     profileContext: profile?.context,
   })
   if( !idGuard.ok )
@@ -655,13 +660,15 @@ function _constructCognition(
   // This matters when a profile Will is created without specifying effectors:
   // the DB stores null, the service passes null, and profile effectors must win.
   // An empty array [] means "explicitly no effectors" (survives restart correctly).
-  const resolvedEffectors = Array.isArray( config.allowedGenericEffectors )
+  const resolvedEffectors: EffectorDeclaration[] | null = Array.isArray( config.allowedGenericEffectors )
     ? config.allowedGenericEffectors
     : ( profile?.effectors ?? null )
+  // Name-only view for the grant / permission surfaces (comms gating is by name).
+  const resolvedEffectorNames = resolvedEffectors?.map( effectorName ) ?? null
 
   // Agency-native permission / sense-gate authority, seeded from the resolved
   // grant list. The senses + reply path read this. (Replaced effectorRegistry.)
-  const accessGrants = new AccessGrants( resolvedEffectors )
+  const accessGrants = new AccessGrants( resolvedEffectorNames )
 
   // ── Executive Engine ────────────────────────────────────────
   // Created for all tiers so the Cognition type is always satisfied.

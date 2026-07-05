@@ -221,6 +221,7 @@ function schemaEntity( s: MotorSchema ): EntityInput {
       preconditions: s.preconditions,
       composedOf:    s.composedOf,
       baseValence:   s.baseValence,
+      description:   s.description,
       tags:          s.tags,
     },
   }
@@ -241,6 +242,7 @@ function readSchema( m: Record<string, unknown> | undefined ): MotorSchema | und
     preconditions: meta['preconditions'] as MotorSchema['preconditions'],
     composedOf:    Array.isArray( meta['composedOf'] ) ? meta['composedOf'] as string[] : undefined,
     baseValence:   typeof meta['baseValence'] === 'number' ? meta['baseValence'] as number : undefined,
+    description:   typeof meta['description'] === 'string' ? meta['description'] as string : undefined,
     tags:          Array.isArray( meta['tags'] ) ? meta['tags'] as string[] : undefined,
   }
 }

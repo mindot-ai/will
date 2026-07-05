@@ -126,6 +126,32 @@ describe( 'Will facade — subject surface', () => {
     finally { await will.stop() }
   }, 30_000 )
 
+  it( 'a rich effector declaration seeds the affordance repertoire with meaning + priors', async () => {
+    const will = await Will.create( { ...base, name: 'Rich', identity: { prompt: 'I act.' },
+      effectors: {
+        forage: {
+          handler:       async () => 'ok',
+          description:   'Search the area for food',
+          cost:          0.35,
+          valence:       0.4,
+          preconditions: [ { metric: 'energy.level', op: 'gte', value: 15 } ],
+        },
+        wave: async () => 'ok',   // bare handler — back-compat, flat defaults
+      },
+    } )
+    try {
+      const repertoire = ( will.stem.getWillCognition( will.id ) as unknown as { schemaRepertoire: { getSchema( id: string ): any } } ).schemaRepertoire
+      const forage = repertoire.getSchema( 'forage' )
+      expect( forage ).toMatchObject( { cost: 0.35, baseValence: 0.4, description: 'Search the area for food' } )
+      expect( forage.preconditions?.[0] ).toMatchObject( { metric: 'energy.level', op: 'gte', value: 15 } )
+
+      const wave = repertoire.getSchema( 'wave' )
+      expect( wave ).toMatchObject( { cost: 0.15, baseValence: 0 } )   // flat defaults
+      expect( wave.description ).toBeUndefined()
+    }
+    finally { await will.stop() }
+  }, 30_000 )
+
   it( 'perceive() is the intake say/tell route through, and does not stall ticking', async () => {
     const will = await Will.create( { ...base, name: 'Ears', identity: { prompt: 'I listen.' } } )
     try {

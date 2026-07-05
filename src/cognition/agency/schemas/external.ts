@@ -21,37 +21,50 @@
 // entity schema. See CUSTOM_EFFECTOR_WIRING_TODO.md.
 // ─────────────────────────────────────────────────────────────
 
-import type { MotorSchema } from '#agency/types'
+import type { MotorSchema, EffectorDeclaration } from '#agency/types'
 import { EXPLICIT_EFFECTORS } from '#agency/access.grants'
 import { INNATE_SCHEMA_BY_ID } from '#agency/schemas/innate'
 
 /** Default effort/energy demand for a host action when none is specified. */
 const DEFAULT_EXTERNAL_COST = 0.15
 
+const clamp = ( n: number, lo: number, hi: number ): number => n < lo ? lo : n > hi ? hi : n
+
 /**
  * Build enactable MotorSchemas for a host's declared domain effectors. Comms
  * names and innate-shadowing names are filtered out; the rest become objectless,
  * `external`-tagged primitives that route to the host on enaction.
+ *
+ * A declaration may be a bare name (uniform prior) or an object carrying the
+ * ability's meaning + intrinsic priors (`description`, `cost`, `valence`,
+ * `preconditions`) — these seed the affordance so the ability competes with a
+ * real effort/reward/gating profile instead of a flat default. Reafference
+ * refines them from there.
  */
-export function externalSchemas( effectors?: string[] | null ): MotorSchema[] {
+export function externalSchemas( effectors?: EffectorDeclaration[] | null ): MotorSchema[] {
   const seen = new Set<string>()
   const out:  MotorSchema[] = []
 
-  for( const name of effectors ?? [] ){
+  for( const decl of effectors ?? [] ){
+    const name = typeof decl === 'string' ? decl : decl?.name
     if( typeof name !== 'string' || name.length === 0 ) continue
     if( EXPLICIT_EFFECTORS.has( name ) )  continue   // communication — handled by AccessGrants
     if( INNATE_SCHEMA_BY_ID.has( name ) ) continue   // shadows an innate stance
     if( seen.has( name ) )                continue
     seen.add( name )
 
+    const meta = typeof decl === 'string' ? null : decl
+
     out.push({
-      id:          name,
-      kind:        'primitive',
-      source:      'external',
-      cost:        DEFAULT_EXTERNAL_COST,
-      binds:       'none',
-      baseValence: 0,
-      tags:        [ 'external', 'host' ],
+      id:            name,
+      kind:          'primitive',
+      source:        'external',
+      cost:          typeof meta?.cost === 'number' ? clamp( meta.cost, 0, 1 ) : DEFAULT_EXTERNAL_COST,
+      binds:         'none',
+      baseValence:   typeof meta?.valence === 'number' ? clamp( meta.valence, -1, 1 ) : 0,
+      ...( meta?.preconditions ? { preconditions: meta.preconditions } : {} ),
+      ...( meta?.description   ? { description:   meta.description   } : {} ),
+      tags:          [ 'external', 'host' ],
     })
   }
 

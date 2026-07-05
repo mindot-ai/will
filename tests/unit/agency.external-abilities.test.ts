@@ -86,3 +86,41 @@ describe( 'agency — rich effector declarations (Phase 2)', () => {
     expect( await avail( 80 ) ).toBe( true )    // above the gate
   } )
 } )
+
+describe( 'agency — entity-bound effectors', () => {
+  const personState = () => ( {
+    tick: 1, time: 0,
+    entities: new Map( [ [ 'ke-ada', { type: 'known-entity', metadata: {
+      keid: 'ada', kind: 'sentient', name: 'Ada',
+      familiarity: 0.8, valence: 0.5, resolutionConfidence: 0.9,
+    } } ] ] ),
+    metrics: new Map(),
+  } as any )
+
+  it( 'declares binds:entity on the schema (default stays none)', () => {
+    expect( externalSchemas( [ { name: 'give', binds: 'entity' } ] )[0]!.binds ).toBe( 'entity' )
+    expect( externalSchemas( [ { name: 'ponder' } ] )[0]!.binds ).toBe( 'none' )
+    expect( externalSchemas( [ 'move' ] )[0]!.binds ).toBe( 'none' )
+  } )
+
+  it( 'binds an entity-effector to each perceived sentient entity, alongside innate reach-out', async () => {
+    const repertoire = new SchemaRepertoire( [ ...INNATE_SCHEMAS, ...externalSchemas( [ { name: 'give', binds: 'entity' } ] ) ] )
+    const synth = new AffordanceSynthesizer(); synth.attachRepertoire( repertoire )
+    const field = ( ( await synth.react( 0, 1, personState(), CTX ) ).commands?.set ?? [] ).filter( ( e: any ) => e.type === 'affordance' )
+
+    const give = field.find( ( e: any ) => e.metadata?.schema === 'give' )
+    expect( give?.metadata?.targetEntityId ).toBe( 'ada' )                    // bound to the person
+    expect( ( give?.metadata?.parameters as any )?.targetEntityName ).toBe( 'Ada' )
+    // additive, not a replacement: the innate entity schema still binds too
+    expect( field.some( ( e: any ) => e.metadata?.schema === 'reach-out' && e.metadata?.targetEntityId === 'ada' ) ).toBe( true )
+  } )
+
+  it( 'leaves an objectless (binds:none) effector unbound — floor affordance, no target', async () => {
+    const repertoire = new SchemaRepertoire( [ ...INNATE_SCHEMAS, ...externalSchemas( [ { name: 'wander' } ] ) ] )
+    const synth = new AffordanceSynthesizer(); synth.attachRepertoire( repertoire )
+    const field = ( ( await synth.react( 0, 1, personState(), CTX ) ).commands?.set ?? [] ).filter( ( e: any ) => e.type === 'affordance' )
+    const wander = field.filter( ( e: any ) => e.metadata?.schema === 'wander' )
+    expect( wander.length ).toBe( 1 )                          // one floor affordance
+    expect( wander[0]?.metadata?.targetEntityId ).toBeUndefined()   // never targeted at the person
+  } )
+} )

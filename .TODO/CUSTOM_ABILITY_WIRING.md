@@ -43,11 +43,16 @@ feeds the agency learning loop like any other action.
 
 ## Phase 2+ — follow-ups
 
-- **Entity binding.** External effectors are objectless today (the host resolves
-  the target). The synthesizer binds a *single* entity schema (`reach-out`); to
-  let `attack`/`give`/`trade` target a *specific* perceived entity, generalise
-  the entity-binding pass to bind N entity-binding schemas, and let an effector
-  declare `binds: 'entity'`.
+- **Entity binding.** ✅ DONE (2026-07-05). An effector may declare `binds: 'entity'`
+  (EffectorDeclaration / facade EffectorSpec); `externalSchemas()` sets it, and the
+  AffordanceSynthesizer's entity pass was generalised from a single `find` to
+  `filter( s => s.binds === 'entity' )` — every entity-bound schema (innate
+  `reach-out` PLUS host effectors) is now bound against each perceived *sentient*
+  known-entity, so the Will can `give`/`greet`/… someone in particular. The bound
+  target reaches the host as `ctx.targetEntityId`; ids stay unique per
+  (schema × entity). Tests: agency.external-abilities + sdk.facade.
+  Still open: binding to non-sentient `'thing'` entities (objects/tools) — needs
+  object perception in the entity pass.
 - **Per-effector metadata.** ✅ DONE (2026-07-05). `EffectorDeclaration` (types.ts)
   = a bare name OR `{ name, description?, cost?, valence?, preconditions? }`.
   `externalSchemas()` populates cost/baseValence/preconditions/description onto

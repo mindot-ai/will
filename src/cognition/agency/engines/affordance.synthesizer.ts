@@ -149,8 +149,13 @@ export class AffordanceSynthesizer implements CognitiveEngine {
         })
       }
 
-    const entitySchema = schemas.find( s => s.binds === 'entity' )
-    if( entitySchema )
+    // Every `binds: 'entity'` schema — the innate `reach-out` PLUS any host
+    // effector declared entity-bound — is bound against each perceived sentient
+    // entity, so the Will can direct e.g. `give`/`greet` at someone in particular.
+    // Each (schema × entity) enters as a candidate at the entity's salience and
+    // competes through the attention cap like anything else.
+    const entitySchemas = schemas.filter( s => s.binds === 'entity' )
+    if( entitySchemas.length > 0 )
       for( const [ id, e ] of state.entities ){
         if( e.type !== 'known-entity' ) continue
         const m = e.metadata
@@ -159,14 +164,17 @@ export class AffordanceSynthesizer implements CognitiveEngine {
         const fam  = num( m?.['familiarity'], 0 )
         const val  = num( m?.['valence'], 0 )
         const res  = num( m?.['resolutionConfidence'], 0 )
-        candidates.push({
-          salience: fam * 0.6 + Math.max( 0, val ) * 0.3 + res * 0.1 + ( goalTargets.get( keid ) ?? 0 ),
-          affordance: this._build( entitySchema, tick, state, valence, energyLow, skills, {
-            evokedBy:       id,
-            targetEntityId: keid,
-            parameters:     { targetEntityName: str( m?.['name'] ) ?? keid },
-          } ),
-        })
+        const salience = fam * 0.6 + Math.max( 0, val ) * 0.3 + res * 0.1 + ( goalTargets.get( keid ) ?? 0 )
+        const name     = str( m?.['name'] ) ?? keid
+        for( const entitySchema of entitySchemas )
+          candidates.push({
+            salience,
+            affordance: this._build( entitySchema, tick, state, valence, energyLow, skills, {
+              evokedBy:       id,
+              targetEntityId: keid,
+              parameters:     { targetEntityName: name },
+            } ),
+          })
       }
 
     // ── ideomotor candidates: the executive's imagined actions, pre-activated ──

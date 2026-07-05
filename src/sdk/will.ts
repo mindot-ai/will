@@ -118,6 +118,12 @@ export interface EffectorSpec {
   valence?: number
   /** Body-state gates; the ability is unavailable unless all pass. */
   preconditions?: SchemaPrecondition[]
+  /**
+   * Whether the ability targets a specific perceived entity (default 'none').
+   * 'entity' lets the Will direct it at a particular known person in the field;
+   * the bound target arrives as `ctx.targetEntityId`.
+   */
+  binds?: 'none' | 'entity'
   /** Your implementation. */
   handler: EffectorHandler
 }
@@ -338,7 +344,7 @@ export class Will {
     }
     this._effectors.set( name, entry.handler )
     const hasMeta = entry.description !== undefined || entry.cost !== undefined
-      || entry.valence !== undefined || entry.preconditions !== undefined
+      || entry.valence !== undefined || entry.preconditions !== undefined || entry.binds !== undefined
     this._effectorDecls.set( name, hasMeta
       ? {
           name,
@@ -346,6 +352,7 @@ export class Will {
           ...( entry.cost          !== undefined ? { cost:          entry.cost          } : {} ),
           ...( entry.valence       !== undefined ? { valence:       entry.valence       } : {} ),
           ...( entry.preconditions !== undefined ? { preconditions: entry.preconditions } : {} ),
+          ...( entry.binds         !== undefined ? { binds:         entry.binds         } : {} ),
         }
       : name )
   }

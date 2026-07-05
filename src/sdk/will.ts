@@ -9,8 +9,14 @@
 //   const will = await Will.create({ name: 'Aria', identity: {...} })
 //   will.on('message', m => console.log(m.content))
 //   will.effector('search_docs', async a => await myDb.search(a.query))
-//   await will.say('What should we work on today?')
-//   const pma = await will.hibernate()          // Will.wake(pma) later
+//   await will.perceive({ from: 'ada', text: 'What should we work on?' })
+//   const reply = await will.nextUtterance({ to: 'ada' })   // WillMessage | null
+//   const pma = await will.save()               // non-destructive; keeps ticking
+//
+// A Will is a *subject*, not a function: you `perceive` stimuli to it and observe
+// its *projections* (message / effector / emotion / state) — you never `await`
+// a computed return. `nextUtterance` is a thin, honest adapter for callers that
+// want a reply-shaped await; `null` means the Will chose silence, not an error.
 //
 // Everything under here already existed; the facade hides the plumbing:
 //   • one message → outbox drain → delivery-ack, surfaced as an event;
@@ -28,6 +34,23 @@ import type { effectorInvocation } from '#types'
 
 // ── Public surface ────────────────────────────────────────────
 
+/**
+ * A stimulus entering the Will's sensory field. A Will is a subject, not a
+ * function: you don't *call* it with input and await a return — you `perceive`
+ * something to it, and it *may* project a response later (see `nextUtterance`),
+ * coloured by its current state. Silence is a valid, meaningful outcome.
+ */
+export interface Stimulus {
+  /** What was said / observed. */
+  text: string
+  /** Who it's from (entity id). Default 'user'. */
+  from?: string
+  /** Display name of the speaker. Default 'You' for `user`, else the `from` id. */
+  speaker?: string
+  /** Conversation/thread id (default = `from`). */
+  thread?: string
+}
+
 /** A message the Will emitted to someone. */
 export interface WillMessage {
   /** Message id (stable — dedupe on it). */
@@ -36,6 +59,28 @@ export interface WillMessage {
   content: string
   /** Entity id the Will addressed (the speaker you used in say()/tell(), or a bond). */
   to: string
+}
+
+/**
+ * A motor act the Will *chose* to enact — a projection of its agency, surfaced
+ * whether or not you registered a handler for it. (When you did, the handler
+ * still runs and its outcome feeds reafference.)
+ */
+export interface WillEffectorAct {
+  /** The effector the Will selected. */
+  name: string
+  /** The arguments it bound. */
+  args: Record<string, unknown>
+  /** Its stated reason for the act. */
+  reasoning: string
+  /** Bound target entity, when the act binds one. */
+  to?: string
+}
+
+/** The Will's affect, projected when it shifts. Valence/arousal ∈ −1..1. */
+export interface WillAffect {
+  valence: number
+  arousal: number
 }
 
 /**
@@ -98,7 +143,18 @@ export interface CreateWillOptions {
   id?: string
 }
 
-type WillEvent = 'message' | 'state' | 'error'
+type WillEvent = 'message' | 'state' | 'effector' | 'emotion' | 'error'
+
+/** A caller awaiting the Will's next spontaneous utterance (see nextUtterance). */
+interface UtteranceWaiter {
+  /** Only resolve on an utterance addressed to this entity, when set. */
+  to?: string
+  resolve: ( m: WillMessage | null ) => void
+  timer:   ReturnType<typeof setTimeout>
+}
+
+/** Affect must move at least this far (−1..1) before another `emotion` projection. */
+const AFFECT_EPSILON = 0.02
 
 // ── The facade ────────────────────────────────────────────────
 
@@ -110,9 +166,13 @@ export class Will {
   readonly name: string
 
   private readonly _effectors = new Map<string, EffectorHandler>()
-  private readonly _messageHandlers = new Set<( m: WillMessage ) => void>()
-  private readonly _stateHandlers = new Set<( s: WillStateSummary ) => void>()
-  private readonly _errorHandlers = new Set<( e: Error ) => void>()
+  private readonly _messageHandlers  = new Set<( m: WillMessage ) => void>()
+  private readonly _stateHandlers    = new Set<( s: WillStateSummary ) => void>()
+  private readonly _effectorHandlers = new Set<( a: WillEffectorAct ) => void>()
+  private readonly _emotionHandlers  = new Set<( a: WillAffect ) => void>()
+  private readonly _errorHandlers    = new Set<( e: Error ) => void>()
+  private readonly _utteranceWaiters = new Set<UtteranceWaiter>()
+  private _lastAffect: WillAffect | null = null
   private _unsub: ( () => void ) | null = null
 
   private constructor( stem: WillStem, id: string, name: string ){
@@ -161,20 +221,57 @@ export class Will {
     return will
   }
 
-  // ── Talking ────────────────────────────────────────────────
+  // ── Perceiving ─────────────────────────────────────────────
 
   /**
-   * Speak to the Will as the default user. The reply is asynchronous — it
-   * arrives on the `message` event once the Will has reasoned about it.
+   * Deliver a stimulus into the Will's sensory field. This is the one true
+   * intake — `say`/`tell` are sugar over it. It returns once the stimulus is
+   * *delivered*, NOT once the Will has responded: a response (if any) is a
+   * projection that arrives later on the `message` event, or via
+   * `nextUtterance()`. The Will may also stay silent — that is not an error.
    */
-  async say( text: string ): Promise<void> {
-    return this.tell( 'user', 'You', text )
+  async perceive( stimulus: Stimulus ): Promise<void> {
+    const from = stimulus.from ?? 'user'
+    await this.stem.ingestText( this.id, {
+      kind:        'text',
+      entityId:    from,
+      threadId:    stimulus.thread ?? from,
+      content:     stimulus.text,
+      speakerName: stimulus.speaker ?? ( from === 'user' ? 'You' : from ),
+    } )
   }
 
-  /** Speak as a specific interlocutor (multi-party conversations). */
+  /** Perceive from the default user. Sugar over `perceive`. */
+  async say( text: string ): Promise<void> {
+    return this.perceive( { text, from: 'user', speaker: 'You' } )
+  }
+
+  /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive`. */
   async tell( entityId: string, speakerName: string, text: string ): Promise<void> {
-    await this.stem.ingestText( this.id, {
-      kind: 'text', entityId, threadId: entityId, content: text, speakerName,
+    return this.perceive( { text, from: entityId, speaker: speakerName } )
+  }
+
+  /**
+   * Await the Will's *next spontaneous utterance* — a thin, honest adapter over
+   * the `message` projection stream for request/response callers. Resolves with
+   * the message, or `null` if the Will stays silent within `within` ms (default
+   * 5000). `null` is a real outcome — the Will chose not to speak — not a
+   * failure. Pass `to` to only accept an utterance addressed to that entity.
+   *
+   *   await will.perceive( { from: 'ada', text: 'Hi!' } )
+   *   const reply = await will.nextUtterance( { to: 'ada', within: 3000 } )
+   *   // reply is a WillMessage, or null if Ada got the silent treatment.
+   */
+  nextUtterance( opts: { within?: number; to?: string } = {} ): Promise<WillMessage | null> {
+    return new Promise<WillMessage | null>( resolve => {
+      const timer = setTimeout( () => {
+        this._utteranceWaiters.delete( waiter )
+        resolve( null )
+      }, opts.within ?? 5000 )
+      // Don't let a pending wait keep the host process alive.
+      ;( timer as { unref?: () => void } ).unref?.()
+      const waiter: UtteranceWaiter = { to: opts.to, resolve, timer }
+      this._utteranceWaiters.add( waiter )
     } )
   }
 
@@ -185,6 +282,11 @@ export class Will {
    * use `name`, your handler runs with the arguments it chose; the return value
    * is fed back as the outcome (closing the reafference loop that lets the Will
    * learn the ability). Registering makes the effector available immediately.
+   *
+   * NOTE: this is the name-only form (`CUSTOM_ABILITY_WIRING.md` Phase 1) — the
+   * Will perceives the ability as an objectless affordance. Rich, schema'd
+   * effectors (`{ name, description, parameters, cost, … }` that feed affordance
+   * perception + deliberation) are a separate agency-layer increment (Phase 2).
    */
   effector( name: string, handler: EffectorHandler ): this {
     this._effectors.set( name, handler )
@@ -215,13 +317,19 @@ export class Will {
 
   // ── Events ─────────────────────────────────────────────────
 
-  on( event: 'message', handler: ( m: WillMessage ) => void ): this
-  on( event: 'state',   handler: ( s: WillStateSummary ) => void ): this
-  on( event: 'error',   handler: ( e: Error ) => void ): this
+  on( event: 'message',  handler: ( m: WillMessage ) => void ): this
+  on( event: 'state',    handler: ( s: WillStateSummary ) => void ): this
+  on( event: 'effector', handler: ( a: WillEffectorAct ) => void ): this
+  on( event: 'emotion',  handler: ( a: WillAffect ) => void ): this
+  on( event: 'error',    handler: ( e: Error ) => void ): this
   on( event: WillEvent, handler: ( arg: never ) => void ): this {
-    if( event === 'message' ) this._messageHandlers.add( handler as ( m: WillMessage ) => void )
-    else if( event === 'state' ) this._stateHandlers.add( handler as ( s: WillStateSummary ) => void )
-    else this._errorHandlers.add( handler as ( e: Error ) => void )
+    switch( event ){
+      case 'message':  this._messageHandlers.add(  handler as ( m: WillMessage ) => void ); break
+      case 'state':    this._stateHandlers.add(    handler as ( s: WillStateSummary ) => void ); break
+      case 'effector': this._effectorHandlers.add( handler as ( a: WillEffectorAct ) => void ); break
+      case 'emotion':  this._emotionHandlers.add(  handler as ( a: WillAffect ) => void ); break
+      default:         this._errorHandlers.add(    handler as ( e: Error ) => void )
+    }
     return this
   }
 
@@ -231,9 +339,19 @@ export class Will {
   resume(): void { this.stem.resumeWill( this.id ) }
 
   /**
-   * Distil the mind into a portable PMA artifact and archive it. The returned
-   * snapshot restores the same self via `Will.wake()` — across a restart, a
-   * fork, or a machine boundary.
+   * Checkpoint the living mind into a portable PMA artifact — NON-destructive.
+   * The Will keeps ticking; the snapshot is a point-in-time copy you can archive
+   * or wake elsewhere. Use this for periodic saves; use `hibernate()` to sleep.
+   */
+  async save(): Promise<PMASnapshot> {
+    return this.stem.distillPMA( this.id )
+  }
+
+  /**
+   * Distil the mind into a portable PMA artifact and archive it — DESTRUCTIVE:
+   * the tick loop stops (the Will sleeps). The returned snapshot restores the
+   * same self via `Will.wake()` — across a restart, a fork, or a machine
+   * boundary. For a copy that leaves the Will running, use `save()`.
    */
   async hibernate(): Promise<PMASnapshot> {
     const pma = this.stem.distillPMA( this.id )
@@ -243,6 +361,9 @@ export class Will {
 
   /** Tear the Will down (its tick loop stops; state is discarded unless persisted). */
   async stop(): Promise<void> {
+    // Resolve anyone awaiting an utterance — the Will won't speak again.
+    for( const w of this._utteranceWaiters ){ clearTimeout( w.timer ); w.resolve( null ) }
+    this._utteranceWaiters.clear()
     this._unsub?.()
     this._unsub = null
     await this.stem.archiveWill( this.id )
@@ -280,14 +401,22 @@ export class Will {
         this._emitMessage( { id: msg.id, content: msg.content, to: msg.targetEntityId } )
         try { this.stem.confirmMessageDelivery( this.id, msg.id, true ) } catch { /* best-effort */ }
       }
-      // Effector invocations → run the handler → execution-ack.
-      for( const inv of invocations )
+      // Effector invocations → project the motor act, then run the handler → ack.
+      for( const inv of invocations ){
+        this._emitEffectorAct( { name: inv.effectorName, args: inv.parameters, reasoning: inv.reasoning, to: inv.targetEntityId } )
         void this._runEffector( inv )
+      }
 
-      // State subscribers (only when someone is listening — state() is cheap but not free).
-      if( this._stateHandlers.size > 0 ){
-        const s = this.state()
-        for( const h of this._stateHandlers ) try { h( s ) } catch { /* isolate */ }
+      // Projections that read the state summary — compute it once, and only when
+      // something is actually observing (state() is cheap but not free). Isolated
+      // so a transient read error can never stall the tick loop.
+      if( this._stateHandlers.size > 0 || this._emotionHandlers.size > 0 ){
+        try {
+          const s = this.state()
+          for( const h of this._stateHandlers ) try { h( s ) } catch { /* isolate */ }
+          if( this._emotionHandlers.size > 0 ) this._maybeEmitAffect( s.metrics.valence, s.metrics.arousal )
+        }
+        catch( e ){ this._emitError( e as Error ) }
       }
     } ) ?? null
   }
@@ -318,6 +447,27 @@ export class Will {
 
   private _emitMessage( m: WillMessage ): void {
     for( const h of this._messageHandlers ) try { h( m ) } catch( e ){ this._emitError( e as Error ) }
+    // Wake any nextUtterance() awaiter this message satisfies.
+    if( this._utteranceWaiters.size > 0 ){
+      for( const w of [ ...this._utteranceWaiters ] ){
+        if( w.to !== undefined && w.to !== m.to ) continue
+        clearTimeout( w.timer )
+        this._utteranceWaiters.delete( w )
+        w.resolve( m )
+      }
+    }
+  }
+  private _emitEffectorAct( a: WillEffectorAct ): void {
+    for( const h of this._effectorHandlers ) try { h( a ) } catch( e ){ this._emitError( e as Error ) }
+  }
+  private _maybeEmitAffect( valence: number, arousal: number ): void {
+    const last = this._lastAffect
+    // Emit on the first read, then only when affect moves past the epsilon.
+    if( last
+      && Math.abs( last.valence - valence ) < AFFECT_EPSILON
+      && Math.abs( last.arousal - arousal ) < AFFECT_EPSILON ) return
+    this._lastAffect = { valence, arousal }
+    for( const h of this._emotionHandlers ) try { h( { valence, arousal } ) } catch( e ){ this._emitError( e as Error ) }
   }
   private _emitError( e: Error ): void {
     for( const h of this._errorHandlers ) try { h( e ) } catch { /* nowhere left to go */ }

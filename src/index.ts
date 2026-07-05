@@ -84,7 +84,10 @@ export type { TextMessage, VoiceChunk, SensoryInput } from '#senses/index'
 export { Will } from '#sdk/will'
 export type {
   CreateWillOptions,
+  Stimulus,
   WillMessage,
+  WillEffectorAct,
+  WillAffect,
   WillStateSummary,
   EffectorHandler,
   EffectorResult,

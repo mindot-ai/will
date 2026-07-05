@@ -51,6 +51,32 @@ jobs:
       - name: Install (frozen lockfile)
         run: bun install --frozen-lockfile
 
+      # ── TEMPORARY OIDC DIAGNOSTIC (remove once publishing is green) ──
+      # Prints the identity GitHub asserts (decoded public claims only — never
+      # the signed token) so we can compare it field-by-field to the trusted
+      # publisher config on npmjs.com. Also flags if id-token:write isn't
+      # actually granting a token (GitHub/org-side OIDC restriction).
+      - name: Inspect OIDC claims (temporary diagnostic)
+        run: |
+          echo "node $(node --version) / npm $(npm --version)"
+          echo "GITHUB_REPOSITORY:   $GITHUB_REPOSITORY"
+          echo "GITHUB_WORKFLOW_REF: $GITHUB_WORKFLOW_REF"
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "::warning::ACTIONS_ID_TOKEN_REQUEST_URL is EMPTY — id-token:write is NOT effective (GitHub/org-side OIDC not granted). npm can never do the exchange."
+            exit 0
+          fi
+          RESP=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org")
+          export RESP
+          node -e '
+            const r = JSON.parse(process.env.RESP || "{}");
+            if (!r.value) { console.log("NO OIDC token returned:", JSON.stringify(r)); process.exit(0); }
+            const p = JSON.parse(Buffer.from(r.value.split(".")[1], "base64url").toString());
+            const { sub, aud, repository, repository_owner, job_workflow_ref, workflow_ref, ref, environment, event_name } = p;
+            console.log("OIDC claims npm will present to the registry:");
+            console.log(JSON.stringify({ sub, aud, repository, repository_owner, job_workflow_ref, workflow_ref, ref, environment, event_name }, null, 2));
+          '
+
       - name: Skip if this version is already published
         id: check
         run: |
@@ -68,7 +94,13 @@ jobs:
       # provenance automatically; --access public mirrors package.json.
       - name: Publish
         if: steps.check.outputs.skip == 'false'
-        run: npm publish --access public
+        run: |
+          set -o pipefail
+          npm publish --access public --loglevel silly 2>&1 | tee /tmp/pub.log || true
+          echo "═════ OIDC / auth-relevant lines ═════"
+          grep -iE "oidc|trusted|exchange|audience|id.?token|authoriz|need auth|ENEEDAUTH|40[0-9]|unauthor|forbidden|provenance" /tmp/pub.log || echo "(none matched)"
+          # Fail the step unless the publish actually succeeded.
+          grep -q "^+ @mindot/will@" /tmp/pub.log
 
       - name: Summary
         run: |

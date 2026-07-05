@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { CognitiveBus } from '#cognition/bus'
-import type { PlanStep } from '#faculties/planning.engine'
+import type { PlanStep } from '#cognition/faculties/planning.engine/engine'
 
 // ── Full executive output ────────────────────────────────────
 

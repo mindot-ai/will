@@ -22,7 +22,7 @@ import type { SimulationEvent, SimulationContext, SimulationState } from '#core/
 import type { ExecutiveOutputFull } from '#faculties/executive.engine'
 import type { Cognition, OutboxMessage, effectorInvocation, WorldInterface } from '#types'
 import type { TextMessage, SensoryInput } from '#senses/index'
-import type { ActivityEvent, ActivityEventHandler } from '#faculties/planning.engine'
+import type { ActivityEvent, ActivityEventHandler } from '#cognition/faculties/planning.engine/engine'
 import { assembleMind, type WillConfig } from '#stem/mind'
 import { reviewIdentityCoherence as runCoherenceReview, type CoherenceInput, type CoherenceResult } from '#stem/guards/identity.coherence'
 import { SessionLogger } from '#stem/tracts/session.logger'

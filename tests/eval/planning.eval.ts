@@ -24,7 +24,7 @@
 // primary independent variable.
 // ─────────────────────────────────────────────────────────────
 
-import { PlanningEngine } from '#faculties/planning.engine'
+import { PlanningEngine } from '#cognition/faculties/planning.engine/engine'
 import { GoalManager }    from '#faculties/goal.manager'
 import { createTestBus }  from '#cognition/bus'
 import type { StateCommands } from '#core/types'

@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// src/cognition/faculties/planning/plan.supervision.ts — the judgment faculty
+// src/cognition/faculties/planning.engine/plan.supervision.ts — the judgment faculty
 // ─────────────────────────────────────────────────────────────
 //
 // Deliberate-tier supervision: a facet of the executive consciousness watches a
@@ -26,7 +26,7 @@ import type { FocusSection } from '#faculties/executive.engine/prompt.factory'
 import type { ExecutiveOutputFull } from '#faculties/executive.engine/types'
 import type { ExecutiveEngine } from '#faculties/executive.engine'
 import type { GoalManager } from '#faculties/goal.manager'
-import type { Plan, PlanStep, PlanContext, PlanningDispositions } from '#faculties/planning/types'
+import type { Plan, PlanStep, PlanContext, PlanningDispositions } from '#faculties/planning.engine/types'
 
 /**
  * The engine-side effects a supervisory directive can trigger. Narrow by design:

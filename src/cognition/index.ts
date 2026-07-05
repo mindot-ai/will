@@ -39,7 +39,7 @@ import { DreamSimulator, type DreamSimulatorConfig } from '#faculties/dream.simu
 
 import { GoalManager, type GoalManagerConfig } from '#faculties/goal.manager'
 import { ExecutiveEngine, type ExecutiveEngineConfig } from '#faculties/executive.engine'
-import { PlanningEngine, type PlanningEngineConfig, type ActivityEvent, type ActivityEventHandler } from '#faculties/planning.engine'
+import { PlanningEngine, type PlanningEngineConfig, type ActivityEvent, type ActivityEventHandler } from '#cognition/faculties/planning.engine/engine'
 import { InhibitionController, type InhibitionControllerConfig } from '#faculties/inhibition.controller'
 import { TaskSwitcher, type TaskSwitcherConfig } from '#faculties/task.switcher'
 

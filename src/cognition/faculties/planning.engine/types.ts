@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// src/cognition/faculties/planning/types.ts — shared planning types
+// src/cognition/faculties/planning.engine/types.ts — shared planning types
 // ─────────────────────────────────────────────────────────────
 //
 // Extracted verbatim from planning.engine.ts (the 1,500-line file split along

@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { logger } from '#core/logger'
+import { REPLY_TEXT_TAG } from '#llm/wire.contracts'
 import type { ReadonlySimulationState } from '#core/types'
 import type { ExecutiveOutputFull, ExecutiveOutputMinimal, IdeationCandidate, IdeationOutput } from '#faculties/executive.engine/types'
 
@@ -64,7 +65,7 @@ export function parseResponse(
 
   // [REPLY_TEXT] is a plain-text block that lives OUTSIDE the JSON code block.
   // Search the full response text so we find it even when the LLM used a code fence.
-  const replyText = extractTextBlock( responseText, 'REPLY_TEXT' )
+  const replyText = extractTextBlock( responseText, REPLY_TEXT_TAG )
   if( replyText ) full.replyText = replyText
 
   return full

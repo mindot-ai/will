@@ -67,6 +67,7 @@ import { buildConversationExchange } from '#cognition/conversation.memory'
 import { wallClock } from '#core/wall.clock'
 import { computeLanguageSalience } from '#senses/audition.engine/salience'
 import { BaseSenseEngine } from '#senses/base.sense.engine'
+import { REPLY_TEXT_OPEN, REPLY_TEXT_CLOSE, renderSpeakerLine, renderCurrentMessageLine } from '#llm/wire.contracts'
 import type {
   SensoryInput,
   LanguagePercept,
@@ -612,8 +613,8 @@ export class AuditionEngine extends BaseSenseEngine {
 
   private _pipeChunk( entityId: string ){
     const
-    OPEN = '[REPLY_TEXT]',
-    CLOSE = '[/REPLY_TEXT]'
+    OPEN = REPLY_TEXT_OPEN,
+    CLOSE = REPLY_TEXT_CLOSE
 
     return ( rawChunk: string ) => {
       const st = this._streamState.get( entityId )
@@ -673,9 +674,9 @@ export class AuditionEngine extends BaseSenseEngine {
       title: 'Active Conversation',
       function: 'conversation',
       content: [
-        `Speaker: ${speakerName} (id: ${percept.speakerEntityId})`,
+        renderSpeakerLine( speakerName, percept.speakerEntityId ),
         digestBlock,
-        `Current message: "${percept.content}"`,
+        renderCurrentMessageLine( percept.content ),
       ]
       .filter( Boolean )
       .join('\n'),

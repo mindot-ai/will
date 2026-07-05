@@ -10719,6 +10719,26 @@ PromptFactory.buildOutputFormatInstruction.bind(PromptFactory);
 PromptFactory.computeQualityModulation.bind(PromptFactory);
 PromptFactory.computeEpistemicUncertainty.bind(PromptFactory);
 
+// src/llm/wire.contracts.ts
+var REPLY_TEXT_TAG = "REPLY_TEXT";
+var REPLY_TEXT_OPEN = `[${REPLY_TEXT_TAG}]`;
+var REPLY_TEXT_CLOSE = `[/${REPLY_TEXT_TAG}]`;
+function wrapReplyText(body) {
+  return [REPLY_TEXT_OPEN, body, REPLY_TEXT_CLOSE].join("\n");
+}
+function renderSpeakerLine(speakerName, speakerEntityId) {
+  return `Speaker: ${speakerName} (id: ${speakerEntityId})`;
+}
+function renderCurrentMessageLine(content) {
+  return `Current message: "${content}"`;
+}
+function matchConversationFocus(userMessage) {
+  const speakerMatch = userMessage.match(/Speaker: .+? \(id: .+?\)/);
+  const messageMatch = userMessage.match(/Current message: "([\s\S]+?)"/);
+  if (!speakerMatch || !messageMatch) return null;
+  return { content: messageMatch[1] };
+}
+
 // src/cognition/faculties/executive.engine/parser.ts
 function parseResponse(responseText, state, recentActionTypes) {
   const codeBlocks = [...responseText.matchAll(/```(?:json)?\s*\n?([\s\S]*?)\n?```/g)], actionsBlock = codeBlocks.find((m) => m[1].includes('"actions"')), fullText = actionsBlock?.[1]?.trim() ?? responseText.trim();
@@ -10745,7 +10765,7 @@ function parseResponse(responseText, state, recentActionTypes) {
     confidence = confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.5;
   }
   const full = parseTaggedBlocks({ actions, reasoning: fullText, confidence });
-  const replyText = extractTextBlock(responseText, "REPLY_TEXT");
+  const replyText = extractTextBlock(responseText, REPLY_TEXT_TAG);
   if (replyText) full.replyText = replyText;
   return full;
 }
@@ -11624,10 +11644,9 @@ var LLMDirector = class {
    *   Strategy 1 (JSON.parse) handles this directly.
    */
   _mockResponse(tick, userMessage = "") {
-    const speakerMatch = userMessage.match(/Speaker: .+? \(id: .+?\)/);
-    const messageMatch = userMessage.match(/Current message: "([\s\S]+?)"/);
-    if (speakerMatch && messageMatch) {
-      const content = messageMatch[1];
+    const turn = matchConversationFocus(userMessage);
+    if (turn) {
+      const content = turn.content;
       const REPLY_CYCLES = [
         `Hi! You said: "${content.length > 50 ? content.slice(0, 50) + "\u2026" : content}" \u2014 I heard you, and I'm listening.`,
         `That's something worth thinking about. Tell me more about what's on your mind.`,
@@ -11644,9 +11663,7 @@ var LLMDirector = class {
         }),
         "```",
         "",
-        "[REPLY_TEXT]",
-        reply,
-        "[/REPLY_TEXT]"
+        wrapReplyText(reply)
       ].join("\n");
       return { text: text2, inputTok: 0, outputTok: 0 };
     }
@@ -17796,7 +17813,7 @@ var AuditionEngine = class extends BaseSenseEngine {
     return true;
   }
   _pipeChunk(entityId) {
-    const OPEN = "[REPLY_TEXT]", CLOSE = "[/REPLY_TEXT]";
+    const OPEN = REPLY_TEXT_OPEN, CLOSE = REPLY_TEXT_CLOSE;
     return (rawChunk) => {
       const st = this._streamState.get(entityId);
       if (!st) return;
@@ -17847,9 +17864,9 @@ var AuditionEngine = class extends BaseSenseEngine {
       title: "Active Conversation",
       function: "conversation",
       content: [
-        `Speaker: ${speakerName} (id: ${percept.speakerEntityId})`,
+        renderSpeakerLine(speakerName, percept.speakerEntityId),
         digestBlock,
-        `Current message: "${percept.content}"`
+        renderCurrentMessageLine(percept.content)
       ].filter(Boolean).join("\n"),
       // Drive the single "## Relevant Memories" recall with the live message (§5) —
       // one recall surface, message-relevant, instead of a separate per-focus block.

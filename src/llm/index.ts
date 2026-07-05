@@ -10,6 +10,7 @@ import type { TokenTracker } from '#cognition/utilities/token.tracker'
 import { getCompletionRecorder, getCompletionSource } from '#core/completion.recorder'
 import type { LLMCompletionRecord } from '#core/completion.recorder'
 import { withGate } from '#llm/gate'
+import { matchConversationFocus, wrapReplyText } from '#llm/wire.contracts'
 
 export type LLMProvider = 'anthropic' | 'deepseek' | 'openai' | 'google'
 export interface LLMDirectorConfig {
@@ -127,12 +128,13 @@ export class LLMDirector {
    */
   private _mockResponse( tick: number, userMessage: string = '' ): LLMCallResult {
     // ── Conversation facet turn ────────────────────────────────
-    // Detect the AuditionEngine facet focus (see audition.engine _buildFocus).
-    const speakerMatch = userMessage.match( /Speaker: .+? \(id: .+?\)/ )
-    const messageMatch = userMessage.match( /Current message: "([\s\S]+?)"/ )
+    // Detect the AuditionEngine facet focus via the SHARED contract (see
+    // llm/wire.contracts.ts) — the render/match pair whose earlier drift
+    // silently broke every test-mode conversation.
+    const turn = matchConversationFocus( userMessage )
 
-    if( speakerMatch && messageMatch ){
-      const content = messageMatch[1]!
+    if( turn ){
+      const content = turn.content
 
       const REPLY_CYCLES = [
         `Hi! You said: "${content.length > 50 ? content.slice( 0, 50 ) + '…' : content}" — I heard you, and I'm listening.`,
@@ -152,9 +154,7 @@ export class LLMDirector {
         }),
         '```',
         '',
-        '[REPLY_TEXT]',
-        reply,
-        '[/REPLY_TEXT]',
+        wrapReplyText( reply ),
       ].join('\n')
 
       return { text, inputTok: 0, outputTok: 0 }

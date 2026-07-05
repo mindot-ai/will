@@ -24,7 +24,8 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { assembleMind, setLogger } from '../../src/index.ts'
+import { assembleMind } from '#stem/mind'
+import { setLogger } from '#core/logger'
 import type { WillConfig } from '#stem/mind'
 
 const ENV_OVERRIDES: Record<string, string | undefined> = {

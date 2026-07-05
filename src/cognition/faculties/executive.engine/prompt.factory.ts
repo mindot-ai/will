@@ -643,6 +643,15 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       ? `## Percepts (What You Notice)\n${context.percepts.slice( 0, 10 ).map( p => `- [${p.category}] ${p.summary} (salience: ${p.salience.toFixed( 2 )})` ).join( '\n' ) || 'Nothing notable'}`
       : ''
 
+    // Host abilities afforded right now + what each is for. Framed as
+    // self-knowledge (things you *can* do), NOT a tool-call menu: the Will still
+    // expresses intent in natural language and the agency field enacts the fit.
+    const abilitiesBlock = ( context.abilities && context.abilities.length > 0 )
+      ? `## Abilities Available Now\nThings you can do in this situation — express what you want and your body enacts the fit:\n${context.abilities.map( a =>
+          `- **${a.name}**${a.target ? ` (toward ${a.target})` : ''}${a.description ? ` — ${a.description}` : ''}`
+        ).join( '\n' )}`
+      : ''
+
     const ruminationsBlock = has( 'ruminations' )
       ? `## Active Ruminations (retrieved memories & thoughts)\n${context.workingMemory.map( w => `- [${w.type}] ${w.summary} (activation: ${w.activation.toFixed( 2 )})` ).join( '\n' ) || 'Nothing actively held in mind'}`
       : ''
@@ -694,6 +703,7 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       actionDiversity.trim(),
       recentOutcomesBlock,
       perceptsBlock,
+      abilitiesBlock,
       ruminationsBlock,
       recentIntrospection.trim(),
       memoriesBlock,

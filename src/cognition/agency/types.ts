@@ -121,6 +121,8 @@ export interface Affordance {
   available:       boolean
   /** Schema tags, carried so selection can route drives/risk without the registry. */
   tags:            string[]
+  /** The ability's declared meaning (external effectors) — what it is for. */
+  description?:    string
   /**
    * Top-down planning bias 0..1 — set when an executing plan's frontier step
    * projected this affordance (source 'plan'). It lifts activation in the

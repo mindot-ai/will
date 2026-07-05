@@ -229,6 +229,19 @@ export interface ExecutiveContext {
     summary: string
     salience: number
   }>
+  /**
+   * Host-declared abilities afforded to the Will *right now* — what it can do in
+   * this situation and what each is for. Surfaced so System 2 reasons with
+   * knowledge of its options; the Will still expresses intent (it does not fill a
+   * tool form) and the agency field competes + binds. Only *available* external
+   * affordances appear; absent when there are none.
+   */
+  abilities?: Array<{
+    name: string
+    description?: string
+    /** Bound target's display name, when the ability is directed at someone. */
+    target?: string
+  }>
   workingMemory: Array<{
     type: string
     summary: string

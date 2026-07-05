@@ -322,6 +322,7 @@ export async function buildExecutiveContext(
     plans,
     relevantPlanIds,
     percepts,
+    abilities: extractAbilities( state ),
     workingMemory,
     memories,
     beliefs,
@@ -332,6 +333,33 @@ export async function buildExecutiveContext(
     knownEntities: extractKnownEntities( state ),
     currentFocus: extractCurrentFocus( state, goals )
   }
+}
+
+/**
+ * Host-declared abilities afforded to the Will right now — read from the current
+ * `affordance` field (source 'external', available). Gives System 2 knowledge of
+ * what it can do + what each is for; the innate stances are already in the
+ * preamble, so only host effectors surface here. Capped so a wide catalog can't
+ * bloat the prompt.
+ */
+const MAX_SURFACED_ABILITIES = 8
+export function extractAbilities( state: ReadonlySimulationState ): ExecutiveContext['abilities'] {
+  const out: NonNullable<ExecutiveContext['abilities']> = []
+  for( const e of state.entities.values() ){
+    if( e.type !== 'affordance' ) continue
+    const m = e.metadata as Record<string, unknown> | undefined
+    if( m?.['source'] !== 'external' || m?.['available'] === false ) continue
+    const name = typeof m?.['schema'] === 'string' ? m['schema'] as string : undefined
+    if( !name ) continue
+    const description = typeof m['description'] === 'string' ? m['description'] as string : undefined
+    const params = m['parameters'] as Record<string, unknown> | undefined
+    const target = m['targetEntityId']
+      ? ( typeof params?.['targetEntityName'] === 'string' ? params['targetEntityName'] as string : String( m['targetEntityId'] ) )
+      : undefined
+    out.push( { name, ...( description ? { description } : {} ), ...( target ? { target } : {} ) } )
+    if( out.length >= MAX_SURFACED_ABILITIES ) break
+  }
+  return out.length > 0 ? out : undefined
 }
 
 /**

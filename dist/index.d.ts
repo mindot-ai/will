@@ -8006,4 +8006,139 @@ declare function resolveProfile(id: string): WorldProfile | undefined;
 /** List all registered profile ids. */
 declare function listProfiles(): string[];
 
-export { type AckEnvelope, type AckPolicy, type AckResult, type ActionRequest, type ActionResult, ActionSelector, type ActivityEnvelope, type ActivityEvent, type ActivityEventHandler, AestheticEvaluator, type AestheticEvaluatorConfig, AffectiveBlender, type AffectiveBlenderConfig, AffordanceSynthesizer, AsyncEngine, type AsyncEngineConfig, AttachmentEvaluator, type AttachmentEvaluatorConfig, AttentionAllocator, type AttentionAllocatorConfig, AuditionEngine, AutobiographicalNarrator, type AutobiographicalNarratorConfig, type BehavioralProbeResult, BiasDetector, type BiasDetectorConfig, BunStorageAdapter, type ChunkEnvelope, type CircadianConfig, CircadianOscillator, type ClockConfig, type Cognition, type CognitiveHealth, ConfidenceCalibrator, type ConfidenceCalibratorConfig, ConflictDetector, type ConflictReport, type ConflictResolution, type ConflictStrategy, ConsistentHashRouter, ConsoleLogger, type Coordinates, type CrossShardQuery, type CrossShardResult, type CrossShardTransport, DefaultEventBus, DefaultMetricCollector, DefaultOrchestrator, DefaultPartitionRouter, DefaultReplayRecorder, DefaultReplaySession, DefaultScenario, DefaultSerializer, DefaultSimulation, DefaultSimulationClock, DefaultStateManager, DefaultVectorMemoryAdapter, DeliberationEngine, type DeliveryGuarantee, DeltaEncoder, type DeltaSnapshot, type DistributedEvent, type DistributedNode, type DistributedNodeConfig, DistributedOrchestrator, DistributedStateManager, DreamSimulator, type DreamSimulatorConfig, type Duration, type EmbeddingProvider, EmpathySimulator, type EmpathySimulatorConfig, EnergyRegulator, type EnergyRegulatorConfig, type EngineRegistry, type EngineResult, type Envelope, EpisodicConsolidator, type EpisodicConsolidatorConfig, type EventBus, type EventBusConfig, type EventFilter, type EventHandler, type EventPayload, ExecutiveEngine, type ExecutiveEngineConfig$1 as ExecutiveEngineConfig, type ExternalTransport, Exteroception, type ExteroceptionConfig, ForgettingCurve, type ForgettingCurveConfig, FrustrationEvaluator, type FrustrationEvaluatorConfig, GoalManager, type GoalManagerConfig, GustationEngine, type InboundEnvelope, type InboundMessageEnvelope, type InboundPerceptEnvelope, InhibitionController, type InhibitionControllerConfig, Interoception, type InteroceptionConfig, IntrospectionEngine, type IntrospectionEngineConfig, KnownEntityTracker, type KnownEntityTrackerConfig, type LLMCompletionRecord, type LLMCompletionSink, LocalTransport, type Logger, LoopbackTransport, LossEvaluator, type LossEvaluatorConfig, type MessageEnvelope, type MetricCollector, type MetricPoint, type MinimalContext, MockEmbedder, MoralEvaluator, type MoralEvaluatorConfig, MotorSchemaExecutor, NoveltyDetector, type NoveltyDetectorConfig, OUTBOX_TTL_TICKS, OlfactionEngine, OpenAICompatibleEmbedder, type Orchestrator, type OrchestratorConfig, type OutboundEnvelope, type OutboundListener, type OutboxMessage, type PMABehavioral, type PMABelief, type PMAEmotionalBaseline, PMAEvalHarness, type PMAGoal, type PMAIdentity, type PMAProbe, type PMASnapshot, type PartitionRouter, type PerceptEnvelope, PersonaConsolidator, type PersonaConsolidatorConfig, PlanningEngine, type PlanningEngineConfig, ReafferenceEngine, type ReasoningFootprint, type ReconstructionFidelityReport, type ReconstructionFidelityScores, type RecordUsageInput, type ReplayComparison, type ReplayConfig, type ReplayDifference, ReplayManager, type ReplayMetadata, type ReplayRecord, type ReplayRecorder, type ReplaySession, type ReplyEnvelope, ReputationTracker, type ReputationTrackerConfig, type RestoreOptions, RewardEvaluator, type RewardEvaluatorConfig, type Scenario, type ScenarioConfig, type ScenarioValidationResult, SelfModelUpdater, type SelfModelUpdaterConfig, SemanticIntegrator, type SemanticIntegratorConfig, type SensoryInput, type SerializationConfig, type SerializationFormat, type SerializedEntity, type SerializedState, type Serializer, type SessionLogEnvelope, type ShardConfig, type ShardStrategy, SilentLogger, type Simulation, type SimulationClock, type SimulationConfig, type SimulationContext, type SimulationEngine, type SimulationEntity, type SimulationEvent, type SimulationEventBase, type SimulationEventListener, type SimulationState, type SleepPressureConfig, SleepPressureRegulator, SocialPerception, type SocialPerceptionConfig, SocketIoTransport, type SocketIoTransportOptions, type SocketLike, SomatosensationEngine, SpacedRepetition, type SpacedRepetitionConfig, type StateManager, type StateSnapshot, type StorageAdapter, type StreamChannel, StreamTransport, StressRegulator, type StressRegulatorConfig, TaskSwitcher, type TaskSwitcherConfig, type TextMessage, TheoryOfMind, type TheoryOfMindConfig, ThreatEvaluator, type ThreatEvaluatorConfig, type Tick, type TickListener, type Timestamp, type TokenLedgerRecord, type TokenReportEnvelope, TokenTracker, type TokenTrackerConfig, type TokenUsage, type TransportStatus, type VectorIndex, type VectorMemoryAdapter, type VectorMemoryConfig, type VectorQueryFilter, type VectorQueryResult, type VectorRecord, VisionEngine, type VoiceChunk, type WillConfig, type WillInstance, type WillStatus, WillStem, type WillSummary, WorkingMemory, type WorkingMemoryConfig, type WorldEntity, type WorldInterface, type WorldProfile, assembleMind, clearCompletionRecorder, createContext, createPRNG, type effectorInvocation, type effectorInvocationEnvelope, fileLoggingEnabled, getCompletionRecorder, getLogger, listProfiles, logger, resetLogger, resolvePricing, resolveProfile, setCompletionRecorder, setLogger };
+/** A message the Will emitted to someone. */
+interface WillMessage {
+    /** Message id (stable — dedupe on it). */
+    id: string;
+    /** The text the Will said. */
+    content: string;
+    /** Entity id the Will addressed (the speaker you used in say()/tell(), or a bond). */
+    to: string;
+}
+/**
+ * The result of an effector your handler ran. Return a bare string as shorthand
+ * for `{ success: true, description }`. `metrics` optionally writes world state
+ * back into the Will's body (e.g. `{ 'energy.level': 80 }`) — validated finite.
+ */
+type EffectorResult = string | {
+    success: boolean;
+    description: string;
+    metrics?: Record<string, number>;
+};
+/** Your implementation of an ability the Will can choose to use. */
+type EffectorHandler = (args: Record<string, unknown>, ctx: {
+    reasoning: string;
+    targetEntityId?: string;
+}) => EffectorResult | Promise<EffectorResult>;
+/** A compact read of the mind's current inner state. */
+interface WillStateSummary {
+    tick: number;
+    /** Physiology + affect, 0..1 unless noted. */
+    metrics: {
+        energy: number;
+        stress: number;
+        sleep: number;
+        valence: number;
+        arousal: number;
+    };
+    goals: Array<{
+        description: string;
+        priority: number;
+    }>;
+    beliefs: Array<{
+        statement: string;
+        confidence: number;
+    }>;
+    /** The Will's current self-narrative (may be empty early in a life). */
+    narrative: string;
+}
+interface CreateWillOptions {
+    /** Display name. */
+    name: string;
+    /** Persona: who this Will is. All fields optional except by your intent. */
+    identity: Partial<WillIdentity> & {
+        prompt: string;
+    };
+    /** basic | standard (default) | full. */
+    engineTier?: EngineTier;
+    /** haiku (default) | sonnet | opus — informational tier hint. */
+    model?: ModelTier;
+    /**
+     * LLM mode. 'mock' (default when no ANTHROPIC_API_KEY) runs a deterministic
+     * canned executive — zero keys, zero cost. 'anthropic' calls the real model
+     * (needs ANTHROPIC_API_KEY / WILL_LLM_* env). Omit to auto-detect.
+     */
+    llm?: 'mock' | 'anthropic';
+    /** Abilities the Will can choose to enact. name → your handler. */
+    effectors?: Record<string, EffectorHandler>;
+    /** Goals seeded before the first tick. Usually leave empty — the Will forms its own. */
+    initialGoals?: InitialGoal[];
+    /** Persist snapshots to disk across restarts (default false). */
+    persist?: boolean;
+    /** Deterministic clock + seed (for replay/testing). Omit for wall-time. */
+    seed?: number;
+    /** Milliseconds between ticks (default 1000; lower = faster demo). */
+    tickMs?: number;
+    /** Stable id (default: derived from name + a random suffix). */
+    id?: string;
+}
+declare class Will {
+    /** The underlying WillStem — drop here for the full contract. */
+    readonly stem: WillStem;
+    /** This Will's id. */
+    readonly id: string;
+    readonly name: string;
+    private readonly _effectors;
+    private readonly _messageHandlers;
+    private readonly _stateHandlers;
+    private readonly _errorHandlers;
+    private _unsub;
+    private constructor();
+    /** Boot a new mind. Resolves once it is ticking. */
+    static create(opts: CreateWillOptions): Promise<Will>;
+    /**
+     * Restore a mind from a PMA artifact — identity, beliefs, relationships, and
+     * learned competence carry across the process boundary. Same options as
+     * create() (minus identity, which the artifact supplies).
+     */
+    static wake(pma: PMASnapshot, opts: Omit<CreateWillOptions, 'identity'> & {
+        identity?: Partial<WillIdentity>;
+    }): Promise<Will>;
+    /**
+     * Speak to the Will as the default user. The reply is asynchronous — it
+     * arrives on the `message` event once the Will has reasoned about it.
+     */
+    say(text: string): Promise<void>;
+    /** Speak as a specific interlocutor (multi-party conversations). */
+    tell(entityId: string, speakerName: string, text: string): Promise<void>;
+    /**
+     * Register an ability the Will can choose to enact. When the Will decides to
+     * use `name`, your handler runs with the arguments it chose; the return value
+     * is fed back as the outcome (closing the reafference loop that lets the Will
+     * learn the ability). Registering makes the effector available immediately.
+     */
+    effector(name: string, handler: EffectorHandler): this;
+    /** A compact snapshot of the mind's current inner state. */
+    state(): WillStateSummary;
+    on(event: 'message', handler: (m: WillMessage) => void): this;
+    on(event: 'state', handler: (s: WillStateSummary) => void): this;
+    on(event: 'error', handler: (e: Error) => void): this;
+    pause(): void;
+    resume(): void;
+    /**
+     * Distil the mind into a portable PMA artifact and archive it. The returned
+     * snapshot restores the same self via `Will.wake()` — across a restart, a
+     * fork, or a machine boundary.
+     */
+    hibernate(): Promise<PMASnapshot>;
+    /** Tear the Will down (its tick loop stops; state is discarded unless persisted). */
+    stop(): Promise<void>;
+    private _buildConfig;
+    /** Wire the single tick listener that drives messages + the effector ack loop. */
+    private _attach;
+    private _runEffector;
+    private _emitMessage;
+    private _emitError;
+}
+
+export { type AckEnvelope, type AckPolicy, type AckResult, type ActionRequest, type ActionResult, ActionSelector, type ActivityEnvelope, type ActivityEvent, type ActivityEventHandler, AestheticEvaluator, type AestheticEvaluatorConfig, AffectiveBlender, type AffectiveBlenderConfig, AffordanceSynthesizer, AsyncEngine, type AsyncEngineConfig, AttachmentEvaluator, type AttachmentEvaluatorConfig, AttentionAllocator, type AttentionAllocatorConfig, AuditionEngine, AutobiographicalNarrator, type AutobiographicalNarratorConfig, type BehavioralProbeResult, BiasDetector, type BiasDetectorConfig, BunStorageAdapter, type ChunkEnvelope, type CircadianConfig, CircadianOscillator, type ClockConfig, type Cognition, type CognitiveHealth, ConfidenceCalibrator, type ConfidenceCalibratorConfig, ConflictDetector, type ConflictReport, type ConflictResolution, type ConflictStrategy, ConsistentHashRouter, ConsoleLogger, type Coordinates, type CreateWillOptions, type CrossShardQuery, type CrossShardResult, type CrossShardTransport, DefaultEventBus, DefaultMetricCollector, DefaultOrchestrator, DefaultPartitionRouter, DefaultReplayRecorder, DefaultReplaySession, DefaultScenario, DefaultSerializer, DefaultSimulation, DefaultSimulationClock, DefaultStateManager, DefaultVectorMemoryAdapter, DeliberationEngine, type DeliveryGuarantee, DeltaEncoder, type DeltaSnapshot, type DistributedEvent, type DistributedNode, type DistributedNodeConfig, DistributedOrchestrator, DistributedStateManager, DreamSimulator, type DreamSimulatorConfig, type Duration, type EffectorHandler, type EffectorResult, type EmbeddingProvider, EmpathySimulator, type EmpathySimulatorConfig, EnergyRegulator, type EnergyRegulatorConfig, type EngineRegistry, type EngineResult, type Envelope, EpisodicConsolidator, type EpisodicConsolidatorConfig, type EventBus, type EventBusConfig, type EventFilter, type EventHandler, type EventPayload, ExecutiveEngine, type ExecutiveEngineConfig$1 as ExecutiveEngineConfig, type ExternalTransport, Exteroception, type ExteroceptionConfig, ForgettingCurve, type ForgettingCurveConfig, FrustrationEvaluator, type FrustrationEvaluatorConfig, GoalManager, type GoalManagerConfig, GustationEngine, type InboundEnvelope, type InboundMessageEnvelope, type InboundPerceptEnvelope, InhibitionController, type InhibitionControllerConfig, Interoception, type InteroceptionConfig, IntrospectionEngine, type IntrospectionEngineConfig, KnownEntityTracker, type KnownEntityTrackerConfig, type LLMCompletionRecord, type LLMCompletionSink, LocalTransport, type Logger, LoopbackTransport, LossEvaluator, type LossEvaluatorConfig, type MessageEnvelope, type MetricCollector, type MetricPoint, type MinimalContext, MockEmbedder, MoralEvaluator, type MoralEvaluatorConfig, MotorSchemaExecutor, NoveltyDetector, type NoveltyDetectorConfig, OUTBOX_TTL_TICKS, OlfactionEngine, OpenAICompatibleEmbedder, type Orchestrator, type OrchestratorConfig, type OutboundEnvelope, type OutboundListener, type OutboxMessage, type PMABehavioral, type PMABelief, type PMAEmotionalBaseline, PMAEvalHarness, type PMAGoal, type PMAIdentity, type PMAProbe, type PMASnapshot, type PartitionRouter, type PerceptEnvelope, PersonaConsolidator, type PersonaConsolidatorConfig, PlanningEngine, type PlanningEngineConfig, ReafferenceEngine, type ReasoningFootprint, type ReconstructionFidelityReport, type ReconstructionFidelityScores, type RecordUsageInput, type ReplayComparison, type ReplayConfig, type ReplayDifference, ReplayManager, type ReplayMetadata, type ReplayRecord, type ReplayRecorder, type ReplaySession, type ReplyEnvelope, ReputationTracker, type ReputationTrackerConfig, type RestoreOptions, RewardEvaluator, type RewardEvaluatorConfig, type Scenario, type ScenarioConfig, type ScenarioValidationResult, SelfModelUpdater, type SelfModelUpdaterConfig, SemanticIntegrator, type SemanticIntegratorConfig, type SensoryInput, type SerializationConfig, type SerializationFormat, type SerializedEntity, type SerializedState, type Serializer, type SessionLogEnvelope, type ShardConfig, type ShardStrategy, SilentLogger, type Simulation, type SimulationClock, type SimulationConfig, type SimulationContext, type SimulationEngine, type SimulationEntity, type SimulationEvent, type SimulationEventBase, type SimulationEventListener, type SimulationState, type SleepPressureConfig, SleepPressureRegulator, SocialPerception, type SocialPerceptionConfig, SocketIoTransport, type SocketIoTransportOptions, type SocketLike, SomatosensationEngine, SpacedRepetition, type SpacedRepetitionConfig, type StateManager, type StateSnapshot, type StorageAdapter, type StreamChannel, StreamTransport, StressRegulator, type StressRegulatorConfig, TaskSwitcher, type TaskSwitcherConfig, type TextMessage, TheoryOfMind, type TheoryOfMindConfig, ThreatEvaluator, type ThreatEvaluatorConfig, type Tick, type TickListener, type Timestamp, type TokenLedgerRecord, type TokenReportEnvelope, TokenTracker, type TokenTrackerConfig, type TokenUsage, type TransportStatus, type VectorIndex, type VectorMemoryAdapter, type VectorMemoryConfig, type VectorQueryFilter, type VectorQueryResult, type VectorRecord, VisionEngine, type VoiceChunk, Will, type WillConfig, type WillInstance, type WillMessage, type WillStateSummary, type WillStatus, WillStem, type WillSummary, WorkingMemory, type WorkingMemoryConfig, type WorldEntity, type WorldInterface, type WorldProfile, assembleMind, clearCompletionRecorder, createContext, createPRNG, type effectorInvocation, type effectorInvocationEnvelope, fileLoggingEnabled, getCompletionRecorder, getLogger, listProfiles, logger, resetLogger, resolvePricing, resolveProfile, setCompletionRecorder, setLogger };

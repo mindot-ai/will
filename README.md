@@ -80,6 +80,46 @@ ticks — or earlier when physiology demands it.
 
 ---
 
+## Use it in your project
+
+Runs anywhere **Node 18+ or Bun** runs (the engine is Node-compatible; Bun is the primary target). Two entry points:
+
+### The `Will` SDK facade — recommended
+
+The ergonomic API: create a mind, hear it, give it abilities, save/restore it.
+
+```typescript
+import { Will } from '@mindot/will'
+
+const will = await Will.create({
+  name: 'Aria',
+  identity: { prompt: 'I am Aria, a calm, precise research assistant.' },
+  // llm defaults to a zero-key deterministic mock unless ANTHROPIC_API_KEY is set
+})
+
+// Hear the Will (replies arrive asynchronously — it reasons on its own tick cycle).
+will.on('message', m => console.log(`Aria: ${m.content}`))
+
+// Hook the Will into YOUR project's abilities. When it chooses to use one, your
+// handler runs and the result feeds back so the Will *learns* the ability.
+will.effector('search_docs', async ({ query }) => await myDb.search(String(query)))
+
+await will.say('What should we look into first?')
+
+// A portable Persistent Mind Artifact — restore the same self across a restart,
+// a fork, or a machine boundary.
+const pma = await will.hibernate()
+const revived = await Will.wake(pma, { name: 'Aria' })
+```
+
+`will.state()` returns a compact read of the mind (energy, mood, goals, beliefs, self-narrative). Drop to `will.stem` for the full `WillStem` contract at any time. Runnable: [`examples/effectors.ts`](examples/effectors.ts).
+
+### The `WillStem` contract — full control
+
+The lower-level engine surface the facade wraps (explicit tick listeners, the outbox drain, the effector ack loop, PMA distill/load) — for hosts that manage many Wills, custom transports, or replay. The rest of this section walks it end to end.
+
+---
+
 ## Hello, Will — end to end
 
 The complete loop: create a Will, send it a message, receive its reply. The Will replies **asynchronously** — it processes your message on its own tick cycle and the reply lands in the outbox, which you drain in the tick listener. This is the whole integration contract in ~30 lines.

@@ -26014,6 +26014,218 @@ var SocketIoTransport = class {
   }
 };
 
-export { ActionSelector, AestheticEvaluator, AffectiveBlender, AffordanceSynthesizer, AsyncEngine, AttachmentEvaluator, AttentionAllocator, AuditionEngine, AutobiographicalNarrator, BiasDetector, BunStorageAdapter, CircadianOscillator, ConfidenceCalibrator, ConflictDetector, ConsistentHashRouter, ConsoleLogger, DefaultEventBus, DefaultMetricCollector, DefaultOrchestrator, DefaultPartitionRouter, DefaultReplayRecorder, DefaultReplaySession, DefaultScenario, DefaultSerializer, DefaultSimulation, DefaultSimulationClock, DefaultStateManager, DefaultVectorMemoryAdapter, DeliberationEngine, DeltaEncoder, DistributedOrchestrator, DistributedStateManager, DreamSimulator, EmpathySimulator, EnergyRegulator, EpisodicConsolidator, ExecutiveEngine, Exteroception, ForgettingCurve, FrustrationEvaluator, GoalManager, GustationEngine, InhibitionController, Interoception, IntrospectionEngine, KnownEntityTracker, LocalTransport, LoopbackTransport, LossEvaluator, MockEmbedder, MoralEvaluator, MotorSchemaExecutor, NoveltyDetector, OUTBOX_TTL_TICKS, OlfactionEngine, OpenAICompatibleEmbedder, PMAEvalHarness, PersonaConsolidator, PlanningEngine, ReafferenceEngine, ReplayManager, ReputationTracker, RewardEvaluator, SelfModelUpdater, SemanticIntegrator, SilentLogger, SleepPressureRegulator, SocialPerception, SocketIoTransport, SomatosensationEngine, SpacedRepetition, StreamTransport, StressRegulator, TaskSwitcher, TheoryOfMind, ThreatEvaluator, TokenTracker, VisionEngine, WillStem, WorkingMemory, assembleMind, clearCompletionRecorder, createContext, createPRNG, fileLoggingEnabled, getCompletionRecorder, getLogger, listProfiles, logger, resetLogger, resolvePricing, resolveProfile, setCompletionRecorder, setLogger };
+// src/sdk/will.ts
+var Will = class _Will {
+  /** The underlying WillStem — drop here for the full contract. */
+  stem;
+  /** This Will's id. */
+  id;
+  name;
+  _effectors = /* @__PURE__ */ new Map();
+  _messageHandlers = /* @__PURE__ */ new Set();
+  _stateHandlers = /* @__PURE__ */ new Set();
+  _errorHandlers = /* @__PURE__ */ new Set();
+  _unsub = null;
+  constructor(stem, id, name) {
+    this.stem = stem;
+    this.id = id;
+    this.name = name;
+  }
+  /** Boot a new mind. Resolves once it is ticking. */
+  static async create(opts) {
+    const id = opts.id ?? `${slug(opts.name)}-${Math.random().toString(36).slice(2, 8)}`;
+    const stem = new WillStem();
+    const will = new _Will(stem, id, opts.name);
+    for (const [name, handler] of Object.entries(opts.effectors ?? {}))
+      will._effectors.set(name, handler);
+    await stem.createWill(will._buildConfig(id, opts));
+    will._attach();
+    return will;
+  }
+  /**
+   * Restore a mind from a PMA artifact — identity, beliefs, relationships, and
+   * learned competence carry across the process boundary. Same options as
+   * create() (minus identity, which the artifact supplies).
+   */
+  static async wake(pma, opts) {
+    const id = opts.id ?? `${slug(opts.name)}-${Math.random().toString(36).slice(2, 8)}`;
+    const stem = new WillStem();
+    const will = new _Will(stem, id, opts.name);
+    for (const [name, handler] of Object.entries(opts.effectors ?? {}))
+      will._effectors.set(name, handler);
+    await stem.createWill(
+      will._buildConfig(id, { ...opts, identity: { prompt: "", ...opts.identity } }),
+      true
+    );
+    stem.loadPMA(id, pma);
+    stem.resumeWill(id);
+    will._attach();
+    return will;
+  }
+  // ── Talking ────────────────────────────────────────────────
+  /**
+   * Speak to the Will as the default user. The reply is asynchronous — it
+   * arrives on the `message` event once the Will has reasoned about it.
+   */
+  async say(text) {
+    return this.tell("user", "You", text);
+  }
+  /** Speak as a specific interlocutor (multi-party conversations). */
+  async tell(entityId, speakerName, text) {
+    await this.stem.ingestText(this.id, {
+      kind: "text",
+      entityId,
+      threadId: entityId,
+      content: text,
+      speakerName
+    });
+  }
+  // ── Abilities ──────────────────────────────────────────────
+  /**
+   * Register an ability the Will can choose to enact. When the Will decides to
+   * use `name`, your handler runs with the arguments it chose; the return value
+   * is fed back as the outcome (closing the reafference loop that lets the Will
+   * learn the ability). Registering makes the effector available immediately.
+   */
+  effector(name, handler) {
+    this._effectors.set(name, handler);
+    this.stem.setAllowedEffectors(this.id, [...COMMUNICATION, ...this._effectors.keys()]);
+    return this;
+  }
+  // ── Introspection ──────────────────────────────────────────
+  /** A compact snapshot of the mind's current inner state. */
+  state() {
+    const c = this.stem.getWillCognition(this.id);
+    const s = this.stem.getWillState(this.id);
+    const m = (k, d = 0) => s.metrics.get(k) ?? d;
+    const narrative = c.autobiographicalNarrator.getNarrative();
+    return {
+      tick: s.tick,
+      metrics: {
+        energy: m("energy.level", 100),
+        stress: m("stress.load"),
+        sleep: m("sleep.pressure"),
+        valence: m("affect.valence"),
+        arousal: m("affect.arousal")
+      },
+      goals: c.goalManager.getActiveGoals().map((g) => ({ description: g.description, priority: g.priority })),
+      beliefs: c.semanticIntegrator.getBeliefs().map((b) => ({ statement: b.statement, confidence: b.confidence })),
+      narrative: narrative.story ?? ""
+    };
+  }
+  on(event, handler) {
+    if (event === "message") this._messageHandlers.add(handler);
+    else if (event === "state") this._stateHandlers.add(handler);
+    else this._errorHandlers.add(handler);
+    return this;
+  }
+  // ── Lifecycle ──────────────────────────────────────────────
+  pause() {
+    this.stem.pauseWill(this.id);
+  }
+  resume() {
+    this.stem.resumeWill(this.id);
+  }
+  /**
+   * Distil the mind into a portable PMA artifact and archive it. The returned
+   * snapshot restores the same self via `Will.wake()` — across a restart, a
+   * fork, or a machine boundary.
+   */
+  async hibernate() {
+    const pma = this.stem.distillPMA(this.id);
+    await this.stop();
+    return pma;
+  }
+  /** Tear the Will down (its tick loop stops; state is discarded unless persisted). */
+  async stop() {
+    this._unsub?.();
+    this._unsub = null;
+    await this.stem.archiveWill(this.id);
+  }
+  // ── Internals ──────────────────────────────────────────────
+  _buildConfig(id, opts) {
+    const useMock = (opts.llm ?? (process.env.ANTHROPIC_API_KEY ? "anthropic" : "mock")) === "mock";
+    return {
+      id,
+      name: opts.name,
+      identity: {
+        prompt: opts.identity.prompt,
+        values: opts.identity.values ?? [],
+        traits: opts.identity.traits ?? {},
+        style: opts.identity.style ?? ""
+      },
+      engineTier: opts.engineTier ?? "standard",
+      modelTier: opts.model ?? "haiku",
+      testMode: useMock,
+      persistentMemory: opts.persist ?? false,
+      snapshotInterval: 100,
+      tickIntervalMs: opts.tickMs ?? 1e3,
+      allowedGenericEffectors: [...COMMUNICATION, ...this._effectors.keys()],
+      initialGoals: opts.initialGoals ?? [],
+      ...opts.seed !== void 0 ? { randomSeed: opts.seed, clock: { fixedDeltaMs: 1e3, startTime: 0 } } : {}
+    };
+  }
+  /** Wire the single tick listener that drives messages + the effector ack loop. */
+  _attach() {
+    this._unsub = this.stem.addTickListener(this.id, (_snapshot, _tick, outbox, invocations) => {
+      for (const msg of outbox) {
+        this._emitMessage({ id: msg.id, content: msg.content, to: msg.targetEntityId });
+        try {
+          this.stem.confirmMessageDelivery(this.id, msg.id, true);
+        } catch {
+        }
+      }
+      for (const inv of invocations)
+        void this._runEffector(inv);
+      if (this._stateHandlers.size > 0) {
+        const s = this.state();
+        for (const h of this._stateHandlers) try {
+          h(s);
+        } catch {
+        }
+      }
+    }) ?? null;
+  }
+  async _runEffector(inv) {
+    const handler = this._effectors.get(inv.effectorName);
+    if (!handler) {
+      this.stem.confirmEffectorExecution(this.id, inv.decisionRecordId, {
+        success: false,
+        description: `No handler registered for effector "${inv.effectorName}"`
+      });
+      return;
+    }
+    try {
+      const raw = await handler(inv.parameters, { reasoning: inv.reasoning, targetEntityId: inv.targetEntityId });
+      const result = typeof raw === "string" ? { success: true, description: raw } : raw;
+      this.stem.confirmEffectorExecution(this.id, inv.decisionRecordId, result);
+    } catch (err) {
+      this._emitError(err instanceof Error ? err : new Error(String(err)));
+      this.stem.confirmEffectorExecution(this.id, inv.decisionRecordId, {
+        success: false,
+        description: `Effector "${inv.effectorName}" threw: ${err.message}`
+      });
+    }
+  }
+  _emitMessage(m) {
+    for (const h of this._messageHandlers) try {
+      h(m);
+    } catch (e) {
+      this._emitError(e);
+    }
+  }
+  _emitError(e) {
+    for (const h of this._errorHandlers) try {
+      h(e);
+    } catch {
+    }
+  }
+};
+var COMMUNICATION = ["listen", "talk", "text"];
+function slug(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "will";
+}
+
+export { ActionSelector, AestheticEvaluator, AffectiveBlender, AffordanceSynthesizer, AsyncEngine, AttachmentEvaluator, AttentionAllocator, AuditionEngine, AutobiographicalNarrator, BiasDetector, BunStorageAdapter, CircadianOscillator, ConfidenceCalibrator, ConflictDetector, ConsistentHashRouter, ConsoleLogger, DefaultEventBus, DefaultMetricCollector, DefaultOrchestrator, DefaultPartitionRouter, DefaultReplayRecorder, DefaultReplaySession, DefaultScenario, DefaultSerializer, DefaultSimulation, DefaultSimulationClock, DefaultStateManager, DefaultVectorMemoryAdapter, DeliberationEngine, DeltaEncoder, DistributedOrchestrator, DistributedStateManager, DreamSimulator, EmpathySimulator, EnergyRegulator, EpisodicConsolidator, ExecutiveEngine, Exteroception, ForgettingCurve, FrustrationEvaluator, GoalManager, GustationEngine, InhibitionController, Interoception, IntrospectionEngine, KnownEntityTracker, LocalTransport, LoopbackTransport, LossEvaluator, MockEmbedder, MoralEvaluator, MotorSchemaExecutor, NoveltyDetector, OUTBOX_TTL_TICKS, OlfactionEngine, OpenAICompatibleEmbedder, PMAEvalHarness, PersonaConsolidator, PlanningEngine, ReafferenceEngine, ReplayManager, ReputationTracker, RewardEvaluator, SelfModelUpdater, SemanticIntegrator, SilentLogger, SleepPressureRegulator, SocialPerception, SocketIoTransport, SomatosensationEngine, SpacedRepetition, StreamTransport, StressRegulator, TaskSwitcher, TheoryOfMind, ThreatEvaluator, TokenTracker, VisionEngine, Will, WillStem, WorkingMemory, assembleMind, clearCompletionRecorder, createContext, createPRNG, fileLoggingEnabled, getCompletionRecorder, getLogger, listProfiles, logger, resetLogger, resolvePricing, resolveProfile, setCompletionRecorder, setLogger };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

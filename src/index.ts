@@ -76,3 +76,16 @@ export type {
 
 // Sensory input types — used by callers of WillManager.ingestText()
 export type { TextMessage, VoiceChunk, SensoryInput } from '#senses/index'
+
+// ── SDK facade — the ergonomic embedding API (recommended entry point) ──
+// `Will.create()` wraps WillStem in the shape a developer expects: on('message'),
+// effector(name, handler), say(), state(), hibernate()/wake(). Drop to `.stem`
+// for the full contract. See src/sdk/will.ts + examples/effectors.ts.
+export { Will } from '#sdk/will'
+export type {
+  CreateWillOptions,
+  WillMessage,
+  WillStateSummary,
+  EffectorHandler,
+  EffectorResult,
+} from '#sdk/will'

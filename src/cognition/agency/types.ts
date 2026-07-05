@@ -77,6 +77,13 @@ export type EffectorDeclaration =
       valence?:       number
       /** Body-state gates; the affordance is unavailable unless all pass. */
       preconditions?: SchemaPrecondition[]
+      /**
+       * Whether the ability targets a specific *perceived* entity (default
+       * 'none'). 'entity' binds it to each sentient known-entity in the field,
+       * so the Will can `give`/`greet`/… someone in particular; the bound target
+       * reaches the host as `ctx.targetEntityId`.
+       */
+      binds?:         'none' | 'entity'
     }
 
 /** The effector name of a declaration, whichever form it takes. */

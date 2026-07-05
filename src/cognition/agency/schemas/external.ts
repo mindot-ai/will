@@ -60,7 +60,7 @@ export function externalSchemas( effectors?: EffectorDeclaration[] | null ): Mot
       kind:          'primitive',
       source:        'external',
       cost:          typeof meta?.cost === 'number' ? clamp( meta.cost, 0, 1 ) : DEFAULT_EXTERNAL_COST,
-      binds:         'none',
+      binds:         meta?.binds === 'entity' ? 'entity' : 'none',
       baseValence:   typeof meta?.valence === 'number' ? clamp( meta.valence, -1, 1 ) : 0,
       ...( meta?.preconditions ? { preconditions: meta.preconditions } : {} ),
       ...( meta?.description   ? { description:   meta.description   } : {} ),

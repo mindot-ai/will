@@ -152,6 +152,17 @@ describe( 'Will facade — subject surface', () => {
     finally { await will.stop() }
   }, 30_000 )
 
+  it( 'a binds:entity effector reaches the repertoire as an entity-bound schema', async () => {
+    const will = await Will.create( { ...base, name: 'Greeter', identity: { prompt: 'I greet.' },
+      effectors: { greet: { handler: async () => 'ok', binds: 'entity', description: 'Greet someone by name' } },
+    } )
+    try {
+      const repertoire = ( will.stem.getWillCognition( will.id ) as unknown as { schemaRepertoire: { getSchema( id: string ): any } } ).schemaRepertoire
+      expect( repertoire.getSchema( 'greet' ) ).toMatchObject( { binds: 'entity', description: 'Greet someone by name' } )
+    }
+    finally { await will.stop() }
+  }, 30_000 )
+
   it( 'perceive() is the intake say/tell route through, and does not stall ticking', async () => {
     const will = await Will.create( { ...base, name: 'Ears', identity: { prompt: 'I listen.' } } )
     try {

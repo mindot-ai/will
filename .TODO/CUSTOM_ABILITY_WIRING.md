@@ -62,9 +62,13 @@ feeds the agency learning loop like any other action.
   host handler `ctx.description`, and travels in the PMA. Surfaced on the facade
   as `create({ effectors: { name: { handler, description?, cost?, valence?,
   preconditions? } } })`. Tests: agency.external-abilities + sdk.facade.
-  Still open here: `binds`/`tags` in the declaration (entity binding is its own
-  item below), and surfacing ability *meaning* into the deliberation context so
-  System 2 reads what each afforded ability is for.
+  Deliberation-surfacing ✅ DONE (2026-07-05): the afforded external abilities +
+  their meaning + bound target are read from the field into
+  `ExecutiveContext.abilities` (context.ts `extractAbilities`) and rendered as
+  "## Abilities Available Now" in the executive prompt — framed as self-knowledge
+  (what you can do), NOT a tool-call menu. `description` now also rides onto the
+  affordance entity. Tests: executive.abilities-awareness. Still open: `tags` in
+  the declaration.
 - **Field width.** N custom effectors all enter the floor uncapped. If hosts
   declare large catalogs, gate external affordances by attention/preconditions
   rather than emitting all of them every tick.

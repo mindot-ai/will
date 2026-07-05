@@ -1,18 +1,22 @@
 name: Publish to npm
 
-# Publishes @mindot/will to npm with build provenance.
+# Publishes @mindot/will to npm via TRUSTED PUBLISHING (OIDC) — no stored token.
 #
 # Trigger: publish a GitHub Release (the human gate) — or run manually via
-# "Run workflow" for the first publish / a re-run.
+# "Run workflow" for a re-run.
 #
 # The version that ships is package.json's `version`. Bump it + create a Release
 # to publish a new version; the workflow no-ops if that version is already on npm.
 #
-# Auth: a repo secret NPM_TOKEN (a granular access token with read+write on
-# @mindot, or an automation token — either bypasses account 2FA in CI).
-# Provenance: signed via GitHub OIDC (id-token: write) — the npm page shows a
-# verified "built and published from mindot-ai/will" badge. No token is used for
-# the attestation itself.
+# Auth: NONE stored. npm authenticates this run through GitHub's OIDC identity
+# (id-token: write) against the trusted publisher configured on the package —
+#   npmjs.com → @mindot/will → Settings → Trusted Publisher
+#   = GitHub Actions · mindot-ai/will · workflow publish.yml
+# Provenance attestations are generated automatically (no --provenance flag), so
+# the npm page shows the verified "built and published from mindot-ai/will" badge.
+#
+# Requires npm >= 11.5.1 (trusted-publishing support). The Node-bundled npm can
+# lag that, so we upgrade npm explicitly below rather than trust the default.
 
 on:
   release:
@@ -21,7 +25,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write   # required for --provenance (OIDC attestation)
+  id-token: write   # required for OIDC trusted publishing + automatic provenance
 
 jobs:
   publish:
@@ -33,24 +37,19 @@ jobs:
         with:
           bun-version: latest
 
-      # Node provides `npm publish --provenance` and writes the auth .npmrc.
+      # Node provides `npm` + the registry .npmrc. No auth token is written —
+      # trusted publishing supplies short-lived credentials via the OIDC exchange.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
           scope: '@mindot'
 
+      - name: Upgrade npm to a trusted-publishing-capable version (>= 11.5.1)
+        run: npm install -g npm@latest
+
       - name: Install (frozen lockfile)
         run: bun install --frozen-lockfile
-
-      - name: Fail early if NPM_TOKEN is missing
-        run: |
-          if [ -z "${NODE_AUTH_TOKEN}" ]; then
-            echo "::error::NPM_TOKEN repo secret is not set — add it in Settings → Secrets → Actions."
-            exit 1
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Skip if this version is already published
         id: check
@@ -65,19 +64,17 @@ jobs:
           fi
 
       # `npm publish` runs prepublishOnly (typecheck + tests + fresh build) — a
-      # stale or broken dist can never ship. --access public is also set via
-      # package.json publishConfig; both are belt-and-suspenders.
+      # stale or broken dist can never ship. Trusted publishing attaches
+      # provenance automatically; --access public mirrors package.json.
       - name: Publish
         if: steps.check.outputs.skip == 'false'
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
 
       - name: Summary
         run: |
           if [ "${{ steps.check.outputs.skip }}" = "true" ]; then
             echo "### ⏭️ @mindot/will@${{ steps.check.outputs.version }} already published — no-op" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "### ✅ Published @mindot/will@${{ steps.check.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "### ✅ Published @mindot/will@${{ steps.check.outputs.version }} (trusted publishing · OIDC)" >> "$GITHUB_STEP_SUMMARY"
             echo "https://www.npmjs.com/package/@mindot/will/v/${{ steps.check.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           fi

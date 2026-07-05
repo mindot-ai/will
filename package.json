@@ -1,6 +1,6 @@
 {
   "name": "@mindot/will",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Will — an engine for persistent machine minds. A Will is a continuously-ticking synthetic mind built from 38 cognitive faculties, a learning agency pipeline, and a dual-process executive — deterministic, persistent, and portable (PMA).",
   "author": "Fabrice <fabrice8@github.com>",
   "license": "Apache-2.0",

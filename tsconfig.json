@@ -22,6 +22,7 @@
 			"#stem/*": ["src/stem/*"],
 			"#llm/*": ["src/llm/*"],
 			"#pma/*": ["src/pma/*"],
+			"#sdk/*": ["src/sdk/*"],
 			"#types": ["src/types"],
 			"#root/*": ["src/*"]
 		},

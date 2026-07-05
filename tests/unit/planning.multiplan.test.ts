@@ -11,9 +11,9 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { PlanningEngine }      from '#cognition/faculties/planning.engine/engine'
-import { createTestBus }       from '#cognition/bus'
+import { PlanningEngine }      from '#faculties/planning.engine/engine'
 import { buildExecutiveContext } from '#faculties/executive.engine/context'
+import { createTestBus }       from '#cognition/bus'
 
 // ── Helpers ───────────────────────────────────────────────────
 

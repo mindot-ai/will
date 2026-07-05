@@ -52,7 +52,36 @@ export interface MotorSchema {
   composedOf?:   string[]
   /** Intrinsic affective prior (−1..1) before any learning has occurred. */
   baseValence?:  number
+  /** What the schema is *for* — its meaning, carried to the host on enaction. */
+  description?:  string
   tags?:         string[]
+}
+
+/**
+ * How a host declares a domain effector to a Will. A bare string is the
+ * name-only form (`CUSTOM_ABILITY_WIRING.md` Phase 1). The object form seeds the
+ * ability as a *learnable affordance*: `description` is its meaning; `cost`,
+ * `valence`, and `preconditions` are the intrinsic priors the mind starts from
+ * before reafference refines them through use. Args still bind from the
+ * situation — this is not a tool-call parameter form.
+ */
+export type EffectorDeclaration =
+  | string
+  | {
+      name:           string
+      /** What the ability is for — its meaning, carried to perception + the host. */
+      description?:   string
+      /** Intrinsic effort/energy demand 0..1 (default 0.15). */
+      cost?:          number
+      /** Intrinsic affective prior −1..1 the mind expects before learning (default 0). */
+      valence?:       number
+      /** Body-state gates; the affordance is unavailable unless all pass. */
+      preconditions?: SchemaPrecondition[]
+    }
+
+/** The effector name of a declaration, whichever form it takes. */
+export function effectorName( d: EffectorDeclaration ): string {
+  return typeof d === 'string' ? d : d.name
 }
 
 /**

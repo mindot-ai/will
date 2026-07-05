@@ -51,6 +51,7 @@ export class effectorController {
       parameters:       ( payload.parameters as Record<string, unknown> ) ?? {},
       targetEntityId:   payload.targetEntityId as string | undefined,
       reasoning:        ( payload.reasoning as string ) ?? '',
+      ...( typeof payload.description === 'string' ? { description: payload.description } : {} ),
       tick:             ( payload.tick as number ) ?? 0,
       timestamp:        Date.now()
     })

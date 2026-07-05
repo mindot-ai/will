@@ -48,10 +48,18 @@ feeds the agency learning loop like any other action.
   let `attack`/`give`/`trade` target a *specific* perceived entity, generalise
   the entity-binding pass to bind N entity-binding schemas, and let an effector
   declare `binds: 'entity'`.
-- **Per-effector metadata.** Effectors are flat strings → uniform cost (0.15),
-  no preconditions, no affective prior. Let a profile declare an effector as an
-  object (`{ name, cost?, binds?, preconditions?, baseValence?, tags? }`) so e.g.
-  `attack` can gate on energy and carry a risk/threat prior.
+- **Per-effector metadata.** ✅ DONE (2026-07-05). `EffectorDeclaration` (types.ts)
+  = a bare name OR `{ name, description?, cost?, valence?, preconditions? }`.
+  `externalSchemas()` populates cost/baseValence/preconditions/description onto
+  the MotorSchema; they flow through the existing affordance build + selection
+  (an ability now gates on body state, carries a reward prior, competes on real
+  effort). `description` (the ability's meaning) rides schema → invocation →
+  host handler `ctx.description`, and travels in the PMA. Surfaced on the facade
+  as `create({ effectors: { name: { handler, description?, cost?, valence?,
+  preconditions? } } })`. Tests: agency.external-abilities + sdk.facade.
+  Still open here: `binds`/`tags` in the declaration (entity binding is its own
+  item below), and surfacing ability *meaning* into the deliberation context so
+  System 2 reads what each afforded ability is for.
 - **Field width.** N custom effectors all enter the floor uncapped. If hosts
   declare large catalogs, gate external affordances by attention/preconditions
   rather than emitting all of them every tick.

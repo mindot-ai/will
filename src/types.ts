@@ -29,6 +29,8 @@ export interface effectorInvocation {
   parameters:       Record<string, unknown>
   targetEntityId:   string | undefined
   reasoning:        string
+  /** The ability's declared meaning (from its EffectorDeclaration), when present. */
+  description?:     string
   tick:             number
   timestamp:        number
 }

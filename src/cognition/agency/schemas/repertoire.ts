@@ -71,6 +71,16 @@ export class SchemaRepertoire {
       this._skills.set( schema.id, freshSkill( schema.id, 0.4, 0 ) )
   }
 
+  /**
+   * Register a host effector's primitive schema at runtime (post-create
+   * `.effector()`). Unlike a composite it is NOT marked learned — it is a
+   * capacity the host granted, which the synthesizer surfaces immediately and
+   * reafference then builds skill on. Idempotent; re-registering updates it.
+   */
+  registerExternal( schema: MotorSchema ): void {
+    this._templates.set( schema.id, schema )
+  }
+
   // ── skills ────────────────────────────────────────────────────
   skills(): ReadonlyMap<string, LearnedSkill> { return this._skills }
   getSkill( id: string ): LearnedSkill | undefined { return this._skills.get( id ) }

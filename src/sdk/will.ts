@@ -322,21 +322,22 @@ export class Will {
   // ── Abilities ──────────────────────────────────────────────
 
   /**
-   * Register an ability the Will can choose to enact. When the Will decides to
-   * use `name`, your handler runs with the arguments it chose; the return value
-   * is fed back as the outcome (closing the reafference loop that lets the Will
-   * learn the ability). Registering makes the effector available immediately.
+   * Register an ability the Will can choose to enact, at runtime. `entry` is a
+   * bare handler or a full spec (`{ handler, description?, cost?, valence?,
+   * preconditions?, binds?, tags? }`). When the Will decides to use `name`, your
+   * handler runs with the arguments it chose; the return value feeds back as the
+   * outcome (the reafference loop that lets the Will learn the ability).
    *
-   * This post-create form registers the handler and grants the ability at
-   * runtime (name-only). To seed an ability with *meaning + intrinsic priors*
-   * (`description`, `cost`, `valence`, `preconditions`), declare it in
-   * `create()`'s `effectors` map — that is where it enters the affordance
-   * repertoire. (Rebuilding the repertoire for a runtime-added rich effector is
-   * a follow-up; see `CUSTOM_ABILITY_WIRING.md`.)
+   * The ability's schema is added to the live repertoire so it can actually be
+   * *afforded* immediately (a grant alone only gates), then granted. Note: this
+   * is a runtime mutation — the deterministic/replayable path is declaring
+   * effectors in `create()`'s `effectors` map.
    */
-  effector( name: string, handler: EffectorHandler ): this {
-    this._effectors.set( name, handler )
-    // Communication effectors + every registered custom name.
+  effector( name: string, entry: EffectorEntry ): this {
+    this._register( name, entry )
+    // Add its schema to the live repertoire (so it can be perceived + enacted),
+    // then grant it. Comms names are no-ops in registerEffector (grant-governed).
+    this.stem.registerEffector( this.id, this._effectorDecls.get( name )! )
     this.stem.setAllowedEffectors( this.id, [ ...COMMUNICATION, ...this._effectors.keys() ] )
     return this
   }

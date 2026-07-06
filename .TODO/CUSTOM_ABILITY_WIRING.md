@@ -51,8 +51,10 @@ feeds the agency learning loop like any other action.
   known-entity, so the Will can `give`/`greet`/… someone in particular. The bound
   target reaches the host as `ctx.targetEntityId`; ids stay unique per
   (schema × entity). Tests: agency.external-abilities + sdk.facade.
-  Still open: binding to non-sentient `'thing'` entities (objects/tools) — needs
-  object perception in the entity pass.
+  Object binding ✅ DONE (2026-07-06): `binds: 'object'` targets non-sentient
+  `'thing'` known-entities (already produced by perception). The synthesizer's
+  target-binding pass matches schema binding to entity kind (person→sentient,
+  object→thing), never crossing. `SchemaBinding` gained `'object'`.
 - **Per-effector metadata.** ✅ DONE (2026-07-05). `EffectorDeclaration` (types.ts)
   = a bare name OR `{ name, description?, cost?, valence?, preconditions? }`.
   `externalSchemas()` populates cost/baseValence/preconditions/description onto
@@ -72,7 +74,9 @@ feeds the agency learning loop like any other action.
   each candidate's meaning too — `ActionSelector` carries `description` onto the
   deliberating candidates and `_buildFocusContent` shows `give toward ada —
   <meaning>` instead of a bare label. Tests: executive.abilities-awareness,
-  agency.deliberation. Still open: `tags` in the declaration.
+  agency.deliberation. Routing `tags` ✅ DONE (2026-07-06): a declaration may carry
+  tags (merged with 'external'/'host', deduped) so a drive-recognised tag lifts the
+  ability via selection.scoring's driveUrgency.
 - **Field width.** N custom effectors all enter the floor uncapped. If hosts
   declare large catalogs, gate external affordances by attention/preconditions
   rather than emitting all of them every tick.
@@ -80,6 +84,12 @@ feeds the agency learning loop like any other action.
   reafference and travel in the PMA — verify host-acked outcomes feed
   `recordOutcome` with a meaningful `outcomeQuality` (the host's ack result), so
   the Will actually gets better at the host's effectors over time.
-- **Runtime grant changes.** `PATCH /v1/wills/:id/effectors` updates `AccessGrants`
-  (comms). Decide whether granting/revoking a *custom* effector at runtime should
-  add/remove its external schema from the live repertoire too.
+- **Runtime grant changes.** ✅ Partially DONE (2026-07-06). GRANTING a custom
+  effector at runtime now adds its external schema to the live repertoire:
+  `SchemaRepertoire.registerExternal(schema)` (adds a template without marking it
+  learned) ← `WillStem.registerEffector(id, decl)` ← facade `.effector(name, entry)`
+  (accepts a bare handler or a full spec; adds the schema so it can actually be
+  afforded, not just granted). Tests: sdk.facade. Note: a runtime mutation — the
+  deterministic/replayable path is declaring effectors at create time. Still open:
+  REVOKING (removing a schema from the live repertoire) + wiring the backend
+  `PATCH /v1/wills/:id/effectors` route to registerEffector.

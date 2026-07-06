@@ -38,6 +38,8 @@ import { TransportController } from '#stem/tracts/transport.controller'
 import { InboundQueue } from '#stem/tracts/inbound.queue'
 import type { ExternalTransport } from '#stem/tracts/transport'
 import { effectorController } from '#stem/tracts/effector.controller'
+import { externalSchemas } from '#agency/schemas/external'
+import type { EffectorDeclaration } from '#agency/types'
 import { SensoryController } from '#stem/tracts/sensory.controller'
 import { BiographyWriter } from '#stem/tracts/biography.writer'
 import { HealthReporter } from '#stem/tracts/health.reporter'
@@ -770,6 +772,20 @@ export class WillStem {
   /** Update the set of allowed communication effectors at runtime. */
   setAllowedEffectors( id: string, effectors: string[] | null ): void {
     this._effector.setAllowed( this._get( id ), effectors )
+  }
+
+  /**
+   * Register a host effector on a *running* Will (post-create `.effector()`).
+   * Builds its external schema and adds it to the live repertoire so the Will
+   * can actually perceive + enact it — a grant alone only gates; without the
+   * schema the ability could never be afforded. Comms names are no-ops here
+   * (governed by AccessGrants). This is a runtime mutation, like a grant change;
+   * the deterministic/replayable path is declaring effectors at create time.
+   */
+  registerEffector( id: string, declaration: EffectorDeclaration ): void {
+    const repertoire = this._get( id ).cognition.schemaRepertoire
+    for( const schema of externalSchemas( [ declaration ] ) )
+      repertoire.registerExternal( schema )
   }
 
   /**

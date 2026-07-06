@@ -152,6 +152,25 @@ describe( 'Will facade — subject surface', () => {
     finally { await will.stop() }
   }, 30_000 )
 
+  it( 'a post-create effector() registers its schema into the live repertoire (affordable, not just granted)', async () => {
+    const will = await Will.create( { ...base, name: 'Late', identity: { prompt: 'I learn tools.' } } )
+    try {
+      const repertoire = ( will.stem.getWillCognition( will.id ) as unknown as { schemaRepertoire: { getSchema( id: string ): any } } ).schemaRepertoire
+      expect( repertoire.getSchema( 'forage' ) ).toBeUndefined()   // not declared at create
+
+      const ret = will.effector( 'forage', { handler: async () => 'ok', description: 'Search for food', cost: 0.3, binds: 'object' } )
+      expect( ret ).toBe( will )                                   // still chainable
+
+      const forage = repertoire.getSchema( 'forage' )
+      expect( forage ).toMatchObject( { cost: 0.3, binds: 'object', description: 'Search for food' } )
+
+      // Bare-handler form still works (flat defaults).
+      will.effector( 'wave', async () => 'ok' )
+      expect( repertoire.getSchema( 'wave' ) ).toMatchObject( { cost: 0.15, binds: 'none' } )
+    }
+    finally { await will.stop() }
+  }, 30_000 )
+
   it( 'a binds:entity effector reaches the repertoire as an entity-bound schema', async () => {
     const will = await Will.create( { ...base, name: 'Greeter', identity: { prompt: 'I greet.' },
       effectors: { greet: { handler: async () => 'ok', binds: 'entity', description: 'Greet someone by name' } },

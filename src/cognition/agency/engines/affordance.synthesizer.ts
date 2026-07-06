@@ -149,27 +149,31 @@ export class AffordanceSynthesizer implements CognitiveEngine {
         })
       }
 
-    // Every `binds: 'entity'` schema — the innate `reach-out` PLUS any host
-    // effector declared entity-bound — is bound against each perceived sentient
-    // entity, so the Will can direct e.g. `give`/`greet` at someone in particular.
-    // Each (schema × entity) enters as a candidate at the entity's salience and
-    // competes through the attention cap like anything else.
-    const entitySchemas = schemas.filter( s => s.binds === 'entity' )
-    if( entitySchemas.length > 0 )
+    // Target-bound schemas are bound against each perceived known-entity of the
+    // matching kind: `binds: 'entity'` schemas (innate `reach-out` + host
+    // person-effectors) to sentient entities, `binds: 'object'` schemas to
+    // things — so the Will can direct `give`/`greet` at someone or `use`/`pick-up`
+    // at something in particular. Each (schema × target) enters as a candidate at
+    // the target's salience and competes through the attention cap.
+    const personSchemas = schemas.filter( s => s.binds === 'entity' )
+    const objectSchemas = schemas.filter( s => s.binds === 'object' )
+    if( personSchemas.length > 0 || objectSchemas.length > 0 )
       for( const [ id, e ] of state.entities ){
         if( e.type !== 'known-entity' ) continue
-        const m = e.metadata
-        if( str( m?.['kind'] ) !== 'sentient' ) continue
+        const m    = e.metadata
+        const kind = str( m?.['kind'] )
+        const applicable = kind === 'sentient' ? personSchemas : kind === 'thing' ? objectSchemas : null
+        if( !applicable || applicable.length === 0 ) continue
         const keid = str( m?.['keid'] ) ?? id
         const fam  = num( m?.['familiarity'], 0 )
         const val  = num( m?.['valence'], 0 )
         const res  = num( m?.['resolutionConfidence'], 0 )
         const salience = fam * 0.6 + Math.max( 0, val ) * 0.3 + res * 0.1 + ( goalTargets.get( keid ) ?? 0 )
         const name     = str( m?.['name'] ) ?? keid
-        for( const entitySchema of entitySchemas )
+        for( const schema of applicable )
           candidates.push({
             salience,
-            affordance: this._build( entitySchema, tick, state, valence, energyLow, skills, {
+            affordance: this._build( schema, tick, state, valence, energyLow, skills, {
               evokedBy:       id,
               targetEntityId: keid,
               parameters:     { targetEntityName: name },

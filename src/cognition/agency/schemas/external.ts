@@ -54,17 +54,21 @@ export function externalSchemas( effectors?: EffectorDeclaration[] | null ): Mot
     seen.add( name )
 
     const meta = typeof decl === 'string' ? null : decl
+    const binds = meta?.binds === 'entity' ? 'entity' : meta?.binds === 'object' ? 'object' : 'none'
+    // Declared routing tags merged with the mandatory 'external'/'host' markers
+    // (the executor routes on 'external'; dedup keeps the set clean).
+    const tags = [ ...new Set( [ ...( meta?.tags ?? [] ), 'external', 'host' ] ) ]
 
     out.push({
       id:            name,
       kind:          'primitive',
       source:        'external',
       cost:          typeof meta?.cost === 'number' ? clamp( meta.cost, 0, 1 ) : DEFAULT_EXTERNAL_COST,
-      binds:         meta?.binds === 'entity' ? 'entity' : 'none',
+      binds,
       baseValence:   typeof meta?.valence === 'number' ? clamp( meta.valence, -1, 1 ) : 0,
       ...( meta?.preconditions ? { preconditions: meta.preconditions } : {} ),
       ...( meta?.description   ? { description:   meta.description   } : {} ),
-      tags:          [ 'external', 'host' ],
+      tags,
     })
   }
 

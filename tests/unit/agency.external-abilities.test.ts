@@ -124,3 +124,37 @@ describe( 'agency — entity-bound effectors', () => {
     expect( wander[0]?.metadata?.targetEntityId ).toBeUndefined()   // never targeted at the person
   } )
 } )
+
+describe( 'agency — object-binding + routing tags', () => {
+  const mixedState = () => ( {
+    tick: 1, time: 0,
+    entities: new Map( [
+      [ 'ke-ada', { type: 'known-entity', metadata: { keid: 'ada', kind: 'sentient', name: 'Ada', familiarity: 0.8 } } ],
+      [ 'ke-axe', { type: 'known-entity', metadata: { keid: 'axe', kind: 'thing',    name: 'Axe', familiarity: 0.5 } } ],
+    ] ),
+    metrics: new Map(),
+  } as any )
+
+  it( 'merges declared tags with external/host (deduped)', () => {
+    const [ s ] = externalSchemas( [ { name: 'forage', tags: [ 'nourishment', 'external' ] } ] )
+    expect( s!.tags ).toEqual( expect.arrayContaining( [ 'nourishment', 'external', 'host' ] ) )
+    expect( s!.tags!.filter( t => t === 'external' ).length ).toBe( 1 )   // deduped
+  } )
+
+  it( 'declares binds:object on the schema', () => {
+    expect( externalSchemas( [ { name: 'use', binds: 'object' } ] )[0]!.binds ).toBe( 'object' )
+  } )
+
+  it( 'binds an object-effector to a thing and a person-effector to a person — never crossed', async () => {
+    const repertoire = new SchemaRepertoire( [ ...INNATE_SCHEMAS, ...externalSchemas( [
+      { name: 'use',   binds: 'object' },
+      { name: 'greet', binds: 'entity' },
+    ] ) ] )
+    const synth = new AffordanceSynthesizer(); synth.attachRepertoire( repertoire )
+    const field = ( ( await synth.react( 0, 1, mixedState(), CTX ) ).commands?.set ?? [] ).filter( ( e: any ) => e.type === 'affordance' )
+    const targetsOf = ( schema: string ) => field.filter( ( e: any ) => e.metadata?.schema === schema ).map( ( e: any ) => e.metadata?.targetEntityId )
+
+    expect( targetsOf( 'use' ) ).toEqual( [ 'axe' ] )     // object-effector → the thing only
+    expect( targetsOf( 'greet' ) ).toEqual( [ 'ada' ] )   // person-effector → the person only
+  } )
+} )

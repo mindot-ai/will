@@ -119,11 +119,17 @@ export interface EffectorSpec {
   /** Body-state gates; the ability is unavailable unless all pass. */
   preconditions?: SchemaPrecondition[]
   /**
-   * Whether the ability targets a specific perceived entity (default 'none').
-   * 'entity' lets the Will direct it at a particular known person in the field;
-   * the bound target arrives as `ctx.targetEntityId`.
+   * Whether the ability targets a specific perceived target (default 'none').
+   * 'entity' directs it at a known person, 'object' at a known thing; the bound
+   * target arrives as `ctx.targetEntityId`.
    */
-  binds?: 'none' | 'entity'
+  binds?: 'none' | 'entity' | 'object'
+  /**
+   * Routing tags (merged with 'external'/'host'). A drive-recognised tag (e.g.
+   * 'social', 'nourishment') lets a homeostatic drive lift this ability when it
+   * presses.
+   */
+  tags?: string[]
   /** Your implementation. */
   handler: EffectorHandler
 }
@@ -344,7 +350,8 @@ export class Will {
     }
     this._effectors.set( name, entry.handler )
     const hasMeta = entry.description !== undefined || entry.cost !== undefined
-      || entry.valence !== undefined || entry.preconditions !== undefined || entry.binds !== undefined
+      || entry.valence !== undefined || entry.preconditions !== undefined
+      || entry.binds !== undefined || entry.tags !== undefined
     this._effectorDecls.set( name, hasMeta
       ? {
           name,
@@ -353,6 +360,7 @@ export class Will {
           ...( entry.valence       !== undefined ? { valence:       entry.valence       } : {} ),
           ...( entry.preconditions !== undefined ? { preconditions: entry.preconditions } : {} ),
           ...( entry.binds         !== undefined ? { binds:         entry.binds         } : {} ),
+          ...( entry.tags          !== undefined ? { tags:          entry.tags          } : {} ),
         }
       : name )
   }

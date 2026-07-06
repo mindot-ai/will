@@ -29,8 +29,12 @@ export interface SchemaPrecondition {
   value:  number
 }
 
-/** What kind of target a schema binds when it becomes an affordance. */
-export type SchemaBinding = 'none' | 'entity' | 'percept'
+/**
+ * What kind of target a schema binds when it becomes an affordance.
+ * 'entity' = a sentient known-entity (a person); 'object' = a non-sentient
+ * known-entity (a thing); 'percept' = a salient percept; 'none' = objectless.
+ */
+export type SchemaBinding = 'none' | 'entity' | 'object' | 'percept'
 
 /**
  * A MotorSchema — a parameterized control program, not a flat effector row.
@@ -78,12 +82,19 @@ export type EffectorDeclaration =
       /** Body-state gates; the affordance is unavailable unless all pass. */
       preconditions?: SchemaPrecondition[]
       /**
-       * Whether the ability targets a specific *perceived* entity (default
-       * 'none'). 'entity' binds it to each sentient known-entity in the field,
-       * so the Will can `give`/`greet`/… someone in particular; the bound target
-       * reaches the host as `ctx.targetEntityId`.
+       * Whether the ability targets a specific *perceived* target (default
+       * 'none'). 'entity' binds it to each sentient known-entity (a person),
+       * 'object' to each non-sentient one (a thing) — so the Will can
+       * `give`/`greet` someone or `use`/`pick-up` something in particular; the
+       * bound target reaches the host as `ctx.targetEntityId`.
        */
-      binds?:         'none' | 'entity'
+      binds?:         'none' | 'entity' | 'object'
+      /**
+       * Routing tags folded into the schema (merged with 'external'/'host').
+       * A tag the drive system recognises (e.g. 'social', 'nourishment') lets a
+       * homeostatic drive lift this ability in the competition when pressing.
+       */
+      tags?:          string[]
     }
 
 /** The effector name of a declaration, whichever form it takes. */

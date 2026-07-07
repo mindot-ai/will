@@ -399,10 +399,15 @@ function resolveKnownEntity( target: string, state: ReadonlySimulationState ): s
 }
 
 /**
- * Turn the executive's imagined communicate actions into `ideomotor.intent` entities
- * (the ideomotor leg). The AffordanceSynthesizer surfaces them as competing reach-out
- * affordances next tick. Refreshed each executive cycle — stale intents the executive
- * no longer imagines are deleted, so a momentary "I'd like to reach out" doesn't linger.
+ * Turn the executive's imagined actions into `ideomotor.intent` entities (the
+ * ideomotor leg). Two kinds are pre-activated: communicate actions (as reach-out
+ * toward the resolved entity) and *currently-afforded host abilities* — an action
+ * whose type names an external affordance in the field, optionally carrying the
+ * `args` the executive consciously supplied (a mind formulating "search the docs
+ * for X" IS the situation providing the argument). The AffordanceSynthesizer
+ * surfaces them as competing candidates next tick — executive intention ENTERS
+ * the competition, it never bypasses it. Refreshed each executive cycle — stale
+ * intents the executive no longer imagines are deleted.
  */
 function buildIdeomotorIntents(
   output:    ExecutiveOutputFull,
@@ -413,16 +418,47 @@ function buildIdeomotorIntents(
   const seen = new Set<string>()
   const priority = clamp01( output.confidence ?? 0.8 )
 
+  // The host abilities currently afforded (source 'external' in the live field) —
+  // the executive can only pre-activate what the situation actually offers.
+  const externalBySchema = new Map<string, string>()
+  for( const e of state.entities.values() ){
+    if( e.type !== 'affordance' ) continue
+    const m = e.metadata as Record<string, unknown> | undefined
+    if( m?.['source'] !== 'external' ) continue
+    const schema = typeof m['schema'] === 'string' ? m['schema'] as string : undefined
+    if( schema ) externalBySchema.set( schema.toLowerCase(), schema )
+  }
+
   for( const action of output.actions ){
-    if( !COMMUNICATE_ACTION_TYPES.has( action.type.toLowerCase() ) ) continue
-    if( !action.target ) continue
-    const keid = resolveKnownEntity( action.target, state )
-    if( !keid || seen.has( keid ) ) continue
-    seen.add( keid )
+    const t = action.type.toLowerCase()
+
+    if( COMMUNICATE_ACTION_TYPES.has( t ) ){
+      if( !action.target ) continue
+      const keid = resolveKnownEntity( action.target, state )
+      if( !keid || seen.has( keid ) ) continue
+      seen.add( keid )
+      set.push({
+        id:   `ideomotor-reach-out-${ keid }`,
+        type: 'ideomotor.intent',
+        metadata: { schema: 'reach-out', targetEntityId: keid, priority, origin: 'executive', tick: footprint.tickObserved },
+      })
+      continue
+    }
+
+    // A host ability the executive imagines enacting, with its conscious args.
+    const schema = externalBySchema.get( t )
+    if( !schema || seen.has( `ability:${ schema }` ) ) continue
+    seen.add( `ability:${ schema }` )
+    const keid = action.target ? resolveKnownEntity( action.target, state ) : undefined
     set.push({
-      id:   `ideomotor-reach-out-${ keid }`,
+      id:   `ideomotor-${ schema }${ keid ? `-${ keid }` : '' }`,
       type: 'ideomotor.intent',
-      metadata: { schema: 'reach-out', targetEntityId: keid, priority, origin: 'executive', tick: footprint.tickObserved },
+      metadata: {
+        schema,
+        ...( keid ? { targetEntityId: keid } : {} ),
+        ...( action.args && typeof action.args === 'object' ? { parameters: action.args } : {} ),
+        priority, origin: 'executive', tick: footprint.tickObserved,
+      },
     })
   }
 

@@ -241,3 +241,71 @@ describe( 'buildStateCommands — known-entity updates (Phase 2.2)', () => {
     expect( ev?.payload ).toMatchObject( { keid: 'web:42', name: 'Mara', feeling: 0.3 } )
   })
 })
+
+// ── Ideomotor ability leg — executive-supplied args (MCP-effectors groundwork) ──
+// An executive action whose type names a CURRENTLY-AFFORDED host ability becomes an
+// ideomotor.intent carrying the action's conscious `args` as `parameters` — the
+// existing ideomotor pipeline (synthesizer → selector → motor → invocation) then
+// delivers them to the host handler. Only what the field affords can be pre-activated.
+
+function stateWithExternalAffordance( schema: string, extra: Array<{ id: string; type: string; metadata?: Record<string, unknown> }> = [] ): ReadonlySimulationState {
+  const entities = new Map<string, unknown>()
+  entities.set( `aff-${ schema }`, { id: `aff-${ schema }`, type: 'affordance', createdAt: 0, updatedAt: 0,
+    metadata: { schema, source: 'external', available: true } } )
+  for( const e of extra )
+    entities.set( e.id, { ...e, createdAt: 0, updatedAt: 0 } )
+  return { tick: 1, time: 0, entities, metrics: new Map() } as unknown as ReadonlySimulationState
+}
+
+function outputWithAction( action: Record<string, unknown> ): ExecutiveOutputFull {
+  return { actions: [ action ], reasoning: 'r', confidence: 0.8 } as unknown as ExecutiveOutputFull
+}
+
+const ideomotorOf = ( commands: { set?: Array<{ id: string; type: string; metadata?: Record<string, unknown> }> }, schema: string ) =>
+  ( commands.set ?? [] ).find( e => e.type === 'ideomotor.intent' && e.metadata?.['schema'] === schema )
+
+describe( 'buildStateCommands — ideomotor ability leg (executive args)', () => {
+  const run = ( output: ExecutiveOutputFull, state: ReadonlySimulationState ) => {
+    const log = freshLog()
+    return buildStateCommands( output, footprintAt( 1 ), state, makeDeps( log, new ExecutiveSummarizer() ), [] ).commands
+  }
+
+  it( 'pre-activates an afforded ability with the executive\'s conscious args', () => {
+    const commands = run(
+      outputWithAction( { type: 'search_docs', reasoning: 'need the design', expectedOutcome: 'found', args: { query: 'tick loop design' } } ),
+      stateWithExternalAffordance( 'search_docs' ),
+    )
+    const intent = ideomotorOf( commands, 'search_docs' )
+    expect( intent ).toBeDefined()
+    expect( intent?.metadata?.['parameters'] ).toEqual( { query: 'tick loop design' } )
+    expect( intent?.metadata?.['origin'] ).toBe( 'executive' )
+  } )
+
+  it( 'ignores an action naming an ability the field does not currently afford', () => {
+    const commands = run(
+      outputWithAction( { type: 'search_docs', reasoning: 'r', expectedOutcome: 'o', args: { query: 'x' } } ),
+      { tick: 1, time: 0, entities: new Map(), metrics: new Map() } as unknown as ReadonlySimulationState,
+    )
+    expect( ideomotorOf( commands, 'search_docs' ) ).toBeUndefined()
+  } )
+
+  it( 'resolves the action target to a known-entity keid for a targeted ability', () => {
+    const commands = run(
+      outputWithAction( { type: 'give', reasoning: 'r', expectedOutcome: 'o', target: 'Ada' } ),
+      stateWithExternalAffordance( 'give', [
+        { id: 'ke-ada', type: 'known-entity', metadata: { keid: 'ada', kind: 'sentient', name: 'Ada' } },
+      ] ),
+    )
+    expect( ideomotorOf( commands, 'give' )?.metadata?.['targetEntityId'] ).toBe( 'ada' )
+  } )
+
+  it( 'leaves the communicate leg untouched (reach-out still forms from a communicate action)', () => {
+    const commands = run(
+      outputWithAction( { type: 'communicate', reasoning: 'r', expectedOutcome: 'o', target: 'Ada' } ),
+      stateWithExternalAffordance( 'unrelated', [
+        { id: 'ke-ada', type: 'known-entity', metadata: { keid: 'ada', kind: 'sentient', name: 'Ada' } },
+      ] ),
+    )
+    expect( ideomotorOf( commands, 'reach-out' )?.metadata?.['targetEntityId'] ).toBe( 'ada' )
+  } )
+} )

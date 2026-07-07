@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry:            [ 'src/index.ts', 'src/mcp/cli.ts' ],
+  entry:            [ 'src/index.ts', 'src/mcp/cli.ts', 'src/mcp/effectors.ts' ],
   outDir:           'dist',
   format:           [ 'esm' ],
   target:           'esnext',

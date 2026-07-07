@@ -4,6 +4,9 @@ import { resolve, dirname, join } from 'path';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 // src/core/logger.ts
 var ConsoleLogger = class {
@@ -8921,16 +8924,43 @@ function buildIdeomotorIntents(output, state, footprint) {
   const set = [];
   const seen = /* @__PURE__ */ new Set();
   const priority = clamp012(output.confidence ?? 0.8);
+  const externalBySchema = /* @__PURE__ */ new Map();
+  for (const e of state.entities.values()) {
+    if (e.type !== "affordance") continue;
+    const m = e.metadata;
+    if (m?.["source"] !== "external") continue;
+    const schema = typeof m["schema"] === "string" ? m["schema"] : void 0;
+    if (schema) externalBySchema.set(schema.toLowerCase(), schema);
+  }
   for (const action of output.actions) {
-    if (!COMMUNICATE_ACTION_TYPES.has(action.type.toLowerCase())) continue;
-    if (!action.target) continue;
-    const keid = resolveKnownEntity(action.target, state);
-    if (!keid || seen.has(keid)) continue;
-    seen.add(keid);
+    const t = action.type.toLowerCase();
+    if (COMMUNICATE_ACTION_TYPES.has(t)) {
+      if (!action.target) continue;
+      const keid2 = resolveKnownEntity(action.target, state);
+      if (!keid2 || seen.has(keid2)) continue;
+      seen.add(keid2);
+      set.push({
+        id: `ideomotor-reach-out-${keid2}`,
+        type: "ideomotor.intent",
+        metadata: { schema: "reach-out", targetEntityId: keid2, priority, origin: "executive", tick: footprint.tickObserved }
+      });
+      continue;
+    }
+    const schema = externalBySchema.get(t);
+    if (!schema || seen.has(`ability:${schema}`)) continue;
+    seen.add(`ability:${schema}`);
+    const keid = action.target ? resolveKnownEntity(action.target, state) : void 0;
     set.push({
-      id: `ideomotor-reach-out-${keid}`,
+      id: `ideomotor-${schema}${keid ? `-${keid}` : ""}`,
       type: "ideomotor.intent",
-      metadata: { schema: "reach-out", targetEntityId: keid, priority, origin: "executive", tick: footprint.tickObserved }
+      metadata: {
+        schema,
+        ...keid ? { targetEntityId: keid } : {},
+        ...action.args && typeof action.args === "object" ? { parameters: action.args } : {},
+        priority,
+        origin: "executive",
+        tick: footprint.tickObserved
+      }
     });
   }
   const currentIds = new Set(set.map((s) => s.id));
@@ -11658,7 +11688,7 @@ ${roleDescription}
 ${consciousnessArchitecture}
 
 ## Output Guidelines
-- **actions**: Choose from effectors you know about. If uncertain, describe what you want to achieve in natural language and your body will try to match it.
+- **actions**: Choose from effectors you know about. If uncertain, describe what you want to achieve in natural language and your body will try to match it. When enacting one of your available abilities that needs specifics (a query, a message, a value), supply them in the action's "args" object \u2014 e.g. {"type": "search_docs", "args": {"query": "tick loop design"}, ...}. Your body enacts the ability with exactly those args.
 - **plans**: Include for goals without existing plans or where plans need revision. You may keep multiple plans per goal \u2014 set **planId** to act on a specific existing plan (validate/execute/revise/cancel); omit it to draft a new one. Your current plans are listed under "## Active Plans".
 - **newBeliefs**: Extract patterns from experiences visible in your current state. Only record a belief if you can point to a specific observation that supports it \u2014 do not infer experiences you have no record of. Set 'evidence' honestly: 'single_observation' (first time noticing), 'recurring_pattern' (seen multiple times), 'strong_pattern' (deeply established).
 - **introspection**: Include when significant events occurred or you notice patterns. When you spot a cognitive bias in your own reasoning, name it in 'identifiedBiases' using its common term where one fits (e.g. overgeneralization, confirmation bias, recency bias) \u2014 this lets your self-assessment line up with the patterns your faculties detect on their own.
@@ -11882,7 +11912,7 @@ ${context.goals.map((g) => {
     const perceptsBlock = has("percepts") ? `## Percepts (What You Notice)
 ${context.percepts.slice(0, 10).map((p) => `- [${p.category}] ${p.summary} (salience: ${p.salience.toFixed(2)})`).join("\n") || "Nothing notable"}` : "";
     const abilitiesBlock = context.abilities && context.abilities.length > 0 ? `## Abilities Available Now
-Things you can do in this situation \u2014 express what you want and your body enacts the fit:
+Things you can do in this situation \u2014 name one as an action's "type" (with "args" for any specifics it needs) and your body enacts it:
 ${context.abilities.map(
       (a) => `- **${a.name}**${a.target ? ` (toward ${a.target})` : ""}${a.description ? ` \u2014 ${a.description}` : ""}`
     ).join("\n")}` : "";
@@ -25866,6 +25896,73 @@ function buildWillMcpServer(will, opts = {}) {
   );
   return server;
 }
+var RESULT_DESCRIPTION_CAP = 700;
+var MEANING_CAP = 300;
+function describeMcpTool(tool) {
+  const props = tool.inputSchema?.properties ?? {};
+  const required = new Set(tool.inputSchema?.required ?? []);
+  const argHints = Object.entries(props).map(([key, p]) => `${key}${required.has(key) ? "" : "?"}${p.description ? `: ${p.description}` : ""}`);
+  const base = (tool.description ?? `The ${tool.name} tool.`).trim().replace(/\s+/g, " ");
+  const hint = argHints.length > 0 ? ` (args \u2014 ${argHints.join("; ")})` : "";
+  const full = `${base}${hint}`;
+  return full.length > MEANING_CAP ? `${full.slice(0, MEANING_CAP - 1)}\u2026` : full;
+}
+function buildMcpHandler(client, tool) {
+  return async (args) => {
+    const props = tool.inputSchema?.properties;
+    const filtered = {};
+    for (const [k, v] of Object.entries(args ?? {}))
+      if (!props || k in props) filtered[k] = v;
+    const missing = (tool.inputSchema?.required ?? []).filter(
+      (k) => filtered[k] === void 0 || filtered[k] === ""
+    );
+    if (missing.length > 0)
+      return {
+        success: false,
+        description: `${tool.name} needs ${missing.join(", ")} \u2014 enact it deliberately, supplying them in the action's args.`
+      };
+    try {
+      const res = await client.callTool({ name: tool.name, arguments: filtered });
+      const text = (res.content ?? []).filter((c) => c.type === "text" && typeof c.text === "string").map((c) => c.text).join("\n").trim() || (res.isError ? "The tool reported an error." : "Done (no output).");
+      const bounded = text.length > RESULT_DESCRIPTION_CAP ? `${text.slice(0, RESULT_DESCRIPTION_CAP - 1)}\u2026` : text;
+      return { success: !res.isError, description: bounded };
+    } catch (err2) {
+      return { success: false, description: `${tool.name} failed: ${err2 instanceof Error ? err2.message : String(err2)}` };
+    }
+  };
+}
+async function connect(source) {
+  if ("client" in source) return { client: source.client, owned: false };
+  const client = new Client({ name: "mindot-will", version: "0" });
+  if ("url" in source)
+    await client.connect(new StreamableHTTPClientTransport(new URL(source.url)));
+  else
+    await client.connect(new StdioClientTransport({
+      command: source.command,
+      ...source.args ? { args: source.args } : {},
+      // Merge over the SDK's safe default env so PATH etc. survive a custom env.
+      env: { ...getDefaultEnvironment(), ...source.env ?? {} }
+    }));
+  return { client, owned: true };
+}
+async function connectMcpEffectors(will, source, opts = {}) {
+  const { client, owned } = await connect(source);
+  const { tools } = await client.listTools();
+  const names = [];
+  for (const tool of tools) {
+    const name = `${opts.prefix ?? ""}${tool.name}`;
+    will.effector(name, {
+      description: describeMcpTool(tool),
+      cost: opts.cost ?? 0.2,
+      tags: ["mcp"],
+      handler: buildMcpHandler(client, tool)
+    });
+    names.push(name);
+  }
+  return { names, close: async () => {
+    if (owned) await client.close();
+  } };
+}
 
 // src/mcp/cli.ts
 var err = (level) => (msg, ...rest) => console.error(`[will-mcp:${level}] ${msg}`, ...rest);
@@ -25903,10 +26000,29 @@ unknown subcommand: ${sub}`);
     console.error(`[will-mcp] ${name} born (no artifact at ${pmaPath} yet)`);
   }
   will.on("error", (e) => console.error(`[will-mcp] error: ${e.message}`));
+  const bridgeCloses = [];
+  if (process.env.WILL_MCP_SERVERS) {
+    try {
+      const sources = JSON.parse(process.env.WILL_MCP_SERVERS);
+      for (const source of Array.isArray(sources) ? sources : []) {
+        try {
+          const { names, close } = await connectMcpEffectors(will, source);
+          bridgeCloses.push(close);
+          console.error(`[will-mcp] ${name} gained abilities: ${names.join(", ")}`);
+        } catch (e) {
+          console.error(`[will-mcp] MCP bridge failed (skipped): ${e.message}`);
+        }
+      }
+    } catch (e) {
+      console.error(`[will-mcp] WILL_MCP_SERVERS is not valid JSON \u2014 ignoring: ${e.message}`);
+    }
+  }
   let leaving = false;
   const shutdown = async (why) => {
     if (leaving) return;
     leaving = true;
+    for (const close of bridgeCloses) await close().catch(() => {
+    });
     try {
       const pma = await will.hibernate();
       mkdirSync(dirname(pmaPath), { recursive: true });

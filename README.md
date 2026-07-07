@@ -677,7 +677,7 @@ src/
 bun run build          # tsup → dist/index.js + dist/index.d.ts
 bun run dev:build      # tsup --watch (auto-rebuilds on save)
 bun run typecheck      # tsc --noEmit
-bun test               # unit tests (Vitest)
+bun test               # unit tests (Bun runner — what CI runs); `bun run test` = Vitest
 ```
 
 The build uses [tsup](https://tsup.egoist.dev) (esbuild). All `#`-prefixed internal path aliases (`#core`, `#cognition`, `#stem`, …) are resolved at build time. The LLM and vector layers are in-house — no Mastra / ai-sdk runtime dependency.
@@ -738,8 +738,9 @@ The provider layer is an in-house `fetch` client (`src/llm/index.ts`) with a glo
 ```bash
 bun dev            # Start the standalone runner (hot-reloads via Bun)
 bun run typecheck  # tsc --noEmit
-bun test           # Unit tests (Vitest)
-bun test:watch     # Watch mode
+bun test           # Unit tests (Bun runner — what CI runs)
+bun run test       # Same suite under Vitest
+bun test:watch     # Watch mode (Vitest)
 ```
 
 Debug prompts are written to `data/wills/<id>/debug/` on every executive call — inspect the full prompt + raw LLM output at each tick.

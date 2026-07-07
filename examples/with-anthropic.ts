@@ -50,7 +50,7 @@ const willId = await stem.createWill({
 let resolveReply: ( content: string ) => void
 const replyArrived = new Promise<string | null>( resolve => {
   resolveReply = resolve
-  setTimeout( () => resolve( null ), 90_000 )
+  setTimeout( () => resolve( null ), 120_000 )
 })
 
 const unsub = stem.addTickListener( willId, ( snapshot, tick, outboxMessages ) => {
@@ -82,7 +82,7 @@ await stem.ingestText( willId, {
 })
 
 const reply = await replyArrived
-console.log( reply ? `\n🧠 Dot: "${reply}"` : '\n🧠 (no reply within 90 s)' )
+console.log( reply ? `\n🧠 Dot: "${reply}"` : '\n🧠 (no reply within 120 s)' )
 
 unsub()
 await stem.archiveWill( willId )

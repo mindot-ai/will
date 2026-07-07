@@ -133,9 +133,15 @@ export class FacetSupervisor {
   }
 
   private _reapIdle( tick: number ): void {
-    for( const [ id, facet ] of [ ...this._facets ] )
+    for( const [ id, facet ] of [ ...this._facets ] ){
+      // Never reap a busy facet: queued reports / an in-flight LLM call span
+      // many ticks (a real call is 10–30s), and destroying the facet clears the
+      // listeners its pending decision lands on — a conversation reply would
+      // vanish silently. The TTL measures *quiet* facets only.
+      if( facet.busy ) continue
       if( tick - facet.lastActiveTick > this._idleTtlTicks )
         this._reap( id, 'idle' )
+    }
   }
 
   /** Destroy + deregister a facet and notify its owner. Shared by the reaper + LRU eviction. */
@@ -163,8 +169,16 @@ export class FacetSupervisor {
   }
 
   private _leastRecentlyActive(): string | null {
+    // Prefer a quiet victim: evicting a busy facet drops its in-flight decision
+    // (same silent-loss mode the idle reaper guards against). Only when every
+    // facet is busy does pressure eviction fall back to the absolute LRU — a
+    // new conversation still preempts rather than being refused.
     let id: string | null = null
     let min = Infinity
+    for( const [ fid, facet ] of this._facets )
+      if( !facet.busy && facet.lastActiveTick < min ){ min = facet.lastActiveTick; id = fid }
+    if( id ) return id
+
     for( const [ fid, facet ] of this._facets )
       if( facet.lastActiveTick < min ){ min = facet.lastActiveTick; id = fid }
     return id

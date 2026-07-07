@@ -21,6 +21,7 @@ export default defineConfig({
       '#root':       path.resolve( __dirname, 'src'                   ),
       '#stem':       path.resolve( __dirname, 'src/stem'              ),
       '#pma':        path.resolve( __dirname, 'src/pma'               ),
+      '#sdk':        path.resolve( __dirname, 'src/sdk'               ),
     },
   },
   test: {

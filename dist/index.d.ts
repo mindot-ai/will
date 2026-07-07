@@ -736,10 +736,12 @@ interface StorageAdapter {
     ensureDir?(path: string): Promise<void>;
 }
 /**
- * Bun-native storage adapter.
+ * Bun-native storage adapter, with a node:fs fallback when the Bun global is
+ * absent — the engine is Node-compatible (Bun remains the primary target).
  * Default for all framework components that perform file I/O.
  */
 declare class BunStorageAdapter implements StorageAdapter {
+    private get _isBun();
     write(path: string, content: string | Uint8Array): Promise<void>;
     read(path: string): Promise<string>;
     readBytes(path: string): Promise<Uint8Array>;
@@ -5821,8 +5823,12 @@ interface SchemaPrecondition {
     op: 'gt' | 'lt' | 'gte' | 'lte' | 'eq';
     value: number;
 }
-/** What kind of target a schema binds when it becomes an affordance. */
-type SchemaBinding = 'none' | 'entity' | 'percept';
+/**
+ * What kind of target a schema binds when it becomes an affordance.
+ * 'entity' = a sentient known-entity (a person); 'object' = a non-sentient
+ * known-entity (a thing); 'percept' = a salient percept; 'none' = objectless.
+ */
+type SchemaBinding = 'none' | 'entity' | 'object' | 'percept';
 /**
  * A MotorSchema — a parameterized control program, not a flat effector row.
  * `kind: 'primitive'` runs a body directly (an internal stance, a communication,
@@ -5843,8 +5849,43 @@ interface MotorSchema {
     composedOf?: string[];
     /** Intrinsic affective prior (−1..1) before any learning has occurred. */
     baseValence?: number;
+    /** What the schema is *for* — its meaning, carried to the host on enaction. */
+    description?: string;
     tags?: string[];
 }
+/**
+ * How a host declares a domain effector to a Will. A bare string is the
+ * name-only form (`CUSTOM_ABILITY_WIRING.md` Phase 1). The object form seeds the
+ * ability as a *learnable affordance*: `description` is its meaning; `cost`,
+ * `valence`, and `preconditions` are the intrinsic priors the mind starts from
+ * before reafference refines them through use. Args still bind from the
+ * situation — this is not a tool-call parameter form.
+ */
+type EffectorDeclaration = string | {
+    name: string;
+    /** What the ability is for — its meaning, carried to perception + the host. */
+    description?: string;
+    /** Intrinsic effort/energy demand 0..1 (default 0.15). */
+    cost?: number;
+    /** Intrinsic affective prior −1..1 the mind expects before learning (default 0). */
+    valence?: number;
+    /** Body-state gates; the affordance is unavailable unless all pass. */
+    preconditions?: SchemaPrecondition[];
+    /**
+     * Whether the ability targets a specific *perceived* target (default
+     * 'none'). 'entity' binds it to each sentient known-entity (a person),
+     * 'object' to each non-sentient one (a thing) — so the Will can
+     * `give`/`greet` someone or `use`/`pick-up` something in particular; the
+     * bound target reaches the host as `ctx.targetEntityId`.
+     */
+    binds?: 'none' | 'entity' | 'object';
+    /**
+     * Routing tags folded into the schema (merged with 'external'/'host').
+     * A tag the drive system recognises (e.g. 'social', 'nourishment') lets a
+     * homeostatic drive lift this ability in the competition when pressing.
+     */
+    tags?: string[];
+};
 /**
  * LearnedSkill — the persisted competence unit. This, not the transient
  * affordance field, is what travels in the PMA and makes a grown Will *act like
@@ -5884,6 +5925,13 @@ declare class SchemaRepertoire {
     getSchema(id: string): MotorSchema | undefined;
     /** Register a learned composite skill template (starts with no habit). */
     registerComposite(schema: MotorSchema): void;
+    /**
+     * Register a host effector's primitive schema at runtime (post-create
+     * `.effector()`). Unlike a composite it is NOT marked learned — it is a
+     * capacity the host granted, which the synthesizer surfaces immediately and
+     * reafference then builds skill on. Idempotent; re-registering updates it.
+     */
+    registerExternal(schema: MotorSchema): void;
     skills(): ReadonlyMap<string, LearnedSkill>;
     getSkill(id: string): LearnedSkill | undefined;
     /**
@@ -5961,6 +6009,8 @@ interface effectorInvocation {
     parameters: Record<string, unknown>;
     targetEntityId: string | undefined;
     reasoning: string;
+    /** The ability's declared meaning (from its EffectorDeclaration), when present. */
+    description?: string;
     tick: number;
     timestamp: number;
 }
@@ -7196,8 +7246,12 @@ interface WillConfig {
      *
      * null or omitted = no communication effectors (minimal default).
      * Example: ['listen', 'talk', 'text'] enables inbound + text outbound.
+     *
+     * A domain effector may be a bare name or an object carrying its meaning +
+     * intrinsic priors: `{ name, description?, cost?, valence?, preconditions? }`
+     * (see EffectorDeclaration). Comms names are always bare.
      */
-    allowedGenericEffectors?: string[] | null;
+    allowedGenericEffectors?: EffectorDeclaration[] | null;
     /**
      * When true the executive engine uses a canned mock LLM response instead of
      * calling the real API. Zero cost, deterministic output. Used for:
@@ -7903,6 +7957,15 @@ declare class WillStem {
     /** Update the set of allowed communication effectors at runtime. */
     setAllowedEffectors(id: string, effectors: string[] | null): void;
     /**
+     * Register a host effector on a *running* Will (post-create `.effector()`).
+     * Builds its external schema and adds it to the live repertoire so the Will
+     * can actually perceive + enact it — a grant alone only gates; without the
+     * schema the ability could never be afforded. Comms names are no-ops here
+     * (governed by AccessGrants). This is a runtime mutation, like a grant change;
+     * the deterministic/replayable path is declaring effectors at create time.
+     */
+    registerEffector(id: string, declaration: EffectorDeclaration): void;
+    /**
      * Called by the host/WorldInterface after executing a host-owned effector.
      * `invocationId` is the correlation handle the host echoed (the awaiting
      * `agency.intent` id). Reconciles it into an `agency.outcome` the ReafferenceEngine
@@ -8006,6 +8069,22 @@ declare function resolveProfile(id: string): WorldProfile | undefined;
 /** List all registered profile ids. */
 declare function listProfiles(): string[];
 
+/**
+ * A stimulus entering the Will's sensory field. A Will is a subject, not a
+ * function: you don't *call* it with input and await a return — you `perceive`
+ * something to it, and it *may* project a response later (see `nextUtterance`),
+ * coloured by its current state. Silence is a valid, meaningful outcome.
+ */
+interface Stimulus {
+    /** What was said / observed. */
+    text: string;
+    /** Who it's from (entity id). Default 'user'. */
+    from?: string;
+    /** Display name of the speaker. Default 'You' for `user`, else the `from` id. */
+    speaker?: string;
+    /** Conversation/thread id (default = `from`). */
+    thread?: string;
+}
 /** A message the Will emitted to someone. */
 interface WillMessage {
     /** Message id (stable — dedupe on it). */
@@ -8014,6 +8093,26 @@ interface WillMessage {
     content: string;
     /** Entity id the Will addressed (the speaker you used in say()/tell(), or a bond). */
     to: string;
+}
+/**
+ * A motor act the Will *chose* to enact — a projection of its agency, surfaced
+ * whether or not you registered a handler for it. (When you did, the handler
+ * still runs and its outcome feeds reafference.)
+ */
+interface WillEffectorAct {
+    /** The effector the Will selected. */
+    name: string;
+    /** The arguments it bound. */
+    args: Record<string, unknown>;
+    /** Its stated reason for the act. */
+    reasoning: string;
+    /** Bound target entity, when the act binds one. */
+    to?: string;
+}
+/** The Will's affect, projected when it shifts. Valence/arousal ∈ −1..1. */
+interface WillAffect {
+    valence: number;
+    arousal: number;
 }
 /**
  * The result of an effector your handler ran. Return a bare string as shorthand
@@ -8029,7 +8128,42 @@ type EffectorResult = string | {
 type EffectorHandler = (args: Record<string, unknown>, ctx: {
     reasoning: string;
     targetEntityId?: string;
+    description?: string;
 }) => EffectorResult | Promise<EffectorResult>;
+/**
+ * A richer effector declaration — the ability seeded as a *learnable affordance*.
+ * `description` is its meaning (carried to perception + your handler); `cost`,
+ * `valence`, and `preconditions` are the intrinsic priors the mind starts from,
+ * refined by reafference through use. Args still bind from the situation — this
+ * is not a tool-call parameter form. Declare rich effectors in `create()`'s
+ * `effectors` map (that is where they enter the affordance repertoire).
+ */
+interface EffectorSpec {
+    /** What the ability is for. */
+    description?: string;
+    /** Intrinsic effort / energy demand 0..1 (default 0.15). */
+    cost?: number;
+    /** Intrinsic reward prior −1..1 the mind expects before learning (default 0). */
+    valence?: number;
+    /** Body-state gates; the ability is unavailable unless all pass. */
+    preconditions?: SchemaPrecondition[];
+    /**
+     * Whether the ability targets a specific perceived target (default 'none').
+     * 'entity' directs it at a known person, 'object' at a known thing; the bound
+     * target arrives as `ctx.targetEntityId`.
+     */
+    binds?: 'none' | 'entity' | 'object';
+    /**
+     * Routing tags (merged with 'external'/'host'). A drive-recognised tag (e.g.
+     * 'social', 'nourishment') lets a homeostatic drive lift this ability when it
+     * presses.
+     */
+    tags?: string[];
+    /** Your implementation. */
+    handler: EffectorHandler;
+}
+/** An effectors-map value: a bare handler, or a spec carrying meaning + priors. */
+type EffectorEntry = EffectorHandler | EffectorSpec;
 /** A compact read of the mind's current inner state. */
 interface WillStateSummary {
     tick: number;
@@ -8069,8 +8203,13 @@ interface CreateWillOptions {
      * (needs ANTHROPIC_API_KEY / WILL_LLM_* env). Omit to auto-detect.
      */
     llm?: 'mock' | 'anthropic';
-    /** Abilities the Will can choose to enact. name → your handler. */
-    effectors?: Record<string, EffectorHandler>;
+    /**
+     * Abilities the Will can choose to enact. `name → handler`, or
+     * `name → { handler, description?, cost?, valence?, preconditions? }` to seed
+     * the ability with meaning + intrinsic priors (see EffectorSpec). Declared
+     * here (create time) so they enter the affordance repertoire.
+     */
+    effectors?: Record<string, EffectorEntry>;
     /** Goals seeded before the first tick. Usually leave empty — the Will forms its own. */
     initialGoals?: InitialGoal[];
     /** Persist snapshots to disk across restarts (default false). */
@@ -8089,9 +8228,15 @@ declare class Will {
     readonly id: string;
     readonly name: string;
     private readonly _effectors;
+    /** Rich declarations for create-time effectors → seed the affordance repertoire. */
+    private readonly _effectorDecls;
     private readonly _messageHandlers;
     private readonly _stateHandlers;
+    private readonly _effectorHandlers;
+    private readonly _emotionHandlers;
     private readonly _errorHandlers;
+    private readonly _utteranceWaiters;
+    private _lastAffect;
     private _unsub;
     private constructor();
     /** Boot a new mind. Resolves once it is ticking. */
@@ -8105,30 +8250,67 @@ declare class Will {
         identity?: Partial<WillIdentity>;
     }): Promise<Will>;
     /**
-     * Speak to the Will as the default user. The reply is asynchronous — it
-     * arrives on the `message` event once the Will has reasoned about it.
+     * Deliver a stimulus into the Will's sensory field. This is the one true
+     * intake — `say`/`tell` are sugar over it. It returns once the stimulus is
+     * *delivered*, NOT once the Will has responded: a response (if any) is a
+     * projection that arrives later on the `message` event, or via
+     * `nextUtterance()`. The Will may also stay silent — that is not an error.
      */
+    perceive(stimulus: Stimulus): Promise<void>;
+    /** Perceive from the default user. Sugar over `perceive`. */
     say(text: string): Promise<void>;
-    /** Speak as a specific interlocutor (multi-party conversations). */
+    /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive`. */
     tell(entityId: string, speakerName: string, text: string): Promise<void>;
     /**
-     * Register an ability the Will can choose to enact. When the Will decides to
-     * use `name`, your handler runs with the arguments it chose; the return value
-     * is fed back as the outcome (closing the reafference loop that lets the Will
-     * learn the ability). Registering makes the effector available immediately.
+     * Await the Will's *next spontaneous utterance* — a thin, honest adapter over
+     * the `message` projection stream for request/response callers. Resolves with
+     * the message, or `null` if the Will stays silent within `within` ms (default
+     * 5000). `null` is a real outcome — the Will chose not to speak — not a
+     * failure. Pass `to` to only accept an utterance addressed to that entity.
+     *
+     *   await will.perceive( { from: 'ada', text: 'Hi!' } )
+     *   const reply = await will.nextUtterance( { to: 'ada', within: 3000 } )
+     *   // reply is a WillMessage, or null if Ada got the silent treatment.
      */
-    effector(name: string, handler: EffectorHandler): this;
+    nextUtterance(opts?: {
+        within?: number;
+        to?: string;
+    }): Promise<WillMessage | null>;
+    /**
+     * Register an ability the Will can choose to enact, at runtime. `entry` is a
+     * bare handler or a full spec (`{ handler, description?, cost?, valence?,
+     * preconditions?, binds?, tags? }`). When the Will decides to use `name`, your
+     * handler runs with the arguments it chose; the return value feeds back as the
+     * outcome (the reafference loop that lets the Will learn the ability).
+     *
+     * The ability's schema is added to the live repertoire so it can actually be
+     * *afforded* immediately (a grant alone only gates), then granted. Note: this
+     * is a runtime mutation — the deterministic/replayable path is declaring
+     * effectors in `create()`'s `effectors` map.
+     */
+    effector(name: string, entry: EffectorEntry): this;
+    /** Split an effectors-map entry into a handler + an EffectorDeclaration. */
+    private _register;
     /** A compact snapshot of the mind's current inner state. */
     state(): WillStateSummary;
     on(event: 'message', handler: (m: WillMessage) => void): this;
     on(event: 'state', handler: (s: WillStateSummary) => void): this;
+    on(event: 'effector', handler: (a: WillEffectorAct) => void): this;
+    on(event: 'emotion', handler: (a: WillAffect) => void): this;
     on(event: 'error', handler: (e: Error) => void): this;
     pause(): void;
     resume(): void;
     /**
-     * Distil the mind into a portable PMA artifact and archive it. The returned
-     * snapshot restores the same self via `Will.wake()` — across a restart, a
-     * fork, or a machine boundary.
+     * Checkpoint the living mind into a portable PMA artifact — NON-destructive.
+     * The Will keeps ticking; the snapshot is a point-in-time copy you can archive
+     * or wake elsewhere. Use this for periodic saves; use `hibernate()` to sleep.
+     */
+    save(): Promise<PMASnapshot>;
+    /**
+     * Distil the mind into a portable PMA artifact and archive it — DESTRUCTIVE:
+     * the tick loop stops (the Will sleeps). The returned snapshot restores the
+     * same self via `Will.wake()` — across a restart, a fork, or a machine
+     * boundary. For a copy that leaves the Will running, use `save()`.
      */
     hibernate(): Promise<PMASnapshot>;
     /** Tear the Will down (its tick loop stops; state is discarded unless persisted). */
@@ -8138,7 +8320,9 @@ declare class Will {
     private _attach;
     private _runEffector;
     private _emitMessage;
+    private _emitEffectorAct;
+    private _maybeEmitAffect;
     private _emitError;
 }
 
-export { type AckEnvelope, type AckPolicy, type AckResult, type ActionRequest, type ActionResult, ActionSelector, type ActivityEnvelope, type ActivityEvent, type ActivityEventHandler, AestheticEvaluator, type AestheticEvaluatorConfig, AffectiveBlender, type AffectiveBlenderConfig, AffordanceSynthesizer, AsyncEngine, type AsyncEngineConfig, AttachmentEvaluator, type AttachmentEvaluatorConfig, AttentionAllocator, type AttentionAllocatorConfig, AuditionEngine, AutobiographicalNarrator, type AutobiographicalNarratorConfig, type BehavioralProbeResult, BiasDetector, type BiasDetectorConfig, BunStorageAdapter, type ChunkEnvelope, type CircadianConfig, CircadianOscillator, type ClockConfig, type Cognition, type CognitiveHealth, ConfidenceCalibrator, type ConfidenceCalibratorConfig, ConflictDetector, type ConflictReport, type ConflictResolution, type ConflictStrategy, ConsistentHashRouter, ConsoleLogger, type Coordinates, type CreateWillOptions, type CrossShardQuery, type CrossShardResult, type CrossShardTransport, DefaultEventBus, DefaultMetricCollector, DefaultOrchestrator, DefaultPartitionRouter, DefaultReplayRecorder, DefaultReplaySession, DefaultScenario, DefaultSerializer, DefaultSimulation, DefaultSimulationClock, DefaultStateManager, DefaultVectorMemoryAdapter, DeliberationEngine, type DeliveryGuarantee, DeltaEncoder, type DeltaSnapshot, type DistributedEvent, type DistributedNode, type DistributedNodeConfig, DistributedOrchestrator, DistributedStateManager, DreamSimulator, type DreamSimulatorConfig, type Duration, type EffectorHandler, type EffectorResult, type EmbeddingProvider, EmpathySimulator, type EmpathySimulatorConfig, EnergyRegulator, type EnergyRegulatorConfig, type EngineRegistry, type EngineResult, type Envelope, EpisodicConsolidator, type EpisodicConsolidatorConfig, type EventBus, type EventBusConfig, type EventFilter, type EventHandler, type EventPayload, ExecutiveEngine, type ExecutiveEngineConfig$1 as ExecutiveEngineConfig, type ExternalTransport, Exteroception, type ExteroceptionConfig, ForgettingCurve, type ForgettingCurveConfig, FrustrationEvaluator, type FrustrationEvaluatorConfig, GoalManager, type GoalManagerConfig, GustationEngine, type InboundEnvelope, type InboundMessageEnvelope, type InboundPerceptEnvelope, InhibitionController, type InhibitionControllerConfig, Interoception, type InteroceptionConfig, IntrospectionEngine, type IntrospectionEngineConfig, KnownEntityTracker, type KnownEntityTrackerConfig, type LLMCompletionRecord, type LLMCompletionSink, LocalTransport, type Logger, LoopbackTransport, LossEvaluator, type LossEvaluatorConfig, type MessageEnvelope, type MetricCollector, type MetricPoint, type MinimalContext, MockEmbedder, MoralEvaluator, type MoralEvaluatorConfig, MotorSchemaExecutor, NoveltyDetector, type NoveltyDetectorConfig, OUTBOX_TTL_TICKS, OlfactionEngine, OpenAICompatibleEmbedder, type Orchestrator, type OrchestratorConfig, type OutboundEnvelope, type OutboundListener, type OutboxMessage, type PMABehavioral, type PMABelief, type PMAEmotionalBaseline, PMAEvalHarness, type PMAGoal, type PMAIdentity, type PMAProbe, type PMASnapshot, type PartitionRouter, type PerceptEnvelope, PersonaConsolidator, type PersonaConsolidatorConfig, PlanningEngine, type PlanningEngineConfig, ReafferenceEngine, type ReasoningFootprint, type ReconstructionFidelityReport, type ReconstructionFidelityScores, type RecordUsageInput, type ReplayComparison, type ReplayConfig, type ReplayDifference, ReplayManager, type ReplayMetadata, type ReplayRecord, type ReplayRecorder, type ReplaySession, type ReplyEnvelope, ReputationTracker, type ReputationTrackerConfig, type RestoreOptions, RewardEvaluator, type RewardEvaluatorConfig, type Scenario, type ScenarioConfig, type ScenarioValidationResult, SelfModelUpdater, type SelfModelUpdaterConfig, SemanticIntegrator, type SemanticIntegratorConfig, type SensoryInput, type SerializationConfig, type SerializationFormat, type SerializedEntity, type SerializedState, type Serializer, type SessionLogEnvelope, type ShardConfig, type ShardStrategy, SilentLogger, type Simulation, type SimulationClock, type SimulationConfig, type SimulationContext, type SimulationEngine, type SimulationEntity, type SimulationEvent, type SimulationEventBase, type SimulationEventListener, type SimulationState, type SleepPressureConfig, SleepPressureRegulator, SocialPerception, type SocialPerceptionConfig, SocketIoTransport, type SocketIoTransportOptions, type SocketLike, SomatosensationEngine, SpacedRepetition, type SpacedRepetitionConfig, type StateManager, type StateSnapshot, type StorageAdapter, type StreamChannel, StreamTransport, StressRegulator, type StressRegulatorConfig, TaskSwitcher, type TaskSwitcherConfig, type TextMessage, TheoryOfMind, type TheoryOfMindConfig, ThreatEvaluator, type ThreatEvaluatorConfig, type Tick, type TickListener, type Timestamp, type TokenLedgerRecord, type TokenReportEnvelope, TokenTracker, type TokenTrackerConfig, type TokenUsage, type TransportStatus, type VectorIndex, type VectorMemoryAdapter, type VectorMemoryConfig, type VectorQueryFilter, type VectorQueryResult, type VectorRecord, VisionEngine, type VoiceChunk, Will, type WillConfig, type WillInstance, type WillMessage, type WillStateSummary, type WillStatus, WillStem, type WillSummary, WorkingMemory, type WorkingMemoryConfig, type WorldEntity, type WorldInterface, type WorldProfile, assembleMind, clearCompletionRecorder, createContext, createPRNG, type effectorInvocation, type effectorInvocationEnvelope, fileLoggingEnabled, getCompletionRecorder, getLogger, listProfiles, logger, resetLogger, resolvePricing, resolveProfile, setCompletionRecorder, setLogger };
+export { type AckEnvelope, type AckPolicy, type AckResult, type ActionRequest, type ActionResult, ActionSelector, type ActivityEnvelope, type ActivityEvent, type ActivityEventHandler, AestheticEvaluator, type AestheticEvaluatorConfig, AffectiveBlender, type AffectiveBlenderConfig, AffordanceSynthesizer, AsyncEngine, type AsyncEngineConfig, AttachmentEvaluator, type AttachmentEvaluatorConfig, AttentionAllocator, type AttentionAllocatorConfig, AuditionEngine, AutobiographicalNarrator, type AutobiographicalNarratorConfig, type BehavioralProbeResult, BiasDetector, type BiasDetectorConfig, BunStorageAdapter, type ChunkEnvelope, type CircadianConfig, CircadianOscillator, type ClockConfig, type Cognition, type CognitiveHealth, ConfidenceCalibrator, type ConfidenceCalibratorConfig, ConflictDetector, type ConflictReport, type ConflictResolution, type ConflictStrategy, ConsistentHashRouter, ConsoleLogger, type Coordinates, type CreateWillOptions, type CrossShardQuery, type CrossShardResult, type CrossShardTransport, DefaultEventBus, DefaultMetricCollector, DefaultOrchestrator, DefaultPartitionRouter, DefaultReplayRecorder, DefaultReplaySession, DefaultScenario, DefaultSerializer, DefaultSimulation, DefaultSimulationClock, DefaultStateManager, DefaultVectorMemoryAdapter, DeliberationEngine, type DeliveryGuarantee, DeltaEncoder, type DeltaSnapshot, type DistributedEvent, type DistributedNode, type DistributedNodeConfig, DistributedOrchestrator, DistributedStateManager, DreamSimulator, type DreamSimulatorConfig, type Duration, type EffectorDeclaration, type EffectorEntry, type EffectorHandler, type EffectorResult, type EffectorSpec, type EmbeddingProvider, EmpathySimulator, type EmpathySimulatorConfig, EnergyRegulator, type EnergyRegulatorConfig, type EngineRegistry, type EngineResult, type Envelope, EpisodicConsolidator, type EpisodicConsolidatorConfig, type EventBus, type EventBusConfig, type EventFilter, type EventHandler, type EventPayload, ExecutiveEngine, type ExecutiveEngineConfig$1 as ExecutiveEngineConfig, type ExternalTransport, Exteroception, type ExteroceptionConfig, ForgettingCurve, type ForgettingCurveConfig, FrustrationEvaluator, type FrustrationEvaluatorConfig, GoalManager, type GoalManagerConfig, GustationEngine, type InboundEnvelope, type InboundMessageEnvelope, type InboundPerceptEnvelope, InhibitionController, type InhibitionControllerConfig, Interoception, type InteroceptionConfig, IntrospectionEngine, type IntrospectionEngineConfig, KnownEntityTracker, type KnownEntityTrackerConfig, type LLMCompletionRecord, type LLMCompletionSink, LocalTransport, type Logger, LoopbackTransport, LossEvaluator, type LossEvaluatorConfig, type MessageEnvelope, type MetricCollector, type MetricPoint, type MinimalContext, MockEmbedder, MoralEvaluator, type MoralEvaluatorConfig, MotorSchemaExecutor, NoveltyDetector, type NoveltyDetectorConfig, OUTBOX_TTL_TICKS, OlfactionEngine, OpenAICompatibleEmbedder, type Orchestrator, type OrchestratorConfig, type OutboundEnvelope, type OutboundListener, type OutboxMessage, type PMABehavioral, type PMABelief, type PMAEmotionalBaseline, PMAEvalHarness, type PMAGoal, type PMAIdentity, type PMAProbe, type PMASnapshot, type PartitionRouter, type PerceptEnvelope, PersonaConsolidator, type PersonaConsolidatorConfig, PlanningEngine, type PlanningEngineConfig, ReafferenceEngine, type ReasoningFootprint, type ReconstructionFidelityReport, type ReconstructionFidelityScores, type RecordUsageInput, type ReplayComparison, type ReplayConfig, type ReplayDifference, ReplayManager, type ReplayMetadata, type ReplayRecord, type ReplayRecorder, type ReplaySession, type ReplyEnvelope, ReputationTracker, type ReputationTrackerConfig, type RestoreOptions, RewardEvaluator, type RewardEvaluatorConfig, type Scenario, type ScenarioConfig, type ScenarioValidationResult, type SchemaPrecondition, SelfModelUpdater, type SelfModelUpdaterConfig, SemanticIntegrator, type SemanticIntegratorConfig, type SensoryInput, type SerializationConfig, type SerializationFormat, type SerializedEntity, type SerializedState, type Serializer, type SessionLogEnvelope, type ShardConfig, type ShardStrategy, SilentLogger, type Simulation, type SimulationClock, type SimulationConfig, type SimulationContext, type SimulationEngine, type SimulationEntity, type SimulationEvent, type SimulationEventBase, type SimulationEventListener, type SimulationState, type SleepPressureConfig, SleepPressureRegulator, SocialPerception, type SocialPerceptionConfig, SocketIoTransport, type SocketIoTransportOptions, type SocketLike, SomatosensationEngine, SpacedRepetition, type SpacedRepetitionConfig, type StateManager, type StateSnapshot, type Stimulus, type StorageAdapter, type StreamChannel, StreamTransport, StressRegulator, type StressRegulatorConfig, TaskSwitcher, type TaskSwitcherConfig, type TextMessage, TheoryOfMind, type TheoryOfMindConfig, ThreatEvaluator, type ThreatEvaluatorConfig, type Tick, type TickListener, type Timestamp, type TokenLedgerRecord, type TokenReportEnvelope, TokenTracker, type TokenTrackerConfig, type TokenUsage, type TransportStatus, type VectorIndex, type VectorMemoryAdapter, type VectorMemoryConfig, type VectorQueryFilter, type VectorQueryResult, type VectorRecord, VisionEngine, type VoiceChunk, Will, type WillAffect, type WillConfig, type WillEffectorAct, type WillInstance, type WillMessage, type WillStateSummary, type WillStatus, WillStem, type WillSummary, WorkingMemory, type WorkingMemoryConfig, type WorldEntity, type WorldInterface, type WorldProfile, assembleMind, clearCompletionRecorder, createContext, createPRNG, type effectorInvocation, type effectorInvocationEnvelope, fileLoggingEnabled, getCompletionRecorder, getLogger, listProfiles, logger, resetLogger, resolvePricing, resolveProfile, setCompletionRecorder, setLogger };

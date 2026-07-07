@@ -149,6 +149,16 @@ export class ExecutiveFacet {
   /** Stamp activity at `tick` (called at spawn and on each report). */
   markActive( tick: number ): void { this._lastActiveTick = tick }
 
+  /** _reason() calls currently in flight — a real LLM call spans many ticks. */
+  private _inflight = 0
+  /**
+   * True while the facet has work the reaper must not discard: queued reports
+   * awaiting the pump, or an in-flight _reason() whose decision hasn't landed.
+   * The idle TTL only measures *quiet* facets — reaping a busy one destroys the
+   * listeners its pending decision needs, silently dropping a conversation reply.
+   */
+  get busy(): boolean { return this._inflight > 0 || this._pendingReports.length > 0 }
+
   /**
    * Per-facet chunk handler — fires for every LLM token during _reason().
    * Set by the creating engine (e.g. AuditionEngine) for entity-scoped streaming.
@@ -236,9 +246,27 @@ export class ExecutiveFacet {
     }
 
     // Legacy (bare facets in unit tests): trigger reasoning immediately.
-    this._reason( report ).catch( err =>
-      logger.error( `[executive.facet] ${this.facetId} reasoning error:`, err )
-    )
+    this._launchReason( report )
+  }
+
+  /**
+   * Launch _reason() with in-flight accounting. `busy` must hold for the whole
+   * span (a real LLM call is 10–30s ≈ many ticks) so the supervisor's idle
+   * reaper never destroys a facet whose decision is still coming — that would
+   * clear its listeners and silently drop the reply. Completion re-stamps
+   * activity so the idle TTL measures quiet time *after* the decision, not
+   * after the report that started it.
+   */
+  private _launchReason( report: FacetReport ): void {
+    this._inflight++
+    this._reason( report )
+      .catch( err =>
+        logger.error( `[executive.facet] ${this.facetId} reasoning error:`, err )
+      )
+      .finally( () => {
+        this._inflight--
+        this.markActive( ( this._currentStateRef?.tick as number ) ?? this._lastActiveTick )
+      })
   }
 
   /**
@@ -257,9 +285,7 @@ export class ExecutiveFacet {
     this._pendingReports = []
 
     for( const report of batch )
-      this._reason( report ).catch( err =>
-        logger.error( `[executive.facet] ${this.facetId} reasoning error:`, err )
-      )
+      this._launchReason( report )
   }
 
   subscribe( listener: FacetEventListener ): () => void {

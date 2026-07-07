@@ -998,27 +998,54 @@ var DefaultStateManager = class {
 
 // src/core/abstracts.ts
 var BunStorageAdapter = class {
+  get _isBun() {
+    return typeof Bun !== "undefined";
+  }
   async write(path, content) {
-    await Bun.write(path, content);
+    if (this._isBun) {
+      await Bun.write(path, content);
+      return;
+    }
+    const { mkdir, writeFile } = await import('fs/promises');
+    const { dirname } = await import('path');
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, content);
   }
   async read(path) {
-    const file = Bun.file(path);
-    if (!await file.exists())
+    if (!await this.exists(path))
       throw new Error(`File not found: ${path}`);
-    return file.text();
+    if (this._isBun)
+      return Bun.file(path).text();
+    const { readFile } = await import('fs/promises');
+    return readFile(path, "utf8");
   }
   async readBytes(path) {
-    const file = Bun.file(path);
-    if (!await file.exists())
+    if (!await this.exists(path))
       throw new Error(`File not found: ${path}`);
-    return new Uint8Array(await file.arrayBuffer());
+    if (this._isBun)
+      return new Uint8Array(await Bun.file(path).arrayBuffer());
+    const { readFile } = await import('fs/promises');
+    return new Uint8Array(await readFile(path));
   }
   async exists(path) {
-    return Bun.file(path).exists();
+    if (this._isBun)
+      return Bun.file(path).exists();
+    const { access } = await import('fs/promises');
+    try {
+      await access(path);
+      return true;
+    } catch {
+      return false;
+    }
   }
   async delete(path) {
-    const file = Bun.file(path);
-    await file.exists() && await file.delete();
+    if (this._isBun) {
+      const file = Bun.file(path);
+      await file.exists() && await file.delete();
+      return;
+    }
+    const { rm } = await import('fs/promises');
+    await rm(path, { force: true });
   }
   async ensureDir(path) {
     const { mkdirSync: mkdirSync6 } = await import('fs');
@@ -9918,6 +9945,7 @@ async function buildExecutiveContext(state, deps, recallQuery) {
     plans,
     relevantPlanIds,
     percepts,
+    abilities: extractAbilities(state),
     workingMemory,
     memories,
     beliefs,
@@ -9928,6 +9956,23 @@ async function buildExecutiveContext(state, deps, recallQuery) {
     knownEntities: extractKnownEntities(state),
     currentFocus: extractCurrentFocus(state, goals)
   };
+}
+var MAX_SURFACED_ABILITIES = 8;
+function extractAbilities(state) {
+  const out = [];
+  for (const e of state.entities.values()) {
+    if (e.type !== "affordance") continue;
+    const m = e.metadata;
+    if (m?.["source"] !== "external" || m?.["available"] === false) continue;
+    const name = typeof m?.["schema"] === "string" ? m["schema"] : void 0;
+    if (!name) continue;
+    const description = typeof m["description"] === "string" ? m["description"] : void 0;
+    const params = m["parameters"];
+    const target = m["targetEntityId"] ? typeof params?.["targetEntityName"] === "string" ? params["targetEntityName"] : String(m["targetEntityId"]) : void 0;
+    out.push({ name, ...description ? { description } : {}, ...target ? { target } : {} });
+    if (out.length >= MAX_SURFACED_ABILITIES) break;
+  }
+  return out.length > 0 ? out : void 0;
 }
 function extractCurrentFocus(state, goals) {
   const m = state.entities.get("task-switch-focus")?.metadata;
@@ -10408,6 +10453,11 @@ ${context.goals.map((g) => {
     const recentOutcomesBlock = has("recentActions") ? this._buildRecentOutcomesSection(context.recentActions, state.tick).trim() : "";
     const perceptsBlock = has("percepts") ? `## Percepts (What You Notice)
 ${context.percepts.slice(0, 10).map((p) => `- [${p.category}] ${p.summary} (salience: ${p.salience.toFixed(2)})`).join("\n") || "Nothing notable"}` : "";
+    const abilitiesBlock = context.abilities && context.abilities.length > 0 ? `## Abilities Available Now
+Things you can do in this situation \u2014 express what you want and your body enacts the fit:
+${context.abilities.map(
+      (a) => `- **${a.name}**${a.target ? ` (toward ${a.target})` : ""}${a.description ? ` \u2014 ${a.description}` : ""}`
+    ).join("\n")}` : "";
     const ruminationsBlock = has("ruminations") ? `## Active Ruminations (retrieved memories & thoughts)
 ${context.workingMemory.map((w) => `- [${w.type}] ${w.summary} (activation: ${w.activation.toFixed(2)})`).join("\n") || "Nothing actively held in mind"}` : "";
     const memoriesBlock = has("memories") ? this._buildMemoriesSection(context.memories, state.tick) : "";
@@ -10437,6 +10487,7 @@ You've been focused on ${context.currentFocus.goalDescription ? `"${context.curr
       actionDiversity.trim(),
       recentOutcomesBlock,
       perceptsBlock,
+      abilitiesBlock,
       ruminationsBlock,
       recentIntrospection.trim(),
       memoriesBlock,
@@ -11071,6 +11122,17 @@ var ExecutiveFacet = class {
   markActive(tick) {
     this._lastActiveTick = tick;
   }
+  /** _reason() calls currently in flight — a real LLM call spans many ticks. */
+  _inflight = 0;
+  /**
+   * True while the facet has work the reaper must not discard: queued reports
+   * awaiting the pump, or an in-flight _reason() whose decision hasn't landed.
+   * The idle TTL only measures *quiet* facets — reaping a busy one destroys the
+   * listeners its pending decision needs, silently dropping a conversation reply.
+   */
+  get busy() {
+    return this._inflight > 0 || this._pendingReports.length > 0;
+  }
   /**
    * Per-facet chunk handler — fires for every LLM token during _reason().
    * Set by the creating engine (e.g. AuditionEngine) for entity-scoped streaming.
@@ -11124,9 +11186,24 @@ var ExecutiveFacet = class {
       this._pendingReports.push(report);
       return;
     }
+    this._launchReason(report);
+  }
+  /**
+   * Launch _reason() with in-flight accounting. `busy` must hold for the whole
+   * span (a real LLM call is 10–30s ≈ many ticks) so the supervisor's idle
+   * reaper never destroys a facet whose decision is still coming — that would
+   * clear its listeners and silently drop the reply. Completion re-stamps
+   * activity so the idle TTL measures quiet time *after* the decision, not
+   * after the report that started it.
+   */
+  _launchReason(report) {
+    this._inflight++;
     this._reason(report).catch(
       (err) => logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err)
-    );
+    ).finally(() => {
+      this._inflight--;
+      this.markActive(this._currentStateRef?.tick ?? this._lastActiveTick);
+    });
   }
   /**
    * Per-tick pump — called by the FacetSupervisor from the ExecutiveEngine's
@@ -11142,9 +11219,7 @@ var ExecutiveFacet = class {
     const batch = this._pendingReports;
     this._pendingReports = [];
     for (const report of batch)
-      this._reason(report).catch(
-        (err) => logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err)
-      );
+      this._launchReason(report);
   }
   subscribe(listener) {
     this._listeners.add(listener);
@@ -12321,9 +12396,11 @@ var FacetSupervisor = class {
     this._reapIdle(state.tick);
   }
   _reapIdle(tick) {
-    for (const [id, facet] of [...this._facets])
+    for (const [id, facet] of [...this._facets]) {
+      if (facet.busy) continue;
       if (tick - facet.lastActiveTick > this._idleTtlTicks)
         this._reap(id, "idle");
+    }
   }
   /** Destroy + deregister a facet and notify its owner. Shared by the reaper + LRU eviction. */
   _reap(facetId, reason) {
@@ -12350,6 +12427,12 @@ var FacetSupervisor = class {
   _leastRecentlyActive() {
     let id = null;
     let min = Infinity;
+    for (const [fid, facet] of this._facets)
+      if (!facet.busy && facet.lastActiveTick < min) {
+        min = facet.lastActiveTick;
+        id = fid;
+      }
+    if (id) return id;
     for (const [fid, facet] of this._facets)
       if (facet.lastActiveTick < min) {
         min = facet.lastActiveTick;
@@ -18402,24 +18485,30 @@ var AffordanceSynthesizer = class {
           })
         });
       }
-    const entitySchema = schemas.find((s) => s.binds === "entity");
-    if (entitySchema)
+    const personSchemas = schemas.filter((s) => s.binds === "entity");
+    const objectSchemas = schemas.filter((s) => s.binds === "object");
+    if (personSchemas.length > 0 || objectSchemas.length > 0)
       for (const [id, e] of state.entities) {
         if (e.type !== "known-entity") continue;
         const m = e.metadata;
-        if (str(m?.["kind"]) !== "sentient") continue;
+        const kind = str(m?.["kind"]);
+        const applicable = kind === "sentient" ? personSchemas : kind === "thing" ? objectSchemas : null;
+        if (!applicable || applicable.length === 0) continue;
         const keid = str(m?.["keid"]) ?? id;
         const fam = num(m?.["familiarity"], 0);
         const val = num(m?.["valence"], 0);
         const res = num(m?.["resolutionConfidence"], 0);
-        candidates.push({
-          salience: fam * 0.6 + Math.max(0, val) * 0.3 + res * 0.1 + (goalTargets.get(keid) ?? 0),
-          affordance: this._build(entitySchema, tick, state, valence, energyLow, skills, {
-            evokedBy: id,
-            targetEntityId: keid,
-            parameters: { targetEntityName: str(m?.["name"]) ?? keid }
-          })
-        });
+        const salience = fam * 0.6 + Math.max(0, val) * 0.3 + res * 0.1 + (goalTargets.get(keid) ?? 0);
+        const name = str(m?.["name"]) ?? keid;
+        for (const schema of applicable)
+          candidates.push({
+            salience,
+            affordance: this._build(schema, tick, state, valence, energyLow, skills, {
+              evokedBy: id,
+              targetEntityId: keid,
+              parameters: { targetEntityName: name }
+            })
+          });
       }
     for (const [id, e] of state.entities) {
       if (e.type !== "ideomotor.intent") continue;
@@ -18511,6 +18600,7 @@ var AffordanceSynthesizer = class {
       habitStrength,
       available: this._available(schema.preconditions, (k) => metric(state, k, 0)),
       tags: schema.tags ?? [],
+      ...schema.description ? { description: schema.description } : {},
       planBias: ctx.planBias,
       planId: ctx.planId,
       stepId: ctx.stepId,
@@ -18533,6 +18623,7 @@ var AffordanceSynthesizer = class {
         habitStrength: a.habitStrength,
         available: a.available,
         tags: a.tags,
+        description: a.description,
         planBias: a.planBias,
         planId: a.planId,
         stepId: a.stepId,
@@ -18739,6 +18830,9 @@ var ActionSelector = class {
           targetEntityId: s.affordance.targetEntityId,
           parameters: s.affordance.parameters,
           activation: s.activation,
+          // Carry the ability's meaning so the Deliberator weighs what each
+          // option is FOR, not bare labels.
+          ...s.affordance.description ? { description: s.affordance.description } : {},
           // Channel B: flag a candidate that is an active plan's frontier step, so
           // the deliberation facet can own "this is my plan's next step" in-character.
           ...s.affordance.source === "plan" ? { fromPlan: true } : {}
@@ -18998,8 +19092,9 @@ var DeliberationEngine = class {
       lines.push("Your automatic action-selection was uncertain. Candidate actions:");
     candidates.forEach((c, i) => {
       const to = c.targetEntityId ? ` toward ${c.targetEntityId}` : "";
-      const plan = c.fromPlan ? " \u2014 your current plan's next step" : "";
-      lines.push(`${i + 1}. ${c.schema}${to}${plan}`);
+      const what = c.description ? ` \u2014 ${c.description}` : "";
+      const plan = c.fromPlan ? " (your current plan's next step)" : "";
+      lines.push(`${i + 1}. ${c.schema}${to}${what}${plan}`);
     });
     return lines.join("\n");
   }
@@ -19476,7 +19571,9 @@ var MotorSchemaExecutor = class {
           intentId: intent.id,
           targetEntityId: intent.targetEntityId,
           parameters: intent.parameters,
-          tick
+          tick,
+          // The ability's declared meaning, carried to the host handler.
+          description: this._resolve(intent.schema)?.description
         }
       });
     } catch (err) {
@@ -19569,6 +19666,15 @@ var SchemaRepertoire = class {
     this._learned.add(schema.id);
     if (!this._skills.has(schema.id))
       this._skills.set(schema.id, freshSkill(schema.id, 0.4, 0));
+  }
+  /**
+   * Register a host effector's primitive schema at runtime (post-create
+   * `.effector()`). Unlike a composite it is NOT marked learned — it is a
+   * capacity the host granted, which the synthesizer surfaces immediately and
+   * reafference then builds skill on. Idempotent; re-registering updates it.
+   */
+  registerExternal(schema) {
+    this._templates.set(schema.id, schema);
   }
   // ── skills ────────────────────────────────────────────────────
   skills() {
@@ -19703,6 +19809,7 @@ function schemaEntity(s) {
       preconditions: s.preconditions,
       composedOf: s.composedOf,
       baseValence: s.baseValence,
+      description: s.description,
       tags: s.tags
     }
   };
@@ -19721,6 +19828,7 @@ function readSchema(m) {
     preconditions: meta["preconditions"],
     composedOf: Array.isArray(meta["composedOf"]) ? meta["composedOf"] : void 0,
     baseValence: typeof meta["baseValence"] === "number" ? meta["baseValence"] : void 0,
+    description: typeof meta["description"] === "string" ? meta["description"] : void 0,
     tags: Array.isArray(meta["tags"]) ? meta["tags"] : void 0
   };
 }
@@ -21821,7 +21929,7 @@ var ProactiveCommunicator = class {
       }
     };
   }
-  async _handleOutboundMessage(effectorName, request, commands) {
+  async _handleOutboundMessage(effectorName2, request, commands) {
     const targetEntityId = request.targetEntityId ?? request.parameters?.targetEntityId;
     const targetEntityName = request.parameters?.targetEntityName ?? targetEntityId ?? "them";
     const rawMessages = request.parameters?.messages;
@@ -21829,7 +21937,7 @@ var ProactiveCommunicator = class {
     if (!targetEntityId) {
       return {
         success: false,
-        description: `You want to ${effectorName} but there is no one specific to reach out to.`,
+        description: `You want to ${effectorName2} but there is no one specific to reach out to.`,
         commands,
         feedback: {
           outcomeQuality: 0,
@@ -21841,7 +21949,7 @@ var ProactiveCommunicator = class {
     if (bubbles.length === 0) {
       return {
         success: false,
-        description: `You wanted to ${effectorName} ${targetEntityName} but didn't write anything.`,
+        description: `You wanted to ${effectorName2} ${targetEntityName} but didn't write anything.`,
         commands,
         feedback: { outcomeQuality: 0, surprise: 0.1, lessons: ["Provide a messages array with the actual words."] }
       };
@@ -21852,12 +21960,12 @@ var ProactiveCommunicator = class {
     const isAck = request.parameters?.isAck ?? false;
     const outboxMessageIds = [];
     bubbles.forEach((bubble, i) => {
-      logger.info(`[communication] pushing to outbox: ${effectorName} \u2192 ${targetEntityId} "${bubble.slice(0, 80)}"`);
+      logger.info(`[communication] pushing to outbox: ${effectorName2} \u2192 ${targetEntityId} "${bubble.slice(0, 80)}"`);
       outboxMessageIds.push(this._writer.enqueue({
         targetEntityId,
         targetEntityName,
         content: bubble,
-        effectorName,
+        effectorName: effectorName2,
         replyToMessageId
       }, `-${i}`));
     });
@@ -21872,7 +21980,7 @@ var ProactiveCommunicator = class {
         targetEntityName,
         messageCount: bubbles.length,
         preview: bubbles[0]?.slice(0, 100) ?? "",
-        effectorName,
+        effectorName: effectorName2,
         tick: deliveryTick,
         delivered: false,
         isAck,
@@ -21950,26 +22058,38 @@ var InstructionIntake = class {
 
 // src/cognition/agency/schemas/external.ts
 var DEFAULT_EXTERNAL_COST = 0.15;
+var clamp = (n, lo, hi) => n < lo ? lo : n > hi ? hi : n;
 function externalSchemas(effectors) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
-  for (const name of effectors ?? []) {
+  for (const decl of effectors ?? []) {
+    const name = typeof decl === "string" ? decl : decl?.name;
     if (typeof name !== "string" || name.length === 0) continue;
     if (EXPLICIT_EFFECTORS.has(name)) continue;
     if (INNATE_SCHEMA_BY_ID.has(name)) continue;
     if (seen.has(name)) continue;
     seen.add(name);
+    const meta = typeof decl === "string" ? null : decl;
+    const binds = meta?.binds === "entity" ? "entity" : meta?.binds === "object" ? "object" : "none";
+    const tags = [.../* @__PURE__ */ new Set([...meta?.tags ?? [], "external", "host"])];
     out.push({
       id: name,
       kind: "primitive",
       source: "external",
-      cost: DEFAULT_EXTERNAL_COST,
-      binds: "none",
-      baseValence: 0,
-      tags: ["external", "host"]
+      cost: typeof meta?.cost === "number" ? clamp(meta.cost, 0, 1) : DEFAULT_EXTERNAL_COST,
+      binds,
+      baseValence: typeof meta?.valence === "number" ? clamp(meta.valence, -1, 1) : 0,
+      ...meta?.preconditions ? { preconditions: meta.preconditions } : {},
+      ...meta?.description ? { description: meta.description } : {},
+      tags
     });
   }
   return out;
+}
+
+// src/cognition/agency/types.ts
+function effectorName(d) {
+  return typeof d === "string" ? d : d.name;
 }
 
 // src/cognition/config.mirror.entities.ts
@@ -22529,7 +22649,7 @@ function assembleMind(willId, config) {
   const profile = config.profile ? resolveProfile(config.profile) : void 0;
   const idGuard = validateWillIdentity({
     identity: config.identity,
-    effectors: Array.isArray(config.allowedGenericEffectors) ? config.allowedGenericEffectors : profile?.effectors ?? null,
+    effectors: (Array.isArray(config.allowedGenericEffectors) ? config.allowedGenericEffectors : profile?.effectors ?? null)?.map(effectorName) ?? null,
     profileContext: profile?.context
   });
   if (!idGuard.ok)
@@ -22609,7 +22729,8 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   dreamSimulator.attachConsolidator(episodicConsolidator);
   const goalManager = new GoalManager();
   const resolvedEffectors = Array.isArray(config.allowedGenericEffectors) ? config.allowedGenericEffectors : profile?.effectors ?? null;
-  const accessGrants = new AccessGrants(resolvedEffectors);
+  const resolvedEffectorNames = resolvedEffectors?.map(effectorName) ?? null;
+  const accessGrants = new AccessGrants(resolvedEffectorNames);
   const executiveEngine = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5 });
   executiveEngine.willId = willId;
   executiveEngine.modelId = resolveModelId(
@@ -24718,6 +24839,7 @@ var effectorController = class {
       parameters: payload.parameters ?? {},
       targetEntityId: payload.targetEntityId,
       reasoning: payload.reasoning ?? "",
+      ...typeof payload.description === "string" ? { description: payload.description } : {},
       tick: payload.tick ?? 0,
       timestamp: Date.now()
     });
@@ -25562,6 +25684,19 @@ var WillStem = class {
     this._effector.setAllowed(this._get(id), effectors);
   }
   /**
+   * Register a host effector on a *running* Will (post-create `.effector()`).
+   * Builds its external schema and adds it to the live repertoire so the Will
+   * can actually perceive + enact it — a grant alone only gates; without the
+   * schema the ability could never be afforded. Comms names are no-ops here
+   * (governed by AccessGrants). This is a runtime mutation, like a grant change;
+   * the deterministic/replayable path is declaring effectors at create time.
+   */
+  registerEffector(id, declaration) {
+    const repertoire = this._get(id).cognition.schemaRepertoire;
+    for (const schema of externalSchemas([declaration]))
+      repertoire.registerExternal(schema);
+  }
+  /**
    * Called by the host/WorldInterface after executing a host-owned effector.
    * `invocationId` is the correlation handle the host echoed (the awaiting
    * `agency.intent` id). Reconciles it into an `agency.outcome` the ReafferenceEngine
@@ -26015,6 +26150,7 @@ var SocketIoTransport = class {
 };
 
 // src/sdk/will.ts
+var AFFECT_EPSILON = 0.02;
 var Will = class _Will {
   /** The underlying WillStem — drop here for the full contract. */
   stem;
@@ -26022,9 +26158,15 @@ var Will = class _Will {
   id;
   name;
   _effectors = /* @__PURE__ */ new Map();
+  /** Rich declarations for create-time effectors → seed the affordance repertoire. */
+  _effectorDecls = /* @__PURE__ */ new Map();
   _messageHandlers = /* @__PURE__ */ new Set();
   _stateHandlers = /* @__PURE__ */ new Set();
+  _effectorHandlers = /* @__PURE__ */ new Set();
+  _emotionHandlers = /* @__PURE__ */ new Set();
   _errorHandlers = /* @__PURE__ */ new Set();
+  _utteranceWaiters = /* @__PURE__ */ new Set();
+  _lastAffect = null;
   _unsub = null;
   constructor(stem, id, name) {
     this.stem = stem;
@@ -26036,8 +26178,8 @@ var Will = class _Will {
     const id = opts.id ?? `${slug(opts.name)}-${Math.random().toString(36).slice(2, 8)}`;
     const stem = new WillStem();
     const will = new _Will(stem, id, opts.name);
-    for (const [name, handler] of Object.entries(opts.effectors ?? {}))
-      will._effectors.set(name, handler);
+    for (const [name, entry] of Object.entries(opts.effectors ?? {}))
+      will._register(name, entry);
     await stem.createWill(will._buildConfig(id, opts));
     will._attach();
     return will;
@@ -26051,8 +26193,8 @@ var Will = class _Will {
     const id = opts.id ?? `${slug(opts.name)}-${Math.random().toString(36).slice(2, 8)}`;
     const stem = new WillStem();
     const will = new _Will(stem, id, opts.name);
-    for (const [name, handler] of Object.entries(opts.effectors ?? {}))
-      will._effectors.set(name, handler);
+    for (const [name, entry] of Object.entries(opts.effectors ?? {}))
+      will._register(name, entry);
     await stem.createWill(
       will._buildConfig(id, { ...opts, identity: { prompt: "", ...opts.identity } }),
       true
@@ -26062,35 +26204,91 @@ var Will = class _Will {
     will._attach();
     return will;
   }
-  // ── Talking ────────────────────────────────────────────────
+  // ── Perceiving ─────────────────────────────────────────────
   /**
-   * Speak to the Will as the default user. The reply is asynchronous — it
-   * arrives on the `message` event once the Will has reasoned about it.
+   * Deliver a stimulus into the Will's sensory field. This is the one true
+   * intake — `say`/`tell` are sugar over it. It returns once the stimulus is
+   * *delivered*, NOT once the Will has responded: a response (if any) is a
+   * projection that arrives later on the `message` event, or via
+   * `nextUtterance()`. The Will may also stay silent — that is not an error.
    */
-  async say(text) {
-    return this.tell("user", "You", text);
-  }
-  /** Speak as a specific interlocutor (multi-party conversations). */
-  async tell(entityId, speakerName, text) {
+  async perceive(stimulus) {
+    const from = stimulus.from ?? "user";
     await this.stem.ingestText(this.id, {
       kind: "text",
-      entityId,
-      threadId: entityId,
-      content: text,
-      speakerName
+      entityId: from,
+      threadId: stimulus.thread ?? from,
+      content: stimulus.text,
+      speakerName: stimulus.speaker ?? (from === "user" ? "You" : from)
+    });
+  }
+  /** Perceive from the default user. Sugar over `perceive`. */
+  async say(text) {
+    return this.perceive({ text, from: "user", speaker: "You" });
+  }
+  /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive`. */
+  async tell(entityId, speakerName, text) {
+    return this.perceive({ text, from: entityId, speaker: speakerName });
+  }
+  /**
+   * Await the Will's *next spontaneous utterance* — a thin, honest adapter over
+   * the `message` projection stream for request/response callers. Resolves with
+   * the message, or `null` if the Will stays silent within `within` ms (default
+   * 5000). `null` is a real outcome — the Will chose not to speak — not a
+   * failure. Pass `to` to only accept an utterance addressed to that entity.
+   *
+   *   await will.perceive( { from: 'ada', text: 'Hi!' } )
+   *   const reply = await will.nextUtterance( { to: 'ada', within: 3000 } )
+   *   // reply is a WillMessage, or null if Ada got the silent treatment.
+   */
+  nextUtterance(opts = {}) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this._utteranceWaiters.delete(waiter);
+        resolve(null);
+      }, opts.within ?? 5e3);
+      timer.unref?.();
+      const waiter = { to: opts.to, resolve, timer };
+      this._utteranceWaiters.add(waiter);
     });
   }
   // ── Abilities ──────────────────────────────────────────────
   /**
-   * Register an ability the Will can choose to enact. When the Will decides to
-   * use `name`, your handler runs with the arguments it chose; the return value
-   * is fed back as the outcome (closing the reafference loop that lets the Will
-   * learn the ability). Registering makes the effector available immediately.
+   * Register an ability the Will can choose to enact, at runtime. `entry` is a
+   * bare handler or a full spec (`{ handler, description?, cost?, valence?,
+   * preconditions?, binds?, tags? }`). When the Will decides to use `name`, your
+   * handler runs with the arguments it chose; the return value feeds back as the
+   * outcome (the reafference loop that lets the Will learn the ability).
+   *
+   * The ability's schema is added to the live repertoire so it can actually be
+   * *afforded* immediately (a grant alone only gates), then granted. Note: this
+   * is a runtime mutation — the deterministic/replayable path is declaring
+   * effectors in `create()`'s `effectors` map.
    */
-  effector(name, handler) {
-    this._effectors.set(name, handler);
+  effector(name, entry) {
+    this._register(name, entry);
+    this.stem.registerEffector(this.id, this._effectorDecls.get(name));
     this.stem.setAllowedEffectors(this.id, [...COMMUNICATION, ...this._effectors.keys()]);
     return this;
+  }
+  /** Split an effectors-map entry into a handler + an EffectorDeclaration. */
+  _register(name, entry) {
+    if (typeof entry === "function") {
+      this._effectors.set(name, entry);
+      this._effectorDecls.set(name, name);
+      return;
+    }
+    this._effectors.set(name, entry.handler);
+    const hasMeta = entry.description !== void 0 || entry.cost !== void 0 || entry.valence !== void 0 || entry.preconditions !== void 0 || entry.binds !== void 0 || entry.tags !== void 0;
+    this._effectorDecls.set(name, hasMeta ? {
+      name,
+      ...entry.description !== void 0 ? { description: entry.description } : {},
+      ...entry.cost !== void 0 ? { cost: entry.cost } : {},
+      ...entry.valence !== void 0 ? { valence: entry.valence } : {},
+      ...entry.preconditions !== void 0 ? { preconditions: entry.preconditions } : {},
+      ...entry.binds !== void 0 ? { binds: entry.binds } : {},
+      ...entry.tags !== void 0 ? { tags: entry.tags } : {}
+    } : name);
   }
   // ── Introspection ──────────────────────────────────────────
   /** A compact snapshot of the mind's current inner state. */
@@ -26114,9 +26312,22 @@ var Will = class _Will {
     };
   }
   on(event, handler) {
-    if (event === "message") this._messageHandlers.add(handler);
-    else if (event === "state") this._stateHandlers.add(handler);
-    else this._errorHandlers.add(handler);
+    switch (event) {
+      case "message":
+        this._messageHandlers.add(handler);
+        break;
+      case "state":
+        this._stateHandlers.add(handler);
+        break;
+      case "effector":
+        this._effectorHandlers.add(handler);
+        break;
+      case "emotion":
+        this._emotionHandlers.add(handler);
+        break;
+      default:
+        this._errorHandlers.add(handler);
+    }
     return this;
   }
   // ── Lifecycle ──────────────────────────────────────────────
@@ -26127,9 +26338,18 @@ var Will = class _Will {
     this.stem.resumeWill(this.id);
   }
   /**
-   * Distil the mind into a portable PMA artifact and archive it. The returned
-   * snapshot restores the same self via `Will.wake()` — across a restart, a
-   * fork, or a machine boundary.
+   * Checkpoint the living mind into a portable PMA artifact — NON-destructive.
+   * The Will keeps ticking; the snapshot is a point-in-time copy you can archive
+   * or wake elsewhere. Use this for periodic saves; use `hibernate()` to sleep.
+   */
+  async save() {
+    return this.stem.distillPMA(this.id);
+  }
+  /**
+   * Distil the mind into a portable PMA artifact and archive it — DESTRUCTIVE:
+   * the tick loop stops (the Will sleeps). The returned snapshot restores the
+   * same self via `Will.wake()` — across a restart, a fork, or a machine
+   * boundary. For a copy that leaves the Will running, use `save()`.
    */
   async hibernate() {
     const pma = this.stem.distillPMA(this.id);
@@ -26138,6 +26358,11 @@ var Will = class _Will {
   }
   /** Tear the Will down (its tick loop stops; state is discarded unless persisted). */
   async stop() {
+    for (const w of this._utteranceWaiters) {
+      clearTimeout(w.timer);
+      w.resolve(null);
+    }
+    this._utteranceWaiters.clear();
     this._unsub?.();
     this._unsub = null;
     await this.stem.archiveWill(this.id);
@@ -26160,7 +26385,7 @@ var Will = class _Will {
       persistentMemory: opts.persist ?? false,
       snapshotInterval: 100,
       tickIntervalMs: opts.tickMs ?? 1e3,
-      allowedGenericEffectors: [...COMMUNICATION, ...this._effectors.keys()],
+      allowedGenericEffectors: [...COMMUNICATION, ...this._effectorDecls.values()],
       initialGoals: opts.initialGoals ?? [],
       ...opts.seed !== void 0 ? { randomSeed: opts.seed, clock: { fixedDeltaMs: 1e3, startTime: 0 } } : {}
     };
@@ -26175,13 +26400,20 @@ var Will = class _Will {
         } catch {
         }
       }
-      for (const inv of invocations)
+      for (const inv of invocations) {
+        this._emitEffectorAct({ name: inv.effectorName, args: inv.parameters, reasoning: inv.reasoning, to: inv.targetEntityId });
         void this._runEffector(inv);
-      if (this._stateHandlers.size > 0) {
-        const s = this.state();
-        for (const h of this._stateHandlers) try {
-          h(s);
-        } catch {
+      }
+      if (this._stateHandlers.size > 0 || this._emotionHandlers.size > 0) {
+        try {
+          const s = this.state();
+          for (const h of this._stateHandlers) try {
+            h(s);
+          } catch {
+          }
+          if (this._emotionHandlers.size > 0) this._maybeEmitAffect(s.metrics.valence, s.metrics.arousal);
+        } catch (e) {
+          this._emitError(e);
         }
       }
     }) ?? null;
@@ -26196,7 +26428,11 @@ var Will = class _Will {
       return;
     }
     try {
-      const raw = await handler(inv.parameters, { reasoning: inv.reasoning, targetEntityId: inv.targetEntityId });
+      const raw = await handler(inv.parameters, {
+        reasoning: inv.reasoning,
+        targetEntityId: inv.targetEntityId,
+        ...inv.description ? { description: inv.description } : {}
+      });
       const result = typeof raw === "string" ? { success: true, description: raw } : raw;
       this.stem.confirmEffectorExecution(this.id, inv.decisionRecordId, result);
     } catch (err) {
@@ -26210,6 +26446,31 @@ var Will = class _Will {
   _emitMessage(m) {
     for (const h of this._messageHandlers) try {
       h(m);
+    } catch (e) {
+      this._emitError(e);
+    }
+    if (this._utteranceWaiters.size > 0) {
+      for (const w of [...this._utteranceWaiters]) {
+        if (w.to !== void 0 && w.to !== m.to) continue;
+        clearTimeout(w.timer);
+        this._utteranceWaiters.delete(w);
+        w.resolve(m);
+      }
+    }
+  }
+  _emitEffectorAct(a) {
+    for (const h of this._effectorHandlers) try {
+      h(a);
+    } catch (e) {
+      this._emitError(e);
+    }
+  }
+  _maybeEmitAffect(valence, arousal) {
+    const last = this._lastAffect;
+    if (last && Math.abs(last.valence - valence) < AFFECT_EPSILON && Math.abs(last.arousal - arousal) < AFFECT_EPSILON) return;
+    this._lastAffect = { valence, arousal };
+    for (const h of this._emotionHandlers) try {
+      h({ valence, arousal });
     } catch (e) {
       this._emitError(e);
     }

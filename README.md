@@ -135,6 +135,19 @@ Host a Will over the [Model Context Protocol](https://modelcontextprotocol.io) �
 
 The surface keeps the paradigm: `perceive` delivers a stimulus (it returns when *delivered*, not answered), `next_utterance` awaits the mind's next words (**silence is a valid outcome**, reported — never an error), `state` reads its inner life, and `save` checkpoints it without stopping it. There is deliberately no `ask()`-shaped tool. Config via env: `WILL_TIER` (basic|standard|full), `WILL_LLM` (mock|anthropic — defaults to the zero-key mock unless `ANTHROPIC_API_KEY` is set), `WILL_TICK_MS`, `WILL_PMA_PATH`.
 
+**The other direction — a Will *employing* MCP tools.** Any MCP server's tools can become the Will's own *abilities*: each tool registers as a learnable affordance (its description is the ability's meaning, surfaced to the mind's deliberation), the **Will decides when to enact one** — nothing dispatches tools at it — and outcomes feed its reafference loop, so it gets *skilled* at the tools it uses. Arguments come from conscious intent: the executive supplies them in an action's `args`.
+
+```typescript
+import { connectMcpEffectors } from '@mindot/will/mcp'
+
+const { names } = await connectMcpEffectors(will, {
+  command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
+})
+// the Will can now choose to read/write files — when IT wants to
+```
+
+The hosted server composes with this: set `WILL_MCP_SERVERS` (a JSON array of `{command,args}` or `{url}` entries) and the mind you host in Claude Desktop itself employs those servers' tools.
+
 ### The `WillStem` contract — full control
 
 The lower-level engine surface the facade wraps (explicit tick listeners, the outbox drain, the effector ack loop, PMA distill/load) — for hosts that manage many Wills, custom transports, or replay. The rest of this section walks it end to end.

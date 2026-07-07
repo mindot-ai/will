@@ -7883,16 +7883,43 @@ function buildIdeomotorIntents(output, state, footprint) {
   const set = [];
   const seen = /* @__PURE__ */ new Set();
   const priority = clamp01(output.confidence ?? 0.8);
+  const externalBySchema = /* @__PURE__ */ new Map();
+  for (const e of state.entities.values()) {
+    if (e.type !== "affordance") continue;
+    const m = e.metadata;
+    if (m?.["source"] !== "external") continue;
+    const schema = typeof m["schema"] === "string" ? m["schema"] : void 0;
+    if (schema) externalBySchema.set(schema.toLowerCase(), schema);
+  }
   for (const action of output.actions) {
-    if (!COMMUNICATE_ACTION_TYPES.has(action.type.toLowerCase())) continue;
-    if (!action.target) continue;
-    const keid = resolveKnownEntity(action.target, state);
-    if (!keid || seen.has(keid)) continue;
-    seen.add(keid);
+    const t = action.type.toLowerCase();
+    if (COMMUNICATE_ACTION_TYPES.has(t)) {
+      if (!action.target) continue;
+      const keid2 = resolveKnownEntity(action.target, state);
+      if (!keid2 || seen.has(keid2)) continue;
+      seen.add(keid2);
+      set.push({
+        id: `ideomotor-reach-out-${keid2}`,
+        type: "ideomotor.intent",
+        metadata: { schema: "reach-out", targetEntityId: keid2, priority, origin: "executive", tick: footprint.tickObserved }
+      });
+      continue;
+    }
+    const schema = externalBySchema.get(t);
+    if (!schema || seen.has(`ability:${schema}`)) continue;
+    seen.add(`ability:${schema}`);
+    const keid = action.target ? resolveKnownEntity(action.target, state) : void 0;
     set.push({
-      id: `ideomotor-reach-out-${keid}`,
+      id: `ideomotor-${schema}${keid ? `-${keid}` : ""}`,
       type: "ideomotor.intent",
-      metadata: { schema: "reach-out", targetEntityId: keid, priority, origin: "executive", tick: footprint.tickObserved }
+      metadata: {
+        schema,
+        ...keid ? { targetEntityId: keid } : {},
+        ...action.args && typeof action.args === "object" ? { parameters: action.args } : {},
+        priority,
+        origin: "executive",
+        tick: footprint.tickObserved
+      }
     });
   }
   const currentIds = new Set(set.map((s) => s.id));
@@ -10230,7 +10257,7 @@ ${roleDescription}
 ${consciousnessArchitecture}
 
 ## Output Guidelines
-- **actions**: Choose from effectors you know about. If uncertain, describe what you want to achieve in natural language and your body will try to match it.
+- **actions**: Choose from effectors you know about. If uncertain, describe what you want to achieve in natural language and your body will try to match it. When enacting one of your available abilities that needs specifics (a query, a message, a value), supply them in the action's "args" object \u2014 e.g. {"type": "search_docs", "args": {"query": "tick loop design"}, ...}. Your body enacts the ability with exactly those args.
 - **plans**: Include for goals without existing plans or where plans need revision. You may keep multiple plans per goal \u2014 set **planId** to act on a specific existing plan (validate/execute/revise/cancel); omit it to draft a new one. Your current plans are listed under "## Active Plans".
 - **newBeliefs**: Extract patterns from experiences visible in your current state. Only record a belief if you can point to a specific observation that supports it \u2014 do not infer experiences you have no record of. Set 'evidence' honestly: 'single_observation' (first time noticing), 'recurring_pattern' (seen multiple times), 'strong_pattern' (deeply established).
 - **introspection**: Include when significant events occurred or you notice patterns. When you spot a cognitive bias in your own reasoning, name it in 'identifiedBiases' using its common term where one fits (e.g. overgeneralization, confirmation bias, recency bias) \u2014 this lets your self-assessment line up with the patterns your faculties detect on their own.
@@ -10454,7 +10481,7 @@ ${context.goals.map((g) => {
     const perceptsBlock = has("percepts") ? `## Percepts (What You Notice)
 ${context.percepts.slice(0, 10).map((p) => `- [${p.category}] ${p.summary} (salience: ${p.salience.toFixed(2)})`).join("\n") || "Nothing notable"}` : "";
     const abilitiesBlock = context.abilities && context.abilities.length > 0 ? `## Abilities Available Now
-Things you can do in this situation \u2014 express what you want and your body enacts the fit:
+Things you can do in this situation \u2014 name one as an action's "type" (with "args" for any specifics it needs) and your body enacts it:
 ${context.abilities.map(
       (a) => `- **${a.name}**${a.target ? ` (toward ${a.target})` : ""}${a.description ? ` \u2014 ${a.description}` : ""}`
     ).join("\n")}` : "";

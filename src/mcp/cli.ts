@@ -20,6 +20,10 @@
 //   WILL_TICK_MS    ms per tick                       (default 1000)
 //   WILL_SEED       deterministic seed (testing)      (default unseeded/wall-time)
 //   WILL_PMA_PATH   PMA artifact path                 (default ./.will/<name>.pma.json)
+//   WILL_MCP_SERVERS JSON array of MCP servers whose tools become the Will's
+//                    OWN abilities (it employs them; results feed its learning):
+//                    '[{"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/tmp"]}]'
+//                    Entries: {command,args?,env?} (stdio) or {url} (streamable HTTP).
 //
 // stdio discipline: stdout carries ONLY the MCP protocol — all engine logging
 // is routed to stderr before anything else runs.
@@ -32,6 +36,7 @@ import { setLogger } from '#core/logger'
 import { Will, type CreateWillOptions } from '#sdk/will'
 import type { PMASnapshot } from '#pma/index'
 import { buildWillMcpServer } from '#root/mcp/server'
+import { connectMcpEffectors, type McpToolsSource } from '#root/mcp/effectors'
 
 // stdout is the protocol channel — route every engine log line to stderr FIRST.
 const err = ( level: string ) => ( msg: string, ...rest: unknown[] ) =>
@@ -76,11 +81,30 @@ async function main(): Promise<void> {
   }
   will.on( 'error', e => console.error( `[will-mcp] error: ${ e.message }` ) )
 
+  // Onward bridges: MCP servers whose tools become the Will's OWN abilities.
+  // Best-effort — a bad entry warns and is skipped; the mind still boots.
+  const bridgeCloses: Array<() => Promise<void>> = []
+  if( process.env.WILL_MCP_SERVERS ){
+    try {
+      const sources = JSON.parse( process.env.WILL_MCP_SERVERS ) as McpToolsSource[]
+      for( const source of Array.isArray( sources ) ? sources : [] ){
+        try {
+          const { names, close } = await connectMcpEffectors( will, source )
+          bridgeCloses.push( close )
+          console.error( `[will-mcp] ${ name } gained abilities: ${ names.join( ', ' ) }` )
+        }
+        catch( e ){ console.error( `[will-mcp] MCP bridge failed (skipped): ${ ( e as Error ).message }` ) }
+      }
+    }
+    catch( e ){ console.error( `[will-mcp] WILL_MCP_SERVERS is not valid JSON — ignoring: ${ ( e as Error ).message }` ) }
+  }
+
   // Hibernate exactly once on the way out — distill + stop, then persist.
   let leaving = false
   const shutdown = async ( why: string ): Promise<void> => {
     if( leaving ) return
     leaving = true
+    for( const close of bridgeCloses ) await close().catch( () => {} )
     try {
       const pma = await will.hibernate()
       mkdirSync( dirname( pmaPath ), { recursive: true } )

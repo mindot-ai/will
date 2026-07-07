@@ -6,12 +6,19 @@
     "type": "git",
     "url": "git+https://github.com/mindot-ai/will.git"
   },
+  "bin": {
+    "will": "dist/mcp/cli.js"
+  },
   "main": "./dist/index.js",
   "devDependencies": {
     "@types/bun": "latest",
     "tsup": "^8.5.1",
     "typescript": "^5.9.0",
     "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.0.0"
   },
   "optionalDependencies": {
     "socket.io-client": "^4.8.1"

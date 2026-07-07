@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry:            [ 'src/index.ts' ],
+  entry:            [ 'src/index.ts', 'src/mcp/cli.ts' ],
   outDir:           'dist',
   format:           [ 'esm' ],
   target:           'esnext',
@@ -33,9 +33,6 @@ export default defineConfig({
       '#root':        './src',
     }
   },
-  // Runtime deps stay external — they resolve at runtime. Only list deps that
-  // src actually imports (the LLM and vector layers are in-house, no SDKs).
-  external: [
-    '@aws-sdk/client-s3',
-  ],
+  // Runtime deps (package.json dependencies) are external by default — the MCP
+  // SDK and zod resolve at runtime rather than being bundled.
 })

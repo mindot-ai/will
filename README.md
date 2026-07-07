@@ -114,6 +114,27 @@ const revived = await Will.wake(pma, { name: 'Aria' })
 
 `will.state()` returns a compact read of the mind (energy, mood, goals, beliefs, self-narrative). Drop to `will.stem` for the full `WillStem` contract at any time. Runnable: [`examples/effectors.ts`](examples/effectors.ts).
 
+### The MCP server — a persistent mind in Claude Desktop / Claude Code
+
+Host a Will over the [Model Context Protocol](https://modelcontextprotocol.io) — any MCP client can then live alongside a persistent mind that **remembers across sessions** (it hibernates to a Persistent Mind Artifact on shutdown and wakes as the same self on the next boot):
+
+```json
+{
+  "mcpServers": {
+    "will": {
+      "command": "npx",
+      "args": ["-y", "@mindot/will", "mcp"],
+      "env": {
+        "WILL_NAME": "Aria",
+        "WILL_IDENTITY": "I am Aria, a calm, precise research assistant."
+      }
+    }
+  }
+}
+```
+
+The surface keeps the paradigm: `perceive` delivers a stimulus (it returns when *delivered*, not answered), `next_utterance` awaits the mind's next words (**silence is a valid outcome**, reported — never an error), `state` reads its inner life, and `save` checkpoints it without stopping it. There is deliberately no `ask()`-shaped tool. Config via env: `WILL_TIER` (basic|standard|full), `WILL_LLM` (mock|anthropic — defaults to the zero-key mock unless `ANTHROPIC_API_KEY` is set), `WILL_TICK_MS`, `WILL_PMA_PATH`.
+
 ### The `WillStem` contract — full control
 
 The lower-level engine surface the facade wraps (explicit tick listeners, the outbox drain, the effector ack loop, PMA distill/load) — for hosts that manage many Wills, custom transports, or replay. The rest of this section walks it end to end.

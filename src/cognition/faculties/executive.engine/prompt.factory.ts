@@ -344,7 +344,7 @@ ${roleDescription}
 ${consciousnessArchitecture}
 
 ## Output Guidelines
-- **actions**: Choose from effectors you know about. If uncertain, describe what you want to achieve in natural language and your body will try to match it.
+- **actions**: Choose from effectors you know about. If uncertain, describe what you want to achieve in natural language and your body will try to match it. When enacting one of your available abilities that needs specifics (a query, a message, a value), supply them in the action's "args" object — e.g. {"type": "search_docs", "args": {"query": "tick loop design"}, ...}. Your body enacts the ability with exactly those args.
 - **plans**: Include for goals without existing plans or where plans need revision. You may keep multiple plans per goal — set **planId** to act on a specific existing plan (validate/execute/revise/cancel); omit it to draft a new one. Your current plans are listed under "## Active Plans".
 - **newBeliefs**: Extract patterns from experiences visible in your current state. Only record a belief if you can point to a specific observation that supports it — do not infer experiences you have no record of. Set 'evidence' honestly: 'single_observation' (first time noticing), 'recurring_pattern' (seen multiple times), 'strong_pattern' (deeply established).
 - **introspection**: Include when significant events occurred or you notice patterns. When you spot a cognitive bias in your own reasoning, name it in 'identifiedBiases' using its common term where one fits (e.g. overgeneralization, confirmation bias, recency bias) — this lets your self-assessment line up with the patterns your faculties detect on their own.
@@ -647,7 +647,7 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
     // self-knowledge (things you *can* do), NOT a tool-call menu: the Will still
     // expresses intent in natural language and the agency field enacts the fit.
     const abilitiesBlock = ( context.abilities && context.abilities.length > 0 )
-      ? `## Abilities Available Now\nThings you can do in this situation — express what you want and your body enacts the fit:\n${context.abilities.map( a =>
+      ? `## Abilities Available Now\nThings you can do in this situation — name one as an action's "type" (with "args" for any specifics it needs) and your body enacts it:\n${context.abilities.map( a =>
           `- **${a.name}**${a.target ? ` (toward ${a.target})` : ''}${a.description ? ` — ${a.description}` : ''}`
         ).join( '\n' )}`
       : ''

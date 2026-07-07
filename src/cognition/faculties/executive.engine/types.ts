@@ -8,7 +8,16 @@ import type { PlanStep } from '#cognition/faculties/planning.engine/engine'
 // ── Full executive output ────────────────────────────────────
 
 export interface ExecutiveOutputFull {
-  actions: Array<{ type: string; reasoning: string; expectedOutcome: string; target?: string }>
+  actions: Array<{
+    type: string; reasoning: string; expectedOutcome: string; target?: string
+    /**
+     * Arguments the executive consciously supplies when enacting an ability
+     * that needs them (e.g. a search ability's query). Ride the ideomotor
+     * intent into the affordance competition and, if the action wins, reach
+     * the host handler as the invocation's parameters.
+     */
+    args?: Record<string, unknown>
+  }>
   reasoning: string
   confidence: number
   /** Plans — the executive controls lifecycle via status + action fields */
@@ -140,7 +149,7 @@ export interface ExecutivePlanOutput {
 // ── Minimal output from LLM (before tagged-block parsing) ────
 
 export interface ExecutiveOutputMinimal {
-  actions: Array<{ type: string; reasoning: string; expectedOutcome: string; target?: string }>
+  actions: Array<{ type: string; reasoning: string; expectedOutcome: string; target?: string; args?: Record<string, unknown> }>
   reasoning: string
   confidence: number
 }

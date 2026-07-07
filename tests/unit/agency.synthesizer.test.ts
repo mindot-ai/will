@@ -231,3 +231,23 @@ describe( 'AffordanceSynthesizer — deterministic & transient', () => {
     expect( res.commands?.delete ).toContain( 'affordance-1-orient-orient' )
   })
 })
+
+describe( 'AffordanceSynthesizer — ideomotor parameters passthrough (executive args)', () => {
+  it( 'carries an ideomotor.intent\'s parameters onto the surfaced affordance', async () => {
+    const { externalSchemas } = await import( '#agency/schemas/external' )
+    const { INNATE_SCHEMAS }  = await import( '#agency/schemas/innate' )
+    const synth = new AffordanceSynthesizer( [ ...INNATE_SCHEMAS, ...externalSchemas( [ 'search_docs' ] ) ] )
+    const res   = await synth.react( 0, 1, makeState({
+      metrics:  { 'energy.level': 80 },
+      entities: [
+        { id: 'ideo-search', type: 'ideomotor.intent',
+          metadata: { schema: 'search_docs', priority: 0.9, parameters: { query: 'tick loop design' } } },
+      ],
+    }), CTX )
+
+    const aff = ( res.commands?.set ?? [] ).find( ( e: EntityInput ) =>
+      e.type === 'affordance' && e.metadata?.['schema'] === 'search_docs' && e.metadata?.['source'] === 'ideomotor' )
+    expect( aff ).toBeDefined()
+    expect( aff?.metadata?.['parameters'] ).toEqual( { query: 'tick loop design' } )
+  })
+})

@@ -19,6 +19,8 @@ Regulatory → Perceptual → Affective → Memory → Executive → Meta-cognit
 
 The mind is not re-derived from a prompt each run. It **accretes**: traits develop from experience, beliefs consolidate, skills proceduralise, and a coherent self carries across restarts as a portable, eval-verified artifact.
 
+Embed it four ways — [**SDK facade**](#the-will-sdk-facade--recommended) (Node/TS) · [**Claude Desktop via MCP**](#the-mcp-server--a-persistent-mind-in-claude-desktop--claude-code) · [**MCP tools as its abilities**](#employing-mcp-tools--the-mind-gets-abilities) · [**HTTP sidecar / Docker**](#the-http-sidecar--will-serve-any-language-or-docker) (any language). [Pick a surface →](#use-it-in-your-project)
+
 ---
 
 ## What makes it different
@@ -82,7 +84,16 @@ ticks — or earlier when physiology demands it.
 
 ## Use it in your project
 
-Runs anywhere **Node 18+ or Bun** runs (the engine is Node-compatible; Bun is the primary target). Two entry points:
+Runs anywhere **Node 18+ or Bun** runs (the engine is Node-compatible; Bun is the primary target). **Four surfaces**, one paradigm — you *perceive* things to a mind and *observe what it projects*; it may act, speak, or stay silent, and it persists across restarts via its [PMA artifact](#pma--the-persistent-mind-artifact):
+
+| Surface | You are… | Start with |
+|---|---|---|
+| [**SDK facade**](#the-will-sdk-facade--recommended) | a Node/TypeScript app embedding a mind | `import { Will } from '@mindot/will'` |
+| [**MCP host**](#the-mcp-server--a-persistent-mind-in-claude-desktop--claude-code) | Claude Desktop / Claude Code / an IDE | `npx -y @mindot/will mcp` |
+| [**MCP tools as abilities**](#employing-mcp-tools--the-mind-gets-abilities) | giving the mind tools it *chooses* to use | `import { connectMcpEffectors } from '@mindot/will/mcp'` |
+| [**HTTP sidecar**](#the-http-sidecar--will-serve-any-language-or-docker) | Python, Go, a game server — any language, or Docker | `npx -y @mindot/will serve` |
+
+(Power users can drop below all four to the [`WillStem` contract](#the-willstem-contract--full-control).)
 
 ### The `Will` SDK facade — recommended
 
@@ -135,7 +146,9 @@ Host a Will over the [Model Context Protocol](https://modelcontextprotocol.io) �
 
 The surface keeps the paradigm: `perceive` delivers a stimulus (it returns when *delivered*, not answered), `next_utterance` awaits the mind's next words (**silence is a valid outcome**, reported — never an error), `state` reads its inner life, and `save` checkpoints it without stopping it. There is deliberately no `ask()`-shaped tool. Config via env: `WILL_TIER` (basic|standard|full), `WILL_LLM` (mock|anthropic — defaults to the zero-key mock unless `ANTHROPIC_API_KEY` is set), `WILL_TICK_MS`, `WILL_PMA_PATH`.
 
-**The other direction — a Will *employing* MCP tools.** Any MCP server's tools can become the Will's own *abilities*: each tool registers as a learnable affordance (its description is the ability's meaning, surfaced to the mind's deliberation), the **Will decides when to enact one** — nothing dispatches tools at it — and outcomes feed its reafference loop, so it gets *skilled* at the tools it uses. Arguments come from conscious intent: the executive supplies them in an action's `args`.
+### Employing MCP tools — the mind gets abilities
+
+The other direction from hosting: any MCP server's tools can become the Will's own *abilities*. Each tool registers as a learnable affordance (its description is the ability's meaning, surfaced to the mind's deliberation), the **Will decides when to enact one** — nothing dispatches tools at it — and outcomes feed its reafference loop, so it gets *skilled* at the tools it uses. Arguments come from conscious intent: the executive supplies them in an action's `args`.
 
 ```typescript
 import { connectMcpEffectors } from '@mindot/will/mcp'

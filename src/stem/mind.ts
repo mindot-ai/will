@@ -340,12 +340,13 @@ export function resolveModelId( provider: LLMProvider, modelTier: ModelTier ): s
 //   WILL_EMBEDDING_DIMENSIONS  — Vector dimensions (default: 1536)
 //   WILL_VECTOR_MEMORY=mock    — Use deterministic mock embedder (dev/test only)
 
-function _resolveVectorMemory(
+export function _resolveVectorMemory(
   willId: string,
   seed: number,
   overrideAdapter?: VectorMemoryAdapter,
   disable?: boolean,
   tokenTracker?: TokenTracker | null,
+  testMode?: boolean,
 ): {
   embedder: InstanceType<typeof OpenAICompatibleEmbedder> | MockEmbedder | null
   vectorMemory: VectorMemoryAdapter | null
@@ -364,6 +365,22 @@ function _resolveVectorMemory(
   // Explicitly disabled — the documented "none" sentinel or recall turned off.
   if( !mockMode && ( rawModel === 'none' || process.env.WILL_SEMANTIC_RECALL === 'false' ) )
     return { embedder: null, vectorMemory: null }
+
+  // testMode promises a deterministic, zero-key, offline mind — but a dev .env
+  // (auto-loaded by bun) can carry WILL_SEMANTIC_RECALL=true + an embedding
+  // model + a live key, silently turning "mock" runs into real network embeds
+  // inside buildExecutiveContext. Wall-clock embed latency then jitters every
+  // downstream tick (reply timing/content under a fixed seed) — the root cause
+  // of the audition-reply determinism flake. An explicit adapter or the
+  // deterministic mock embedder is honored; the env-driven NETWORK embedder is
+  // refused here, at the single chokepoint.
+  if( testMode && !mockMode ){
+    logger.info(
+      `[vector-memory] ${willId}: testMode — ignoring env embedder "${rawModel}" ` +
+      `(live network embeds would break mock determinism; use WILL_VECTOR_MEMORY=mock or pass an adapter)`
+    )
+    return { embedder: null, vectorMemory: null }
+  }
 
   // Resolve endpoint, key and native dimensions. Two forms are supported:
   //   • "provider/model" (e.g. google/gemini-embedding-001) — the base URL and
@@ -640,7 +657,7 @@ function _constructCognition(
   // ── Memory ──────────────────────────────────────────────
   const workingMemory = new WorkingMemory()
 
-  const { embedder, vectorMemory } = _resolveVectorMemory( willId, randomSeed, config.vectorMemoryAdapter, config.disableVectorMemory, tokenTracker )
+  const { embedder, vectorMemory } = _resolveVectorMemory( willId, randomSeed, config.vectorMemoryAdapter, config.disableVectorMemory, tokenTracker, config.testMode )
   const episodicConsolidator = new EpisodicConsolidator( vectorMemory ? { vectorMemory, ...(embedder ? { embedder } : {}) } : {} )
 
   const semanticIntegrator   = new SemanticIntegrator()

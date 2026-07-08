@@ -1,12 +1,13 @@
 #!/usr/bin/env node
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync, appendFileSync, createWriteStream } from 'fs';
 import { resolve, dirname, join } from 'path';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { z } from 'zod';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import { createServer } from 'http';
 
 // src/core/logger.ts
 var ConsoleLogger = class {
@@ -329,8 +330,8 @@ var BunStorageAdapter = class {
       return;
     }
     const { mkdir, writeFile } = await import('fs/promises');
-    const { dirname: dirname3 } = await import('path');
-    await mkdir(dirname3(path), { recursive: true });
+    const { dirname: dirname4 } = await import('path');
+    await mkdir(dirname4(path), { recursive: true });
     await writeFile(path, content);
   }
   async read(path) {
@@ -370,8 +371,8 @@ var BunStorageAdapter = class {
     await rm(path, { force: true });
   }
   async ensureDir(path) {
-    const { mkdirSync: mkdirSync8 } = await import('fs');
-    mkdirSync8(path, { recursive: true });
+    const { mkdirSync: mkdirSync9 } = await import('fs');
+    mkdirSync9(path, { recursive: true });
   }
 };
 
@@ -537,7 +538,7 @@ var DefaultSerializer = class {
   }
   // ── Binary encoding ──────────────────────────────────────
   _toBinary(state) {
-    const json = JSON.stringify(state), bytes = this._encoder.encode(json), result = new Uint8Array(bytes.length + 4);
+    const json2 = JSON.stringify(state), bytes = this._encoder.encode(json2), result = new Uint8Array(bytes.length + 4);
     result[0] = bytes.length >> 24 & 255;
     result[1] = bytes.length >> 16 & 255;
     result[2] = bytes.length >> 8 & 255;
@@ -551,8 +552,8 @@ var DefaultSerializer = class {
     const length = (data[0] ?? 0) << 24 | (data[1] ?? 0) << 16 | (data[2] ?? 0) << 8 | (data[3] ?? 0);
     if (data.length - 4 < length)
       throw new Error("Invalid binary data: length mismatch");
-    const json = this._decoder.decode(data.slice(4, 4 + length));
-    return JSON.parse(json);
+    const json2 = this._decoder.decode(data.slice(4, 4 + length));
+    return JSON.parse(json2);
   }
   // ── Checksum ─────────────────────────────────────────────
   /**
@@ -728,8 +729,8 @@ var SnapshotManager = class {
     this.onSnapshot?.(tick, parsed, delta);
     if (this._config.persistInterval > 0 && this._ticksSincePersist >= this._config.persistInterval) {
       this._ticksSincePersist = 0;
-      this._persistSnapshot(entry).catch((err2) => {
-        logger.error(`[SnapshotManager] Persist failed at tick ${tick}:`, err2);
+      this._persistSnapshot(entry).catch((err) => {
+        logger.error(`[SnapshotManager] Persist failed at tick ${tick}:`, err);
       });
     }
   };
@@ -806,8 +807,8 @@ var SnapshotManager = class {
       const snapRaw = await this._storage.read(path);
       const parsed = JSON.parse(snapRaw);
       return this._serializer.deserialize(JSON.stringify(parsed));
-    } catch (err2) {
-      logger.warn(`[SnapshotManager] Could not load latest snapshot:`, err2);
+    } catch (err) {
+      logger.warn(`[SnapshotManager] Could not load latest snapshot:`, err);
       return void 0;
     }
   }
@@ -1857,8 +1858,8 @@ var CompletionInbox = class {
     for (const { label, apply } of batch) {
       try {
         apply();
-      } catch (err2) {
-        logger.error(`[completion-inbox] "${label}" failed while landing at tick ${tick}:`, err2);
+      } catch (err) {
+        logger.error(`[completion-inbox] "${label}" failed while landing at tick ${tick}:`, err);
       }
     }
     return batch.length;
@@ -2485,7 +2486,7 @@ var ExecutiveSummarizer = class {
     if (this._buffer.length > this._bufferSize) this._buffer.shift();
     this._callCount++;
     if (this._callCount % this._interval === 0 && !this._summarizing)
-      this._run().catch((err2) => logger.warn("[summarizer] error:", err2 instanceof Error ? err2.message : err2));
+      this._run().catch((err) => logger.warn("[summarizer] error:", err instanceof Error ? err.message : err));
   }
   /**
    * The current rolling summary, ready to embed in a system prompt.
@@ -2557,8 +2558,8 @@ ${r}`).join("\n\n---\n\n");
           `[summarizer] updated after ${this._callCount} executive calls \u2014 ${this._summary.length} chars (${result.inputTok} in / ${result.outputTok} out tokens)`
         );
       }
-    } catch (err2) {
-      logger.warn("[summarizer] failed:", err2 instanceof Error ? err2.message : err2);
+    } catch (err) {
+      logger.warn("[summarizer] failed:", err instanceof Error ? err.message : err);
     } finally {
       this._summarizing = false;
     }
@@ -3035,8 +3036,8 @@ var DefaultVectorMemoryAdapter = class {
             this._touch(id);
           }
       }
-    } catch (err2) {
-      logger.warn(`[VectorMemoryAdapter] Failed to load index:`, err2);
+    } catch (err) {
+      logger.warn(`[VectorMemoryAdapter] Failed to load index:`, err);
     }
   }
   async _evictColdest() {
@@ -3053,8 +3054,8 @@ var DefaultVectorMemoryAdapter = class {
     if (this._persistDebounceTimer)
       clearTimeout(this._persistDebounceTimer);
     this._persistDebounceTimer = setTimeout(() => {
-      this.persist().catch((err2) => {
-        logger.error(`[VectorMemoryAdapter] Persist failed:`, err2);
+      this.persist().catch((err) => {
+        logger.error(`[VectorMemoryAdapter] Persist failed:`, err);
       });
       this._persistDebounceTimer = null;
     }, 5e3);
@@ -3095,10 +3096,10 @@ var OpenAICompatibleEmbedder = class {
         // Abort a hung connection instead of waiting forever (FN16).
         signal: AbortSignal.timeout(this._timeoutMs)
       });
-    } catch (err2) {
-      if (err2 instanceof Error && err2.name === "TimeoutError")
+    } catch (err) {
+      if (err instanceof Error && err.name === "TimeoutError")
         throw new Error(`Embedding request timed out after ${this._timeoutMs}ms`);
-      throw err2;
+      throw err;
     }
     if (!response.ok)
       throw new Error(`Embedding failed: ${response.status} ${response.statusText}`);
@@ -9377,7 +9378,7 @@ var SemanticIntegrator = class _SemanticIntegrator {
           minSimilarity: this._semanticSimilarityThreshold
         }
       );
-    } catch (err2) {
+    } catch (err) {
       return [];
     }
     if (semanticResults.length < 3) return [];
@@ -11272,7 +11273,7 @@ async function buildExecutiveContext(state, deps, recallQuery) {
       relevantPlanIds = collectPlanIds(recalled);
       memories = recalled.map(mapEpisodeToMemory);
       for (const ep of recalled) deps.episodicConsolidator?.markRetrieved(ep.id, state.tick);
-    } catch (err2) {
+    } catch (err) {
       const fallbackResults = deps.episodicConsolidator.query({ limit: 20 });
       const recalled = fallbackResults.filter((ep) => ep.sourceType !== "goal").slice().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)).slice(0, 8);
       relevantPlanIds = collectPlanIds(recalled);
@@ -12657,7 +12658,7 @@ var ExecutiveFacet = class {
   _launchReason(report) {
     this._inflight++;
     this._reason(report).catch(
-      (err2) => logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err2)
+      (err) => logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err)
     ).finally(() => {
       this._inflight--;
       this.markActive(this._currentStateRef?.tick ?? this._lastActiveTick);
@@ -12821,8 +12822,8 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         cacheWriteTokens: result.cacheWriteTok ?? 0,
         responseExcerpt: result.text.slice(0, 600)
       });
-    } catch (err2) {
-      const msg = err2 instanceof Error ? err2.message : String(err2);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       logger.error(`[executive.facet] ${this.facetId} LLM call failed: ${msg.slice(0, 200)}`);
       this._sessionLogger?.write({
         type: "executive.facet.response",
@@ -12910,8 +12911,8 @@ ${this._facetReasoningHistory.join("\n")}` : "";
       for (const listener of this._listeners)
         try {
           listener(decision);
-        } catch (err2) {
-          logger.error(`[executive.facet] ${this.facetId} listener error:`, err2);
+        } catch (err) {
+          logger.error(`[executive.facet] ${this.facetId} listener error:`, err);
         }
     };
     if (this._inbox) this._inbox.enqueue(`${this.facetId}:decision`, notify);
@@ -13127,10 +13128,10 @@ var LLMSemaphore = class {
   }
 };
 var llmGate = new LLMSemaphore(MAX_CONCURRENT);
-function isRateLimitError(err2) {
-  if (!(err2 instanceof Error)) return false;
-  const msg = err2.message;
-  return msg.includes("rate_limit_error") || err2.statusCode === 429 || msg.includes("rate limit") || msg.includes("429");
+function isRateLimitError(err) {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message;
+  return msg.includes("rate_limit_error") || err.statusCode === 429 || msg.includes("rate limit") || msg.includes("429");
 }
 async function withGate(fn, label, gate = llmGate) {
   let attempt = 0;
@@ -13140,15 +13141,15 @@ async function withGate(fn, label, gate = llmGate) {
     try {
       const result = await fn();
       return result;
-    } catch (err2) {
-      if (isRateLimitError(err2) && attempt < maxRetries()) {
+    } catch (err) {
+      if (isRateLimitError(err) && attempt < maxRetries()) {
         attempt++;
         const base = baseDelayMs();
         retryDelay = Math.min(
           6e4,
           base * Math.pow(2, attempt) + Math.random() * (base / 2)
         );
-      } else throw err2;
+      } else throw err;
     } finally {
       release();
     }
@@ -13357,11 +13358,11 @@ var LLMDirector = class {
         }),
         signal: controller.signal
       });
-    } catch (err2) {
+    } catch (err) {
       clearTimeout(timer);
       if (controller.signal.aborted)
         throw new Error(`LLM stream to ${this._provider} timed out after ${this._timeoutMs}ms (no response)`);
-      throw err2;
+      throw err;
     }
     clearTimeout(timer);
     if (!res.ok)
@@ -13468,10 +13469,10 @@ var LLMDirector = class {
   async _fetchWithTimeout(url, init) {
     try {
       return await fetch(url, { ...init, signal: AbortSignal.timeout(this._timeoutMs) });
-    } catch (err2) {
-      if (err2 instanceof Error && err2.name === "TimeoutError")
+    } catch (err) {
+      if (err instanceof Error && err.name === "TimeoutError")
         throw new Error(`LLM request to ${this._provider} timed out after ${this._timeoutMs}ms`);
-      throw err2;
+      throw err;
     }
   }
   /**
@@ -13598,8 +13599,8 @@ var LLMDirector = class {
       writeFileSync(filepath, content);
       logger.info(`[executive] Debug prompt written \u2192 ${filepath} (~${estimatedTokens} tok estimated)`);
       return filepath;
-    } catch (err2) {
-      logger.warn(`[executive] Failed to write debug prompt: ${err2}`);
+    } catch (err) {
+      logger.warn(`[executive] Failed to write debug prompt: ${err}`);
       return "";
     }
   }
@@ -13753,8 +13754,8 @@ var DeferredEffectQueue = class {
         for (const effect of entry.effects) {
           try {
             effect();
-          } catch (err2) {
-            logger.error(`[executive] deferred effect failed (tick ${entry.observedTick}):`, err2);
+          } catch (err) {
+            logger.error(`[executive] deferred effect failed (tick ${entry.observedTick}):`, err);
           }
         }
       } else {
@@ -13894,8 +13895,8 @@ var FacetSupervisor = class {
     });
     try {
       onReaped?.();
-    } catch (err2) {
-      logger.error(`[executive] facet ${facetId} onReaped error:`, err2);
+    } catch (err) {
+      logger.error(`[executive] facet ${facetId} onReaped error:`, err);
     }
   }
   _leastRecentlyActive() {
@@ -14426,8 +14427,8 @@ var ExecutiveEngine = class extends AsyncEngine {
       executiveOutput = parseResponse(result.text, state, this._recentActionTypes);
       if (ideationCandidates && ideationCandidates.length > 0)
         executiveOutput.consideredAlternatives = ideationCandidates.map((c) => c.approach || c.description);
-    } catch (err2) {
-      const msg = err2 instanceof Error ? err2.message : String(err2);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       logger.error(`[executive] LLM call failed: ${msg.slice(0, 200)}`);
       this._sessionLogger?.write({
         type: "executive.response",
@@ -14960,8 +14961,8 @@ var PlanSupervisor = class {
         facet.report(initialReport);
       }
       logger.info(`[planning] facet activated: plan=${plan.id} facetId=${facet.facetId}`);
-    } catch (err2) {
-      logger.error(`[planning] facet failed for plan ${plan.id}:`, err2);
+    } catch (err) {
+      logger.error(`[planning] facet failed for plan ${plan.id}:`, err);
       plan.executionTier = "automatic";
     }
   }
@@ -19253,8 +19254,8 @@ var AuditionEngine = class extends BaseSenseEngine {
       try {
         const recalled = await this._getEpisodicRecall(content, ThreadDigestManager.MAX_TURNS);
         if (recalled.length > 0) this._digests.hydrate(threadId, recalled);
-      } catch (err2) {
-        logger.warn(`[audition-engine] digest hydration recall failed for ${entityId}: ${err2.message}`);
+      } catch (err) {
+        logger.warn(`[audition-engine] digest hydration recall failed for ${entityId}: ${err.message}`);
       }
     const langEnergy = computeLanguageSalience({
       content,
@@ -19388,8 +19389,8 @@ var AuditionEngine = class extends BaseSenseEngine {
     for (const cb of this._chunkCallbacks) {
       try {
         cb(entityId, threadId, chunk);
-      } catch (err2) {
-        logger.error(`[audition-engine] chunk subscriber error: ${err2.message}`);
+      } catch (err) {
+        logger.error(`[audition-engine] chunk subscriber error: ${err.message}`);
       }
     }
   }
@@ -19498,8 +19499,8 @@ var AuditionEngine = class extends BaseSenseEngine {
         // generous: the facet LLM authors in ~8–18s
       );
       unsub = handle.subscribe((d) => done(d.decision.replyBubbles ?? []));
-      Promise.resolve(handle.report({ type: "outreach", payload: { entityId, gist } })).catch((err2) => {
-        logger.warn(`[audition-engine] outreach report failed for ${entityId}: ${err2.message}`);
+      Promise.resolve(handle.report({ type: "outreach", payload: { entityId, gist } })).catch((err) => {
+        logger.warn(`[audition-engine] outreach report failed for ${entityId}: ${err.message}`);
         done([]);
       });
     });
@@ -19917,8 +19918,8 @@ var AffordanceSynthesizer = class {
           salience: 0.3,
           payload: { size: fieldSize, availableCount, tick }
         });
-      } catch (err2) {
-        logger.warn(`[affordance] bus publish failed: ${err2 instanceof Error ? err2.message : String(err2)}`);
+      } catch (err) {
+        logger.warn(`[affordance] bus publish failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
     return { commands };
@@ -20110,8 +20111,8 @@ var ActionSelector = class {
             salience: 0.8,
             payload: { from: composite.schema, to: winner.affordance.schema, activation: winner.activation, tick }
           });
-        } catch (err2) {
-          logger.warn(`[selector] preempt publish failed: ${err2 instanceof Error ? err2.message : String(err2)}`);
+        } catch (err) {
+          logger.warn(`[selector] preempt publish failed: ${err instanceof Error ? err.message : String(err)}`);
         }
         return { commands: { delete: [composite.id], metrics: [
           ["agency.field.eligible", eligible.length],
@@ -20221,8 +20222,8 @@ var ActionSelector = class {
             salience: 0.8,
             payload: { from: preemptedFrom, to: winner.affordance.schema, activation: winner.activation, tick }
           });
-      } catch (err2) {
-        logger.warn(`[selector] bus publish failed: ${err2 instanceof Error ? err2.message : String(err2)}`);
+      } catch (err) {
+        logger.warn(`[selector] bus publish failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
     const commands = {
@@ -20406,9 +20407,9 @@ var DeliberationEngine = class {
       unsub();
       const picked = extractChosen(capturedDecision, candidates);
       return picked ?? provisional;
-    } catch (err2) {
+    } catch (err) {
       this._handle = null;
-      logger.warn(`[deliberation] facet unavailable, confirming winner: ${err2 instanceof Error ? err2.message : String(err2)}`);
+      logger.warn(`[deliberation] facet unavailable, confirming winner: ${err instanceof Error ? err.message : String(err)}`);
       return provisional;
     }
   }
@@ -20816,8 +20817,8 @@ var MotorSchemaExecutor = class {
       const name = str5(intent.parameters["targetEntityName"]) ?? intent.targetEntityId ?? "them";
       try {
         bubbles = await this._author.authorOutreach(intent.targetEntityId ?? "", name, str5(intent.parameters["gist"]));
-      } catch (err2) {
-        logger.warn(`[motor] outreach authoring failed: ${errMsg(err2)}`);
+      } catch (err) {
+        logger.warn(`[motor] outreach authoring failed: ${errMsg(err)}`);
       }
     }
     if (bubbles.length === 0) return false;
@@ -20832,8 +20833,8 @@ var MotorSchemaExecutor = class {
     let result;
     try {
       result = await this._comms.executeAction(request, state);
-    } catch (err2) {
-      logger.warn(`[motor] communicate delivery failed: ${errMsg(err2)}`);
+    } catch (err) {
+      logger.warn(`[motor] communicate delivery failed: ${errMsg(err)}`);
       return false;
     }
     if (result.commands.set?.length) set.push(...result.commands.set);
@@ -20869,8 +20870,8 @@ var MotorSchemaExecutor = class {
         salience: Math.min(1, 0.4 + surprise),
         payload: { schema: intent.schema, success: enaction.success, outcomeQuality: enaction.outcomeQuality, surprise, tick }
       });
-    } catch (err2) {
-      logger.warn(`[motor] enacted publish failed: ${errMsg(err2)}`);
+    } catch (err) {
+      logger.warn(`[motor] enacted publish failed: ${errMsg(err)}`);
     }
   }
   /**
@@ -20901,8 +20902,8 @@ var MotorSchemaExecutor = class {
           tick
         }
       });
-    } catch (err2) {
-      logger.warn(`[motor] action outcome publish failed: ${errMsg(err2)}`);
+    } catch (err) {
+      logger.warn(`[motor] action outcome publish failed: ${errMsg(err)}`);
     }
   }
   _emitDispatch(intent, mode, tick) {
@@ -20923,8 +20924,8 @@ var MotorSchemaExecutor = class {
           description: this._resolve(intent.schema)?.description
         }
       });
-    } catch (err2) {
-      logger.warn(`[motor] dispatch publish failed: ${errMsg(err2)}`);
+    } catch (err) {
+      logger.warn(`[motor] dispatch publish failed: ${errMsg(err)}`);
     }
   }
 };
@@ -20978,8 +20979,8 @@ function num3(v, fallback) {
 function clamp0110(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
-function errMsg(err2) {
-  return err2 instanceof Error ? err2.message : String(err2);
+function errMsg(err) {
+  return err instanceof Error ? err.message : String(err);
 }
 
 // src/cognition/agency/engines/reafference.engine.ts
@@ -21094,8 +21095,8 @@ var ReafferenceEngine = class {
         salience: 0.6,
         payload: { schema: skill.schema, habitStrength: skill.habitStrength, tick }
       });
-    } catch (err2) {
-      logger.warn(`[reafference] publish failed: ${err2 instanceof Error ? err2.message : String(err2)}`);
+    } catch (err) {
+      logger.warn(`[reafference] publish failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   /**
@@ -21123,8 +21124,8 @@ var ReafferenceEngine = class {
           tick
         }
       });
-    } catch (err2) {
-      logger.warn(`[reafference] plan outcome publish failed: ${err2 instanceof Error ? err2.message : String(err2)}`);
+    } catch (err) {
+      logger.warn(`[reafference] plan outcome publish failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   _emitDiscovered(schema, tick) {
@@ -21137,8 +21138,8 @@ var ReafferenceEngine = class {
         salience: 0.5,
         payload: { schema, tick }
       });
-    } catch (err2) {
-      logger.warn(`[reafference] discovered publish failed: ${err2 instanceof Error ? err2.message : String(err2)}`);
+    } catch (err) {
+      logger.warn(`[reafference] discovered publish failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 };
@@ -22122,8 +22123,8 @@ async function checkIdentityCoherence(input, reviewer) {
   try {
     const r = await reviewer.call(SYSTEM_PROMPT, buildCoherenceUserMessage(input), 0, 0, COHERENCE_META);
     text = r.text ?? "";
-  } catch (err2) {
-    return { ok: true, ran: false, issues: [], raw: `review failed: ${err2 instanceof Error ? err2.message : String(err2)}` };
+  } catch (err) {
+    return { ok: true, ran: false, issues: [], raw: `review failed: ${err instanceof Error ? err.message : String(err)}` };
   }
   const issues = parseIssues(text);
   return { ok: !issues.some((i) => i.severity === "error"), ran: true, issues, raw: text };
@@ -22379,12 +22380,12 @@ var DefaultReplayRecorder = class {
     this._segments.push(segPath);
     try {
       await this._storage.write(segPath, JSON.stringify(batch));
-    } catch (err2) {
+    } catch (err) {
       this._segments = this._segments.filter((s) => s !== segPath);
       this._records = batch.records.concat(this._records);
       this._completions = batch.completions.concat(this._completions);
       this._inbound = (batch.inbound ?? []).concat(this._inbound);
-      throw err2;
+      throw err;
     }
   }
   async save(path) {
@@ -24224,8 +24225,8 @@ var TransportController = class {
     for (const envelope of envelopes) {
       try {
         this._dispatch(instance, envelope, deps);
-      } catch (err2) {
-        logger.error(`[transport] inbound dispatch failed (${envelope.channel}):`, err2);
+      } catch (err) {
+        logger.error(`[transport] inbound dispatch failed (${envelope.channel}):`, err);
       }
     }
   }
@@ -24548,8 +24549,8 @@ var BiographyWriter = class {
         this._ensuredDirs.add(dir);
       }
       appendFileSync(join(dir, file), JSON.stringify(record) + "\n", "utf8");
-    } catch (err2) {
-      logger.error(`[biography] ${file} write failed:`, err2);
+    } catch (err) {
+      logger.error(`[biography] ${file} write failed:`, err);
     }
   }
   /**
@@ -24747,8 +24748,8 @@ var WillStem = class {
           simulation.stateManager.restore(previousState, { entities: true, metrics: false });
           logger.info(`[WillStem] Restored snapshot for ${config.id} \u2014 ${previousState.entities.size} entities loaded`);
         }
-      } catch (err2) {
-        logger.warn(`[WillStem] Snapshot restore failed for ${config.id} \u2014 starting fresh:`, err2);
+      } catch (err) {
+        logger.warn(`[WillStem] Snapshot restore failed for ${config.id} \u2014 starting fresh:`, err);
       }
     const dataDir = process.env.WILL_DATA_DIR ?? "./data", sessionLogger = new SessionLogger(config.id, dataDir, {
       fileLogging: fileLoggingEnabled() && !config.testMode
@@ -24827,16 +24828,16 @@ var WillStem = class {
       for (const fn of instance.simulationEventListeners) {
         try {
           void fn(event, context);
-        } catch (err2) {
-          logger.error(`[WillStem] sim-event listener error (${config.id}):`, err2);
+        } catch (err) {
+          logger.error(`[WillStem] sim-event listener error (${config.id}):`, err);
         }
       }
     });
     this._wills.set(config.id, instance);
     this._transport.attach(instance);
     instance.status = startPaused ? "paused" : "active";
-    this._runTickLoop(config.id).catch((err2) => {
-      logger.error(`[WillStem] tick loop crashed (${config.id}):`, err2);
+    this._runTickLoop(config.id).catch((err) => {
+      logger.error(`[WillStem] tick loop crashed (${config.id}):`, err);
       const inst = this._wills.get(config.id);
       if (inst) inst.status = "archived";
     });
@@ -24934,7 +24935,7 @@ var WillStem = class {
     if (flushCmds.set?.length)
       instance.simulation.stateManager.applyCommands(flushCmds);
     const pauseState = instance.simulation.stateManager.snapshot();
-    instance.simulation.snapshotManager.persistNow(pauseState).catch((err2) => logger.error(`[WillStem] snapshot persist failed on pause (${id}):`, err2));
+    instance.simulation.snapshotManager.persistNow(pauseState).catch((err) => logger.error(`[WillStem] snapshot persist failed on pause (${id}):`, err));
     this._biography.writeSessionSummary(instance);
     this._biography.writeEmotionalBiographySummary(instance);
     instance.sessionLogger?.close();
@@ -25351,8 +25352,8 @@ var WillStem = class {
         for (const fn of instance.tickListeners) {
           try {
             fn(snapshot, instance.tickCount, outboxSnapshot, invocationsSnapshot);
-          } catch (err2) {
-            logger.error(`[WillStem] tick listener error (${id}):`, err2);
+          } catch (err) {
+            logger.error(`[WillStem] tick listener error (${id}):`, err);
           }
         }
       if (instance.sessionLogger) {
@@ -25752,11 +25753,11 @@ var Will = class _Will {
       });
       const result = typeof raw === "string" ? { success: true, description: raw } : raw;
       this.stem.confirmEffectorExecution(this.id, inv.decisionRecordId, result);
-    } catch (err2) {
-      this._emitError(err2 instanceof Error ? err2 : new Error(String(err2)));
+    } catch (err) {
+      this._emitError(err instanceof Error ? err : new Error(String(err)));
       this.stem.confirmEffectorExecution(this.id, inv.decisionRecordId, {
         success: false,
-        description: `Effector "${inv.effectorName}" threw: ${err2.message}`
+        description: `Effector "${inv.effectorName}" threw: ${err.message}`
       });
     }
   }
@@ -25803,7 +25804,191 @@ var COMMUNICATION = ["listen", "talk", "text"];
 function slug(s) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "will";
 }
-var UTTERANCE_BUFFER_CAP = 50;
+var RESULT_DESCRIPTION_CAP = 700;
+var MEANING_CAP = 300;
+function describeMcpTool(tool) {
+  const props = tool.inputSchema?.properties ?? {};
+  const required = new Set(tool.inputSchema?.required ?? []);
+  const argHints = Object.entries(props).map(([key, p]) => `${key}${required.has(key) ? "" : "?"}${p.description ? `: ${p.description}` : ""}`);
+  const base = (tool.description ?? `The ${tool.name} tool.`).trim().replace(/\s+/g, " ");
+  const hint = argHints.length > 0 ? ` (args \u2014 ${argHints.join("; ")})` : "";
+  const full = `${base}${hint}`;
+  return full.length > MEANING_CAP ? `${full.slice(0, MEANING_CAP - 1)}\u2026` : full;
+}
+function buildMcpHandler(client, tool) {
+  return async (args) => {
+    const props = tool.inputSchema?.properties;
+    const filtered = {};
+    for (const [k, v] of Object.entries(args ?? {}))
+      if (!props || k in props) filtered[k] = v;
+    const missing = (tool.inputSchema?.required ?? []).filter(
+      (k) => filtered[k] === void 0 || filtered[k] === ""
+    );
+    if (missing.length > 0)
+      return {
+        success: false,
+        description: `${tool.name} needs ${missing.join(", ")} \u2014 enact it deliberately, supplying them in the action's args.`
+      };
+    try {
+      const res = await client.callTool({ name: tool.name, arguments: filtered });
+      const text = (res.content ?? []).filter((c) => c.type === "text" && typeof c.text === "string").map((c) => c.text).join("\n").trim() || (res.isError ? "The tool reported an error." : "Done (no output).");
+      const bounded = text.length > RESULT_DESCRIPTION_CAP ? `${text.slice(0, RESULT_DESCRIPTION_CAP - 1)}\u2026` : text;
+      return { success: !res.isError, description: bounded };
+    } catch (err) {
+      return { success: false, description: `${tool.name} failed: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  };
+}
+async function connect(source) {
+  if ("client" in source) return { client: source.client, owned: false };
+  const client = new Client({ name: "mindot-will", version: "0" });
+  if ("url" in source)
+    await client.connect(new StreamableHTTPClientTransport(new URL(source.url)));
+  else
+    await client.connect(new StdioClientTransport({
+      command: source.command,
+      ...source.args ? { args: source.args } : {},
+      // Merge over the SDK's safe default env so PATH etc. survive a custom env.
+      env: { ...getDefaultEnvironment(), ...source.env ?? {} }
+    }));
+  return { client, owned: true };
+}
+async function connectMcpEffectors(will, source, opts = {}) {
+  const { client, owned } = await connect(source);
+  const { tools } = await client.listTools();
+  const names = [];
+  for (const tool of tools) {
+    const name = `${opts.prefix ?? ""}${tool.name}`;
+    will.effector(name, {
+      description: describeMcpTool(tool),
+      cost: opts.cost ?? 0.2,
+      tags: ["mcp"],
+      handler: buildMcpHandler(client, tool)
+    });
+    names.push(name);
+  }
+  return { names, close: async () => {
+    if (owned) await client.close();
+  } };
+}
+
+// src/host/boot.ts
+function routeLogsToStderr() {
+  const err = (level) => (msg, ...rest) => console.error(`[will:${level}] ${msg}`, ...rest);
+  setLogger({ debug: () => {
+  }, info: err("info"), warn: err("warn"), error: err("error") });
+}
+function slug2(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "will";
+}
+async function bootWillFromEnv() {
+  const name = process.env.WILL_NAME ?? "Will";
+  const pmaPath = resolve(process.env.WILL_PMA_PATH ?? `.will/${slug2(name)}.pma.json`);
+  const tickMs = parseInt(process.env.WILL_TICK_MS ?? "1000");
+  const engineTier = process.env.WILL_TIER ?? "standard";
+  const opts = {
+    name,
+    engineTier,
+    tickMs,
+    ...process.env.WILL_LLM ? { llm: process.env.WILL_LLM } : {},
+    ...process.env.WILL_SEED ? { seed: parseInt(process.env.WILL_SEED) } : {}
+  };
+  let will;
+  if (existsSync(pmaPath)) {
+    const pma = JSON.parse(readFileSync(pmaPath, "utf8"));
+    will = await Will.wake(pma, opts);
+    console.error(`[will] ${name} woke from ${pmaPath}`);
+  } else {
+    will = await Will.create({
+      ...opts,
+      identity: { prompt: process.env.WILL_IDENTITY ?? `I am ${name}, a persistent mind.` }
+    });
+    console.error(`[will] ${name} born (no artifact at ${pmaPath} yet)`);
+  }
+  will.on("error", (e) => console.error(`[will] error: ${e.message}`));
+  const cleanups = [];
+  if (process.env.WILL_MCP_SERVERS) {
+    try {
+      const sources = JSON.parse(process.env.WILL_MCP_SERVERS);
+      for (const source of Array.isArray(sources) ? sources : []) {
+        try {
+          const { names, close } = await connectMcpEffectors(will, source);
+          cleanups.push(close);
+          console.error(`[will] ${name} gained abilities: ${names.join(", ")}`);
+        } catch (e) {
+          console.error(`[will] MCP bridge failed (skipped): ${e.message}`);
+        }
+      }
+    } catch (e) {
+      console.error(`[will] WILL_MCP_SERVERS is not valid JSON \u2014 ignoring: ${e.message}`);
+    }
+  }
+  let leaving = false;
+  const shutdown = async (why) => {
+    if (leaving) return;
+    leaving = true;
+    for (const fn of cleanups.reverse()) await Promise.resolve(fn()).catch(() => {
+    });
+    try {
+      const pma = await will.hibernate();
+      mkdirSync(dirname(pmaPath), { recursive: true });
+      writeFileSync(pmaPath, JSON.stringify(pma));
+      console.error(`[will] ${name} hibernated to ${pmaPath} (${why})`);
+    } catch (e) {
+      console.error(`[will] hibernate failed: ${e.message}`);
+    }
+    process.exit(0);
+  };
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  return {
+    will,
+    name,
+    pmaPath,
+    tickMs,
+    engineTier: engineTier ?? "standard",
+    onCleanup: (fn) => cleanups.push(fn),
+    shutdown
+  };
+}
+
+// src/host/utterances.ts
+var BUFFER_CAP = 50;
+var UtteranceTap = class {
+  _will;
+  _pending = [];
+  constructor(will) {
+    this._will = will;
+    will.on("message", (m) => {
+      this._pending.push(m);
+      if (this._pending.length > BUFFER_CAP) this._pending.shift();
+    });
+  }
+  /** Consume the oldest buffered utterance (optionally only one addressed to `to`). */
+  takeBuffered(to) {
+    if (this._pending.length === 0) return void 0;
+    const i = to === void 0 ? 0 : this._pending.findIndex((m) => m.to === to);
+    if (i < 0) return void 0;
+    return this._pending.splice(i, 1)[0];
+  }
+  /**
+   * The next utterance: a buffered one if a projection already landed, else
+   * await up to `within` ms. `null` = the Will chose silence. An awaited
+   * message is also consumed from the buffer so it never replays.
+   */
+  async next(within, to) {
+    const buffered = this.takeBuffered(to);
+    if (buffered) return buffered;
+    const msg = await this._will.nextUtterance({ within, ...to ? { to } : {} });
+    if (msg) {
+      const i = this._pending.findIndex((p) => p.id === msg.id);
+      if (i >= 0) this._pending.splice(i, 1);
+    }
+    return msg;
+  }
+};
+
+// src/mcp/server.ts
 function serverVersion() {
   try {
     return JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version ?? "0.0.0";
@@ -25813,16 +25998,7 @@ function serverVersion() {
 }
 function buildWillMcpServer(will, opts = {}) {
   const server = new McpServer({ name: "mindot-will", version: serverVersion() });
-  const pending = [];
-  will.on("message", (m) => {
-    pending.push(m);
-    if (pending.length > UTTERANCE_BUFFER_CAP) pending.shift();
-  });
-  const takeBuffered = (to) => {
-    const i = to === void 0 ? 0 : pending.findIndex((m) => m.to === to);
-    if (i < 0 || pending.length === 0) return void 0;
-    return pending.splice(i, 1)[0];
-  };
+  const tap = new UtteranceTap(will);
   server.registerTool("perceive", {
     title: "Perceive",
     description: `Deliver a stimulus (something said or observed) into ${will.name}'s sensory field. ${will.name} is a living mind, not a chatbot: this returns once the stimulus is delivered, NOT when it has responded. Its response \u2014 if it chooses to give one \u2014 arrives as its next utterance (use the next_utterance tool). Staying silent is a valid choice, not an error.`,
@@ -25848,16 +26024,10 @@ function buildWillMcpServer(will, opts = {}) {
       from: z.string().optional().describe("Only accept an utterance addressed to this entity id.")
     }
   }, async ({ within_ms, from }) => {
-    const buffered = takeBuffered(from);
-    if (buffered)
-      return { content: [{ type: "text", text: `${will.name} says (to ${buffered.to}): ${buffered.content}` }] };
     const within = Math.min(Math.max(within_ms ?? 15e3, 100), 12e4);
-    const msg = await will.nextUtterance({ within, ...from ? { to: from } : {} });
-    if (msg) {
-      const i = pending.findIndex((p) => p.id === msg.id);
-      if (i >= 0) pending.splice(i, 1);
+    const msg = await tap.next(within, from);
+    if (msg)
       return { content: [{ type: "text", text: `${will.name} says (to ${msg.to}): ${msg.content}` }] };
-    }
     return {
       content: [{
         type: "text",
@@ -25896,152 +26066,155 @@ function buildWillMcpServer(will, opts = {}) {
   );
   return server;
 }
-var RESULT_DESCRIPTION_CAP = 700;
-var MEANING_CAP = 300;
-function describeMcpTool(tool) {
-  const props = tool.inputSchema?.properties ?? {};
-  const required = new Set(tool.inputSchema?.required ?? []);
-  const argHints = Object.entries(props).map(([key, p]) => `${key}${required.has(key) ? "" : "?"}${p.description ? `: ${p.description}` : ""}`);
-  const base = (tool.description ?? `The ${tool.name} tool.`).trim().replace(/\s+/g, " ");
-  const hint = argHints.length > 0 ? ` (args \u2014 ${argHints.join("; ")})` : "";
-  const full = `${base}${hint}`;
-  return full.length > MEANING_CAP ? `${full.slice(0, MEANING_CAP - 1)}\u2026` : full;
+var SSE_HEARTBEAT_MS = 15e3;
+function json(res, status, body) {
+  const text = JSON.stringify(body);
+  res.writeHead(status, { "content-type": "application/json", "access-control-allow-origin": "*" });
+  res.end(text);
 }
-function buildMcpHandler(client, tool) {
-  return async (args) => {
-    const props = tool.inputSchema?.properties;
-    const filtered = {};
-    for (const [k, v] of Object.entries(args ?? {}))
-      if (!props || k in props) filtered[k] = v;
-    const missing = (tool.inputSchema?.required ?? []).filter(
-      (k) => filtered[k] === void 0 || filtered[k] === ""
-    );
-    if (missing.length > 0)
-      return {
-        success: false,
-        description: `${tool.name} needs ${missing.join(", ")} \u2014 enact it deliberately, supplying them in the action's args.`
-      };
-    try {
-      const res = await client.callTool({ name: tool.name, arguments: filtered });
-      const text = (res.content ?? []).filter((c) => c.type === "text" && typeof c.text === "string").map((c) => c.text).join("\n").trim() || (res.isError ? "The tool reported an error." : "Done (no output).");
-      const bounded = text.length > RESULT_DESCRIPTION_CAP ? `${text.slice(0, RESULT_DESCRIPTION_CAP - 1)}\u2026` : text;
-      return { success: !res.isError, description: bounded };
-    } catch (err2) {
-      return { success: false, description: `${tool.name} failed: ${err2 instanceof Error ? err2.message : String(err2)}` };
-    }
+async function readJsonBody(req) {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  if (!raw) return {};
+  return JSON.parse(raw);
+}
+function buildWillHttpServer(will, opts = {}) {
+  const tap = new UtteranceTap(will);
+  const born = Date.now();
+  const streams = /* @__PURE__ */ new Set();
+  const fanout = (event, data) => {
+    const frame = `event: ${event}
+data: ${JSON.stringify(data)}
+
+`;
+    for (const res of streams) res.write(frame);
   };
-}
-async function connect(source) {
-  if ("client" in source) return { client: source.client, owned: false };
-  const client = new Client({ name: "mindot-will", version: "0" });
-  if ("url" in source)
-    await client.connect(new StreamableHTTPClientTransport(new URL(source.url)));
-  else
-    await client.connect(new StdioClientTransport({
-      command: source.command,
-      ...source.args ? { args: source.args } : {},
-      // Merge over the SDK's safe default env so PATH etc. survive a custom env.
-      env: { ...getDefaultEnvironment(), ...source.env ?? {} }
-    }));
-  return { client, owned: true };
-}
-async function connectMcpEffectors(will, source, opts = {}) {
-  const { client, owned } = await connect(source);
-  const { tools } = await client.listTools();
-  const names = [];
-  for (const tool of tools) {
-    const name = `${opts.prefix ?? ""}${tool.name}`;
-    will.effector(name, {
-      description: describeMcpTool(tool),
-      cost: opts.cost ?? 0.2,
-      tags: ["mcp"],
-      handler: buildMcpHandler(client, tool)
+  will.on("message", (m) => fanout("utterance", m));
+  will.on("emotion", (a) => fanout("emotion", a));
+  will.on("effector", (a) => fanout("action", a));
+  const server = createServer((req, res) => {
+    void handle(req, res).catch((err) => {
+      if (!res.headersSent)
+        json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      else res.end();
     });
-    names.push(name);
+  });
+  async function handle(req, res) {
+    const url = new URL(req.url ?? "/", "http://sidecar");
+    const route = `${req.method} ${url.pathname}`;
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "GET, POST, OPTIONS",
+        "access-control-allow-headers": "content-type"
+      });
+      res.end();
+      return;
+    }
+    switch (route) {
+      case "GET /health":
+        return json(res, 200, { ok: true, name: will.name, tick: will.state().tick, uptimeMs: Date.now() - born });
+      case "GET /state":
+        return json(res, 200, will.state());
+      case "POST /perceive": {
+        const body = await readJsonBody(req);
+        const text = typeof body.text === "string" ? body.text : "";
+        if (!text) return json(res, 400, { error: "text is required" });
+        await will.perceive({
+          text,
+          ...typeof body.from === "string" ? { from: body.from } : {},
+          ...typeof body.speaker === "string" ? { speaker: body.speaker } : {}
+        });
+        return json(res, 202, { delivered: true, tick: will.state().tick });
+      }
+      case "GET /next-utterance": {
+        const within = Math.min(Math.max(parseInt(url.searchParams.get("within_ms") ?? "15000") || 15e3, 100), 12e4);
+        const from = url.searchParams.get("from") ?? void 0;
+        const msg = await tap.next(within, from);
+        return msg ? json(res, 200, { utterance: msg }) : json(res, 200, { silence: true, waitedMs: within });
+      }
+      case "GET /utterances": {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+          "cache-control": "no-cache",
+          "connection": "keep-alive",
+          "access-control-allow-origin": "*"
+        });
+        res.write(`event: hello
+data: ${JSON.stringify({ name: will.name, tick: will.state().tick })}
+
+`);
+        streams.add(res);
+        const heartbeat = setInterval(() => res.write(`: tick ${will.state().tick}
+
+`), SSE_HEARTBEAT_MS);
+        req.on("close", () => {
+          clearInterval(heartbeat);
+          streams.delete(res);
+        });
+        return;
+      }
+      case "POST /save": {
+        if (!opts.pmaPath) return json(res, 409, { error: "no PMA path configured \u2014 set WILL_PMA_PATH" });
+        const pma = await will.save();
+        mkdirSync(dirname(opts.pmaPath), { recursive: true });
+        writeFileSync(opts.pmaPath, JSON.stringify(pma));
+        return json(res, 200, { saved: true, path: opts.pmaPath });
+      }
+      default:
+        return json(res, 404, {
+          error: `no such route: ${route}`,
+          routes: ["GET /health", "GET /state", "POST /perceive", "GET /next-utterance", "GET /utterances (SSE)", "POST /save"]
+        });
+    }
   }
-  return { names, close: async () => {
-    if (owned) await client.close();
-  } };
+  server.on("close", () => {
+    for (const res of streams) res.end();
+    streams.clear();
+  });
+  return server;
 }
 
-// src/mcp/cli.ts
-var err = (level) => (msg, ...rest) => console.error(`[will-mcp:${level}] ${msg}`, ...rest);
-setLogger({ debug: () => {
-}, info: err("info"), warn: err("warn"), error: err("error") });
-function slug2(s) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "will";
-}
+// src/cli.ts
+routeLogsToStderr();
+var USAGE = `usage: will <mcp | serve>
+
+  mcp     host a persistent mind over MCP stdio (Claude Desktop / Claude Code)
+  serve   host a persistent mind over HTTP (any language; WILL_PORT, default 7777)
+
+Shared env: WILL_NAME, WILL_IDENTITY, WILL_TIER, WILL_LLM, WILL_TICK_MS,
+WILL_SEED, WILL_PMA_PATH, WILL_MCP_SERVERS. The mind persists across runs via
+its PMA artifact.`;
 async function main() {
   const sub = process.argv[2];
-  if (sub !== void 0 && sub !== "mcp") {
-    console.error(`usage: will mcp   (host a persistent mind over MCP stdio)
-unknown subcommand: ${sub}`);
-    process.exit(2);
+  if (sub !== "mcp" && sub !== "serve") {
+    console.error(sub ? `unknown subcommand: ${sub}
+
+${USAGE}` : USAGE);
+    process.exit(sub ? 2 : 0);
   }
-  const name = process.env.WILL_NAME ?? "Will";
-  const pmaPath = resolve(process.env.WILL_PMA_PATH ?? `.will/${slug2(name)}.pma.json`);
-  const opts = {
-    name,
-    engineTier: process.env.WILL_TIER ?? "standard",
-    tickMs: parseInt(process.env.WILL_TICK_MS ?? "1000"),
-    ...process.env.WILL_LLM ? { llm: process.env.WILL_LLM } : {},
-    ...process.env.WILL_SEED ? { seed: parseInt(process.env.WILL_SEED) } : {}
-  };
-  let will;
-  if (existsSync(pmaPath)) {
-    const pma = JSON.parse(readFileSync(pmaPath, "utf8"));
-    will = await Will.wake(pma, opts);
-    console.error(`[will-mcp] ${name} woke from ${pmaPath}`);
-  } else {
-    will = await Will.create({
-      ...opts,
-      identity: { prompt: process.env.WILL_IDENTITY ?? `I am ${name}, a persistent mind hosted over MCP.` }
-    });
-    console.error(`[will-mcp] ${name} born (no artifact at ${pmaPath} yet)`);
+  const { will, name, pmaPath, tickMs, engineTier, onCleanup, shutdown } = await bootWillFromEnv();
+  if (sub === "mcp") {
+    process.stdin.on("end", () => void shutdown("client disconnected"));
+    const server2 = buildWillMcpServer(will, { pmaPath });
+    await server2.connect(new StdioServerTransport());
+    console.error(`[will] ${name} is listening on MCP stdio (tick ${tickMs}ms, tier ${engineTier})`);
+    return;
   }
-  will.on("error", (e) => console.error(`[will-mcp] error: ${e.message}`));
-  const bridgeCloses = [];
-  if (process.env.WILL_MCP_SERVERS) {
-    try {
-      const sources = JSON.parse(process.env.WILL_MCP_SERVERS);
-      for (const source of Array.isArray(sources) ? sources : []) {
-        try {
-          const { names, close } = await connectMcpEffectors(will, source);
-          bridgeCloses.push(close);
-          console.error(`[will-mcp] ${name} gained abilities: ${names.join(", ")}`);
-        } catch (e) {
-          console.error(`[will-mcp] MCP bridge failed (skipped): ${e.message}`);
-        }
-      }
-    } catch (e) {
-      console.error(`[will-mcp] WILL_MCP_SERVERS is not valid JSON \u2014 ignoring: ${e.message}`);
-    }
-  }
-  let leaving = false;
-  const shutdown = async (why) => {
-    if (leaving) return;
-    leaving = true;
-    for (const close of bridgeCloses) await close().catch(() => {
-    });
-    try {
-      const pma = await will.hibernate();
-      mkdirSync(dirname(pmaPath), { recursive: true });
-      writeFileSync(pmaPath, JSON.stringify(pma));
-      console.error(`[will-mcp] ${name} hibernated to ${pmaPath} (${why})`);
-    } catch (e) {
-      console.error(`[will-mcp] hibernate failed: ${e.message}`);
-    }
-    process.exit(0);
-  };
-  process.on("SIGINT", () => void shutdown("SIGINT"));
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  process.stdin.on("end", () => void shutdown("client disconnected"));
-  const server = buildWillMcpServer(will, { pmaPath });
-  await server.connect(new StdioServerTransport());
-  console.error(`[will-mcp] ${name} is listening on stdio (tick ${opts.tickMs}ms, tier ${opts.engineTier})`);
+  const port = parseInt(process.env.WILL_PORT ?? "7777");
+  const host = process.env.WILL_HOST ?? "127.0.0.1";
+  const server = buildWillHttpServer(will, { pmaPath });
+  onCleanup(() => new Promise((r) => server.close(() => r())));
+  await new Promise((resolve2, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, () => resolve2());
+  });
+  console.error(`[will] ${name} is listening on http://${host}:${port} (tick ${tickMs}ms, tier ${engineTier})`);
+  console.error(`[will] try: curl -X POST http://${host}:${port}/perceive -H 'content-type: application/json' -d '{"text":"Hello"}'`);
 }
 main().catch((e) => {
-  console.error(`[will-mcp] fatal: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
+  console.error(`[will] fatal: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
   process.exit(1);
 });
 //# sourceMappingURL=cli.js.map

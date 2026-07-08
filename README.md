@@ -148,6 +148,25 @@ const { names } = await connectMcpEffectors(will, {
 
 The hosted server composes with this: set `WILL_MCP_SERVERS` (a JSON array of `{command,args}` or `{url}` entries) and the mind you host in Claude Desktop itself employs those servers' tools.
 
+### The HTTP sidecar — `will serve` (any language, or Docker)
+
+Not on Node? Host the mind as a sidecar and speak to it over HTTP from Python, Go, a game server — anything:
+
+```bash
+npx -y @mindot/will serve          # http://127.0.0.1:7777, or: docker build -t will . && docker run -p 7777:7777 -v will-data:/data will
+```
+
+```bash
+curl -X POST localhost:7777/perceive -H 'content-type: application/json' \
+     -d '{"text":"Hello there.","from":"sam","speaker":"Sam"}'   # 202 — delivered, not answered
+curl 'localhost:7777/next-utterance?within_ms=8000&from=sam'     # its next words, or {"silence":true}
+curl localhost:7777/state                                        # its inner life
+curl -N localhost:7777/utterances                                # SSE: utterance / emotion / action projections
+curl -X POST localhost:7777/save                                 # checkpoint without stopping
+```
+
+Same paradigm, same env config, same persistence as the MCP host: the mind hibernates to its PMA artifact on shutdown and wakes as the same self on the next start (in Docker, mount `/data` to keep it across container restarts). There is deliberately no `/ask` route.
+
 ### The `WillStem` contract — full control
 
 The lower-level engine surface the facade wraps (explicit tick listeners, the outbox drain, the effector ack loop, PMA distill/load) — for hosts that manage many Wills, custom transports, or replay. The rest of this section walks it end to end.

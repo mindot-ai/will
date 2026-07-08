@@ -7,7 +7,7 @@
     "url": "git+https://github.com/mindot-ai/will.git"
   },
   "bin": {
-    "will": "dist/mcp/cli.js"
+    "will": "dist/cli.js"
   },
   "main": "./dist/index.js",
   "devDependencies": {

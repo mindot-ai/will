@@ -1,0 +1,207 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="830" viewBox="0 0 1360 830" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-38bdf8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#38bdf8"/></marker>
+<marker id="arr-94a3b8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#94a3b8"/></marker>
+<marker id="arr-2dd4bf" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#2dd4bf"/></marker>
+<marker id="arr-fb7185" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#fb7185"/></marker>
+<marker id="arr-fbbf24" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#fbbf24"/></marker>
+</defs>
+<rect width="1360" height="830" fill="url(#sky)"/>
+<rect x="1" y="1" width="1358" height="828" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">Body &amp; feeling — regulation and affect</text>
+<text x="40" y="80" font-size="13" fill="#8b93a7">Seven evaluators blend into a real affective state; the body’s budgets gate thought, attention and action — mood is state, not a prompt string</text>
+<rect x="1214.8" y="42" width="105.19999999999999" height="22" rx="11" fill="#e2e8f014" stroke="#e2e8f055" stroke-width="1"/>
+<circle cx="1226.8" cy="53" r="3.4" fill="#e2e8f0"/>
+<text x="1235.8" y="57" font-size="10.5" fill="#cbd5e1">Host / world</text>
+<rect x="1126" y="42" width="80.8" height="22" rx="11" fill="#f9731614" stroke="#f9731655" stroke-width="1"/>
+<circle cx="1138" cy="53" r="3.4" fill="#f97316"/>
+<text x="1147" y="57" font-size="10.5" fill="#cbd5e1">LLM seam</text>
+<rect x="964" y="42" width="154" height="22" rx="11" fill="#fbbf2414" stroke="#fbbf2455" stroke-width="1"/>
+<circle cx="976" cy="53" r="3.4" fill="#fbbf24"/>
+<text x="985" y="57" font-size="10.5" fill="#cbd5e1">Executive (System 2)</text>
+<rect x="826.4" y="42" width="129.6" height="22" rx="11" fill="#fb718514" stroke="#fb718555" stroke-width="1"/>
+<circle cx="838.4" cy="53" r="3.4" fill="#fb7185"/>
+<text x="847.4" y="57" font-size="10.5" fill="#cbd5e1">Affect (feeling)</text>
+<rect x="682.7" y="42" width="135.7" height="22" rx="11" fill="#2dd4bf14" stroke="#2dd4bf55" stroke-width="1"/>
+<circle cx="694.7" cy="53" r="3.4" fill="#2dd4bf"/>
+<text x="703.7" y="57" font-size="10.5" fill="#cbd5e1">Regulatory (body)</text>
+<rect x="296" y="108" width="226" height="500" rx="16" fill="#2dd4bf07" stroke="#2dd4bf2e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="312" y="130" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#2dd4bfbb">REGULATORY — THE BODY</text>
+<rect x="556" y="108" width="226" height="660" rx="16" fill="#fb718507" stroke="#fb71852e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="572" y="130" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#fb7185bb">AFFECTIVE EVALUATORS</text>
+<rect x="1096" y="108" width="226" height="560" rx="16" fill="#fbbf2407" stroke="#fbbf242e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="1112" y="130" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#fbbf24bb">WHAT FEELING TOUCHES</text>
+<path d="M 232 227 C 352 227, 450 167, 570 167" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
+<rect x="334.64450000000005" y="191.48500000000004" width="100" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#38bdf844" stroke-width="0.8"/>
+<text x="384.64450000000005" y="204.98500000000004" font-size="10" fill="#cbd5e1" text-anchor="middle">feeds all seven</text>
+<path d="M 146 360 C 146 251.75791980635498, 201.75791980635498 167, 310 167" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 232 387 C 268.4879158078397 387, 273.5120841921603 443, 310 443" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="251.8" y="405" width="38.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="271" y="418.5" font-size="10" fill="#cbd5e1" text-anchor="middle">load</text>
+<path d="M 408 324 C 408 290, 408 320, 408 286" fill="none" stroke="#2dd4bf" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-2dd4bf)"/>
+<path d="M 766 167 C 868.3181313355556 167, 733.6818686644444 427, 836 427" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
+<path d="M 766 257 C 835.8621499812309 257, 766.1378500187691 427, 836 427" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
+<path d="M 766 347 C 806.3945540883917 347, 795.6054459116083 427, 836 427" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
+<path d="M 766 437 C 800 437, 802 427, 836 427" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
+<path d="M 766 527 C 812.3849113397881 527, 789.6150886602119 427, 836 427" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
+<path d="M 766 617 C 842.944135579003 617, 759.055864420997 427, 836 427" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
+<path d="M 668 680 C 668 560, 941 574, 941 454" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
+<path d="M 408 140 C 408 104, 941 114, 941 150" fill="none" stroke="#2dd4bf" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-2dd4bf)"/>
+<rect x="811.439232" y="116.31424000000001" width="55.199999999999996" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#2dd4bf44" stroke-width="0.8"/>
+<text x="839.039232" y="129.81424" font-size="10" fill="#cbd5e1" text-anchor="middle">budgets</text>
+<path d="M 408 562 C 408 762, 1208 544, 1208 344" fill="none" stroke="#2dd4bf" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-2dd4bf)"/>
+<rect x="823.4" y="575.2045" width="88.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#2dd4bf44" stroke-width="0.8"/>
+<text x="867.8" y="588.7045" font-size="10" fill="#cbd5e1" text-anchor="middle">attention cap</text>
+<path d="M 506 443 C 626 443, 716 427, 836 427" fill="none" stroke="#2dd4bf" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-2dd4bf)"/>
+<rect x="746.1660799999999" y="418.36857599999996" width="55.199999999999996" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#2dd4bf44" stroke-width="0.8"/>
+<text x="773.7660799999999" y="431.86857599999996" font-size="10" fill="#cbd5e1" text-anchor="middle">arousal</text>
+<path d="M 1046 177 C 1080 177, 1076 177, 1110 177" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<path d="M 1046 427 C 1158.740160397051 427, 1208 316.7401603970511, 1208 204" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
+<path d="M 1046 427 C 1094.3601323405965 427, 1061.6398676594035 317, 1110 317" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
+<path d="M 1046 427 C 1080 427, 1076 457, 1110 457" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
+<path d="M 941 454 C 941 554.1251686476764, 1009.8748313523236 597, 1110 597" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
+<g>
+<rect x="60" y="200" width="172" height="54" rx="12" fill="#10141d" stroke="#38bdf899" stroke-width="1.4"/>
+<rect x="60" y="200" width="172" height="54" rx="12" fill="#38bdf812"/>
+<rect x="61.2" y="209" width="3.2" height="36" rx="1.6" fill="#38bdf8"/>
+<text x="146" y="224" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Percepts &amp; outcomes</text>
+<text x="146" y="240.5" font-size="10" fill="#8b93a7" text-anchor="middle">what just happened</text>
+</g>
+<g>
+<rect x="60" y="360" width="172" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="60" y="360" width="172" height="54" rx="12" fill="#94a3b812"/>
+<rect x="61.2" y="369" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="146" y="384" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Body metrics</text>
+<text x="146" y="400.5" font-size="10" fill="#8b93a7" text-anchor="middle">energy · sleep · stress</text>
+</g>
+<g>
+<rect x="310" y="140" width="196" height="54" rx="12" fill="#10141d" stroke="#2dd4bf99" stroke-width="1.4"/>
+<rect x="310" y="140" width="196" height="54" rx="12" fill="#2dd4bf12"/>
+<rect x="311.2" y="149" width="3.2" height="36" rx="1.6" fill="#2dd4bf"/>
+<text x="408" y="164" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">EnergyRegulator</text>
+<text x="408" y="180.5" font-size="10" fill="#8b93a7" text-anchor="middle">actions cost · rest restores</text>
+</g>
+<g>
+<rect x="310" y="232" width="196" height="54" rx="12" fill="#10141d" stroke="#2dd4bf99" stroke-width="1.4"/>
+<rect x="310" y="232" width="196" height="54" rx="12" fill="#2dd4bf12"/>
+<rect x="311.2" y="241" width="3.2" height="36" rx="1.6" fill="#2dd4bf"/>
+<text x="408" y="256" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">SleepPressure</text>
+<text x="408" y="272.5" font-size="10" fill="#8b93a7" text-anchor="middle">cognitive capacity</text>
+</g>
+<g>
+<rect x="310" y="324" width="196" height="54" rx="12" fill="#10141d" stroke="#2dd4bf99" stroke-width="1.4"/>
+<rect x="310" y="324" width="196" height="54" rx="12" fill="#2dd4bf12"/>
+<rect x="311.2" y="333" width="3.2" height="36" rx="1.6" fill="#2dd4bf"/>
+<text x="408" y="348" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">CircadianOscillator</text>
+<text x="408" y="364.5" font-size="10" fill="#8b93a7" text-anchor="middle">phase · time of day</text>
+</g>
+<g>
+<rect x="310" y="416" width="196" height="54" rx="12" fill="#10141d" stroke="#2dd4bf99" stroke-width="1.4"/>
+<rect x="310" y="416" width="196" height="54" rx="12" fill="#2dd4bf12"/>
+<rect x="311.2" y="425" width="3.2" height="36" rx="1.6" fill="#2dd4bf"/>
+<text x="408" y="440" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">StressRegulator</text>
+<text x="408" y="456.5" font-size="10" fill="#8b93a7" text-anchor="middle">load · decay</text>
+</g>
+<g>
+<rect x="310" y="508" width="196" height="54" rx="12" fill="#10141d" stroke="#2dd4bf99" stroke-width="1.4"/>
+<rect x="310" y="508" width="196" height="54" rx="12" fill="#2dd4bf12"/>
+<rect x="311.2" y="517" width="3.2" height="36" rx="1.6" fill="#2dd4bf"/>
+<text x="408" y="532" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">AttentionAllocator</text>
+<text x="408" y="548.5" font-size="10" fill="#8b93a7" text-anchor="middle">capacity budget</text>
+</g>
+<g>
+<rect x="570" y="140" width="196" height="54" rx="12" fill="#10141d" stroke="#fb718599" stroke-width="1.4"/>
+<rect x="570" y="140" width="196" height="54" rx="12" fill="#fb718512"/>
+<rect x="571.2" y="149" width="3.2" height="36" rx="1.6" fill="#fb7185"/>
+<text x="668" y="164" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Threat</text>
+<text x="668" y="180.5" font-size="10" fill="#8b93a7" text-anchor="middle">danger appraisal</text>
+</g>
+<g>
+<rect x="570" y="230" width="196" height="54" rx="12" fill="#10141d" stroke="#fb718599" stroke-width="1.4"/>
+<rect x="570" y="230" width="196" height="54" rx="12" fill="#fb718512"/>
+<rect x="571.2" y="239" width="3.2" height="36" rx="1.6" fill="#fb7185"/>
+<text x="668" y="254" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Reward</text>
+<text x="668" y="270.5" font-size="10" fill="#8b93a7" text-anchor="middle">gain appraisal</text>
+</g>
+<g>
+<rect x="570" y="320" width="196" height="54" rx="12" fill="#10141d" stroke="#fb718599" stroke-width="1.4"/>
+<rect x="570" y="320" width="196" height="54" rx="12" fill="#fb718512"/>
+<rect x="571.2" y="329" width="3.2" height="36" rx="1.6" fill="#fb7185"/>
+<text x="668" y="344" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Loss</text>
+<text x="668" y="360.5" font-size="10" fill="#8b93a7" text-anchor="middle">what was taken</text>
+</g>
+<g>
+<rect x="570" y="410" width="196" height="54" rx="12" fill="#10141d" stroke="#fb718599" stroke-width="1.4"/>
+<rect x="570" y="410" width="196" height="54" rx="12" fill="#fb718512"/>
+<rect x="571.2" y="419" width="3.2" height="36" rx="1.6" fill="#fb7185"/>
+<text x="668" y="434" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Frustration</text>
+<text x="668" y="450.5" font-size="10" fill="#8b93a7" text-anchor="middle">blocked intentions</text>
+</g>
+<g>
+<rect x="570" y="500" width="196" height="54" rx="12" fill="#10141d" stroke="#fb718599" stroke-width="1.4"/>
+<rect x="570" y="500" width="196" height="54" rx="12" fill="#fb718512"/>
+<rect x="571.2" y="509" width="3.2" height="36" rx="1.6" fill="#fb7185"/>
+<text x="668" y="524" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Attachment</text>
+<text x="668" y="540.5" font-size="10" fill="#8b93a7" text-anchor="middle">bonds · belonging</text>
+</g>
+<g>
+<rect x="570" y="590" width="196" height="54" rx="12" fill="#10141d" stroke="#fb718599" stroke-width="1.4"/>
+<rect x="570" y="590" width="196" height="54" rx="12" fill="#fb718512"/>
+<rect x="571.2" y="599" width="3.2" height="36" rx="1.6" fill="#fb7185"/>
+<text x="668" y="614" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Aesthetic</text>
+<text x="668" y="630.5" font-size="10" fill="#8b93a7" text-anchor="middle">curiosity · boredom</text>
+</g>
+<g>
+<rect x="570" y="680" width="196" height="54" rx="12" fill="#10141d" stroke="#fb718599" stroke-width="1.4"/>
+<rect x="570" y="680" width="196" height="54" rx="12" fill="#fb718512"/>
+<rect x="571.2" y="689" width="3.2" height="36" rx="1.6" fill="#fb7185"/>
+<text x="668" y="704" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Moral</text>
+<text x="668" y="720.5" font-size="10" fill="#8b93a7" text-anchor="middle">values violated?</text>
+</g>
+<g filter="url(#glow)" color="#fb7185">
+<rect x="836" y="400" width="210" height="54" rx="12" fill="#10141d" stroke="#fb718599" stroke-width="1.4"/>
+<rect x="836" y="400" width="210" height="54" rx="12" fill="#fb718512"/>
+<rect x="837.2" y="409" width="3.2" height="36" rx="1.6" fill="#fb7185"/>
+<text x="941" y="424" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">AffectiveBlender</text>
+<text x="941" y="440.5" font-size="10" fill="#8b93a7" text-anchor="middle">valence · arousal · dominance · blends</text>
+</g>
+<g>
+<rect x="836" y="150" width="210" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="836" y="150" width="210" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="837.2" y="159" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="941" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Effort gate &amp; caps</text>
+<text x="941" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">quality modulation · field width</text>
+</g>
+<g filter="url(#glow)" color="#f97316">
+<rect x="1110" y="150" width="196" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="1110" y="150" width="196" height="54" rx="12" fill="#f9731612"/>
+<rect x="1111.2" y="159" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="1208" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Executive prompt</text>
+<text x="1208" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">mood colors thought</text>
+</g>
+<g>
+<rect x="1110" y="290" width="196" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="1110" y="290" width="196" height="54" rx="12" fill="#4ade8012"/>
+<rect x="1111.2" y="299" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="1208" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Action selection</text>
+<text x="1208" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">valence priors · risk</text>
+</g>
+<g>
+<rect x="1110" y="430" width="196" height="54" rx="12" fill="#10141d" stroke="#38bdf899" stroke-width="1.4"/>
+<rect x="1110" y="430" width="196" height="54" rx="12" fill="#38bdf812"/>
+<rect x="1111.2" y="439" width="3.2" height="36" rx="1.6" fill="#38bdf8"/>
+<text x="1208" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Percept salience</text>
+<text x="1208" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">attention weighting</text>
+</g>
+<g>
+<rect x="1110" y="570" width="196" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="1110" y="570" width="196" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="1111.2" y="579" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="1208" y="594" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">on('emotion')</text>
+<text x="1208" y="610.5" font-size="10" fill="#8b93a7" text-anchor="middle">hosts observe affect</text>
+</g>
+<text x="40" y="808" font-size="10.5" fill="#5b6372">@mindot/will · affect-body</text>
+<text x="1320" y="808" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

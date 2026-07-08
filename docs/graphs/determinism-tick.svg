@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="700" viewBox="0 0 1360 700" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-94a3b8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#94a3b8"/></marker>
+<marker id="arr-fbbf24" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#fbbf24"/></marker>
+<marker id="arr-f97316" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#f97316"/></marker>
+</defs>
+<rect width="1360" height="700" fill="url(#sky)"/>
+<rect x="1" y="1" width="1358" height="698" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">The tick — command-buffer determinism &amp; replay</text>
+<text x="40" y="80" font-size="13" fill="#8b93a7">Serial engines write commands, never state; async LLM chains launch and land only at tick boundaries; a transcript makes any life re-runnable byte-for-byte</text>
+<rect x="1214.8" y="42" width="105.19999999999999" height="22" rx="11" fill="#e2e8f014" stroke="#e2e8f055" stroke-width="1"/>
+<circle cx="1226.8" cy="53" r="3.4" fill="#e2e8f0"/>
+<text x="1235.8" y="57" font-size="10.5" fill="#cbd5e1">Host / world</text>
+<rect x="1126" y="42" width="80.8" height="22" rx="11" fill="#f9731614" stroke="#f9731655" stroke-width="1"/>
+<circle cx="1138" cy="53" r="3.4" fill="#f97316"/>
+<text x="1147" y="57" font-size="10.5" fill="#cbd5e1">LLM seam</text>
+<rect x="964" y="42" width="154" height="22" rx="11" fill="#fbbf2414" stroke="#fbbf2455" stroke-width="1"/>
+<circle cx="976" cy="53" r="3.4" fill="#fbbf24"/>
+<text x="985" y="57" font-size="10.5" fill="#cbd5e1">Executive (System 2)</text>
+<rect x="795.9" y="42" width="160.1" height="22" rx="11" fill="#94a3b814" stroke="#94a3b855" stroke-width="1"/>
+<circle cx="807.9" cy="53" r="3.4" fill="#94a3b8"/>
+<text x="816.9" y="57" font-size="10.5" fill="#cbd5e1">Stem / infrastructure</text>
+<rect x="284" y="118" width="520" height="440" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="300" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">ONE TICK — SERIAL &amp; PURE</text>
+<rect x="834" y="248" width="226" height="310" rx="16" fill="#fbbf2407" stroke="#fbbf242e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="850" y="270" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#fbbf24bb">ASYNC CHAINS, QUANTIZED</text>
+<rect x="1090" y="118" width="226" height="440" rx="16" fill="#e2e8f007" stroke="#e2e8f02e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="1106" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#e2e8f0bb">THE REPLAY SEAM</text>
+<path d="M 264 177 C 298 177, 266 177, 300 177" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 264 317 C 298 317, 266 317, 300 317" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<path d="M 407 204 C 407 238, 407 256, 407 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="382.2" y="237" width="49.599999999999994" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="407" y="250.5" font-size="10" fill="#cbd5e1" text-anchor="middle">tick N</text>
+<path d="M 407 344 C 407 378, 407 396, 407 430" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<path d="M 514 457 C 548 457, 540 457, 574 457" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 674 430 C 674 396, 674 378, 674 344" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="660.4" y="377" width="27.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="674" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">ok</text>
+<path d="M 674 290 C 674 256, 674 238, 674 204" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 674 150 C 674 116, 407 116, 407 150" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
+<rect x="510.1" y="114.5" width="60.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="540.5" y="128" font-size="10" fill="#cbd5e1" text-anchor="middle">tick N+1</text>
+<path d="M 407 344 C 407 500, 694 347, 850 347" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
+<rect x="593.947296" y="377.928736" width="88.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="638.347296" y="391.428736" font-size="10" fill="#cbd5e1" text-anchor="middle">react() pumps</text>
+<path d="M 945 374 C 945 410.48, 945 433.52, 945 470" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<rect x="920.2" y="412" width="49.599999999999994" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="945" y="425.5" font-size="10" fill="#cbd5e1" text-anchor="middle">launch</text>
+<path d="M 1040 497 C 1064 497, 1064 347, 1040 347" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f97316)"/>
+<rect x="1030.4" y="412" width="55.199999999999996" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="1058" y="425.5" font-size="10" fill="#cbd5e1" text-anchor="middle">enqueue</text>
+<path d="M 945 320 C 945 265, 829 177, 774 177" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f97316)"/>
+<rect x="824.525" y="217.875" width="111.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="880.125" y="231.375" font-size="10" fill="#cbd5e1" text-anchor="middle">drained @ Phase 2</text>
+<path d="M 1040 497 C 1074 497, 1072 497, 1106 497" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f97316)"/>
+<rect x="1048.2" y="487" width="49.599999999999994" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="1073" y="500.5" font-size="10" fill="#cbd5e1" text-anchor="middle">record</text>
+<path d="M 1203 470 C 1203 433.52, 1203 410.48, 1203 374" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="1167" y="412" width="72" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="1203" y="425.5" font-size="10" fill="#cbd5e1" text-anchor="middle">transcript</text>
+<path d="M 1106 347 C 1021.0089615604518 347, 945 385.0089615604517, 945 470" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<rect x="949.2283605851694" y="366.6283605851694" width="88.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="993.6283605851694" y="380.1283605851694" font-size="10" fill="#cbd5e1" text-anchor="middle">replay serves</text>
+<path d="M 1203 320 C 1203 275.92, 1203 248.07999999999998, 1203 204" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<g>
+<rect x="60" y="150" width="204" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="60" y="150" width="204" height="54" rx="12" fill="#94a3b812"/>
+<rect x="61.2" y="159" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="162" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Clock</text>
+<text x="162" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">wall interval | fixed Δ (replay)</text>
+</g>
+<g>
+<rect x="60" y="290" width="204" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="60" y="290" width="204" height="54" rx="12" fill="#94a3b812"/>
+<rect x="61.2" y="299" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="162" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Seeded PRNG</text>
+<text x="162" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">context.random(), never Math.random</text>
+</g>
+<g filter="url(#glow)" color="#94a3b8">
+<rect x="300" y="150" width="214" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="300" y="150" width="214" height="54" rx="12" fill="#94a3b812"/>
+<rect x="301.2" y="159" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="407" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">CognitiveOrchestrator</text>
+<text x="407" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">engines in priority order</text>
+</g>
+<g>
+<rect x="300" y="290" width="214" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="300" y="290" width="214" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="301.2" y="299" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="407" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Engines react()</text>
+<text x="407" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">frozen state → commands</text>
+</g>
+<g>
+<rect x="300" y="430" width="214" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="300" y="430" width="214" height="54" rx="12" fill="#94a3b812"/>
+<rect x="301.2" y="439" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="407" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Command buffer</text>
+<text x="407" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">no in-place writes</text>
+</g>
+<g>
+<rect x="574" y="430" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="574" y="430" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="575.2" y="439" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="674" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Validators</text>
+<text x="674" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">abort ⇒ whole tick discarded</text>
+</g>
+<g>
+<rect x="574" y="290" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="574" y="290" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="575.2" y="299" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="674" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Commit</text>
+<text x="674" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">snapshot (COW) · metrics</text>
+</g>
+<g>
+<rect x="574" y="150" width="200" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="574" y="150" width="200" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="575.2" y="159" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="674" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Phase 2 — inbox drain</text>
+<text x="674" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">facet effects land here</text>
+</g>
+<g>
+<rect x="850" y="320" width="190" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="850" y="320" width="190" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="851.2" y="329" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="945" y="344" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Pump · CompletionInbox</text>
+<text x="945" y="360.5" font-size="10" fill="#8b93a7" text-anchor="middle">launch @ tick · land @ Phase 2</text>
+</g>
+<g filter="url(#glow)" color="#f97316">
+<rect x="850" y="470" width="190" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="850" y="470" width="190" height="54" rx="12" fill="#f9731612"/>
+<rect x="851.2" y="479" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="945" y="494" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">LLM calls</text>
+<text x="945" y="510.5" font-size="10" fill="#8b93a7" text-anchor="middle">async — resolve off-tick</text>
+</g>
+<g>
+<rect x="1106" y="470" width="194" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="1106" y="470" width="194" height="54" rx="12" fill="#94a3b812"/>
+<rect x="1107.2" y="479" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="1203" y="494" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Completion recorder</text>
+<text x="1203" y="510.5" font-size="10" fill="#8b93a7" text-anchor="middle">transcript of every call</text>
+</g>
+<g>
+<rect x="1106" y="320" width="194" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="1106" y="320" width="194" height="54" rx="12" fill="#94a3b812"/>
+<rect x="1107.2" y="329" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="1203" y="344" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Re-feed source</text>
+<text x="1203" y="360.5" font-size="10" fill="#8b93a7" text-anchor="middle">prompt-keyed · strict</text>
+</g>
+<g filter="url(#glow)" color="#e2e8f0">
+<rect x="1106" y="150" width="194" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="1106" y="150" width="194" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="1107.2" y="159" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="1203" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Byte-identical replay</text>
+<text x="1203" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">same seed + inputs ⇒ same mind</text>
+</g>
+<text x="40" y="678" font-size="10.5" fill="#5b6372">@mindot/will · determinism-tick</text>
+<text x="1320" y="678" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

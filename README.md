@@ -239,6 +239,10 @@ There is **no synchronous reply** — `ingestText` returns immediately; the Will
 
 ## Architecture
 
+> **Visual map:** [`docs/graphs/`](docs/graphs/) holds eight architecture graphs — memory, executive & facets, agency, audition, body & affect, the deterministic tick, the PMA lifecycle, and the [whole composition](docs/graphs/composition.svg). One palette across all of them: violet is always memory, amber executive, green agency. Regenerate with `bun docs/graphs/generate.ts`.
+
+![Will — the whole composition](docs/graphs/composition.svg)
+
 ### The cognitive engines
 
 **40+ engines** run on the tick clock: **38 faculties** across seven systems, the **six-engine agency pipeline**, and **five sense engines**. The vast majority resolve every tick with no LLM call.

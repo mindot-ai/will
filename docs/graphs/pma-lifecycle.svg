@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="660" viewBox="0 0 1360 660" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-e2e8f0" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#e2e8f0"/></marker>
+<marker id="arr-fbbf24" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#fbbf24"/></marker>
+<marker id="arr-94a3b8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#94a3b8"/></marker>
+<marker id="arr-a78bfa" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#a78bfa"/></marker>
+<marker id="arr-f472b6" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#f472b6"/></marker>
+</defs>
+<rect width="1360" height="660" fill="url(#sky)"/>
+<rect x="1" y="1" width="1358" height="658" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">PMA — the Persistent Mind Artifact</text>
+<text x="40" y="80" font-size="13" fill="#8b93a7">Distill a living mind into a portable artifact; wake the same self anywhere — identity, memory, relationships and skill survive the boundary</text>
+<rect x="1196.5" y="42" width="123.5" height="22" rx="11" fill="#4ade8014" stroke="#4ade8055" stroke-width="1"/>
+<circle cx="1208.5" cy="53" r="3.4" fill="#4ade80"/>
+<text x="1217.5" y="57" font-size="10.5" fill="#cbd5e1">Agency (action)</text>
+<rect x="1058.9" y="42" width="129.6" height="22" rx="11" fill="#f472b614" stroke="#f472b655" stroke-width="1"/>
+<circle cx="1070.9" cy="53" r="3.4" fill="#f472b6"/>
+<text x="1079.9" y="57" font-size="10.5" fill="#cbd5e1">Social cognition</text>
+<rect x="982.3000000000001" y="42" width="68.6" height="22" rx="11" fill="#a78bfa14" stroke="#a78bfa55" stroke-width="1"/>
+<circle cx="994.3000000000001" cy="53" r="3.4" fill="#a78bfa"/>
+<text x="1003.3000000000001" y="57" font-size="10.5" fill="#cbd5e1">Memory</text>
+<rect x="820.3000000000001" y="42" width="154" height="22" rx="11" fill="#fbbf2414" stroke="#fbbf2455" stroke-width="1"/>
+<circle cx="832.3000000000001" cy="53" r="3.4" fill="#fbbf24"/>
+<text x="841.3000000000001" y="57" font-size="10.5" fill="#cbd5e1">Executive (System 2)</text>
+<rect x="652.2" y="42" width="160.1" height="22" rx="11" fill="#94a3b814" stroke="#94a3b855" stroke-width="1"/>
+<circle cx="664.2" cy="53" r="3.4" fill="#94a3b8"/>
+<text x="673.2" y="57" font-size="10.5" fill="#cbd5e1">Stem / infrastructure</text>
+<rect x="539" y="42" width="105.19999999999999" height="22" rx="11" fill="#e2e8f014" stroke="#e2e8f055" stroke-width="1"/>
+<circle cx="551" cy="53" r="3.4" fill="#e2e8f0"/>
+<text x="560" y="57" font-size="10.5" fill="#cbd5e1">Host / world</text>
+<rect x="44" y="118" width="760" height="470" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">THE LIFECYCLE</text>
+<rect x="826" y="118" width="494" height="470" rx="16" fill="#a78bfa07" stroke="#a78bfa2e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="842" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#a78bfabb">WHAT TRAVELS — THE SELF</text>
+<path d="M 252 177 C 328.9253255501981 177, 425 133.07467444980188, 425 210" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
+<rect x="336.9469970813243" y="154.6530029186757" width="60.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="367.3469970813243" y="168.1530029186757" font-size="10" fill="#cbd5e1" text-anchor="middle">shutdown</text>
+<path d="M 157 204 C 157 251.88, 157 282.12, 157 330" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
+<rect x="137.8" y="257" width="38.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="157" y="270.5" font-size="10" fill="#cbd5e1" text-anchor="middle">boot</text>
+<path d="M 157 330 C 157 239.36312439551077, 239.36312439551077 237, 330 237" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<path d="M 520 237 C 607.9736451765506 237, 685 242.02635482344942, 685 330" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 685 384 C 685 473.9136631482976, 609.9136631482976 487, 520 487" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
+<path d="M 330 487 C 237.49060711259042 487, 157 476.5093928874096, 157 384" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="164.40897766722142" y="460.19102233277863" width="88.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="208.80897766722143" y="473.69102233277863" font-size="10" fill="#cbd5e1" text-anchor="middle">the SAME self</text>
+<path d="M 685 384 C 685 424.48, 685 439.52, 685 480" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
+<rect x="649" y="422" width="72" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="685" y="435.5" font-size="10" fill="#cbd5e1" text-anchor="middle">runPMAEval</text>
+<path d="M 780 357 C 862.2469824302644 357, 773.7530175697356 177, 856 177" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
+<path d="M 780 357 C 819.263397713392 357, 816.736602286608 287, 856 287" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
+<path d="M 780 357 C 814 357, 822 397, 856 397" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
+<path d="M 780 357 C 851.8987824610141 357, 784.1012175389859 507, 856 507" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
+<path d="M 1056 287 C 1120.864305148309 287, 1203 250.13569485169103, 1203 315" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
+<path d="M 1056 397 C 1120.864305148309 397, 1203 433.864305148309, 1203 369" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
+<g>
+<rect x="62" y="150" width="190" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="62" y="150" width="190" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="63.2" y="159" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="157" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Hosts</text>
+<text x="157" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">SDK · MCP · sidecar · backend</text>
+</g>
+<g filter="url(#glow)" color="#fbbf24">
+<rect x="62" y="330" width="190" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="62" y="330" width="190" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="63.2" y="339" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="157" y="354" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">A living Will</text>
+<text x="157" y="370.5" font-size="10" fill="#8b93a7" text-anchor="middle">ticking · accreting</text>
+</g>
+<g>
+<rect x="330" y="210" width="190" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="330" y="210" width="190" height="54" rx="12" fill="#94a3b812"/>
+<rect x="331.2" y="219" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="425" y="234" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Distill</text>
+<text x="425" y="250.5" font-size="10" fill="#8b93a7" text-anchor="middle">save() — non-destructive · hibernate()</text>
+</g>
+<g filter="url(#glow)" color="#a78bfa">
+<rect x="590" y="330" width="190" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="590" y="330" width="190" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="591.2" y="339" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="685" y="354" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">PMA artifact</text>
+<text x="685" y="370.5" font-size="10" fill="#8b93a7" text-anchor="middle">a portable JSON self</text>
+</g>
+<g>
+<rect x="330" y="460" width="190" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="330" y="460" width="190" height="54" rx="12" fill="#94a3b812"/>
+<rect x="331.2" y="469" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="425" y="484" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Wake</text>
+<text x="425" y="500.5" font-size="10" fill="#8b93a7" text-anchor="middle">paused assembly → load → resume</text>
+</g>
+<g>
+<rect x="590" y="480" width="190" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="590" y="480" width="190" height="54" rx="12" fill="#94a3b812"/>
+<rect x="591.2" y="489" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="685" y="504" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Reconstruction eval</text>
+<text x="685" y="520.5" font-size="10" fill="#8b93a7" text-anchor="middle">fidelity report — verified restore</text>
+</g>
+<g>
+<rect x="856" y="150" width="200" height="54" rx="12" fill="#10141d" stroke="#818cf899" stroke-width="1.4"/>
+<rect x="856" y="150" width="200" height="54" rx="12" fill="#818cf812"/>
+<rect x="857.2" y="159" width="3.2" height="36" rx="1.6" fill="#818cf8"/>
+<text x="956" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Identity &amp; traits</text>
+<text x="956" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">developed, not configured</text>
+</g>
+<g>
+<rect x="856" y="260" width="200" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="856" y="260" width="200" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="857.2" y="269" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="956" y="284" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Beliefs &amp; memories</text>
+<text x="956" y="300.5" font-size="10" fill="#8b93a7" text-anchor="middle">semantic + episodic digests</text>
+</g>
+<g>
+<rect x="856" y="370" width="200" height="54" rx="12" fill="#10141d" stroke="#f472b699" stroke-width="1.4"/>
+<rect x="856" y="370" width="200" height="54" rx="12" fill="#f472b612"/>
+<rect x="857.2" y="379" width="3.2" height="36" rx="1.6" fill="#f472b6"/>
+<text x="956" y="394" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Relationships</text>
+<text x="956" y="410.5" font-size="10" fill="#8b93a7" text-anchor="middle">bonds · reputations · dossiers</text>
+</g>
+<g>
+<rect x="856" y="480" width="200" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="856" y="480" width="200" height="54" rx="12" fill="#4ade8012"/>
+<rect x="857.2" y="489" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="956" y="504" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Skills &amp; composites</text>
+<text x="956" y="520.5" font-size="10" fill="#8b93a7" text-anchor="middle">learned competence</text>
+</g>
+<g>
+<rect x="1106" y="315" width="194" height="54" rx="12" fill="#10141d" stroke="#818cf899" stroke-width="1.4"/>
+<rect x="1106" y="315" width="194" height="54" rx="12" fill="#818cf812"/>
+<rect x="1107.2" y="324" width="3.2" height="36" rx="1.6" fill="#818cf8"/>
+<text x="1203" y="339" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Narrative &amp; persona prior</text>
+<text x="1203" y="355.5" font-size="10" fill="#8b93a7" text-anchor="middle">the story of me</text>
+</g>
+<text x="40" y="638" font-size="10.5" fill="#5b6372">@mindot/will · pma-lifecycle</text>
+<text x="1320" y="638" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

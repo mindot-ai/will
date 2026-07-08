@@ -1,0 +1,196 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="780" viewBox="0 0 1360 780" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-e2e8f0" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#e2e8f0"/></marker>
+<marker id="arr-94a3b8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#94a3b8"/></marker>
+<marker id="arr-4ade80" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#4ade80"/></marker>
+<marker id="arr-38bdf8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#38bdf8"/></marker>
+<marker id="arr-fb7185" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#fb7185"/></marker>
+<marker id="arr-a78bfa" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#a78bfa"/></marker>
+<marker id="arr-fbbf24" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#fbbf24"/></marker>
+<marker id="arr-f97316" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#f97316"/></marker>
+</defs>
+<rect width="1360" height="780" fill="url(#sky)"/>
+<rect x="1" y="1" width="1358" height="778" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">Audition — how a conversation flows through the mind</text>
+<text x="40" y="80" font-size="13" fill="#8b93a7">Deliver → perceive → one focused facet reasons → the reply lands tick-quantized in the outbox — and the exchange becomes memory</text>
+<rect x="1251.4" y="42" width="68.6" height="22" rx="11" fill="#a78bfa14" stroke="#a78bfa55" stroke-width="1"/>
+<circle cx="1263.4" cy="53" r="3.4" fill="#a78bfa"/>
+<text x="1272.4" y="57" font-size="10.5" fill="#cbd5e1">Memory</text>
+<rect x="1162.6000000000001" y="42" width="80.8" height="22" rx="11" fill="#f9731614" stroke="#f9731655" stroke-width="1"/>
+<circle cx="1174.6000000000001" cy="53" r="3.4" fill="#f97316"/>
+<text x="1183.6000000000001" y="57" font-size="10.5" fill="#cbd5e1">LLM seam</text>
+<rect x="1000.6000000000001" y="42" width="154" height="22" rx="11" fill="#fbbf2414" stroke="#fbbf2455" stroke-width="1"/>
+<circle cx="1012.6000000000001" cy="53" r="3.4" fill="#fbbf24"/>
+<text x="1021.6000000000001" y="57" font-size="10.5" fill="#cbd5e1">Executive (System 2)</text>
+<rect x="844.7000000000002" y="42" width="147.89999999999998" height="22" rx="11" fill="#38bdf814" stroke="#38bdf855" stroke-width="1"/>
+<circle cx="856.7000000000002" cy="53" r="3.4" fill="#38bdf8"/>
+<text x="865.7000000000002" y="57" font-size="10.5" fill="#cbd5e1">Perception &amp; senses</text>
+<rect x="731.5000000000002" y="42" width="105.19999999999999" height="22" rx="11" fill="#e2e8f014" stroke="#e2e8f055" stroke-width="1"/>
+<circle cx="743.5000000000002" cy="53" r="3.4" fill="#e2e8f0"/>
+<text x="752.5000000000002" y="57" font-size="10.5" fill="#cbd5e1">Host / world</text>
+<rect x="44" y="118" width="236" height="430" rx="16" fill="#e2e8f007" stroke="#e2e8f02e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#e2e8f0bb">HOST BOUNDARY</text>
+<rect x="300" y="118" width="236" height="430" rx="16" fill="#38bdf807" stroke="#38bdf82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="316" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#38bdf8bb">PERCEPTION · SALIENCE</text>
+<rect x="556" y="118" width="250" height="430" rx="16" fill="#fbbf2407" stroke="#fbbf242e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="572" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#fbbf24bb">THE FACET TURN</text>
+<rect x="826" y="118" width="494" height="320" rx="16" fill="#f9731607" stroke="#f973162e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="842" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#f97316bb">THE REPLY PATH</text>
+<rect x="826" y="468" width="494" height="180" rx="16" fill="#a78bfa07" stroke="#a78bfa2e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="842" y="490" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#a78bfabb">INTO MEMORY</text>
+<path d="M 148 204 C 148 238, 148 256, 148 290" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 148 344 C 148 378, 148 396, 148 430" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="128.8" y="377" width="38.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="148" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">gate</text>
+<path d="M 234 457 C 296.041328161154 457, 255.95867183884602 317, 318 317" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<rect x="248.4" y="377" width="55.199999999999996" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="276" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">allowed</text>
+<path d="M 234 317 C 306.04132816115396 317, 245.95867183884602 177, 318 177" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<rect x="245.6" y="237" width="60.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="276" y="250.5" font-size="10" fill="#cbd5e1" text-anchor="middle">arm turn</text>
+<path d="M 418 344 C 418 378, 418 396, 418 430" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
+<rect x="365.2" y="377" width="105.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#38bdf844" stroke-width="0.8"/>
+<text x="418" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">append user turn</text>
+<path d="M 234 627 C 378 627, 418 488, 418 344" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fb7185)"/>
+<rect x="330" y="529.5" width="100" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fb718544" stroke-width="0.8"/>
+<text x="380" y="543" font-size="10" fill="#cbd5e1" text-anchor="middle">salience inputs</text>
+<path d="M 518 317 C 552 317, 542 317, 576 317" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
+<path d="M 518 177 C 601.3684761687538 177, 681 206.63152383124628, 681 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<path d="M 418 430 C 418 296.6522995381027, 442.6522995381027 177, 576 177" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
+<rect x="403.0630680521643" y="289.5608763825908" width="55.199999999999996" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="430.6630680521643" y="303.0608763825908" font-size="10" fill="#cbd5e1" text-anchor="middle">context</text>
+<path d="M 681 204 C 681 238, 681 256, 681 290" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<path d="M 681 344 C 681 378, 681 396, 681 430" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<rect x="656.2" y="377" width="49.599999999999994" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="681" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">report</text>
+<path d="M 786 457 C 868.9932527377979 457, 763.0067472622021 247, 846 247" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<rect x="771.6" y="342" width="88.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="816" y="355.5" font-size="10" fill="#cbd5e1" text-anchor="middle">launch @ tick</text>
+<path d="M 1046 247 C 1083.6180807591243 247, 1078.3819192408757 177, 1116 177" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f97316)"/>
+<rect x="1056.2" y="202" width="49.599999999999994" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="1081" y="215.5" font-size="10" fill="#cbd5e1" text-anchor="middle">tokens</text>
+<path d="M 946 274 C 946 308, 946 326, 946 360" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<rect x="870.8" y="310.90400000000005" width="150.39999999999998" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="946" y="324.40400000000005" font-size="10" fill="#cbd5e1" text-anchor="middle">decision lands (Phase 2)</text>
+<path d="M 1046 387 C 1080 387, 1082 387, 1116 387" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 946 414 C 946 457.32, 946 484.68, 946 528" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<rect x="915.6" y="461" width="60.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="946" y="474.5" font-size="10" fill="#cbd5e1" text-anchor="middle">exchange</text>
+<path d="M 1046 555 C 1080 555, 1082 555, 1116 555" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
+<g>
+<rect x="62" y="150" width="172" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="62" y="150" width="172" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="63.2" y="159" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="148" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Host / interlocutor</text>
+<text x="148" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">say · perceive · MCP · HTTP</text>
+</g>
+<g>
+<rect x="62" y="290" width="172" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="62" y="290" width="172" height="54" rx="12" fill="#94a3b812"/>
+<rect x="63.2" y="299" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="148" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">WillStem.ingestText</text>
+<text x="148" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">sensory controller</text>
+</g>
+<g>
+<rect x="62" y="430" width="172" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="62" y="430" width="172" height="54" rx="12" fill="#4ade8012"/>
+<rect x="63.2" y="439" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="148" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">AccessGrants</text>
+<text x="148" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">'listen' granted?</text>
+</g>
+<g>
+<rect x="318" y="290" width="200" height="54" rx="12" fill="#10141d" stroke="#38bdf899" stroke-width="1.4"/>
+<rect x="318" y="290" width="200" height="54" rx="12" fill="#38bdf812"/>
+<rect x="319.2" y="299" width="3.2" height="36" rx="1.6" fill="#38bdf8"/>
+<text x="418" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Language percept</text>
+<text x="418" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">salience-weighted</text>
+</g>
+<g>
+<rect x="318" y="430" width="200" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="318" y="430" width="200" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="319.2" y="439" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="418" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Thread digest</text>
+<text x="418" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">rolling conversation state</text>
+</g>
+<g>
+<rect x="318" y="150" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="318" y="150" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="319.2" y="159" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="418" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Turn queue</text>
+<text x="418" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">one turn per entity</text>
+</g>
+<g>
+<rect x="62" y="600" width="172" height="54" rx="12" fill="#10141d" stroke="#fb718599" stroke-width="1.4"/>
+<rect x="62" y="600" width="172" height="54" rx="12" fill="#fb718512"/>
+<rect x="63.2" y="609" width="3.2" height="36" rx="1.6" fill="#fb7185"/>
+<text x="148" y="624" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Attachment · goals</text>
+<text x="148" y="640.5" font-size="10" fill="#8b93a7" text-anchor="middle">closeness + topic overlap</text>
+</g>
+<g>
+<rect x="576" y="150" width="210" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="576" y="150" width="210" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="577.2" y="159" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="681" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Focus + recall query</text>
+<text x="681" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">the live message drives recall</text>
+</g>
+<g>
+<rect x="576" y="290" width="210" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="576" y="290" width="210" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="577.2" y="299" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="681" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Conversation facet</text>
+<text x="681" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">spawned from the executive</text>
+</g>
+<g>
+<rect x="576" y="430" width="210" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="576" y="430" width="210" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="577.2" y="439" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="681" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">report → pump → inbox</text>
+<text x="681" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">tick-quantized launch &amp; landing</text>
+</g>
+<g filter="url(#glow)" color="#f97316">
+<rect x="846" y="220" width="200" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="846" y="220" width="200" height="54" rx="12" fill="#f9731612"/>
+<rect x="847.2" y="229" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="946" y="244" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Reply reasoning</text>
+<text x="946" y="260.5" font-size="10" fill="#8b93a7" text-anchor="middle">[REPLY_TEXT] dialect</text>
+</g>
+<g>
+<rect x="1116" y="150" width="188" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="1116" y="150" width="188" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="1117.2" y="159" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="1210" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Chunk stream</text>
+<text x="1210" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">only reply text escapes</text>
+</g>
+<g>
+<rect x="846" y="360" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="846" y="360" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="847.2" y="369" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="946" y="384" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">OutboxWriter</text>
+<text x="946" y="400.5" font-size="10" fill="#8b93a7" text-anchor="middle">bubbles · threadId</text>
+</g>
+<g>
+<rect x="1116" y="360" width="188" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="1116" y="360" width="188" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="1117.2" y="369" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="1210" y="384" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Outbox → host</text>
+<text x="1210" y="400.5" font-size="10" fill="#8b93a7" text-anchor="middle">delivery + ack loop</text>
+</g>
+<g>
+<rect x="846" y="528" width="200" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="846" y="528" width="200" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="847.2" y="537" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="946" y="552" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Exchange memory</text>
+<text x="946" y="568.5" font-size="10" fill="#8b93a7" text-anchor="middle">WM item → episodic → vector</text>
+</g>
+<g>
+<rect x="1116" y="528" width="188" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="1116" y="528" width="188" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="1117.2" y="537" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="1210" y="552" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Next-turn recall</text>
+<text x="1210" y="568.5" font-size="10" fill="#8b93a7" text-anchor="middle">the past shapes the reply</text>
+</g>
+<text x="40" y="758" font-size="10.5" fill="#5b6372">@mindot/will · audition-conversation</text>
+<text x="1320" y="758" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

@@ -5,23 +5,25 @@
 > "tamper-evident records verifiable without trusting the operator", with no
 > blockchain and no new dependency.
 
-## Why (the Cinchor finding, 2026-07-08)
+## Why
 
-Analysis of cinchor.com ("accountability infrastructure for autonomous
-agents": `enforce` + `attest` on their own L1) concluded we already cover
-their "bound before" (structural capability gating) and exceed their "proven
-after" in one dimension — deterministic replay proves the CAUSAL CHAIN (the
-white-box *why*), where they attest a black-box receipt. The ONE thing they
-have that we lack: **a trust root outside the operator.** Our session logs,
-decision records and replay transcripts are operator-held files — a court or
-insurer must trust whoever ran the Will.
+Determinism gives Will something no attestation log can offer: replay proves
+the **causal chain** — same seed + same inputs re-executes the whole mind
+byte-for-byte, so an auditor can confirm the recorded reasoning actually
+*produces* the recorded action (the white-box *why*, not just a receipt that
+something happened). One link is missing to make that audit-grade end to end:
+**a trust root outside the operator.** Today the session logs, decision
+records and replay transcripts are operator-held files — a court, insurer or
+regulator must trust whoever ran the Will.
 
-This item closes that gap and neutralizes most of the `attest`
-differentiation while keeping the replay advantage they cannot match.
-Strategic pairing: "replayable mind inside, attested actions outside" —
-Cinchor (or anything like it) integrates at the effector ack boundary, it
-does not compete with the cognition layer. EU-wedge relevance: replay-audit
-+ tamper-evidence is the compliance story.
+This item closes that gap. Anchored, hash-chained records + byte-for-byte
+replay is the complete accountability story, in our own three verbs:
+**gated** — an ability not granted has no motor schema and can never be
+enacted, no matter how the mind is prompted; **evidenced** — tamper-evident
+records anyone can verify without trusting the operator; **explained** —
+replay re-derives the decision itself. Receipt-style audit logs stop at the
+second verb; the cognition layer is where the third one lives. EU-wedge
+relevance: replay-audit + tamper-evidence is the compliance story.
 
 ## Design sketch (deliberately boring crypto)
 
@@ -43,8 +45,7 @@ does not compete with the cognition layer. EU-wedge relevance: replay-audit
 4. **Verification CLI.** `will verify <records-dir>` — walks the chains,
    checks signatures, compares against anchored digests, and (flagship move)
    optionally REPLAYS the completion transcript and confirms the recorded
-   decisions reproduce byte-for-byte. That last step is the thing nobody
-   attest-only can offer.
+   decisions reproduce byte-for-byte. That last step is ours alone.
 
 ## Scope notes
 
@@ -59,5 +60,3 @@ does not compete with the cognition layer. EU-wedge relevance: replay-audit
 
 - `.TODO/AUDITION_REPLY_DETERMINISM.md` (RESOLVED) — conversational replay is
   byte-identical, so step 4's replay check covers conversations too.
-- Launch memory: launch-cycle → "CINCHOR ANALYSIS" + "REPLAY-AUDIT STORY
-  COMPLETE" entries.

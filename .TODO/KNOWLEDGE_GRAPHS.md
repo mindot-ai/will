@@ -7,10 +7,12 @@
 
 ## What exists
 
-Eight graphs, one visual language (a category color is the same in every graph
-— violet is always memory, amber executive, green agency…). Regenerate after
-edits: `bun docs/graphs/generate.ts`. Verify visually: headless-Chrome
+Sixteen graphs, one visual language (a category color is the same in every
+graph — violet is always memory, amber executive, green agency…). Regenerate
+after edits: `bun docs/graphs/generate.ts`. Verify visually: headless-Chrome
 screenshot of the SVG (qlmanage crops to square — don't use it).
+
+**Wave 1 — the cognitive stories:**
 
 | Graph | Covers |
 |---|---|
@@ -22,6 +24,19 @@ screenshot of the SVG (qlmanage crops to square — don't use it).
 | `determinism-tick` | command-buffer tick, phases, seeded PRNG, pump/inbox quantization, record ⇄ re-feed replay |
 | `pma-lifecycle` | living ⇄ artifact circle; what travels; reconstruction eval |
 | `composition` | capstone: hosts → four surfaces → stem/tick/LLM/PMA → the eight engine systems |
+
+**Wave 2 — machinery, seams, edges (2026-07-09):**
+
+| Graph | Covers |
+|---|---|
+| `meta-cognition` | observers (self-model/calibrator/bias/narrator) → introspection facet → persona-prior (base ⊕ prior) → effort gate, trait bands, salience — the write-back loop |
+| `executive-agency-seam` | abilities into context → conscious args → ideomotor pre-activation; plan priors; deliberation; inhibition veto; outcomes teach both sides |
+| `transports` | outbound envelopes → TransportController → loopback/socket.io/stream → far side; acks → InboundQueue → applied on-tick |
+| `simulation-core` | clock → DefaultSimulation → orchestrator → commands → StateManager → COW snapshots; tick listeners = the host connection points |
+| `cognitive-wiring` | assembleMind: attach*/priority/schema registry; tick time: publish → bus (queued) → Phase-2 flush → onCognitiveEvent → drainCommands |
+| `llm-cycle` | buildSystemPrompt/buildUserMessage → LLMDirector precedence (re-feed → mock → live+gate) → recorder/tokens → parser strategies → tagged blocks |
+| `host-surfaces` | will CLI → host/boot → MCP server / HTTP sidecar / facade; UtteranceTap; connectMcpEffectors; the PMA between sessions |
+| `stem-tracts` | the body's organs: sensory/inbound intake, outbox/ack/effector outflow, PMA/replay lifecycle, logger/health/biography observability |
 
 ## Phase 2 — the paired prose (docs/architecture/)
 
@@ -39,9 +54,11 @@ with its SVG embedded, then ~600–1200 words. Per page:
 - Source of truth for claims: the code + `.TODO/` design records (facet replay,
   custom ability wiring, audition determinism) — not memory or vibes.
 
-Order (dependency-friendly): determinism-tick → memory → affect-body →
-executive → agency → audition → pma → composition (the capstone page doubles
-as the docs index / CONTRIBUTING "how it all plays out" entry).
+Order (dependency-friendly): simulation-core → determinism-tick →
+cognitive-wiring → memory → affect-body → executive → agency →
+executive-agency-seam → audition → meta-cognition → llm-cycle → transports →
+stem-tracts → host-surfaces → pma → composition (the capstone page doubles as
+the docs index / CONTRIBUTING "how it all plays out" entry).
 
 ## Phase 3 — integration
 
@@ -54,9 +71,8 @@ as the docs index / CONTRIBUTING "how it all plays out" entry).
 
 ## Later / nice-to-have
 
-- [ ] Two graphs not yet drawn: **social cognition** (ToM/empathy/reputation/
-      known-entity dossiers → prompt) and **meta-cognition** (introspection →
-      persona prior → engine configs write-back).
+- [ ] One graph not yet drawn: **social cognition** (ToM/empathy/reputation/
+      known-entity dossiers → "People You Know" in the prompt).
 - [ ] Light-theme variants (the renderer takes a palette swap; GitHub README
       renders dark SVGs fine on both themes since the canvas paints its own bg).
 - [ ] Animated capstone (SMIL pulse along the tick loop) for the landing page.

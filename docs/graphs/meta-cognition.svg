@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="700" viewBox="0 0 1360 700" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-fbbf24" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#fbbf24"/></marker>
+<marker id="arr-4ade80" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#4ade80"/></marker>
+<marker id="arr-94a3b8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#94a3b8"/></marker>
+<marker id="arr-818cf8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#818cf8"/></marker>
+<marker id="arr-f97316" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#f97316"/></marker>
+</defs>
+<rect width="1360" height="700" fill="url(#sky)"/>
+<rect x="1" y="1" width="1358" height="698" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">Meta-cognition — the loop that closes</text>
+<text x="40" y="80" font-size="13" fill="#8b93a7">The mind observes its own thinking, distills who it is becoming, and writes back into the apparatus — base configs never mutate; the prior accretes</text>
+<rect x="1159.9" y="42" width="160.1" height="22" rx="11" fill="#94a3b814" stroke="#94a3b855" stroke-width="1"/>
+<circle cx="1171.9" cy="53" r="3.4" fill="#94a3b8"/>
+<text x="1180.9" y="57" font-size="10.5" fill="#cbd5e1">Stem / infrastructure</text>
+<rect x="1071.1000000000001" y="42" width="80.8" height="22" rx="11" fill="#f9731614" stroke="#f9731655" stroke-width="1"/>
+<circle cx="1083.1000000000001" cy="53" r="3.4" fill="#f97316"/>
+<text x="1092.1000000000001" y="57" font-size="10.5" fill="#cbd5e1">LLM seam</text>
+<rect x="945.7000000000002" y="42" width="117.39999999999999" height="22" rx="11" fill="#818cf814" stroke="#818cf855" stroke-width="1"/>
+<circle cx="957.7000000000002" cy="53" r="3.4" fill="#818cf8"/>
+<text x="966.7000000000002" y="57" font-size="10.5" fill="#cbd5e1">Meta-cognition</text>
+<rect x="814.2000000000002" y="42" width="123.5" height="22" rx="11" fill="#4ade8014" stroke="#4ade8055" stroke-width="1"/>
+<circle cx="826.2000000000002" cy="53" r="3.4" fill="#4ade80"/>
+<text x="835.2000000000002" y="57" font-size="10.5" fill="#cbd5e1">Agency (action)</text>
+<rect x="652.2000000000002" y="42" width="154" height="22" rx="11" fill="#fbbf2414" stroke="#fbbf2455" stroke-width="1"/>
+<circle cx="664.2000000000002" cy="53" r="3.4" fill="#fbbf24"/>
+<text x="673.2000000000002" y="57" font-size="10.5" fill="#cbd5e1">Executive (System 2)</text>
+<rect x="44" y="118" width="236" height="400" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">WHAT IT OBSERVES</text>
+<rect x="300" y="118" width="236" height="512" rx="16" fill="#818cf807" stroke="#818cf82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="316" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#818cf8bb">THE OBSERVERS</text>
+<rect x="560" y="118" width="246" height="400" rx="16" fill="#818cf807" stroke="#818cf82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="576" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#818cf8bb">REFLECTION</text>
+<rect x="1086" y="118" width="230" height="512" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="1102" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">WHAT CHANGES</text>
+<path d="M 234 177 C 268 177, 284 177, 318 177" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<path d="M 148 204 C 148 317.5588895266843, 204.44111047331572 417, 318 417" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
+<path d="M 234 317 C 268 317, 284 297, 318 297" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<rect x="242.8" y="297" width="66.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="276" y="310.5" font-size="10" fill="#cbd5e1" text-anchor="middle">calibrate</text>
+<path d="M 148 430 C 148 364.622327970476, 241.99063869168614 368.51153946547754, 288 330 C 334.0093613083138 291.48846053452246, 418 272.7957440544108, 418 204" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<path d="M 518 177 C 553.034268937713 177, 542.965731062287 247, 578 247" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-818cf8)"/>
+<path d="M 518 297 C 552 297, 544 247, 578 247" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-818cf8)"/>
+<path d="M 518 417 C 586.5054742338158 417, 509.4945257661842 247, 578 247" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-818cf8)"/>
+<path d="M 518 567 C 575.8798756045657 567, 520.1201243954343 427, 578 427" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-818cf8)"/>
+<rect x="523.2" y="487" width="49.599999999999994" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
+<text x="548" y="500.5" font-size="10" fill="#cbd5e1" text-anchor="middle">themes</text>
+<path d="M 683 274 C 683 321.88, 683 352.12, 683 400" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<rect x="630.2" y="327" width="105.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="683" y="340.5" font-size="10" fill="#cbd5e1" text-anchor="middle">lessons · biases</text>
+<path d="M 788 427 C 829.1032845402895 427, 806.8967154597105 337, 848 337" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-818cf8)"/>
+<path d="M 1048 337 C 1112.416445105268 337, 1039.583554894732 177, 1104 177" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-818cf8)"/>
+<rect x="1065.2" y="247" width="21.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
+<text x="1076" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">⊕</text>
+<path d="M 1201 204 C 1201 238, 1201 256, 1201 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 1298 177 C 1328 177, 1328 583, 1298 583" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<path d="M 418 150 C 418 114, 1201 394, 1201 430" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-818cf8)"/>
+<rect x="1117.43275" y="389.21999999999997" width="72" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
+<text x="1153.43275" y="402.71999999999997" font-size="10" fill="#cbd5e1" text-anchor="middle">traitStats</text>
+<path d="M 1201 344 C 1201 464, 719.4766297075341 657.9076240826731, 660 650 C 600.5233702924659 642.0923759173269, 148 324, 148 204" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
+<rect x="503.6" y="640" width="312.79999999999995" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="660" y="653.5" font-size="10" fill="#cbd5e1" text-anchor="middle">the apparatus changes — next cycle thinks differently</text>
+<g>
+<rect x="62" y="150" width="172" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="62" y="150" width="172" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="63.2" y="159" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="148" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Executive output</text>
+<text x="148" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">reasoning · actions · confidence</text>
+</g>
+<g>
+<rect x="62" y="290" width="172" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="62" y="290" width="172" height="54" rx="12" fill="#4ade8012"/>
+<rect x="63.2" y="299" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="148" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Action outcomes</text>
+<text x="148" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">success · surprise</text>
+</g>
+<g>
+<rect x="62" y="430" width="172" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="62" y="430" width="172" height="54" rx="12" fill="#94a3b812"/>
+<rect x="63.2" y="439" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="148" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">State &amp; metrics</text>
+<text x="148" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">what the body lived</text>
+</g>
+<g>
+<rect x="318" y="150" width="200" height="54" rx="12" fill="#10141d" stroke="#818cf899" stroke-width="1.4"/>
+<rect x="318" y="150" width="200" height="54" rx="12" fill="#818cf812"/>
+<rect x="319.2" y="159" width="3.2" height="36" rx="1.6" fill="#818cf8"/>
+<text x="418" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">SelfModelUpdater</text>
+<text x="418" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">traits develop from evidence</text>
+</g>
+<g>
+<rect x="318" y="270" width="200" height="54" rx="12" fill="#10141d" stroke="#818cf899" stroke-width="1.4"/>
+<rect x="318" y="270" width="200" height="54" rx="12" fill="#818cf812"/>
+<rect x="319.2" y="279" width="3.2" height="36" rx="1.6" fill="#818cf8"/>
+<text x="418" y="294" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">ConfidenceCalibrator</text>
+<text x="418" y="310.5" font-size="10" fill="#8b93a7" text-anchor="middle">predicted vs actual</text>
+</g>
+<g>
+<rect x="318" y="390" width="200" height="54" rx="12" fill="#10141d" stroke="#818cf899" stroke-width="1.4"/>
+<rect x="318" y="390" width="200" height="54" rx="12" fill="#818cf812"/>
+<rect x="319.2" y="399" width="3.2" height="36" rx="1.6" fill="#818cf8"/>
+<text x="418" y="414" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">BiasDetector</text>
+<text x="418" y="430.5" font-size="10" fill="#8b93a7" text-anchor="middle">patterns in reasoning</text>
+</g>
+<g>
+<rect x="318" y="540" width="200" height="54" rx="12" fill="#10141d" stroke="#818cf899" stroke-width="1.4"/>
+<rect x="318" y="540" width="200" height="54" rx="12" fill="#818cf812"/>
+<rect x="319.2" y="549" width="3.2" height="36" rx="1.6" fill="#818cf8"/>
+<text x="418" y="564" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">AutobiographicalNarrator</text>
+<text x="418" y="580.5" font-size="10" fill="#8b93a7" text-anchor="middle">themes of the life story</text>
+</g>
+<g filter="url(#glow)" color="#f97316">
+<rect x="578" y="220" width="210" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="578" y="220" width="210" height="54" rx="12" fill="#f9731612"/>
+<rect x="579.2" y="229" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="683" y="244" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">IntrospectionEngine</text>
+<text x="683" y="260.5" font-size="10" fill="#8b93a7" text-anchor="middle">a facet examines the mind</text>
+</g>
+<g>
+<rect x="578" y="400" width="210" height="54" rx="12" fill="#10141d" stroke="#818cf899" stroke-width="1.4"/>
+<rect x="578" y="400" width="210" height="54" rx="12" fill="#818cf812"/>
+<rect x="579.2" y="409" width="3.2" height="36" rx="1.6" fill="#818cf8"/>
+<text x="683" y="424" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">PersonaConsolidator</text>
+<text x="683" y="440.5" font-size="10" fill="#8b93a7" text-anchor="middle">distills the durable persona</text>
+</g>
+<g filter="url(#glow)" color="#818cf8">
+<rect x="848" y="310" width="200" height="54" rx="12" fill="#10141d" stroke="#818cf899" stroke-width="1.4"/>
+<rect x="848" y="310" width="200" height="54" rx="12" fill="#818cf812"/>
+<rect x="849.2" y="319" width="3.2" height="36" rx="1.6" fill="#818cf8"/>
+<text x="948" y="334" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">persona-prior</text>
+<text x="948" y="350.5" font-size="10" fill="#8b93a7" text-anchor="middle">learned deltas — base never mutates</text>
+</g>
+<g>
+<rect x="1104" y="150" width="194" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="1104" y="150" width="194" height="54" rx="12" fill="#94a3b812"/>
+<rect x="1105.2" y="159" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="1201" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Effective params</text>
+<text x="1201" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">base ⊕ prior — every engine reads</text>
+</g>
+<g>
+<rect x="1104" y="290" width="194" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="1104" y="290" width="194" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="1105.2" y="299" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="1201" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Effort gate</text>
+<text x="1201" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">deliberateThreshold shifts</text>
+</g>
+<g>
+<rect x="1104" y="430" width="194" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="1104" y="430" width="194" height="54" rx="12" fill="#f9731612"/>
+<rect x="1105.2" y="439" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="1201" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Prompt trait bands</text>
+<text x="1201" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">“markedly curious” — self-knowledge</text>
+</g>
+<g>
+<rect x="1104" y="556" width="194" height="54" rx="12" fill="#10141d" stroke="#38bdf899" stroke-width="1.4"/>
+<rect x="1104" y="556" width="194" height="54" rx="12" fill="#38bdf812"/>
+<rect x="1105.2" y="565" width="3.2" height="36" rx="1.6" fill="#38bdf8"/>
+<text x="1201" y="580" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Salience &amp; thresholds</text>
+<text x="1201" y="596.5" font-size="10" fill="#8b93a7" text-anchor="middle">perception itself re-tunes</text>
+</g>
+<text x="40" y="678" font-size="10.5" fill="#5b6372">@mindot/will · meta-cognition</text>
+<text x="1320" y="678" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

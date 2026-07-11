@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="660" viewBox="0 0 1360 660" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-94a3b8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#94a3b8"/></marker>
+<marker id="arr-e2e8f0" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#e2e8f0"/></marker>
+<marker id="arr-4ade80" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#4ade80"/></marker>
+</defs>
+<rect width="1360" height="660" fill="url(#sky)"/>
+<rect x="1" y="1" width="1358" height="658" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">The edge — four doors into one body</text>
+<text x="40" y="80" font-size="13" fill="#8b93a7">One env-configured boot raises the same mind for every surface; every door speaks the subject paradigm and persists through the same artifact</text>
+<rect x="1251.4" y="42" width="68.6" height="22" rx="11" fill="#a78bfa14" stroke="#a78bfa55" stroke-width="1"/>
+<circle cx="1263.4" cy="53" r="3.4" fill="#a78bfa"/>
+<text x="1272.4" y="57" font-size="10.5" fill="#cbd5e1">Memory</text>
+<rect x="1119.9" y="42" width="123.5" height="22" rx="11" fill="#4ade8014" stroke="#4ade8055" stroke-width="1"/>
+<circle cx="1131.9" cy="53" r="3.4" fill="#4ade80"/>
+<text x="1140.9" y="57" font-size="10.5" fill="#cbd5e1">Agency (action)</text>
+<rect x="951.8000000000001" y="42" width="160.1" height="22" rx="11" fill="#94a3b814" stroke="#94a3b855" stroke-width="1"/>
+<circle cx="963.8000000000001" cy="53" r="3.4" fill="#94a3b8"/>
+<text x="972.8000000000001" y="57" font-size="10.5" fill="#cbd5e1">Stem / infrastructure</text>
+<rect x="838.6000000000001" y="42" width="105.19999999999999" height="22" rx="11" fill="#e2e8f014" stroke="#e2e8f055" stroke-width="1"/>
+<circle cx="850.6000000000001" cy="53" r="3.4" fill="#e2e8f0"/>
+<text x="859.6000000000001" y="57" font-size="10.5" fill="#cbd5e1">Host / world</text>
+<rect x="44" y="118" width="500" height="460" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">ONE BOOT</text>
+<rect x="574" y="118" width="460" height="460" rx="16" fill="#e2e8f007" stroke="#e2e8f02e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="590" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#e2e8f0bb">THE DOORS</text>
+<rect x="1064" y="118" width="252" height="460" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="1080" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">ONE BODY</text>
+<path d="M 262 247 C 296 247, 296 247, 330 247" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 520 247 C 558.7078079978704 247, 555.2921920021296 177, 594 177" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="518.3749236875641" y="217.2775" width="60.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="548.7749236875641" y="230.7775" font-size="10" fill="#cbd5e1" text-anchor="middle">will mcp</text>
+<path d="M 520 247 C 558.7078079978704 247, 555.2921920021296 317, 594 317" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="512.7749236875641" y="256.72249999999997" width="72" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="548.7749236875641" y="270.22249999999997" font-size="10" fill="#cbd5e1" text-anchor="middle">will serve</text>
+<path d="M 425 274 C 425 384.65738217381676, 483.34261782618324 457, 594 457" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<path d="M 425 274 C 425 321.88, 425 352.12, 425 400" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<rect x="372.2" y="327" width="105.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="425" y="340.5" font-size="10" fill="#cbd5e1" text-anchor="middle">hibernate ⇄ wake</text>
+<path d="M 425 274 C 425 394, 644.1625394677735 598.0414481053042, 700 620 C 755.8374605322265 641.9585518946958, 959 595.1634778153328, 959 484" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<rect x="647.2" y="610" width="105.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="700" y="623.5" font-size="10" fill="#cbd5e1" text-anchor="middle">WILL_MCP_SERVERS</text>
+<path d="M 794 177 C 831.6180807591244 177, 826.3819192408756 247, 864 247" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 794 317 C 831.6180807591244 317, 826.3819192408756 247, 864 247" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 594 177 C 568 177, 568 457, 594 457" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 594 317 C 582 317, 582 457, 594 457" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 864 457 C 830 457, 828 457, 794 457" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<rect x="798.6" y="447" width="60.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="829" y="460.5" font-size="10" fill="#cbd5e1" text-anchor="middle">effector</text>
+<path d="M 794 457 C 934 457, 1190 484, 1190 344" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 1054 247 C 1118.201642041547 247, 1190 225.79835795845295, 1190 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<g filter="url(#glow)" color="#94a3b8">
+<rect x="62" y="220" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="62" y="220" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="63.2" y="229" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="162" y="244" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">will CLI</text>
+<text x="162" y="260.5" font-size="10" fill="#8b93a7" text-anchor="middle">dispatch: mcp | serve</text>
+</g>
+<g>
+<rect x="330" y="220" width="190" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="330" y="220" width="190" height="54" rx="12" fill="#94a3b812"/>
+<rect x="331.2" y="229" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="425" y="244" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">host/boot.ts</text>
+<text x="425" y="260.5" font-size="10" fill="#8b93a7" text-anchor="middle">env → wake | create</text>
+</g>
+<g filter="url(#glow)" color="#a78bfa">
+<rect x="330" y="400" width="190" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="330" y="400" width="190" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="331.2" y="409" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="425" y="424" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">PMA artifact</text>
+<text x="425" y="440.5" font-size="10" fill="#8b93a7" text-anchor="middle">the self between sessions</text>
+</g>
+<g>
+<rect x="594" y="150" width="200" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="594" y="150" width="200" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="595.2" y="159" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="694" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">MCP server</text>
+<text x="694" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">perceive · next_utterance · state · save</text>
+</g>
+<g>
+<rect x="594" y="290" width="200" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="594" y="290" width="200" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="595.2" y="299" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="694" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">HTTP sidecar</text>
+<text x="694" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">routes + SSE /utterances</text>
+</g>
+<g>
+<rect x="594" y="430" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="594" y="430" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="595.2" y="439" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="694" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Will facade (SDK)</text>
+<text x="694" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">projections · effectors · save</text>
+</g>
+<g>
+<rect x="864" y="220" width="190" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="864" y="220" width="190" height="54" rx="12" fill="#94a3b812"/>
+<rect x="865.2" y="229" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="959" y="244" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">UtteranceTap</text>
+<text x="959" y="260.5" font-size="10" fill="#8b93a7" text-anchor="middle">no reply lost between calls</text>
+</g>
+<g>
+<rect x="864" y="430" width="190" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="864" y="430" width="190" height="54" rx="12" fill="#4ade8012"/>
+<rect x="865.2" y="439" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="959" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">connectMcpEffectors</text>
+<text x="959" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">external tools → abilities</text>
+</g>
+<g filter="url(#glow)" color="#94a3b8">
+<rect x="1084" y="290" width="212" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="1084" y="290" width="212" height="54" rx="12" fill="#94a3b812"/>
+<rect x="1085.2" y="299" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="1190" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">WillStem</text>
+<text x="1190" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">one body under all doors</text>
+</g>
+<text x="40" y="638" font-size="10.5" fill="#5b6372">@mindot/will · host-surfaces</text>
+<text x="1320" y="638" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

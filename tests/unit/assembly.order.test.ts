@@ -61,9 +61,16 @@ const AFFECTIVE_ORDER = [
   'moral-evaluator', 'affective-blender',
 ]
 
+// Narrator + introspection are executive SATELLITES (they harvest the
+// executive's own NARRATIVE/INTROSPECTION output; no LLM calls of their own)
+// — they register wherever the executive runs (standard+), directly after it.
+const EXEC_SATELLITE_ORDER = [
+  'autobiographical-narrator', 'introspection-engine',
+]
+
 const META_SOCIAL_ORDER = [
   'self-model-updater', 'confidence-calibrator', 'bias-detector',
-  'autobiographical-narrator', 'introspection-engine', 'persona-consolidator',
+  'persona-consolidator',
   'theory-of-mind', 'empathy-simulator', 'reputation-tracker',
 ]
 
@@ -89,6 +96,7 @@ const EXPECTED_ORDER: Record<EngineTier, string[]> = {
     ...CORE_ORDER,
     ...AFFECTIVE_ORDER,
     'executive-engine',
+    ...EXEC_SATELLITE_ORDER,
     ...SENSE_ORDER,
     'known-entity-tracker',
     ...AGENCY_ORDER,
@@ -97,6 +105,7 @@ const EXPECTED_ORDER: Record<EngineTier, string[]> = {
     ...CORE_ORDER,
     ...AFFECTIVE_ORDER,
     'executive-engine',
+    ...EXEC_SATELLITE_ORDER,
     ...META_SOCIAL_ORDER,
     ...SENSE_ORDER,
     'known-entity-tracker',

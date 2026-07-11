@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="640" viewBox="0 0 1360 640" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-94a3b8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#94a3b8"/></marker>
+<marker id="arr-fbbf24" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#fbbf24"/></marker>
+</defs>
+<rect width="1360" height="640" fill="url(#sky)"/>
+<rect x="1" y="1" width="1358" height="638" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">The cognitive layer — how engines talk</text>
+<text x="40" y="80" font-size="13" fill="#8b93a7">Typed attachments for hard wiring, a schema-validated bus for events — queued during the tick, delivered and committed at Phase 2</text>
+<rect x="1159.9" y="42" width="160.1" height="22" rx="11" fill="#94a3b814" stroke="#94a3b855" stroke-width="1"/>
+<circle cx="1171.9" cy="53" r="3.4" fill="#94a3b8"/>
+<text x="1180.9" y="57" font-size="10.5" fill="#cbd5e1">Stem / infrastructure</text>
+<rect x="997.9000000000001" y="42" width="154" height="22" rx="11" fill="#fbbf2414" stroke="#fbbf2455" stroke-width="1"/>
+<circle cx="1009.9000000000001" cy="53" r="3.4" fill="#fbbf24"/>
+<text x="1018.9000000000001" y="57" font-size="10.5" fill="#cbd5e1">Executive (System 2)</text>
+<rect x="44" y="118" width="500" height="440" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">ASSEMBLY TIME — THE WIRING</text>
+<rect x="574" y="118" width="742" height="440" rx="16" fill="#fbbf2407" stroke="#fbbf242e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="590" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#fbbf24bb">TICK TIME — THE TRAFFIC</text>
+<path d="M 162 204 C 162 238, 162 256, 162 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 262 177 C 296 177, 296 177, 330 177" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<path d="M 262 317 C 382 317, 474 317, 594 317" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="389.2" y="307" width="77.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="428" y="320.5" font-size="10" fill="#cbd5e1" text-anchor="middle">hard wiring</text>
+<path d="M 262 457 C 296 457, 296 457, 330 457" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<path d="M 520 457 C 612.0527269504189 457, 704 436.0527269504189, 704 344" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<rect x="565.4788909933795" y="437.1513451502814" width="94.39999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="612.6788909933796" y="450.6513451502814" font-size="10" fill="#cbd5e1" text-anchor="middle">verified wired</text>
+<path d="M 704 290 C 704 256, 704 238, 704 204" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<path d="M 704 344 C 704 378, 704 396, 704 430" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<path d="M 814 177 C 898.3081253864882 177, 980 205.69187461351183, 980 290" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<rect x="859.4358832954412" y="175.4737643019537" width="55.199999999999996" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="887.0358832954412" y="188.9737643019537" font-size="10" fill="#cbd5e1" text-anchor="middle">publish</text>
+<path d="M 814 457 C 898.3081253864882 457, 980 428.3081253864882, 980 344" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
+<rect x="887.015547019933" y="422.11554701993305" width="83.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="928.615547019933" y="435.61554701993305" font-size="10" fill="#cbd5e1" text-anchor="middle">topic filter</text>
+<path d="M 980 290 C 980 256, 980 238, 980 204" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 1080 177 C 1158.1560688750446 177, 1226 211.84393112495542, 1226 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="1128.2074860546918" y="180.16821904747374" width="55.199999999999996" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="1155.8074860546917" y="193.66821904747374" font-size="10" fill="#cbd5e1" text-anchor="middle">deliver</text>
+<path d="M 1226 290 C 1226 256, 1226 238, 1226 204" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<g filter="url(#glow)" color="#94a3b8">
+<rect x="62" y="150" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="62" y="150" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="63.2" y="159" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="162" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">assembleMind()</text>
+<text x="162" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">constructs · wires · registers</text>
+</g>
+<g>
+<rect x="62" y="290" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="62" y="290" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="63.2" y="299" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="162" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">attach*()</text>
+<text x="162" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">typed cross-engine wiring</text>
+</g>
+<g>
+<rect x="62" y="430" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="62" y="430" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="63.2" y="439" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="162" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Engine priority</text>
+<text x="162" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">deterministic tick order</text>
+</g>
+<g>
+<rect x="330" y="150" width="190" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="330" y="150" width="190" height="54" rx="12" fill="#94a3b812"/>
+<rect x="331.2" y="159" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="425" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Schema registry</text>
+<text x="425" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">validated event contracts</text>
+</g>
+<g>
+<rect x="330" y="430" width="190" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="330" y="430" width="190" height="54" rx="12" fill="#94a3b812"/>
+<rect x="331.2" y="439" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="425" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Assembly audit</text>
+<text x="425" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">unwired attach points fail loudly</text>
+</g>
+<g filter="url(#glow)" color="#fbbf24">
+<rect x="594" y="290" width="220" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="594" y="290" width="220" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="595.2" y="299" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="704" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">A CognitiveEngine</text>
+<text x="704" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">react(Δ, tick, frozen, ctx)</text>
+</g>
+<g>
+<rect x="594" y="150" width="220" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="594" y="150" width="220" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="595.2" y="159" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="704" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">publishes()</text>
+<text x="704" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">declares its event schemas</text>
+</g>
+<g>
+<rect x="594" y="430" width="220" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="594" y="430" width="220" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="595.2" y="439" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="704" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">subscribes()</text>
+<text x="704" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">the topics it listens to</text>
+</g>
+<g filter="url(#glow)" color="#94a3b8">
+<rect x="880" y="290" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="880" y="290" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="881.2" y="299" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="980" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">CognitiveBus</text>
+<text x="980" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">queued — never mid-tick</text>
+</g>
+<g>
+<rect x="1136" y="290" width="180" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="1136" y="290" width="180" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="1137.2" y="299" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="1226" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">onCognitiveEvent()</text>
+<text x="1226" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">returns StateCommands</text>
+</g>
+<g>
+<rect x="880" y="150" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="880" y="150" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="881.2" y="159" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="980" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Phase-2 flush</text>
+<text x="980" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">deliver after commit</text>
+</g>
+<g>
+<rect x="1136" y="150" width="180" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="1136" y="150" width="180" height="54" rx="12" fill="#94a3b812"/>
+<rect x="1137.2" y="159" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="1226" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">drainCommands()</text>
+<text x="1226" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">handler effects commit</text>
+</g>
+<text x="40" y="618" font-size="10.5" fill="#5b6372">@mindot/will · cognitive-wiring</text>
+<text x="1320" y="618" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

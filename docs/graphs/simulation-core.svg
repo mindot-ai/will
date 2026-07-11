@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="640" viewBox="0 0 1360 640" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-94a3b8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#94a3b8"/></marker>
+<marker id="arr-a78bfa" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#a78bfa"/></marker>
+</defs>
+<rect width="1360" height="640" fill="url(#sky)"/>
+<rect x="1" y="1" width="1358" height="638" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">The simulation core — where the clock meets the state</text>
+<text x="40" y="80" font-size="13" fill="#8b93a7">One loop drives priority-ordered engines over copy-on-write state; hosts observe through tick listeners — the connection points</text>
+<rect x="1214.8" y="42" width="105.19999999999999" height="22" rx="11" fill="#e2e8f014" stroke="#e2e8f055" stroke-width="1"/>
+<circle cx="1226.8" cy="53" r="3.4" fill="#e2e8f0"/>
+<text x="1235.8" y="57" font-size="10.5" fill="#cbd5e1">Host / world</text>
+<rect x="1138.2" y="42" width="68.6" height="22" rx="11" fill="#a78bfa14" stroke="#a78bfa55" stroke-width="1"/>
+<circle cx="1150.2" cy="53" r="3.4" fill="#a78bfa"/>
+<text x="1159.2" y="57" font-size="10.5" fill="#cbd5e1">Memory</text>
+<rect x="970.1" y="42" width="160.1" height="22" rx="11" fill="#94a3b814" stroke="#94a3b855" stroke-width="1"/>
+<circle cx="982.1" cy="53" r="3.4" fill="#94a3b8"/>
+<text x="991.1" y="57" font-size="10.5" fill="#cbd5e1">Stem / infrastructure</text>
+<rect x="44" y="118" width="500" height="440" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">THE LOOP</text>
+<rect x="574" y="118" width="460" height="440" rx="16" fill="#a78bfa07" stroke="#a78bfa2e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="590" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#a78bfabb">THE STATE</text>
+<rect x="1064" y="118" width="252" height="440" rx="16" fill="#e2e8f007" stroke="#e2e8f02e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="1080" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#e2e8f0bb">CONNECTION POINTS</text>
+<path d="M 162 204 C 162 238, 162 256, 162 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 262 317 C 296 317, 296 317, 330 317" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="276.8" y="307" width="38.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="296" y="320.5" font-size="10" fill="#cbd5e1" text-anchor="middle">tick</text>
+<path d="M 262 457 C 321.1434324333649 457, 270.8565675666351 317, 330 317" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<rect x="248.8" y="377" width="94.39999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="296" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">priority order</text>
+<path d="M 425 204 C 425 238, 425 256, 425 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<path d="M 520 317 C 554 317, 560 317, 594 317" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="537.8" y="307" width="38.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="557" y="320.5" font-size="10" fill="#cbd5e1" text-anchor="middle">emit</text>
+<path d="M 594 177 C 508.74683178017875 177, 425 204.74683178017875, 425 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<rect x="497.8993528150587" y="175.29515120645377" width="44" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="519.8993528150587" y="188.79515120645377" font-size="10" fill="#cbd5e1" text-anchor="middle">reads</text>
+<path d="M 794 317 C 828 317, 790 317, 824 317" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 919 290 C 919 217.96802673663728, 866.0319732633627 177, 794 177" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
+<rect x="830.7119899737611" y="196.48801002623898" width="105.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="883.511989973761" y="209.98801002623898" font-size="10" fill="#cbd5e1" text-anchor="middle">next tick’s view</text>
+<path d="M 919 344 C 919 378, 919 396, 919 430" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
+<path d="M 824 457 C 790 457, 828 457, 794 457" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
+<path d="M 1014 317 C 1048 317, 1050 317, 1084 317" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
+<rect x="1018.6" y="307" width="60.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="1049" y="320.5" font-size="10" fill="#cbd5e1" text-anchor="middle">per tick</text>
+<path d="M 1014 457 C 1048 457, 1050 457, 1084 457" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
+<g>
+<rect x="62" y="150" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="62" y="150" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="63.2" y="159" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="162" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">SimulationClock</text>
+<text x="162" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">wall interval | fixed Δ</text>
+</g>
+<g filter="url(#glow)" color="#94a3b8">
+<rect x="62" y="290" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="62" y="290" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="63.2" y="299" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="162" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">DefaultSimulation</text>
+<text x="162" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">start · stop · step(n)</text>
+</g>
+<g>
+<rect x="62" y="430" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="62" y="430" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="63.2" y="439" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="162" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">addEngine()</text>
+<text x="162" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">assembly registers 40+</text>
+</g>
+<g>
+<rect x="330" y="150" width="190" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="330" y="150" width="190" height="54" rx="12" fill="#94a3b812"/>
+<rect x="331.2" y="159" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="425" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">SimulationContext</text>
+<text x="425" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">seeded prng · logical time</text>
+</g>
+<g>
+<rect x="330" y="290" width="190" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="330" y="290" width="190" height="54" rx="12" fill="#94a3b812"/>
+<rect x="331.2" y="299" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="425" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Orchestrator</text>
+<text x="425" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">serial react() by priority</text>
+</g>
+<g>
+<rect x="594" y="150" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="594" y="150" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="595.2" y="159" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="694" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Frozen state view</text>
+<text x="694" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">engines read — never write</text>
+</g>
+<g>
+<rect x="594" y="290" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="594" y="290" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="595.2" y="299" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="694" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">StateCommands</text>
+<text x="694" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">set · delete · metrics</text>
+</g>
+<g>
+<rect x="824" y="290" width="190" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="824" y="290" width="190" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="825.2" y="299" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="919" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">StateManager</text>
+<text x="919" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">entities · metrics</text>
+</g>
+<g>
+<rect x="824" y="430" width="190" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="824" y="430" width="190" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="825.2" y="439" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="919" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">SnapshotManager</text>
+<text x="919" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">copy-on-write · interval</text>
+</g>
+<g>
+<rect x="594" y="430" width="200" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="594" y="430" width="200" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="595.2" y="439" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="694" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Persistence</text>
+<text x="694" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">disk snapshots (optional)</text>
+</g>
+<g filter="url(#glow)" color="#e2e8f0">
+<rect x="1084" y="290" width="212" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="1084" y="290" width="212" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="1085.2" y="299" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="1190" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Tick listeners</text>
+<text x="1190" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">snapshot · outbox · invocations → host</text>
+</g>
+<g>
+<rect x="1084" y="430" width="212" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="1084" y="430" width="212" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="1085.2" y="439" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="1190" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Restore / replay</text>
+<text x="1190" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">load a snapshot, resume the life</text>
+</g>
+<text x="40" y="618" font-size="10.5" fill="#5b6372">@mindot/will · simulation-core</text>
+<text x="1320" y="618" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

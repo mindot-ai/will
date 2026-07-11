@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="760" viewBox="0 0 1360 760" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-38bdf8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#38bdf8"/></marker>
+<marker id="arr-94a3b8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#94a3b8"/></marker>
+<marker id="arr-4ade80" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#4ade80"/></marker>
+<marker id="arr-a78bfa" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#a78bfa"/></marker>
+</defs>
+<rect width="1360" height="760" fill="url(#sky)"/>
+<rect x="1" y="1" width="1358" height="758" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">WillStem — the body’s organs (tracts)</text>
+<text x="40" y="80" font-size="13" fill="#8b93a7">The stem stays thin; each tract owns one boundary of the body — intake, outflow, lifecycle, observability — around the same tick loop</text>
+<rect x="1202.6" y="42" width="117.39999999999999" height="22" rx="11" fill="#818cf814" stroke="#818cf855" stroke-width="1"/>
+<circle cx="1214.6" cy="53" r="3.4" fill="#818cf8"/>
+<text x="1223.6" y="57" font-size="10.5" fill="#cbd5e1">Meta-cognition</text>
+<rect x="1058.8999999999999" y="42" width="135.7" height="22" rx="11" fill="#2dd4bf14" stroke="#2dd4bf55" stroke-width="1"/>
+<circle cx="1070.8999999999999" cy="53" r="3.4" fill="#2dd4bf"/>
+<text x="1079.8999999999999" y="57" font-size="10.5" fill="#cbd5e1">Regulatory (body)</text>
+<rect x="890.7999999999998" y="42" width="160.1" height="22" rx="11" fill="#94a3b814" stroke="#94a3b855" stroke-width="1"/>
+<circle cx="902.7999999999998" cy="53" r="3.4" fill="#94a3b8"/>
+<text x="911.7999999999998" y="57" font-size="10.5" fill="#cbd5e1">Stem / infrastructure</text>
+<rect x="814.1999999999998" y="42" width="68.6" height="22" rx="11" fill="#a78bfa14" stroke="#a78bfa55" stroke-width="1"/>
+<circle cx="826.1999999999998" cy="53" r="3.4" fill="#a78bfa"/>
+<text x="835.1999999999998" y="57" font-size="10.5" fill="#cbd5e1">Memory</text>
+<rect x="682.6999999999998" y="42" width="123.5" height="22" rx="11" fill="#4ade8014" stroke="#4ade8055" stroke-width="1"/>
+<circle cx="694.6999999999998" cy="53" r="3.4" fill="#4ade80"/>
+<text x="703.6999999999998" y="57" font-size="10.5" fill="#cbd5e1">Agency (action)</text>
+<rect x="526.7999999999998" y="42" width="147.89999999999998" height="22" rx="11" fill="#38bdf814" stroke="#38bdf855" stroke-width="1"/>
+<circle cx="538.7999999999998" cy="53" r="3.4" fill="#38bdf8"/>
+<text x="547.7999999999998" y="57" font-size="10.5" fill="#cbd5e1">Perception &amp; senses</text>
+<rect x="44" y="118" width="260" height="300" rx="16" fill="#38bdf807" stroke="#38bdf82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#38bdf8bb">INTAKE</text>
+<rect x="44" y="448" width="260" height="260" rx="16" fill="#a78bfa07" stroke="#a78bfa2e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="470" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#a78bfabb">LIFECYCLE</text>
+<rect x="1046" y="118" width="270" height="480" rx="16" fill="#4ade8007" stroke="#4ade802e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="1062" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#4ade80bb">OUTFLOW</text>
+<rect x="334" y="560" width="682" height="148" rx="16" fill="#818cf807" stroke="#818cf82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="350" y="582" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#818cf8bb">OBSERVABILITY</text>
+<path d="M 282 177 C 410 177, 432 327, 560 327" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
+<rect x="390.6" y="242" width="60.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#38bdf844" stroke-width="0.8"/>
+<text x="421" y="255.5" font-size="10" fill="#cbd5e1" text-anchor="middle">percepts</text>
+<path d="M 282 317 C 387.7083232295357 317, 454.2916767704643 327, 560 327" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="393.4" y="312" width="55.199999999999996" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="421" y="325.5" font-size="10" fill="#cbd5e1" text-anchor="middle">on-tick</text>
+<path d="M 560 177 C 420 177, 172 150, 172 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<rect x="384.7125" y="164.96875" width="111.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="440.3125" y="178.46875" font-size="10" fill="#cbd5e1" text-anchor="middle">inbound envelopes</text>
+<path d="M 680 300 C 680 263.52, 680 240.48000000000002, 680 204" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<rect x="649.6" y="242" width="60.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="680" y="255.5" font-size="10" fill="#cbd5e1" text-anchor="middle">outbound</text>
+<path d="M 680 300 C 680 168, 934 177, 1066 177" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="795.9" y="179" width="55.199999999999996" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="823.5" y="192.5" font-size="10" fill="#cbd5e1" text-anchor="middle">replies</text>
+<path d="M 1181 204 C 1181 238, 1181 236, 1181 270" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 1181 324 C 1181 358, 1181 356, 1181 390" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<path d="M 800 327 C 930 327, 936 537, 1066 537" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="894.2" y="422" width="77.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="933" y="435.5" font-size="10" fill="#cbd5e1" text-anchor="middle">invocations</text>
+<path d="M 1181 510 C 1181 476, 1181 478, 1181 444" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-4ade80)"/>
+<rect x="1161.8" y="467" width="38.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="1181" y="480.5" font-size="10" fill="#cbd5e1" text-anchor="middle">acks</text>
+<path d="M 282 507 C 418 507, 680 490, 680 354" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
+<rect x="484.8" y="471.5" width="94.39999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="532" y="485" font-size="10" fill="#cbd5e1" text-anchor="middle">distill ⇄ load</text>
+<path d="M 282 647 C 371.3872764995108 647, 431.6813970213451 555.5712328460952, 480 520 C 528.3186029786549 484.4287671539048, 680 452.767840920008, 680 354" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<path d="M 680 354 C 680 482, 454 492, 454 620" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<path d="M 680 354 C 680 455.0914279254181, 684 518.9085720745819, 684 620" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<path d="M 680 354 C 680 482, 914 492, 914 620" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<g filter="url(#glow)" color="#94a3b8">
+<rect x="560" y="300" width="240" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="560" y="300" width="240" height="54" rx="12" fill="#94a3b812"/>
+<rect x="561.2" y="309" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="680" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">WillStem</text>
+<text x="680" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">thin coordinator — tracts own the machinery</text>
+</g>
+<g>
+<rect x="62" y="150" width="220" height="54" rx="12" fill="#10141d" stroke="#38bdf899" stroke-width="1.4"/>
+<rect x="62" y="150" width="220" height="54" rx="12" fill="#38bdf812"/>
+<rect x="63.2" y="159" width="3.2" height="36" rx="1.6" fill="#38bdf8"/>
+<text x="172" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">SensoryController</text>
+<text x="172" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">ingest → senses · chunk streams out</text>
+</g>
+<g>
+<rect x="62" y="290" width="220" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="62" y="290" width="220" height="54" rx="12" fill="#94a3b812"/>
+<rect x="63.2" y="299" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="172" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">InboundQueue</text>
+<text x="172" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">arrival ≠ application — tick-stamped</text>
+</g>
+<g>
+<rect x="62" y="480" width="220" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="62" y="480" width="220" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="63.2" y="489" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="172" y="504" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">PMAController</text>
+<text x="172" y="520.5" font-size="10" fill="#8b93a7" text-anchor="middle">distill · load · fidelity eval</text>
+</g>
+<g>
+<rect x="62" y="620" width="220" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="62" y="620" width="220" height="54" rx="12" fill="#94a3b812"/>
+<rect x="63.2" y="629" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="172" y="644" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">ReplayController</text>
+<text x="172" y="660.5" font-size="10" fill="#8b93a7" text-anchor="middle">record a life · re-run it</text>
+</g>
+<g>
+<rect x="560" y="150" width="240" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="560" y="150" width="240" height="54" rx="12" fill="#94a3b812"/>
+<rect x="561.2" y="159" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="680" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">TransportController</text>
+<text x="680" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">envelopes ⇄ the far side</text>
+</g>
+<g>
+<rect x="1066" y="150" width="230" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="1066" y="150" width="230" height="54" rx="12" fill="#94a3b812"/>
+<rect x="1067.2" y="159" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="1181" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">OutboxWriter</text>
+<text x="1181" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">canonical reply rows</text>
+</g>
+<g>
+<rect x="1066" y="270" width="230" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="1066" y="270" width="230" height="54" rx="12" fill="#94a3b812"/>
+<rect x="1067.2" y="279" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="1181" y="294" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">OutboxController</text>
+<text x="1181" y="310.5" font-size="10" fill="#8b93a7" text-anchor="middle">drain · delivery acks</text>
+</g>
+<g>
+<rect x="1066" y="390" width="230" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="1066" y="390" width="230" height="54" rx="12" fill="#94a3b812"/>
+<rect x="1067.2" y="399" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="1181" y="414" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">AckReconciler</text>
+<text x="1181" y="430.5" font-size="10" fill="#8b93a7" text-anchor="middle">idempotent — dual ack paths dedup</text>
+</g>
+<g>
+<rect x="1066" y="510" width="230" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="1066" y="510" width="230" height="54" rx="12" fill="#4ade8012"/>
+<rect x="1067.2" y="519" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="1181" y="534" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">EffectorController</text>
+<text x="1181" y="550.5" font-size="10" fill="#8b93a7" text-anchor="middle">invocations · execution acks</text>
+</g>
+<g>
+<rect x="354" y="620" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="354" y="620" width="200" height="54" rx="12" fill="#94a3b812"/>
+<rect x="355.2" y="629" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="454" y="644" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">SessionLogger</text>
+<text x="454" y="660.5" font-size="10" fill="#8b93a7" text-anchor="middle">JSONL cognitive trace</text>
+</g>
+<g>
+<rect x="584" y="620" width="200" height="54" rx="12" fill="#10141d" stroke="#2dd4bf99" stroke-width="1.4"/>
+<rect x="584" y="620" width="200" height="54" rx="12" fill="#2dd4bf12"/>
+<rect x="585.2" y="629" width="3.2" height="36" rx="1.6" fill="#2dd4bf"/>
+<text x="684" y="644" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">HealthReporter</text>
+<text x="684" y="660.5" font-size="10" fill="#8b93a7" text-anchor="middle">composite vitals</text>
+</g>
+<g>
+<rect x="814" y="620" width="200" height="54" rx="12" fill="#10141d" stroke="#818cf899" stroke-width="1.4"/>
+<rect x="814" y="620" width="200" height="54" rx="12" fill="#818cf812"/>
+<rect x="815.2" y="629" width="3.2" height="36" rx="1.6" fill="#818cf8"/>
+<text x="914" y="644" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">BiographyWriter</text>
+<text x="914" y="660.5" font-size="10" fill="#8b93a7" text-anchor="middle">the life, written to disk</text>
+</g>
+<text x="40" y="738" font-size="10.5" fill="#5b6372">@mindot/will · stem-tracts</text>
+<text x="1320" y="738" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

@@ -239,7 +239,7 @@ There is **no synchronous reply** — `ingestText` returns immediately; the Will
 
 ## Architecture
 
-> **Visual map:** [`docs/graphs/`](docs/graphs/) holds sixteen architecture graphs — the cognitive stories (memory, executive & facets, agency, audition, body & affect, meta-cognition, the executive ⇄ agency seam), the machinery (the deterministic tick, the simulation core, the cognitive bus & wiring, one LLM call end-to-end, transports, the stem's tracts), the edges (host surfaces, the PMA lifecycle), and the [whole composition](docs/graphs/composition.svg). One palette across all of them: violet is always memory, amber executive, green agency. Regenerate with `bun docs/graphs/generate.ts`.
+> **Visual map:** [`docs/graphs/`](docs/graphs/) holds twenty-one architecture graphs — the cognitive stories (memory, executive & facets, agency, audition, body & affect, meta-cognition, the executive ⇄ agency seam, planning & goals, social cognition, proactive communication, competence, the two persona channels), the machinery (the deterministic tick, the simulation core, the cognitive bus & wiring, one LLM call end-to-end, transports, the stem's tracts), the edges (host surfaces, the PMA lifecycle), and the [whole composition](docs/graphs/composition.svg). One palette across all of them: violet is always memory, amber executive, green agency. Regenerate with `bun docs/graphs/generate.ts`.
 
 ![Will — the whole composition](docs/graphs/composition.svg)
 

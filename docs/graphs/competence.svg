@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="720" viewBox="0 0 1360 720" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-4ade80" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#4ade80"/></marker>
+<marker id="arr-e2e8f0" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#e2e8f0"/></marker>
+</defs>
+<rect width="1360" height="720" fill="url(#sky)"/>
+<rect x="1" y="1" width="1358" height="718" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">Competence — from act to habit to skill</text>
+<text x="40" y="80" font-size="13" fill="#8b93a7">Every enaction predicts its own outcome; surprise drives the learning rule — value, habit and param priors accrue, sequences chunk into new abilities, and it all travels in the PMA</text>
+<rect x="1251.4" y="42" width="68.6" height="22" rx="11" fill="#a78bfa14" stroke="#a78bfa55" stroke-width="1"/>
+<circle cx="1263.4" cy="53" r="3.4" fill="#a78bfa"/>
+<text x="1272.4" y="57" font-size="10.5" fill="#cbd5e1">Memory</text>
+<rect x="1138.2" y="42" width="105.19999999999999" height="22" rx="11" fill="#e2e8f014" stroke="#e2e8f055" stroke-width="1"/>
+<circle cx="1150.2" cy="53" r="3.4" fill="#e2e8f0"/>
+<text x="1159.2" y="57" font-size="10.5" fill="#cbd5e1">Host / world</text>
+<rect x="1006.7" y="42" width="123.5" height="22" rx="11" fill="#4ade8014" stroke="#4ade8055" stroke-width="1"/>
+<circle cx="1018.7" cy="53" r="3.4" fill="#4ade80"/>
+<text x="1027.7" y="57" font-size="10.5" fill="#cbd5e1">Agency (action)</text>
+<rect x="314" y="118" width="246" height="400" rx="16" fill="#4ade8007" stroke="#4ade802e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="330" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#4ade80bb">PREDICTION VS REALITY</text>
+<rect x="584" y="118" width="512" height="290" rx="16" fill="#4ade8007" stroke="#4ade802e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="600" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#4ade80bb">THE LEARNING RULE</text>
+<rect x="1110" y="118" width="206" height="560" rx="16" fill="#4ade8007" stroke="#4ade802e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="1126" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#4ade80bb">WHAT ACCRUES</text>
+<rect x="44" y="548" width="516" height="130" rx="16" fill="#4ade8007" stroke="#4ade802e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="570" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#4ade80bb">THE GROWING REPERTOIRE</text>
+<path d="M 266 317 C 325.4794082014944 317, 276.5205917985056 177, 336 177" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<rect x="276.2" y="237" width="49.599999999999994" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="301" y="250.5" font-size="10" fill="#cbd5e1" text-anchor="middle">before</text>
+<path d="M 266 317 C 325.4794082014944 317, 276.5205917985056 457, 336 457" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<rect x="279" y="377" width="44" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="301" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">after</text>
+<path d="M 536 177 C 596.1745328191254 177, 549.8254671808746 317, 610 317" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<path d="M 536 457 C 596.1745328191254 457, 549.8254671808746 317, 610 317" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 800 317 C 834 317, 836 317, 870 317" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<path d="M 1070 317 C 1135.2981535479112 317, 1060.7018464520888 177, 1126 177" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<path d="M 1070 317 C 1104 317, 1092 317, 1126 317" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<path d="M 1070 317 C 1135.2981535479112 317, 1060.7018464520888 457, 1126 457" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<path d="M 1300 317 C 1360.6442379785583 317, 1338 412, 1338 472 C 1338 532, 1360.6442379785583 627, 1300 627" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-4ade80)"/>
+<path d="M 1126 627 C 1006 627, 656 617, 536 617" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<rect x="809" y="612" width="44" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="831" y="625.5" font-size="10" fill="#cbd5e1" text-anchor="middle">chunk</text>
+<path d="M 336 617 C 302 617, 300 617, 266 617" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<path d="M 66 617 C 40 617, 40 177, 66 177" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-4ade80)"/>
+<path d="M 166 590 C 166 496.52, 166 437.48, 166 344" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-4ade80)"/>
+<rect x="110.4" y="457" width="111.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="166" y="470.5" font-size="10" fill="#cbd5e1" text-anchor="middle">affords next time</text>
+<g>
+<rect x="66" y="150" width="200" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="66" y="150" width="200" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="67.2" y="159" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="166" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">PMA competence fold</text>
+<text x="166" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">travels · restores on wake</text>
+</g>
+<g>
+<rect x="66" y="290" width="200" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="66" y="290" width="200" height="54" rx="12" fill="#4ade8012"/>
+<rect x="67.2" y="299" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="166" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">An enacted schema</text>
+<text x="166" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">params bound from the situation</text>
+</g>
+<g>
+<rect x="336" y="150" width="200" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="336" y="150" width="200" height="54" rx="12" fill="#4ade8012"/>
+<rect x="337.2" y="159" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="436" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Efference copy</text>
+<text x="436" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">predicted reward · valence — BEFORE</text>
+</g>
+<g>
+<rect x="336" y="430" width="200" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="336" y="430" width="200" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="337.2" y="439" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="436" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Observed outcome</text>
+<text x="436" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">success · quality — the host ack</text>
+</g>
+<g>
+<rect x="610" y="290" width="190" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="610" y="290" width="190" height="54" rx="12" fill="#4ade8012"/>
+<rect x="611.2" y="299" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="705" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Surprise</text>
+<text x="705" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">|predicted − actual|</text>
+</g>
+<g filter="url(#glow)" color="#4ade80">
+<rect x="870" y="290" width="200" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="870" y="290" width="200" height="54" rx="12" fill="#4ade8012"/>
+<rect x="871.2" y="299" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="970" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">recordOutcome()</text>
+<text x="970" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">the proceduralization curve</text>
+</g>
+<g>
+<rect x="1126" y="150" width="174" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="1126" y="150" width="174" height="54" rx="12" fill="#4ade8012"/>
+<rect x="1127.2" y="159" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="1213" y="174" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">valueEstimate</text>
+<text x="1213" y="190.5" font-size="10" fill="#8b93a7" text-anchor="middle">EMA toward quality</text>
+</g>
+<g>
+<rect x="1126" y="290" width="174" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="1126" y="290" width="174" height="54" rx="12" fill="#4ade8012"/>
+<rect x="1127.2" y="299" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="1213" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">habitStrength</text>
+<text x="1213" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">grows only on confident success</text>
+</g>
+<g>
+<rect x="1126" y="430" width="174" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="1126" y="430" width="174" height="54" rx="12" fill="#4ade8012"/>
+<rect x="1127.2" y="439" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="1213" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">paramPriors</text>
+<text x="1213" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">known-good args become defaults</text>
+</g>
+<g>
+<rect x="1126" y="600" width="174" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="1126" y="600" width="174" height="54" rx="12" fill="#4ade8012"/>
+<rect x="1127.2" y="609" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="1213" y="624" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Proceduralized</text>
+<text x="1213" y="640.5" font-size="10" fill="#8b93a7" text-anchor="middle">habit ≥ 0.6 — System 1 owns it</text>
+</g>
+<g>
+<rect x="336" y="590" width="200" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="336" y="590" width="200" height="54" rx="12" fill="#4ade8012"/>
+<rect x="337.2" y="599" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="436" y="614" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Composites</text>
+<text x="436" y="630.5" font-size="10" fill="#8b93a7" text-anchor="middle">chunked sequences — NEW abilities</text>
+</g>
+<g>
+<rect x="66" y="590" width="200" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="66" y="590" width="200" height="54" rx="12" fill="#4ade8012"/>
+<rect x="67.2" y="599" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="166" y="614" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">SchemaRepertoire</text>
+<text x="166" y="630.5" font-size="10" fill="#8b93a7" text-anchor="middle">innate + external + learned</text>
+</g>
+<text x="40" y="698" font-size="10.5" fill="#5b6372">@mindot/will · competence</text>
+<text x="1320" y="698" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

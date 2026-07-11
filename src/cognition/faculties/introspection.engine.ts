@@ -14,13 +14,12 @@ import type {
   Duration, Tick, SimulationContext,
   ReadonlySimulationState, StateCommands, SimulationEvent,
 } from '#core/types'
-// import type { ExecutiveEngine } from '#faculties/executive.engine'
 import type { SimulationEngine, EngineResult, CognitiveEngine } from '#cognition/types'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
+import { ExecutiveEngine } from '#faculties/executive.engine'
 import { GenerativeModel } from '#cognition/generative.model'
 import { readEffectiveParams } from '#cognition/persona.prior'
-import { ExecutiveEngine } from './executive.engine'
 
 export interface IntrospectionEngineConfig {
   cooldownTicks?: number

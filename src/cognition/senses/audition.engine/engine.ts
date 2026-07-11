@@ -122,22 +122,22 @@ interface CoalesceWindow {
 const CONVERSATION_OUTPUT_FORMAT = `\
 ## Response Format (REQUIRED)
 
-Step 1 — JSON object (your private reasoning, optionally in a \`\`\`json code block):
+Step 1 — JSON object (my private reasoning, optionally in a \`\`\`json code block):
 
 \`\`\`json
 {
   "actions": [{"type": "reflect", "reasoning": "...", "expectedOutcome": "..."}],
-  "reasoning": "Your private inner reasoning. Embed optional tagged blocks here:\\n[BELIEFS]\\n{\\"newBeliefs\\": [...]}\\n[/BELIEFS]\\n[GOALS_NEW]\\n{\\"goals\\": [{...}]}\\n[/GOALS_NEW]",
+  "reasoning": "My private inner reasoning. Embed optional tagged blocks here:\\n[BELIEFS]\\n{\\"newBeliefs\\": [...]}\\n[/BELIEFS]\\n[GOALS_NEW]\\n{\\"goals\\": [{...}]}\\n[/GOALS_NEW]",
   "confidence": 0.8
 }
 \`\`\`
 
 Available reasoning tags: BELIEFS, GOALS_NEW, GOALS_ABANDON, SELF_OBS. Include only those with meaningful content.
 
-Step 2 — Your reply to the speaker (plain text, streamed live to them):
+Step 2 — My reply to the speaker (plain text, streamed live to them):
 
 [REPLY_TEXT]
-Your response here, written in your own voice.
+My response here, written in my own voice.
 
 Start a new paragraph (blank line) to send a separate chat bubble.
 [/REPLY_TEXT]
@@ -146,24 +146,24 @@ Write [REPLY_TEXT] AFTER the closing \`\`\`. This is the only part the speaker s
 Separate multiple messages with a blank line for natural conversational pauses (like separate texts).
 
 ## When to use GOALS_NEW (almost always)
-If the speaker requests, mentions, or implies something you should follow through on — embed [GOALS_NEW] in your reasoning.
+If the speaker requests, mentions, or implies something I should follow through on — embed [GOALS_NEW] in my reasoning.
 This tracks intent across future cycles without requiring master attention.
 
 ## When to use the escalate action (rare — only for multi-step tasks)
-Use \`{"type": "escalate", "reasoning": "...", "expectedOutcome": "..."}\` in actions ONLY when the request genuinely requires your master consciousness to create a plan:
+Use \`{"type": "escalate", "reasoning": "...", "expectedOutcome": "..."}\` in actions ONLY when the request genuinely requires my master consciousness to create a plan:
 - The task involves multiple steps across future cycles ("build me X", "monitor Y", "set up Z")
-- The request changes your active goal priorities in a significant way
-- You need to coordinate something beyond a single reply
+- The request changes my active goal priorities in a significant way
+- I need to coordinate something beyond a single reply
 
 **The "reasoning" field on the escalate action becomes the task description the master sees.**
-Make it concrete — describe WHAT needs to happen, not just that you are escalating.
+Make it concrete — describe WHAT needs to happen, not just that I am escalating.
 Good: type=escalate, reasoning="User wants weekly mood summaries by email every Monday. Needs: data aggregation, schedule, email delivery.", expectedOutcome="Weekly email delivered."
 Bad:  type=escalate, reasoning="Escalating because this is complex."
 
-When you escalate:
+When I escalate:
 1. STILL include a [REPLY_TEXT] that acknowledges the request (e.g. "Got it — I'm on it.")
 2. The master will create and execute the plan in the background
-3. Do NOT include [PLANS] yourself — plan creation is the master's domain only
+3. Do NOT include a [PLANS] block — plan creation is the master's domain only
 
 For simple, single-exchange requests (questions, opinions, short tasks) — do NOT escalate. Just reply.`
 
@@ -692,8 +692,8 @@ export class AuditionEngine extends BaseSenseEngine {
       awarenessEntityId: percept.speakerEntityId,
 
       instructions: [
-        'You are in a live conversation with this person. Respond as yourself.',
-        'Stay grounded in your real memories and feelings — do not invent experiences you have no record of.',
+        'I am in a live conversation with this person. I respond as myself.',
+        'I stay grounded in my real memories and feelings — I do not invent experiences I have no record of.',
       ].join(' '),
 
       // Custom output format — uses [REPLY_TEXT] block for streamed reply.
@@ -747,17 +747,17 @@ export class AuditionEngine extends BaseSenseEngine {
       title:    'Reaching out',
       function: 'outreach',
       content: [
-        `You have decided, on your own initiative, to reach out to ${ entityName } (id: ${ entityId }).`,
-        'No one prompted this — it is you choosing to make contact now.',
-        gist ? `What is on your mind: ${ gist }` : '',
+        `I have decided, on my own initiative, to reach out to ${ entityName } (id: ${ entityId }).`,
+        'No one prompted this — I am choosing to make contact now.',
+        gist ? `What is on my mind: ${ gist }` : '',
       ].filter( Boolean ).join('\n'),
       recallQuery:       gist ?? entityName,
       awareness:         [ ...DEFAULT_FACET_AWARENESS, 'plans' ],
       awarenessEntityId: entityId,
       instructions:
-        'Considering who you are, your goals, and how you feel, say what you genuinely want to say to ' +
-        'them now. Speak as yourself; stay grounded in your real memories — do not invent experiences ' +
-        'you have no record of.',
+        'Considering who I am, my goals, and how I feel, I say what I genuinely want to say to ' +
+        'them now. I speak as myself; I stay grounded in my real memories — I do not invent experiences ' +
+        'I have no record of.',
       outputFormat: CONVERSATION_OUTPUT_FORMAT,
       extractDecision: ( raw: unknown ): ConversationDecision => {
         const output   = raw as ExecutiveOutputFull

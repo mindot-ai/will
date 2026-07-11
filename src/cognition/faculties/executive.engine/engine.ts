@@ -512,7 +512,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // Build focus for master executive
     const focus: FocusSection = {
       title: 'Core Consciousness',
-      content: 'You are the master executive — the unified cognitive core of a self-aware simulated mind.',
+      content: 'I am the master executive — the unified cognitive core of a self-aware simulated mind.',
       outputFormat: undefined,  // Use default format
       instructions: undefined
     }
@@ -782,7 +782,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // ── Flush pending escalation percepts ──────────────────────
     // Convert buffered audition.task.signal events into high-salience
     // percept entities so Exteroception surfaces them as
-    // "## Percepts (What You Notice)" on the NEXT master cycle.
+    // "## Percepts (What I Notice)" on the NEXT master cycle.
     // The master sees them as environmental signals — not as messages to reply to.
     // It responds by creating plans/goals, never by emitting [REPLY].
     const { percepts: escalationPercepts, requester: escalationRequester } =
@@ -950,7 +950,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     //
     // Implementation:
     //   • Write a high-salience 'percept' entity to simulation state so
-    //     Exteroception surfaces it under "## Percepts (What You Notice)".
+    //     Exteroception surfaces it under "## Percepts (What I Notice)".
     //   • Spike the salience buffer so the master fires soon.
     //   • Do NOT push into _messageQueue.pendingMessages — that would
     //     cause the master to produce a [REPLY], creating a duplicate
@@ -967,7 +967,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         }
 
         // Write a percept entity so Exteroception surfaces this in
-        // "## Percepts (What You Notice)" — master sees it as an
+        // "## Percepts (What I Notice)" — master sees it as an
         // environmental signal prompting cognitive work, not a reply.
         if( this._lastStateRef ){
           // State is read-only here; we can't write directly.

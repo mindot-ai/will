@@ -50,7 +50,7 @@ export interface ExecutiveOutputFull {
   /**
    * What the Will consciously learned about the *others* it is dealing with (the analogue
    * of identityUpdates, but about someone/something else). `keid` is the referent from the
-   * known-entity dossier / "## People You Know" context. `name` is a learned identifying
+   * known-entity dossier / "## People I Know" context. `name` is a learned identifying
    * name; `learned` are facts (→ keid-tagged social beliefs, so they ride the memory
    * pipeline); `feeling` is a felt valence toward them (a bounded nudge).
    */

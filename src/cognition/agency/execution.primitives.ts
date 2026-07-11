@@ -59,7 +59,7 @@ export function enact( ctx: EnactionContext ): Enaction {
     const name = str( ctx.parameters['targetEntityName'] ) ?? ctx.targetEntityId ?? 'them'
     return {
       mode, success: true, outcomeQuality: 0.7, valence: 0.1,
-      description: `You reach toward ${ name }. The words are sent; their effect is not yet known.`,
+      description: `I reach toward ${ name }. The words are sent; their effect is not yet known.`,
     }
   }
 
@@ -81,26 +81,26 @@ function syncStance( ctx: EnactionContext ): Enaction {
 
   switch( schema.id ){
     case 'rest':
-      // More restorative the more depleted you were.
-      return sync( 0.5 + ( 1 - e01 ) * 0.4, 0.15, 'You let yourself recover; the pressure eases a little.' )
+      // More restorative the more depleted the Will was.
+      return sync( 0.5 + ( 1 - e01 ) * 0.4, 0.15, 'I let myself recover; the pressure eases a little.' )
     case 'withdraw':
-      return sync( 0.5 + s01 * 0.3, 0.05 + s01 * 0.1, 'You pull back from the press of things; the world quietens.' )
+      return sync( 0.5 + s01 * 0.3, 0.05 + s01 * 0.1, 'I pull back from the press of things; the world quietens.' )
     case 'reflect':
-      return sync( 0.6, 0.05, 'You turn inward; patterns from recent events settle into place.' )
+      return sync( 0.6, 0.05, 'I turn inward; patterns from recent events settle into place.' )
     case 'attend':
-      return sync( 0.6, 0.0, 'You concentrate, mobilizing more of your attention.' )
+      return sync( 0.6, 0.0, 'I concentrate, mobilizing more of my attention.' )
     case 'orient':
-      return sync( 0.5, 0.0, 'Your awareness sweeps the situation, taking its measure.' )
+      return sync( 0.5, 0.0, 'My awareness sweeps the situation, taking its measure.' )
     case 'wait':
-      return sync( 0.5, 0.0, 'You let time pass; regulatory processes continue their quiet work.' )
+      return sync( 0.5, 0.0, 'I let time pass; regulatory processes continue their quiet work.' )
     case 'express':
-      return sync( 0.6, 0.1, 'Your inner state becomes outwardly visible.' )
+      return sync( 0.6, 0.1, 'My inner state becomes outwardly visible.' )
     case 'inspect': {
       const focus = str( parameters['focus'] ) ?? 'it'
-      return sync( 0.65, 0.05, `You examine ${ focus } closely; more of its detail resolves.` )
+      return sync( 0.65, 0.05, `I examine ${ focus } closely; more of its detail resolves.` )
     }
     default:
-      return sync( 0.5, 0.0, `You enact ${ schema.id }.` )
+      return sync( 0.5, 0.0, `I enact ${ schema.id }.` )
   }
 }
 

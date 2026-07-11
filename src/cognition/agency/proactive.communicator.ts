@@ -77,12 +77,12 @@ export class ProactiveCommunicator {
   ): Promise<ActionResult> {
     return {
       success: true,
-      description: `You open yourself to incoming communication. Others may now reach you through available channels.`,
+      description: `I open myself to incoming communication. Others may now reach me through available channels.`,
       commands,
       feedback: {
         outcomeQuality: 1.0,
         surprise: 0.05,
-        lessons: [ 'Being reachable allows others to connect with you.' ],
+        lessons: [ 'Being reachable allows others to connect with me.' ],
       },
     }
   }
@@ -105,7 +105,7 @@ export class ProactiveCommunicator {
 
     return {
       success: true,
-      description: `You ${gestureType} toward ${targetEntityId}. The gesture is directed and sincere.`,
+      description: `I ${gestureType} toward ${targetEntityId}. The gesture is directed and sincere.`,
       commands,
       feedback: {
         outcomeQuality: 0.8,
@@ -137,7 +137,7 @@ export class ProactiveCommunicator {
 
     return {
       success: true,
-      description: `You broadcast: "${finalContent.slice( 0, 80 )}${finalContent.length > 80 ? '…' : ''}"`,
+      description: `I broadcast: "${finalContent.slice( 0, 80 )}${finalContent.length > 80 ? '…' : ''}"`,
       commands,
       feedback: {
         outcomeQuality: 0.75,
@@ -168,7 +168,7 @@ export class ProactiveCommunicator {
     if( !targetEntityId ){
       return {
         success: false,
-        description: `You want to ${effectorName} but there is no one specific to reach out to.`,
+        description: `I want to ${effectorName} but there is no one specific to reach out to.`,
         commands,
         feedback: {
           outcomeQuality: 0,
@@ -181,7 +181,7 @@ export class ProactiveCommunicator {
     if( bubbles.length === 0 ){
       return {
         success: false,
-        description: `You wanted to ${effectorName} ${targetEntityName} but didn't write anything.`,
+        description: `I wanted to ${effectorName} ${targetEntityName} but didn't write anything.`,
         commands,
         feedback: { outcomeQuality: 0, surprise: 0.1, lessons: [ 'Provide a messages array with the actual words.' ] },
       }
@@ -261,12 +261,12 @@ export class ProactiveCommunicator {
 
     return {
       success: true,
-      description: `You reach out to ${targetEntityName}: "${fullReply.slice( 0, 80 )}${fullReply.length > 80 ? '…' : ''}"`,
+      description: `I reach out to ${targetEntityName}: "${fullReply.slice( 0, 80 )}${fullReply.length > 80 ? '…' : ''}"`,
       commands,
       feedback: {
         outcomeQuality: 0.85,
         surprise: 0.15,
-        lessons: [ `Your message is queued for delivery to ${targetEntityName}.` ],
+        lessons: [ `My message is queued for delivery to ${targetEntityName}.` ],
       },
     }
   }

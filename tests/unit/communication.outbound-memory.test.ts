@@ -51,8 +51,8 @@ describe( 'ProactiveCommunicator — outbound conversation memory (§8 option a)
     expect( m.wmType ).toBe( 'conversation.exchange' )
     expect( m.tags ).toContain( 'entity:alice' )
     expect( m.tags ).toContain( 'conversation' )
-    // Will-initiated shape: "You → <name>: …"
-    expect( m.summary ).toContain( 'You → Alice' )
+    // Will-initiated shape: "I → <name>: …"
+    expect( m.summary ).toContain( 'I → Alice' )
     expect( m.summary ).toContain( 'Hey, are you around?' )
     expect( m.entityId ).toBe( 'alice' )
     expect( m.willReply ).toBe( 'Hey, are you around?' )

@@ -58,8 +58,8 @@ interface Candidate {
 
 const DELIBERATION_INSTRUCTIONS =
   'Automatic action-selection was uncertain or the stakes were high. From the candidate actions ' +
-  'listed above, choose the ONE that best fits who you are and your situation. Do not invent ' +
-  'actions that are not listed. Put your chosen action as your single action; its "type" must be ' +
+  'listed above, choose the ONE that best fits who I am and my situation. Do not invent ' +
+  'actions that are not listed. Put my chosen action as my single action; its "type" must be ' +
   'exactly one of the candidate names.'
 
 export class DeliberationEngine implements CognitiveEngine {
@@ -209,9 +209,9 @@ export class DeliberationEngine implements CognitiveEngine {
     // facet owns the interruption in-character rather than reasoning in a vacuum.
     const preemptedFrom = str( meta['preemptedFrom'] )
     if( preemptedFrom )
-      lines.push( `You just broke off a pending action ("${ preemptedFrom }") because something more pressing pulled at you. Decide what to do now:` )
+      lines.push( `I just broke off a pending action ("${ preemptedFrom }") because something more pressing pulled at me. Decide what to do now:` )
     else
-      lines.push( 'Your automatic action-selection was uncertain. Candidate actions:' )
+      lines.push( 'My automatic action-selection was uncertain. Candidate actions:' )
     candidates.forEach( ( c, i ) => {
       const to   = c.targetEntityId ? ` toward ${ c.targetEntityId }` : ''
       // The ability's meaning, so the facet weighs what each option IS FOR rather
@@ -219,7 +219,7 @@ export class DeliberationEngine implements CognitiveEngine {
       const what = c.description ? ` — ${ c.description }` : ''
       // Channel B: name the plan link so the facet chooses as the self pursuing it,
       // not blindly among labels ("this one is the next step of the plan I'm on").
-      const plan = c.fromPlan ? " (your current plan's next step)" : ''
+      const plan = c.fromPlan ? " (my current plan's next step)" : ''
       lines.push( `${ i + 1 }. ${ c.schema }${ to }${ what }${ plan }` )
     })
     return lines.join( '\n' )

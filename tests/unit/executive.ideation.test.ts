@@ -95,7 +95,7 @@ describe( 'buildUserMessage — ideation candidate injection (decision pass)', (
     expect( msg ).toContain( '## Candidate Approaches' )
     expect( msg ).toContain( 'ask' )
     expect( msg ).toContain( 'act on best guess' )
-    expect( msg ).toMatch( /why you rejected the others/ )
+    expect( msg ).toMatch( /why I rejected the others/ )
   } )
 
   it( 'omits the section entirely on the System 1 path (no candidates)', () => {

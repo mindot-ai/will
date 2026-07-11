@@ -100,8 +100,8 @@ export class OutboxController {
       metadata: {
         category:   'message-delivery',
         summary:    delivered
-          ? `Your message was delivered successfully.`
-          : `Your message failed to reach the recipient.`,
+          ? `My message was delivered successfully.`
+          : `My message failed to reach the recipient.`,
         salience:   delivered ? 0.35 : 0.6,
         changeType: delivered ? 'delivered' : 'failed',
         messageId,

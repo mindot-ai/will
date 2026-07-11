@@ -4147,7 +4147,7 @@ interface ExecutiveOutputFull {
     /**
      * What the Will consciously learned about the *others* it is dealing with (the analogue
      * of identityUpdates, but about someone/something else). `keid` is the referent from the
-     * known-entity dossier / "## People You Know" context. `name` is a learned identifying
+     * known-entity dossier / "## People I Know" context. `name` is a learned identifying
      * name; `learned` are facts (→ keid-tagged social beliefs, so they ride the memory
      * pipeline); `feeling` is a felt valence toward them (a bounded nudge).
      */
@@ -4258,6 +4258,19 @@ interface ExecutiveEngineConfig$1 {
  *   'facet'  — same awareness baseline; creator engine injects domain context
  *              via reportContent and optionally overrides outputFormat.
  *              Conversation facets (AuditionEngine) handle all [REPLY] output.
+ *
+ * Voice convention (person follows ownership):
+ *   The executive loop has no second party — the "user" message is the mind's
+ *   own state feed, not an interlocutor. So:
+ *   - Self-model content (identity, role, affect/beliefs/percepts headers,
+ *     action outcomes, felt state) is FIRST PERSON — it is the mind's own text.
+ *   - Protocol content (JSON format, tag lists, lifecycle mechanics) is
+ *     IMPERATIVE and person-free — rules of the body, not thoughts of the self.
+ *   - SECOND PERSON is reserved for real addressees only (a user speaking,
+ *     developer-facing docs) and never appears in the cognitive prompts.
+ *   Guards that inspect persona text (identity.guard, identity.coherence)
+ *   must keep matching BOTH persons — legacy personas and adversarial inputs
+ *   choose their own grammar.
  */
 
 type AwarenessScope = 'goals' | 'plans' | 'beliefs' | 'percepts' | 'ruminations' | 'memories' | 'recentActions';
@@ -5315,8 +5328,8 @@ declare class TheoryOfMind implements SimulationEngine, CognitiveEngine {
      * snapshot/PMA restore — mirrors AttachmentEvaluator/ReputationTracker._restoreFromState.
      * The entity stores a gist (modelConfidence + the dominant intention + estimated emotion),
      * not the full belief/observation arrays, so the restored model is a coherent gist that
-     * subsequent interactions grow from — the soul-true level: you recover your *sense* of a
-     * mind, not every belief you once inferred about it.
+     * subsequent interactions grow from — the soul-true level: the Will recovers its
+     * *sense* of a mind, not every belief it once inferred about it.
      */
     private _restoreFromState;
     private _getOrCreateModel;

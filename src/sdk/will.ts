@@ -46,7 +46,12 @@ export interface Stimulus {
   text: string
   /** Who it's from (entity id). Default 'user'. */
   from?: string
-  /** Display name of the speaker. Default 'You' for `user`, else the `from` id. */
+  /**
+   * The speaker's real name, when known. A name here is *learned* by the Will as
+   * this entity's name (see known.entity.tracker) — so it is left unset by
+   * default rather than filled with a chat-frame placeholder: absent a real
+   * name, the Will knows the person as "someone" until it learns one.
+   */
   speaker?: string
   /** Conversation/thread id (default = `from`). */
   thread?: string
@@ -281,13 +286,18 @@ export class Will {
       entityId:    from,
       threadId:    stimulus.thread ?? from,
       content:     stimulus.text,
-      speakerName: stimulus.speaker ?? ( from === 'user' ? 'You' : from ),
+      // speakerName is a *learned* name in the mind's known-entity model — supplying
+      // one teaches the Will this entity's name. So we don't fabricate a chat-frame
+      // default ('You'/'User'): without an explicit name the name stays unlearned and
+      // the Will knows the person as "someone" until a real one is learned. (The live
+      // conversation focus still falls back to the entity id for its Speaker line.)
+      ...( stimulus.speaker ? { speakerName: stimulus.speaker } : {} ),
     } )
   }
 
   /** Perceive from the default user. Sugar over `perceive`. */
   async say( text: string ): Promise<void> {
-    return this.perceive( { text, from: 'user', speaker: 'You' } )
+    return this.perceive( { text, from: 'user' } )
   }
 
   /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive`. */

@@ -735,7 +735,8 @@ function _constructCognition(
   selfModelUpdater.attachSemanticIntegrator( semanticIntegrator )
   autobiographicalNarrator.attachEpisodicConsolidator( episodicConsolidator )
   autobiographicalNarrator.attachSemanticIntegrator( semanticIntegrator )
-  if( engineTier === 'full' ){
+  // Satellites harvest the executive's own output — attach wherever it runs.
+  if( engineTier !== 'basic' ){
     autobiographicalNarrator.attachExecutiveEngine( executiveEngine )
     introspectionEngine.attachExecutiveEngine( executiveEngine )
   }
@@ -957,12 +958,20 @@ function _registerEngines( simulation: DefaultSimulation, cognition: Cognition, 
     cognition.affectiveBlender
   ]
 
+  // Narrator + introspection are SATELLITES of the executive — they make no
+  // LLM calls of their own, they harvest the NARRATIVE / INTROSPECTION blocks
+  // the executive already produces every cycle. Gating them above the tier
+  // that runs the executive threw those already-paid-for outputs away (the
+  // life story never left its seed on standard-tier Wills).
+  const executiveSatellites = [
+    cognition.autobiographicalNarrator,
+    cognition.introspectionEngine,
+  ]
+
   const metaCognitiveEngines = [
     cognition.selfModelUpdater,
     cognition.confidenceCalibrator,
     cognition.biasDetector,
-    cognition.autobiographicalNarrator,
-    cognition.introspectionEngine,
     cognition.personaConsolidator
   ]
 
@@ -1000,6 +1009,8 @@ function _registerEngines( simulation: DefaultSimulation, cognition: Cognition, 
     ...coreEngines,
     ...( engineTier !== 'basic'   ? affectiveEngines           : [] ),
     ...( engineTier !== 'basic'   ? [ cognition.executiveEngine ] : [] ),
+    // Satellites run wherever the executive runs — they only consume its output.
+    ...( engineTier !== 'basic'   ? executiveSatellites        : [] ),
     ...( engineTier === 'full'    ? metaCognitiveEngines       : [] ),
     ...( engineTier === 'full'    ? socialEngines              : [] ),
     ...senseEngines,

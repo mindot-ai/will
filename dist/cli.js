@@ -21848,7 +21848,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   selfModelUpdater.attachSemanticIntegrator(semanticIntegrator);
   autobiographicalNarrator.attachEpisodicConsolidator(episodicConsolidator);
   autobiographicalNarrator.attachSemanticIntegrator(semanticIntegrator);
-  if (engineTier === "full") {
+  if (engineTier !== "basic") {
     autobiographicalNarrator.attachExecutiveEngine(executiveEngine);
     introspectionEngine.attachExecutiveEngine(executiveEngine);
   }
@@ -21992,12 +21992,14 @@ function _registerEngines(simulation, cognition, engineTier) {
     cognition.moralEvaluator,
     cognition.affectiveBlender
   ];
+  const executiveSatellites = [
+    cognition.autobiographicalNarrator,
+    cognition.introspectionEngine
+  ];
   const metaCognitiveEngines = [
     cognition.selfModelUpdater,
     cognition.confidenceCalibrator,
     cognition.biasDetector,
-    cognition.autobiographicalNarrator,
-    cognition.introspectionEngine,
     cognition.personaConsolidator
   ];
   const socialEngines = [
@@ -22023,6 +22025,8 @@ function _registerEngines(simulation, cognition, engineTier) {
     ...coreEngines,
     ...engineTier !== "basic" ? affectiveEngines : [],
     ...engineTier !== "basic" ? [cognition.executiveEngine] : [],
+    // Satellites run wherever the executive runs — they only consume its output.
+    ...engineTier !== "basic" ? executiveSatellites : [],
     ...engineTier === "full" ? metaCognitiveEngines : [],
     ...engineTier === "full" ? socialEngines : [],
     ...senseEngines,

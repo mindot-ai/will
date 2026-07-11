@@ -7,7 +7,7 @@
 
 ## What exists
 
-Sixteen graphs, one visual language (a category color is the same in every
+Twenty-one graphs, one visual language (a category color is the same in every
 graph — violet is always memory, amber executive, green agency…). Regenerate
 after edits: `bun docs/graphs/generate.ts`. Verify visually: headless-Chrome
 screenshot of the SVG (qlmanage crops to square — don't use it).
@@ -38,6 +38,20 @@ screenshot of the SVG (qlmanage crops to square — don't use it).
 | `host-surfaces` | will CLI → host/boot → MCP server / HTTP sidecar / facade; UtteranceTap; connectMcpEffectors; the PMA between sessions |
 | `stem-tracts` | the body's organs: sensory/inbound intake, outbox/ack/effector outflow, PMA/replay lifecycle, logger/health/biography observability |
 
+**Wave 3 — the deeper faculties (2026-07-11):**
+
+| Graph | Covers |
+|---|---|
+| `planning-goals` | goal sources (executive newGoals / instruction intake / curiosity-to-resolve) → GoalManager → plan lifecycle (draft·validate·execute·revise) → store/frontier/supervisor → plan.prior lifts the competition → outcomes advance the frontier |
+| `social-cognition` | percepts → KnownEntityTracker → ke-keid dossiers; recognition/alias fusion; ToM/reputation/attachment/empathy → "People You Know", salience, curiosity goals, reach-out, PMA |
+| `proactive-communication` | drives/goals/imagination → reach-out affordance → competition (may lose — silence is normal) → motor communicate → authorOutreach facet → OutboxWriter → host |
+| `competence` | efference copy vs observed outcome → surprise → recordOutcome → valueEstimate/habitStrength/paramPriors → proceduralize (≥0.6) → composites → repertoire → PMA fold |
+| `persona-channels` | lived behavior → consolidator → persona-prior; Channel A (base ⊕ prior read live — continuous subconscious) vs Channel B (banded trait surfacing — thresholded awareness); how each reaches System 1 / System 2 |
+
+Wave 3 also corrected `meta-cognition`: the IntrospectionEngine is drawn as a
+**satellite** (harvests the executive facet's INTROSPECTION block; heuristic
+pulse between runs — it makes no LLM calls of its own).
+
 ## Phase 2 — the paired prose (docs/architecture/)
 
 One markdown page per graph, `docs/architecture/<graph-name>.md`, each opening
@@ -56,9 +70,11 @@ with its SVG embedded, then ~600–1200 words. Per page:
 
 Order (dependency-friendly): simulation-core → determinism-tick →
 cognitive-wiring → memory → affect-body → executive → agency →
-executive-agency-seam → audition → meta-cognition → llm-cycle → transports →
-stem-tracts → host-surfaces → pma → composition (the capstone page doubles as
-the docs index / CONTRIBUTING "how it all plays out" entry).
+executive-agency-seam → planning-goals → competence → audition →
+social-cognition → proactive-communication → meta-cognition →
+persona-channels → llm-cycle → transports → stem-tracts → host-surfaces →
+pma → composition (the capstone page doubles as the docs index /
+CONTRIBUTING "how it all plays out" entry).
 
 ## Phase 3 — integration
 
@@ -71,8 +87,8 @@ the docs index / CONTRIBUTING "how it all plays out" entry).
 
 ## Later / nice-to-have
 
-- [ ] One graph not yet drawn: **social cognition** (ToM/empathy/reputation/
-      known-entity dossiers → "People You Know" in the prompt).
 - [ ] Light-theme variants (the renderer takes a palette swap; GitHub README
       renders dark SVGs fine on both themes since the canvas paints its own bg).
 - [ ] Animated capstone (SMIL pulse along the tick loop) for the landing page.
+- [ ] Identity system: prose page, not a graph (it's a set of invariants, not
+      a flow).

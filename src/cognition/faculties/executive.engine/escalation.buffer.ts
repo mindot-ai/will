@@ -10,7 +10,7 @@
 // as percepts directly. This buffer holds them until the next
 // onReasoningComplete(), where they are drained into high-salience percept
 // entities (StateCommands.set) so Exteroception surfaces them as
-// "## Percepts (What You Notice)" on the following master cycle.
+// "## Percepts (What I Notice)" on the following master cycle.
 //
 // The master reads these as environmental signals — NEVER as incoming
 // messages — and responds by creating plans/goals, never by emitting [REPLY];

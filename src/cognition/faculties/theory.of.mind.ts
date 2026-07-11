@@ -226,8 +226,8 @@ export class TheoryOfMind implements SimulationEngine, CognitiveEngine {
    * snapshot/PMA restore — mirrors AttachmentEvaluator/ReputationTracker._restoreFromState.
    * The entity stores a gist (modelConfidence + the dominant intention + estimated emotion),
    * not the full belief/observation arrays, so the restored model is a coherent gist that
-   * subsequent interactions grow from — the soul-true level: you recover your *sense* of a
-   * mind, not every belief you once inferred about it.
+   * subsequent interactions grow from — the soul-true level: the Will recovers its
+   * *sense* of a mind, not every belief it once inferred about it.
    */
   private _restoreFromState( state: ReadonlySimulationState ): void {
     for( const entity of state.entities.values() ){

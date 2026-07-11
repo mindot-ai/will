@@ -69,7 +69,7 @@ export function buildConversationExchange( input: ConversationExchangeInput ): C
       tags:          [ 'conversation', 'exchange', `entity:${ entityId }` ],
       summary:       userMessage
         ? `${ name }: "${ userMessage.slice( 0, 100 ) }" → "${ willReply.slice( 0, 100 ) }"`
-        : `You → ${ name }: "${ willReply.slice( 0, 140 ) }"`,
+        : `I → ${ name }: "${ willReply.slice( 0, 140 ) }"`,
       entityId,
       entityName:    name,
       userMessage,

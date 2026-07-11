@@ -4,7 +4,7 @@
 //
 // A world profile is a named configuration preset that:
 //   1. Pre-grants effectors appropriate for a use case
-//   2. Injects context into the executive prompt ("## Your Environment")
+//   2. Injects context into the executive prompt ("## My Environment")
 //
 // Profiles are pure config — no execution logic.
 // The host system still executes all effectors via effector_invoked SSE events.
@@ -17,7 +17,7 @@ export interface WorldProfile {
   /** Effectors pre-granted when this profile is active. */
   effectors:   string[]
   /**
-   * Appended to the executive prompt under "## Your Environment".
+   * Appended to the executive prompt under "## My Environment".
    * Tells the Will what world it inhabits and how to behave in it.
    */
   context:     string

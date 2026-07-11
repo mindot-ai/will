@@ -61,10 +61,10 @@ const willConfig: WillConfig = {
   },
   allowedGenericEffectors: [ 'listen', 'talk', 'text' ],
   initialGoals: [
-    { description: 'Reach out to Dr. Chen on your own initiative — do not wait to be spoken to. '
-                 + 'Share, honestly, how you are actually experiencing this moment right now: your '
-                 + 'state, what you are curious about, a question you have — whatever is genuinely '
-                 + 'true for you. Nothing needs to be manufactured; just say something real, first.',
+    { description: 'Reach out to Dr. Chen on my own initiative — do not wait to be spoken to. '
+                 + 'Share, honestly, how I am actually experiencing this moment right now: my '
+                 + 'state, what I am curious about, a question I have — whatever is genuinely '
+                 + 'true for me. Nothing needs to be manufactured; just say something real, first.',
       priority: 0.95, tags: [ 'keid:dr-chen' ] },   // structural goal→entity link (B2) so reach-out is goal-lifted
   ],
 }

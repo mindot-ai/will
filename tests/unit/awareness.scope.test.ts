@@ -77,7 +77,7 @@ describe( 'awareness scoping — buildUserMessage', () => {
     const out = render( { awareness: [ 'plans' ] as AwarenessScope[] }, 'facet', ctxWithPlan )
     expect( out ).toContain( '## Active Plans' )
     expect( out ).not.toContain( '## Active Goals' )   // 'goals' not declared
-    expect( out ).not.toContain( '## Your Beliefs' )
+    expect( out ).not.toContain( '## My Beliefs' )
   } )
 
   it( 'awarenessEntityId scopes plans to a single requester', () => {
@@ -91,13 +91,13 @@ describe( 'awareness scoping — buildUserMessage', () => {
     const out = render( { awareness: [ 'goals' ] as AwarenessScope[] }, 'master', ctxWithPlan )
     expect( out ).toContain( '## Active Plans' )   // master ignores the manifest
     expect( out ).toContain( '## Active Goals' )
-    expect( out ).toContain( '## Your Beliefs' )
+    expect( out ).toContain( '## My Beliefs' )
   } )
 
   it( 'default facet awareness still includes goals, beliefs', () => {
     const out = render( {}, 'facet' )
     expect( out ).toContain( '## Active Goals' )
-    expect( out ).toContain( '## Your Beliefs' )
+    expect( out ).toContain( '## My Beliefs' )
   } )
 } )
 

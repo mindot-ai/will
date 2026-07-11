@@ -206,21 +206,21 @@ export class PlanSupervisor {
       content: focusContent,
       outputFormat: undefined,   // use standard executive output format
       instructions:
-        `You are monitoring plan "${plan.id}" for goal "${plan.goalId}".\n`+
-        `Your ONLY role: evaluate step outcomes and decide what happens next.\n`+
+        `I am monitoring plan "${plan.id}" for goal "${plan.goalId}".\n`+
+        `My ONLY role: evaluate step outcomes and decide what happens next.\n`+
         `Do not create new goals or beliefs unless directly relevant to this plan.\n\n`+
         `## Decision Vocabulary\n`+
-        `Express your decision as the FIRST action in your actions array:\n`+
+        `Express my decision as the FIRST action in my actions array:\n`+
         `- { "type": "continue" }  — proceed to the next step\n`+
         `- { "type": "retry" }     — re-attempt the failed step (capped)\n`+
         `- { "type": "skip" }      — skip the failed step and move on\n`+
         `- { "type": "pause" }     — hold the plan; resume it later (no progress now)\n`+
         `- { "type": "replan" }    — include a [PLANS] block with revised steps\n`+
-        `- { "type": "escalate" }  — hand the decision up to your master self\n`+
+        `- { "type": "escalate" }  — hand the decision up to my master self\n`+
         `- { "type": "abandon" }   — plan is unrecoverable; give up entirely\n`+
         `- { "type": "complete" }  — all meaningful work is done; close the plan\n\n`+
-        `For "replan", include a [PLANS] block inside your reasoning with new steps.\n`+
-        `The plan's expectedOutcome tells you what success looks like — use it to judge step reports.`,
+        `For "replan", include a [PLANS] block inside my reasoning with new steps.\n`+
+        `The plan's expectedOutcome tells me what success looks like — use it to judge step reports.`,
       extractDecision: ( rawOutput: unknown ) => {
         const output = rawOutput as ExecutiveOutputFull
 

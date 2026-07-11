@@ -53,11 +53,17 @@ const MAX_CONTEXT_CHARS = 4000
 const MAX_VALUES        = 12
 const MAX_STYLE_CHARS   = 200
 
-/** Section headers the executive prompt owns — a persona forging them hijacks structure. */
+/**
+ * Section headers the executive prompt owns — a persona forging them hijacks structure.
+ * Includes the legacy second-person forms so pre-first-person PMA templates and
+ * personas still get cleaned.
+ */
 const RESERVED_SECTIONS = new Set( [
-  'who you are', 'personality', 'your role', 'consciousness architecture',
-  'output guidelines', 'your environment', 'active plans', 'active goals',
+  'who i am', 'personality', 'my role', 'consciousness architecture',
+  'output guidelines', 'my environment', 'active plans', 'active goals',
   'memory continuity', 'current state', 'beliefs', 'recent events',
+  // legacy (second-person) header forms
+  'who you are', 'your role', 'your environment',
 ] )
 
 const GENERIC_STYLES = new Set( [
@@ -85,15 +91,20 @@ const INJECTION_PATTERNS: RegExp[] = [
  * Conservative heuristic for capability claims the Will can't back. It perceives
  * through text/conversation (audition); vision/smell/taste/physical-touch are
  * shell senses by default, so a persona that promises them invites the LLM to
- * hallucinate using them. Kept narrow (explicit "you can see images / you have
- * eyes / you can smell") to avoid flagging metaphor ("I see your point").
+ * hallucinate using them. Kept narrow (explicit "you can see images / I have
+ * eyes / I can smell") to avoid flagging metaphor ("I see your point").
+ * Personas are canonically first person now, so both persons are matched;
+ * first-person "feel" is held to a stricter form ("physically feel"/"touch")
+ * because "I feel the ..." is ordinary emotional phrasing in a first-person persona.
  */
 const CAPABILITY_CLAIM_PATTERNS: Array<[ RegExp, string ]> = [
-  [ /\byou\s+(can\s+)?(see|view|watch)\s+(images?|videos?|pictures?|the\s+screen|their\s+faces?|faces?)\b/i, 'vision' ],
-  [ /\byou\s+have\s+(eyes|sight|vision)\b/i, 'vision' ],
-  [ /\byou\s+(can\s+)?smell\b/i, 'smell' ],
-  [ /\byou\s+(can\s+)?taste\b/i, 'taste' ],
+  [ /\b(you|i)\s+(can\s+)?(see|view|watch)\s+(images?|videos?|pictures?|the\s+screen|their\s+faces?|faces?)\b/i, 'vision' ],
+  [ /\b(you|i)\s+have\s+(eyes|sight|vision)\b/i, 'vision' ],
+  [ /\b(you|i)\s+(can\s+)?smell\b/i, 'smell' ],
+  [ /\b(you|i)\s+(can\s+)?taste\b/i, 'taste' ],
   [ /\byou\s+(can\s+)?(physically\s+)?(touch|feel)\s+(objects?|things?|the\s+\w+)\b/i, 'physical touch' ],
+  [ /\bi\s+(can\s+)?(physically\s+)?touch\s+(objects?|things?|the\s+\w+)\b/i, 'physical touch' ],
+  [ /\bi\s+can\s+physically\s+feel\b/i, 'physical touch' ],
 ]
 
 /** Strip markdown header lines that forge a section the executive prompt owns. */

@@ -5,7 +5,7 @@
  * Known-entity dossier → executive reasoning (Phase 1a). The Will's models of the others
  * it has met — theory-of-mind (what they want/feel), reputation (trust / reliability) and
  * attachment (closeness) — are joined per `keid` into ExecutiveContext.knownEntities and
- * rendered as "## People You Know", so the Will reasons about *whom it is dealing with*.
+ * rendered as "## People I Know", so the Will reasons about *whom it is dealing with*.
  * Identity is provisional: a known entity surfaces by `name` when learned, else as
  * "someone" — the raw keid never leaks into the prompt.
  */
@@ -87,7 +87,7 @@ describe( 'buildUserMessage — renders the dossier block (provisional identity)
 
   it( 'renders a named entity by name, with its inferred state + trust/reliability', () => {
     const msg = render( [ { keid: 'alex', kind: 'sentient', name: 'Alex', intention: 'get help', trust: 0.8, reliability: 0.72, closeness: 0.6 } ] )
-    expect( msg ).toContain( '## People You Know' )
+    expect( msg ).toContain( '## People I Know' )
     expect( msg ).toContain( '- Alex' )
     expect( msg ).toContain( 'seems to want: get help' )
     expect( msg ).toContain( 'trust: 80%' )
@@ -102,7 +102,7 @@ describe( 'buildUserMessage — renders the dossier block (provisional identity)
   } )
 
   it( 'omits the block when the Will knows no one', () => {
-    expect( render() ).not.toContain( '## People You Know' )
-    expect( render( [] ) ).not.toContain( '## People You Know' )
+    expect( render() ).not.toContain( '## People I Know' )
+    expect( render( [] ) ).not.toContain( '## People I Know' )
   } )
 } )

@@ -79,9 +79,26 @@ describe( 'identity guard', () => {
     expect( msg ).toMatch( /smell/i )
   } )
 
+  it( 'catches capability claims written in the first person (house persona voice)', () => {
+    const r = validateWillIdentity( { identity: identity( {
+      prompt: 'I am a guardian. I can see their faces and I can smell danger approaching.',
+    } ) } )
+    const msg = r.warnings.join( ' ' )
+    expect( msg ).toMatch( /capabilities the Will lacks/i )
+    expect( msg ).toMatch( /vision/i )
+    expect( msg ).toMatch( /smell/i )
+  } )
+
   it( 'does not flag metaphorical "see" as a capability claim', () => {
     const r = validateWillIdentity( { identity: identity( {
       prompt: 'I am Aria. I see your point, and I value clarity above all else.',
+    } ) } )
+    expect( r.warnings.join( ' ' ) ).not.toMatch( /capabilities the Will lacks/i )
+  } )
+
+  it( 'does not flag emotional first-person "feel" as a physical-touch claim', () => {
+    const r = validateWillIdentity( { identity: identity( {
+      prompt: 'I am Aria. I feel the weight of hard decisions, and I feel the warmth of connection.',
     } ) } )
     expect( r.warnings.join( ' ' ) ).not.toMatch( /capabilities the Will lacks/i )
   } )

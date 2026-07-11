@@ -334,7 +334,7 @@ Beyond the five communication effectors, your world can expose **domain actions*
 registerProfile({
   id: 'rover', name: 'Rover', description: 'A field robot.',
   effectors: ['listen', 'talk', 'move', 'scan', 'grab'],
-  context: 'You are a rover exploring terrain. You can move, scan, and grab samples.',
+  context: 'I am a rover exploring terrain. I can move, scan, and grab samples.',
 })
 
 // 2. When the Will chooses one, it appears in pendingEffectorInvocations.
@@ -462,7 +462,7 @@ registerProfile({
   name:      'Research Lab',
   description: 'An observable mind for studying emergent cognition.',
   effectors: ['listen', 'talk', 'remember', 'reflect'],
-  context:   'You are a research subject. Report your reasoning transparently…',
+  context:   'I am a research subject. I report my reasoning transparently…',
 })
 
 // Then in WillConfig:  { ..., profile: 'research-lab' }

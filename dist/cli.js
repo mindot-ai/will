@@ -25549,12 +25549,17 @@ var Will = class _Will {
       entityId: from,
       threadId: stimulus.thread ?? from,
       content: stimulus.text,
-      speakerName: stimulus.speaker ?? (from === "user" ? "You" : from)
+      // speakerName is a *learned* name in the mind's known-entity model — supplying
+      // one teaches the Will this entity's name. So we don't fabricate a chat-frame
+      // default ('You'/'User'): without an explicit name the name stays unlearned and
+      // the Will knows the person as "someone" until a real one is learned. (The live
+      // conversation focus still falls back to the entity id for its Speaker line.)
+      ...stimulus.speaker ? { speakerName: stimulus.speaker } : {}
     });
   }
   /** Perceive from the default user. Sugar over `perceive`. */
   async say(text) {
-    return this.perceive({ text, from: "user", speaker: "You" });
+    return this.perceive({ text, from: "user" });
   }
   /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive`. */
   async tell(entityId, speakerName, text) {

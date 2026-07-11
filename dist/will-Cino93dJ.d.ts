@@ -7668,7 +7668,12 @@ interface Stimulus {
     text: string;
     /** Who it's from (entity id). Default 'user'. */
     from?: string;
-    /** Display name of the speaker. Default 'You' for `user`, else the `from` id. */
+    /**
+     * The speaker's real name, when known. A name here is *learned* by the Will as
+     * this entity's name (see known.entity.tracker) — so it is left unset by
+     * default rather than filled with a chat-frame placeholder: absent a real
+     * name, the Will knows the person as "someone" until it learns one.
+     */
     speaker?: string;
     /** Conversation/thread id (default = `from`). */
     thread?: string;

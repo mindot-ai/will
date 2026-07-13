@@ -97,21 +97,13 @@ export function buildStateCommands(
   commands.set!.push( ...ideo.set )
   commands.delete!.push( ...ideo.delete )
 
-  // ── Apply Plans ────────────────────────────────────────────
-  if( output.plans )
-    for( const plan of output.plans )
-      commands.set!.push({
-        id: `plan-executive-${plan.goalId}-${footprint.tickObserved}`,
-        type: 'plan',
-        metadata: {
-          goalId: plan.goalId,
-          steps: plan.steps.map( ( s, i ) => ({ ...s, order: i }) ),
-          estimatedCost: plan.estimatedCost,
-          confidence: plan.feasibility,
-          status: 'ready',
-          source: 'executive'
-        }
-      })
+  // ── Plans ──────────────────────────────────────────────────
+  // No entity write here: the PlanningEngine is the single ingest path for
+  // `output.plans` (→ PlanStore lifecycle + persistence). The former raw
+  // `plan-executive-<goal>-<tick>` records froze at status 'ready' forever,
+  // piled up per re-authoring, and fed back into the executive's own
+  // Active-Plans awareness as phantom drafts — encouraging yet another
+  // re-authoring. (The PlanningEngine sweeps legacy ones on wake.)
 
   // ── Apply New Beliefs ──────────────────────────────────────
   if( output.newBeliefs && deps.semanticIntegrator ){

@@ -80,6 +80,63 @@ describe( 'PlanningEvalHarness — deterministic planning-quality scoring', () =
     } )
   } )
 
+  // ── Author comparison — the emergent-planning promotion gate ──
+  // (docs/strategy/__EMERGENT_PLANNING.md): a strategy is promoted only where
+  // it Pareto-dominates executive planning on the same scenario shell.
+  describe( 'author comparison — strategy vs executive promotion gate', () => {
+    const shell = {
+      name:  'compare',
+      goals: [ { description: 'recurring chore', priority: 0.3 } ],
+      tickBudget: 20,
+    }
+    const twoSteps = [ { goalIndex: 0, steps: [ step(), step() ], feasibility: 0.8 } ]
+
+    it( 'an equally-good but cheaper author dominates (the strategy win case)', async () => {
+      const cmp = await harness.compareAuthors(
+        shell,
+        { name: 'executive', plans: twoSteps, authoringCost: 1 },
+        { name: 'strategy',  plans: twoSteps, authoringCost: 0 },
+      )
+      expect( cmp.verdict ).toBe( 'b_dominates' )
+      expect( cmp.a.completionRate ).toBe( cmp.b.completionRate )   // same outcome…
+      expect( cmp.b.authoringCost ).toBeLessThan( cmp.a.authoringCost )  // …for free
+    } )
+
+    it( 'a cheaper author that fails the goal is a trade-off — mixed, never promoted', async () => {
+      const cmp = await harness.compareAuthors(
+        { ...shell, outcome: ( stepId: string ) => ( { success: !stepId.includes( 'step-2' ), quality: 0.5 } ) },
+        { name: 'executive', plans: twoSteps, authoringCost: 1 },
+        // The strategy's decomposition has a third step the outcome script always fails.
+        { name: 'strategy',  plans: [ { goalIndex: 0, steps: [ step(), step(), step('verify') ], feasibility: 0.8 } ], authoringCost: 0 },
+      )
+      expect( cmp.b.completionRate ).toBeLessThan( cmp.a.completionRate )
+      expect( cmp.verdict ).toBe( 'mixed' )
+    } )
+
+    it( 'identical authors tie', async () => {
+      const cmp = await harness.compareAuthors(
+        shell,
+        { name: 'x', plans: twoSteps },
+        { name: 'y', plans: twoSteps },
+      )
+      expect( cmp.verdict ).toBe( 'tie' )
+    } )
+  } )
+
+  it( 'reports decomposition-shape recurrence — the demonstrated-need needle', async () => {
+    const card = await harness.run( {
+      name:  'shapes',
+      goals: [ { description: 'a', priority: 0.3 }, { description: 'b', priority: 0.3 } ],
+      plans: [
+        { goalIndex: 0, steps: [ step(), step() ], feasibility: 0.8 },
+        { goalIndex: 1, steps: [ step(), step() ], feasibility: 0.8 },   // same shape re-derived
+      ],
+      tickBudget: 20,
+    } )
+    expect( card.planShapes.distinct ).toBe( 1 )
+    expect( card.planShapes.repeats ).toBe( 1 )
+  } )
+
   it( 'is deterministic — identical scenario ⇒ byte-identical scorecard (R2)', async () => {
     const scenario: PlanningScenario = {
       name: 'determinism',

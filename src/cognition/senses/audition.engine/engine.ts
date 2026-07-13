@@ -561,7 +561,7 @@ export class AuditionEngine extends BaseSenseEngine {
     let handle = this._facets.get( percept.speakerEntityId )
     if( !handle ){
       // New conversation session — try to spawn a facet.
-      const result = this._executiveEngine.spawnFacet()
+      const result = this._executiveEngine.spawnFacet('conversation')
       if( result.attention === 'full' || !result.handle ){
         logger.warn(
           `[audition-engine] Executive attention full — ` +
@@ -736,7 +736,7 @@ export class AuditionEngine extends BaseSenseEngine {
    */
   async authorOutreach( entityId: string, entityName: string, gist?: string ): Promise<string[]> {
     if( !this._executiveEngine ) return []
-    const spawned = this._executiveEngine.spawnFacet()
+    const spawned = this._executiveEngine.spawnFacet('outreach')
     if( spawned.attention === 'full' || !spawned.handle ){
       logger.warn(`[audition-engine] facet budget full — cannot author outreach to ${ entityId }`)
       return []

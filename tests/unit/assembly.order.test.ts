@@ -171,7 +171,7 @@ describe( 'mind assembly — order + wiring as reviewed artifacts', () => {
         model: { executive: 'big-model', summarizer: 'small-model' },
       } )
       expect( c3.executiveEngine.models ).toEqual( {
-        executive: 'big-model', summarizer: 'small-model', deliberation: 'big-model',
+        executive: 'big-model', summarizer: 'small-model', deliberation: 'big-model', conversation: 'big-model',
       } )
 
       process.env['WILL_LLM_MODEL'] = 'operator-pin'

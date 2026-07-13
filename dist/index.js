@@ -13222,6 +13222,9 @@ function clamp013(n) {
 }
 
 // src/cognition/faculties/planning.engine/plan.store.ts
+function planShapeKey(steps) {
+  return steps.map((s) => `${s.action}${(s.prerequisites?.length ?? 0) > 0 ? `<${s.prerequisites.length}` : ""}`).join(">");
+}
 var PlanStore = class {
   /**
    * Canonical plan store, keyed by plan.id ("plan-N") — the id the execution,
@@ -13244,6 +13247,14 @@ var PlanStore = class {
   /** planId → sim tick it became terminal; drives retention GC (gcTerminal). */
   _terminalAt = /* @__PURE__ */ new Map();
   _planCounter = 0;
+  /**
+   * Shape recurrence tally — shapeKey → count of plans authored with that
+   * decomposition this session (monotone; eviction never erases history).
+   * Feeds `planning.shapes.*` metrics: the demonstrated-need needle for
+   * emergent planning. `_shapeCounted` guards one count per plan id.
+   */
+  _shapeCounts = /* @__PURE__ */ new Map();
+  _shapeCounted = /* @__PURE__ */ new Set();
   // ── Reads ──────────────────────────────────────────────────
   get size() {
     return this._plans.size;
@@ -13341,6 +13352,11 @@ var PlanStore = class {
   // ── Persistence ────────────────────────────────────────────
   persist(commands, tick) {
     for (const plan of this._plans.values()) {
+      const shape = planShapeKey(plan.steps);
+      if (!this._shapeCounted.has(plan.id)) {
+        this._shapeCounted.add(plan.id);
+        this._shapeCounts.set(shape, (this._shapeCounts.get(shape) ?? 0) + 1);
+      }
       const terminal = TERMINAL_STATUSES.includes(plan.status);
       if (terminal && this._persistedTerminal.has(plan.id)) continue;
       commands.set.push({
@@ -13350,6 +13366,7 @@ var PlanStore = class {
         updatedAt: tick,
         metadata: {
           goalId: plan.goalId,
+          shapeKey: shape,
           steps: plan.steps.map((s) => ({
             id: s.id,
             order: s.order,
@@ -13372,6 +13389,12 @@ var PlanStore = class {
         }
       });
       if (terminal) this._persistedTerminal.add(plan.id);
+    }
+    if (this._shapeCounts.size > 0) {
+      let total = 0;
+      for (const n of this._shapeCounts.values()) total += n;
+      commands.metrics.push(["planning.shapes.distinct", this._shapeCounts.size]);
+      commands.metrics.push(["planning.shapes.repeats", total - this._shapeCounts.size]);
     }
   }
 };

@@ -13,6 +13,21 @@
 import type { Tick, StateCommands } from '#core/types'
 import { TERMINAL_STATUSES, type Plan } from '#faculties/planning.engine/types'
 
+/**
+ * Structural fingerprint of a plan's decomposition — the ordered action
+ * sequence plus each step's prerequisite fan-in. Two plans with the same key
+ * share a *shape*. Recurring shapes are the demonstrated-need signal for
+ * emergent planning (docs/strategy/__EMERGENT_PLANNING.md): the mind paying
+ * the executive to re-derive a decomposition it has already authored.
+ */
+export function planShapeKey(
+  steps: ReadonlyArray<{ action: string; prerequisites?: readonly string[] }>,
+): string {
+  return steps
+    .map( s => `${ s.action }${ ( s.prerequisites?.length ?? 0 ) > 0 ? `<${ s.prerequisites!.length }` : '' }` )
+    .join('>')
+}
+
 export class PlanStore {
   /**
    * Canonical plan store, keyed by plan.id ("plan-N") — the id the execution,
@@ -35,6 +50,14 @@ export class PlanStore {
   /** planId → sim tick it became terminal; drives retention GC (gcTerminal). */
   private _terminalAt = new Map<string, number>()
   private _planCounter = 0
+  /**
+   * Shape recurrence tally — shapeKey → count of plans authored with that
+   * decomposition this session (monotone; eviction never erases history).
+   * Feeds `planning.shapes.*` metrics: the demonstrated-need needle for
+   * emergent planning. `_shapeCounted` guards one count per plan id.
+   */
+  private _shapeCounts  = new Map<string, number>()
+  private _shapeCounted = new Set<string>()
 
   // ── Reads ──────────────────────────────────────────────────
 
@@ -142,6 +165,14 @@ export class PlanStore {
 
   persist( commands: StateCommands, tick: Tick ): void {
     for( const plan of this._plans.values() ){
+      // Shape recurrence — tally each plan once, on first sight. The persisted
+      // shapeKey also lets offline analysis count recurrence across sessions.
+      const shape = planShapeKey( plan.steps )
+      if( !this._shapeCounted.has( plan.id ) ){
+        this._shapeCounted.add( plan.id )
+        this._shapeCounts.set( shape, ( this._shapeCounts.get( shape ) ?? 0 ) + 1 )
+      }
+
       // Terminal plans never change again — persist once (in their terminal state)
       // then skip, so completed/failed/rejected plans don't re-serialize every
       // tick forever (unbounded write amplification on long sessions). (P5)
@@ -153,6 +184,7 @@ export class PlanStore {
         createdAt: plan.createdAt, updatedAt: tick,
         metadata: {
           goalId: plan.goalId,
+          shapeKey: shape,
           steps: plan.steps.map( s => ( {
             id: s.id, order: s.order, action: s.action,
             description: s.description, expectedOutcome: s.expectedOutcome,
@@ -169,6 +201,16 @@ export class PlanStore {
       } )
 
       if( terminal ) this._persistedTerminal.add( plan.id )
+    }
+
+    // The demonstrated-need needle: distinct shapes vs repeat authorings.
+    // A high repeat count means the executive keeps re-deriving decompositions
+    // it already produced — exactly when emergent planning starts paying.
+    if( this._shapeCounts.size > 0 ){
+      let total = 0
+      for( const n of this._shapeCounts.values() ) total += n
+      commands.metrics!.push( [ 'planning.shapes.distinct', this._shapeCounts.size ] )
+      commands.metrics!.push( [ 'planning.shapes.repeats',  total - this._shapeCounts.size ] )
     }
   }
 }

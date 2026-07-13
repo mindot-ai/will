@@ -26,6 +26,7 @@
 
 import { PlanningEngine } from '#cognition/faculties/planning.engine/engine'
 import { GoalManager }    from '#faculties/goal.manager'
+import { planShapeKey }   from '#faculties/planning.engine/plan.store'
 import { createTestBus }  from '#cognition/bus'
 import type { StateCommands } from '#core/types'
 
@@ -99,6 +100,42 @@ export interface PlanningScorecard {
   ticksUsed:       number
   /** plans-completion fraction (0..1); the headline planning-quality number. */
   completionRate:  number
+  /** Decomposition-shape stats over the authored plans (planShapeKey) — the
+   *  demonstrated-need needle: repeats = re-derived shapes. */
+  planShapes:      { distinct: number; repeats: number }
+}
+
+// ── Author comparison (the emergent-planning promotion gate) ───
+// docs/strategy/__EMERGENT_PLANNING.md: a strategy is promoted only where it
+// *dominates* executive planning on the same scenario class. This wraps two
+// runs of the same scenario shell — one per author's plan decomposition — in
+// a Pareto verdict. The harness is no-LLM, so authoring cost is a *declared*
+// attribute of the authoring path (executive ≈ 1 LLM call per plan authored;
+// strategy instantiation ≈ 0), not something measured here.
+
+export interface PlanAuthorSpec {
+  /** Who authored these plans — e.g. 'executive' (recorded) or a strategy id. */
+  name:           string
+  plans:          EvalPlan[]
+  /** Declared authoring cost in LLM-call units. Default 0. */
+  authoringCost?: number
+}
+
+export interface AuthorScorecard extends PlanningScorecard {
+  author:        string
+  authoringCost: number
+}
+
+export interface AuthorComparison {
+  scenario: string
+  a:        AuthorScorecard
+  b:        AuthorScorecard
+  /**
+   * Pareto verdict over (completionRate ↑, goalsAbandoned ↓, ticksUsed ↓,
+   * authoringCost ↓): an author dominates iff no axis is worse and at least
+   * one is strictly better. 'mixed' is a trade-off — never a promotion.
+   */
+  verdict: 'a_dominates' | 'b_dominates' | 'tie' | 'mixed'
 }
 
 // ── Default supervisor: a competent, persona-agnostic baseline ──
@@ -235,6 +272,24 @@ export class PlanningEvalHarness {
     return this._scorecard( scenario, planning, gm, goalIds, supervision, ticksUsed )
   }
 
+  /**
+   * Run the same scenario shell under two plan authors and return the Pareto
+   * verdict — the promotion gate for emergent planning strategies. Both runs
+   * share goals, outcome script, supervisor policy, persona, and tick budget;
+   * only the authored decomposition (and its declared cost) differs.
+   */
+  async compareAuthors(
+    shell: Omit<PlanningScenario, 'plans'>,
+    a: PlanAuthorSpec,
+    b: PlanAuthorSpec,
+  ): Promise<AuthorComparison> {
+    const sa = await this.run( { ...shell, name: `${ shell.name }·${ a.name }`, plans: a.plans } )
+    const sb = await this.run( { ...shell, name: `${ shell.name }·${ b.name }`, plans: b.plans } )
+    const A: AuthorScorecard = { ...sa, author: a.name, authoringCost: a.authoringCost ?? 0 }
+    const B: AuthorScorecard = { ...sb, author: b.name, authoringCost: b.authoringCost ?? 0 }
+    return { scenario: shell.name, a: A, b: B, verdict: paretoVerdict( A, B ) }
+  }
+
   // ── Internals ────────────────────────────────────────────────
 
   private _seedPersona( entities: Map<string, any>, persona?: EvalPersona ): void {
@@ -263,6 +318,9 @@ export class PlanningEvalHarness {
 
     const retained = gm.getActiveGoals().filter( g => goalIds.includes( g.id ) ).length
 
+    const shapeKeys = scenario.plans.map( p => planShapeKey( p.steps ) )
+    const distinct  = new Set( shapeKeys ).size
+
     return {
       scenario:       scenario.name,
       plansTotal, plansCompleted, plansFailed, plansStuck,
@@ -272,8 +330,29 @@ export class PlanningEvalHarness {
       supervision,
       ticksUsed,
       completionRate: plansTotal > 0 ? Math.round( ( plansCompleted / plansTotal ) * 1000 ) / 1000 : 0,
+      planShapes:     { distinct, repeats: shapeKeys.length - distinct },
     }
   }
+}
+
+/** Pareto dominance over the promotion axes — see AuthorComparison.verdict. */
+function paretoVerdict( a: AuthorScorecard, b: AuthorScorecard ): AuthorComparison['verdict'] {
+  // Each axis normalized so HIGHER is better.
+  const axes: Array<[ number, number ]> = [
+    [ a.completionRate,  b.completionRate  ],
+    [ -a.goalsAbandoned, -b.goalsAbandoned ],
+    [ -a.ticksUsed,      -b.ticksUsed      ],
+    [ -a.authoringCost,  -b.authoringCost  ],
+  ]
+  let aBetter = false, bBetter = false
+  for( const [ av, bv ] of axes ){
+    if( av > bv )      aBetter = true
+    else if( bv > av ) bBetter = true
+  }
+  if( aBetter && bBetter ) return 'mixed'
+  if( aBetter )            return 'a_dominates'
+  if( bBetter )            return 'b_dominates'
+  return 'tie'
 }
 
 // ── Module utilities ───────────────────────────────────────────

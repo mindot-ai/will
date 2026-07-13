@@ -4407,8 +4407,11 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     private _lastExecutiveOutput;
     private _lastExecutiveTick;
     private _willId;
-    /** Per-Will model id (config.model, resolved in mind.ts). Null → env/default. */
-    private _modelId;
+    /** Per-Will, per-role model ids (config.model, resolved in mind.ts). */
+    private _models;
+    /** One director per distinct model — same config, different model. Shared
+     *  tracker/recorder/willId, so ledger attribution and replay hold per role. */
+    private _directorCache;
     private _workingMemory;
     private _goalManager;
     private _episodicConsolidator;
@@ -4451,8 +4454,18 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      */
     attachCompletionInbox(inbox: CompletionInbox): void;
     set willId(willId: string);
-    /** Per-Will model id (config.model). Must be set before the first tick. */
-    set modelId(id: string | null);
+    /** Per-Will role models (config.model, resolved). Set before the first tick. */
+    set models(m: {
+        executive: string | null;
+        summarizer: string | null;
+        deliberation: string | null;
+    });
+    get models(): {
+        executive: string | null;
+        summarizer: string | null;
+        deliberation: string | null;
+    };
+    /** The executive-role model id (back-compat read). */
     get modelId(): string | null;
     get latestOutput(): ExecutiveOutputFull | null;
     isFresh(currentTick: Tick): boolean;
@@ -4468,7 +4481,9 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * The caller (PlanningEngine) uses report() to push step outcomes
      * and subscribe() to receive facet decisions.
      */
-    spawnFacet(): {
+    /** Get-or-create the director for a model id (shared config, per-Will). */
+    private _directorFor;
+    spawnFacet(role?: 'deliberation'): {
         attention: 'available' | 'full';
         handle?: ExecutiveFacetHandle;
     };
@@ -6400,7 +6415,7 @@ interface DeliberationFacetHandle {
     destroy(): void;
 }
 interface DeliberationFacetProvider {
-    spawnFacet(): {
+    spawnFacet(role?: 'deliberation'): {
         attention: 'available' | 'full';
         handle?: DeliberationFacetHandle;
     };
@@ -6730,6 +6745,22 @@ interface ExternalTransport {
  *            for embedded / offline deployments (no System 2 at all).
  */
 type Anatomy = 'mind' | 'reflex';
+/**
+ * Per-role model map — different cognitive work can run on different models.
+ * Unset thinking roles fall back to `executive`; `embedding` belongs to the
+ * embedding stack (its own provider/key resolution) and never falls back to a
+ * chat model.
+ */
+interface WillModelConfig {
+    /** The master consciousness + any facet without a more specific role. */
+    executive?: string;
+    /** Memory-consolidation summaries — classic cheap-model work. */
+    summarizer?: string;
+    /** The deliberation facet — action choice under contest. */
+    deliberation?: string;
+    /** Semantic-memory embedder ('provider/model' form supported). */
+    embedding?: string;
+}
 interface WillIdentity {
     /**
      * Persona overlay — who this Will is: backstory, personality, world context.
@@ -6772,13 +6803,14 @@ interface WillConfig {
     /** Anatomy — 'mind' (default) or the no-LLM 'reflex' shell. */
     anatomy?: Anatomy;
     /**
-     * Concrete LLM model id for this Will (e.g. 'claude-sonnet-4-5-20250929').
-     * An explicit WILL_LLM_MODEL env still wins (operator pin / self-hosting);
-     * unset → the LLMDirector's built-in default. Product-level labels
-     * (starter/pro tiers, model families) live host-side and resolve to a
-     * concrete id BEFORE reaching the engine.
+     * Concrete LLM model id(s) for this Will — a single id for every role, or a
+     * per-role map. An explicit WILL_LLM_MODEL env pins the thinking roles
+     * (operator single-model deployments); unset roles fall back to `executive`,
+     * then the LLMDirector's built-in default. Product-level labels (pricing
+     * tiers, model families) live host-side and resolve to concrete ids BEFORE
+     * reaching the engine.
      */
-    model?: string;
+    model?: string | WillModelConfig;
     /** Whether to persist snapshots between restarts. */
     persistentMemory: boolean;
     /** How many ticks between in-memory snapshots. */
@@ -7793,8 +7825,10 @@ interface CreateWillOptions {
     };
     /** 'mind' (default: the whole architecture) | 'reflex' (no-LLM shell). */
     anatomy?: Anatomy;
-    /** Concrete LLM model id (e.g. 'claude-sonnet-4-5-20250929'). Unset → env / provider default. */
-    model?: string;
+    /** Concrete LLM model id, or a per-role map ({ executive, summarizer?,
+     *  deliberation?, embedding? } — unset thinking roles fall back to executive).
+     *  Unset → env / provider default. */
+    model?: string | WillModelConfig;
     /**
      * LLM mode. 'mock' (default when no ANTHROPIC_API_KEY) runs a deterministic
      * canned executive — zero keys, zero cost. 'anthropic' calls the real model

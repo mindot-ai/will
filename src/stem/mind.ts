@@ -111,6 +111,51 @@ import { buildEngineConfigEntities, EngineConfigEntity } from '#cognition/config
  */
 export type Anatomy = 'mind' | 'reflex'
 
+/**
+ * Per-role model map — different cognitive work can run on different models.
+ * Unset thinking roles fall back to `executive`; `embedding` belongs to the
+ * embedding stack (its own provider/key resolution) and never falls back to a
+ * chat model.
+ */
+export interface WillModelConfig {
+  /** The master consciousness + any facet without a more specific role. */
+  executive?:    string
+  /** Memory-consolidation summaries — classic cheap-model work. */
+  summarizer?:   string
+  /** The deliberation facet — action choice under contest. */
+  deliberation?: string
+  /** Semantic-memory embedder ('provider/model' form supported). */
+  embedding?:    string
+}
+
+/** Executive-side resolved roles (embedding is threaded separately). */
+export interface ExecutiveModelRoles {
+  executive:    string | null
+  summarizer:   string | null
+  deliberation: string | null
+}
+
+/**
+ * Resolve config.model (string or per-role map) into concrete role ids.
+ * WILL_LLM_MODEL pins ALL thinking roles — an operator pin means a
+ * single-model deployment, full stop. Embedding is untouched by the pin
+ * (different model family; the embedding stack has its own env).
+ */
+export function resolveModelRoles( model?: string | WillModelConfig ): ExecutiveModelRoles & { embedding: string | null } {
+  const map = typeof model === 'string' ? { executive: model } : ( model ?? {} )
+  const pin = process.env.WILL_LLM_MODEL
+  if( pin )
+    return { executive: pin, summarizer: pin, deliberation: pin, embedding: map.embedding ?? null }
+
+  const executive = map.executive ?? null
+  return {
+    executive,
+    summarizer:   map.summarizer   ?? executive,
+    deliberation: map.deliberation ?? executive,
+    embedding:    map.embedding    ?? null,
+  }
+}
+
 export interface WillIdentity {
   /**
    * Persona overlay — who this Will is: backstory, personality, world context.
@@ -160,13 +205,14 @@ export interface WillConfig {
   anatomy?: Anatomy
 
   /**
-   * Concrete LLM model id for this Will (e.g. 'claude-sonnet-4-5-20250929').
-   * An explicit WILL_LLM_MODEL env still wins (operator pin / self-hosting);
-   * unset → the LLMDirector's built-in default. Product-level labels
-   * (starter/pro tiers, model families) live host-side and resolve to a
-   * concrete id BEFORE reaching the engine.
+   * Concrete LLM model id(s) for this Will — a single id for every role, or a
+   * per-role map. An explicit WILL_LLM_MODEL env pins the thinking roles
+   * (operator single-model deployments); unset roles fall back to `executive`,
+   * then the LLMDirector's built-in default. Product-level labels (pricing
+   * tiers, model families) live host-side and resolve to concrete ids BEFORE
+   * reaching the engine.
    */
-  model?: string
+  model?: string | WillModelConfig
 
   /** Whether to persist snapshots between restarts. */
   persistentMemory: boolean
@@ -321,6 +367,8 @@ export function _resolveVectorMemory(
   disable?: boolean,
   tokenTracker?: TokenTracker | null,
   testMode?: boolean,
+  /** Per-Will embedder model override (config.model.embedding) — env applies when unset. */
+  embeddingModel?: string,
 ): {
   embedder: InstanceType<typeof OpenAICompatibleEmbedder> | MockEmbedder | null
   vectorMemory: VectorMemoryAdapter | null
@@ -333,7 +381,8 @@ export function _resolveVectorMemory(
   if( disable ) return { embedder: null, vectorMemory: null }
 
   const mockMode = process.env.WILL_VECTOR_MEMORY === 'mock'
-  const rawModel = process.env.WILL_EMBEDDING_MODEL
+  const rawModel = embeddingModel
+    ?? process.env.WILL_EMBEDDING_MODEL
     ?? ( process.env.WILL_EMBEDDING_API_KEY ? 'text-embedding-3-small' : 'none' )
 
   // Explicitly disabled — the documented "none" sentinel or recall turned off.
@@ -631,7 +680,11 @@ function _constructCognition(
   // ── Memory ──────────────────────────────────────────────
   const workingMemory = new WorkingMemory()
 
-  const { embedder, vectorMemory } = _resolveVectorMemory( willId, randomSeed, config.vectorMemoryAdapter, config.disableVectorMemory, tokenTracker, config.testMode )
+  // Per-Will, per-ROLE models (env WILL_LLM_MODEL pins all thinking roles —
+  // operator single-model deployments). No tier vocabulary inside the engine.
+  const modelRoles = resolveModelRoles( config.model )
+
+  const { embedder, vectorMemory } = _resolveVectorMemory( willId, randomSeed, config.vectorMemoryAdapter, config.disableVectorMemory, tokenTracker, config.testMode, modelRoles.embedding ?? undefined )
   const episodicConsolidator = new EpisodicConsolidator( vectorMemory ? { vectorMemory, ...(embedder ? { embedder } : {}) } : {} )
 
   const semanticIntegrator   = new SemanticIntegrator()
@@ -667,9 +720,11 @@ function _constructCognition(
   const executiveEngine   = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5 })
 
   executiveEngine.willId = willId
-  // Per-Will model: a concrete id from config (env WILL_LLM_MODEL still
-  // overrides — operator pin). No tier vocabulary inside the engine.
-  executiveEngine.modelId = process.env.WILL_LLM_MODEL ?? config.model ?? null
+  executiveEngine.models = {
+    executive:    modelRoles.executive,
+    summarizer:   modelRoles.summarizer,
+    deliberation: modelRoles.deliberation,
+  }
   if( config.testMode ) executiveEngine.setTestMode( true )
   executiveEngine.attachWorkingMemory( workingMemory )
   executiveEngine.attachGoalManager( goalManager )

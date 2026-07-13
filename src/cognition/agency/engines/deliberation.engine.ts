@@ -42,7 +42,7 @@ interface DeliberationFacetHandle {
   destroy(): void
 }
 export interface DeliberationFacetProvider {
-  spawnFacet(): { attention: 'available' | 'full'; handle?: DeliberationFacetHandle }
+  spawnFacet( role?: 'deliberation' ): { attention: 'available' | 'full'; handle?: DeliberationFacetHandle }
 }
 
 interface Candidate {
@@ -143,7 +143,7 @@ export class DeliberationEngine implements CognitiveEngine {
   ): Promise<string> {
     try {
       if( !this._handle ){
-        const spawned = this._provider!.spawnFacet()
+        const spawned = this._provider!.spawnFacet('deliberation')
         if( spawned.attention === 'full' || !spawned.handle ){
           logger.info( '[deliberation] facet budget full — confirming substrate winner' )
           return provisional

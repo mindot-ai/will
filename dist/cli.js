@@ -14025,8 +14025,11 @@ var ExecutiveEngine = class extends AsyncEngine {
   _lastExecutiveTick = -100;
   // ── Injected dependencies ──────────────────────────────────
   _willId = null;
-  /** Per-Will model id (config.model, resolved in mind.ts). Null → env/default. */
-  _modelId = null;
+  /** Per-Will, per-role model ids (config.model, resolved in mind.ts). */
+  _models = { executive: null, summarizer: null, deliberation: null };
+  /** One director per distinct model — same config, different model. Shared
+   *  tracker/recorder/willId, so ledger attribution and replay hold per role. */
+  _directorCache = /* @__PURE__ */ new Map();
   _workingMemory = null;
   _goalManager = null;
   _episodicConsolidator = null;
@@ -14139,12 +14142,16 @@ var ExecutiveEngine = class extends AsyncEngine {
   set willId(willId) {
     this._willId = willId;
   }
-  /** Per-Will model id (config.model). Must be set before the first tick. */
-  set modelId(id) {
-    this._modelId = id;
+  /** Per-Will role models (config.model, resolved). Set before the first tick. */
+  set models(m) {
+    this._models = m;
   }
+  get models() {
+    return this._models;
+  }
+  /** The executive-role model id (back-compat read). */
   get modelId() {
-    return this._modelId;
+    return this._models.executive;
   }
   // ── Public surface ─────────────────────────────────────────
   get latestOutput() {
@@ -14166,10 +14173,37 @@ var ExecutiveEngine = class extends AsyncEngine {
    * The caller (PlanningEngine) uses report() to push step outcomes
    * and subscribe() to receive facet decisions.
    */
-  spawnFacet() {
+  /** Get-or-create the director for a model id (shared config, per-Will). */
+  _directorFor(model) {
+    let d = this._directorCache.get(model);
+    if (!d) {
+      d = new LLMDirector({
+        willId: this._willId,
+        model,
+        maxOutputTokens: parseInt(process.env.WILL_MAX_OUTPUT_TOKENS ?? "8096"),
+        // Provider-agnostic key; falls back to ANTHROPIC_API_KEY for back-compat.
+        apiKey: process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? "",
+        provider: process.env.WILL_LLM_PROVIDER ?? "anthropic",
+        // Optional base-URL override (e.g. Ollama / Azure / self-hosted). Unset →
+        // the director uses the provider's official endpoint.
+        baseUrl: process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
+        timeoutMs: process.env.WILL_LLM_TIMEOUT_MS ? parseInt(process.env.WILL_LLM_TIMEOUT_MS) : void 0,
+        sessionLogger: this._sessionLogger,
+        mock: this._testMode,
+        // Inject the per-Will tracker (R4) so live calls record usage here, not
+        // through a process global. null is fine — the director skips recording.
+        tokenTracker: this._tokenTracker
+      });
+      this._directorCache.set(model, d);
+    }
+    return d;
+  }
+  spawnFacet(role) {
+    const roleModel = role === "deliberation" ? this._models.deliberation : null;
+    const director = roleModel && this._llmDirector ? this._directorFor(roleModel) : this._llmDirector;
     return this._facetSupervisor.spawn({
       bus: this._bus,
-      llmDirector: this._llmDirector,
+      llmDirector: director,
       stateRef: this._lastStateRef,
       willId: this._willId,
       inbox: this._inbox,
@@ -14235,28 +14269,9 @@ var ExecutiveEngine = class extends AsyncEngine {
     this._gatingState.executiveInterval = rtConfig.executiveInterval;
     this._gatingState.cooldownTicks = rtConfig.cooldownTicks;
     if (!this._llmDirector && this._willId) {
-      this._llmDirector = new LLMDirector({
-        willId: this._willId,
-        // Per-Will model (config.model, resolved in mind.ts). An explicit
-        // mind.ts resolves env-first (WILL_LLM_MODEL pin > config.model), so
-        // _modelId already carries the operator pin when one exists; the env
-        // fallback here only covers a director created before assembly set it.
-        model: this._modelId ?? process.env.WILL_LLM_MODEL ?? "claude-sonnet-4-5-20250929",
-        maxOutputTokens: parseInt(process.env.WILL_MAX_OUTPUT_TOKENS ?? "8096"),
-        // Provider-agnostic key; falls back to ANTHROPIC_API_KEY for back-compat.
-        apiKey: process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? "",
-        provider: process.env.WILL_LLM_PROVIDER ?? "anthropic",
-        // Optional base-URL override (e.g. Ollama / Azure / self-hosted). Unset →
-        // the director uses the provider's official endpoint.
-        baseUrl: process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
-        timeoutMs: process.env.WILL_LLM_TIMEOUT_MS ? parseInt(process.env.WILL_LLM_TIMEOUT_MS) : void 0,
-        sessionLogger: this._sessionLogger,
-        mock: this._testMode,
-        // Inject the per-Will tracker (R4) so live calls record usage here, not
-        // through a process global. null is fine — the director skips recording.
-        tokenTracker: this._tokenTracker
-      });
-      this._summarizer?.attachLLMDirector(this._llmDirector);
+      const execModel = this._models.executive ?? process.env.WILL_LLM_MODEL ?? "claude-sonnet-4-5-20250929";
+      this._llmDirector = this._directorFor(execModel);
+      this._summarizer?.attachLLMDirector(this._directorFor(this._models.summarizer ?? execModel));
     }
     const gatingDeps = {
       generativeModel: this._generativeModel,
@@ -20428,7 +20443,7 @@ var DeliberationEngine = class {
   async _deliberate(state, candidates, provisional, meta) {
     try {
       if (!this._handle) {
-        const spawned = this._provider.spawnFacet();
+        const spawned = this._provider.spawnFacet("deliberation");
         if (spawned.attention === "full" || !spawned.handle) {
           logger.info("[deliberation] facet budget full \u2014 confirming substrate winner");
           return provisional;
@@ -21657,14 +21672,27 @@ function buildEngineConfigEntities(config, executiveInterval) {
 }
 
 // src/stem/mind.ts
+function resolveModelRoles(model) {
+  const map = typeof model === "string" ? { executive: model } : model ?? {};
+  const pin = process.env.WILL_LLM_MODEL;
+  if (pin)
+    return { executive: pin, summarizer: pin, deliberation: pin, embedding: map.embedding ?? null };
+  const executive = map.executive ?? null;
+  return {
+    executive,
+    summarizer: map.summarizer ?? executive,
+    deliberation: map.deliberation ?? executive,
+    embedding: map.embedding ?? null
+  };
+}
 var EXECUTIVE_CADENCE = {
   // Sonnet — premium/Enterprise; opt in via executiveInterval
   balanced: 60};
-function _resolveVectorMemory(willId, seed, overrideAdapter, disable, tokenTracker, testMode) {
+function _resolveVectorMemory(willId, seed, overrideAdapter, disable, tokenTracker, testMode, embeddingModel) {
   if (overrideAdapter) return { embedder: null, vectorMemory: overrideAdapter };
   if (disable) return { embedder: null, vectorMemory: null };
   const mockMode = process.env.WILL_VECTOR_MEMORY === "mock";
-  const rawModel = process.env.WILL_EMBEDDING_MODEL ?? (process.env.WILL_EMBEDDING_API_KEY ? "text-embedding-3-small" : "none");
+  const rawModel = embeddingModel ?? process.env.WILL_EMBEDDING_MODEL ?? (process.env.WILL_EMBEDDING_API_KEY ? "text-embedding-3-small" : "none");
   if (!mockMode && (rawModel === "none" || process.env.WILL_SEMANTIC_RECALL === "false"))
     return { embedder: null, vectorMemory: null };
   if (testMode && !mockMode) {
@@ -21819,7 +21847,8 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   const moralEvaluator = new MoralEvaluator();
   const affectiveBlender = new AffectiveBlender();
   const workingMemory = new WorkingMemory();
-  const { embedder, vectorMemory } = _resolveVectorMemory(willId, randomSeed, config.vectorMemoryAdapter, config.disableVectorMemory, tokenTracker, config.testMode);
+  const modelRoles = resolveModelRoles(config.model);
+  const { embedder, vectorMemory } = _resolveVectorMemory(willId, randomSeed, config.vectorMemoryAdapter, config.disableVectorMemory, tokenTracker, config.testMode, modelRoles.embedding ?? void 0);
   const episodicConsolidator = new EpisodicConsolidator(vectorMemory ? { vectorMemory, ...embedder ? { embedder } : {} } : {});
   const semanticIntegrator = new SemanticIntegrator();
   const forgettingCurve = new ForgettingCurve();
@@ -21833,7 +21862,11 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   const accessGrants = new AccessGrants(resolvedEffectorNames);
   const executiveEngine = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5 });
   executiveEngine.willId = willId;
-  executiveEngine.modelId = process.env.WILL_LLM_MODEL ?? config.model ?? null;
+  executiveEngine.models = {
+    executive: modelRoles.executive,
+    summarizer: modelRoles.summarizer,
+    deliberation: modelRoles.deliberation
+  };
   if (config.testMode) executiveEngine.setTestMode(true);
   executiveEngine.attachWorkingMemory(workingMemory);
   executiveEngine.attachGoalManager(goalManager);

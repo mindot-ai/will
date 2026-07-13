@@ -3743,6 +3743,8 @@ declare class PlanningEngine implements SimulationEngine, CognitiveEngine {
      * replay state) from off-tick callbacks like _activateStep / _onStepOutcome.
      */
     private _lastTick;
+    /** One-time deletion of legacy `plan-executive-*` entities (see react step 0a). */
+    private _legacyPlanSweepDone;
     /**
      * Monotonic suffix counter for activity-listener subscription ids. These ids
      * are transient bus-subscription keys (HTTP/SSE-driven, never entering the

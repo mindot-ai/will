@@ -94,6 +94,8 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
    * replay state) from off-tick callbacks like _activateStep / _onStepOutcome.
    */
   private _lastTick = 0
+  /** One-time deletion of legacy `plan-executive-*` entities (see react step 0a). */
+  private _legacyPlanSweepDone = false
 
   /**
    * Monotonic suffix counter for activity-listener subscription ids. These ids
@@ -205,7 +207,31 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
           planId?: string; stepId?: string
         }
 
-        if( !p.planId || !p.stepId ) return
+        // Conscious-enaction credit: outcomes carry plan provenance only when
+        // the plan's OWN frontier prior won the competition. But the plan is a
+        // prior over WHAT to do — if the self does the very thing an active
+        // step calls for by any route (executive action via ideomotor, habit),
+        // the step is done. Without this, a mind that consciously performs its
+        // plan starves the plan of credit: steps stay active, the goal reads
+        // blocked, and the executive re-authors the same plan over and over
+        // (observed live: 8 authorings for one goal, zero completions).
+        // Deterministic: stores iterate in insertion order; first match wins.
+        if( !p.planId || !p.stepId ){
+          if( !p.actionType || typeof p.success !== 'boolean' ) return
+          for( const plan of this._store.all() ){
+            if( plan.status !== 'executing' ) continue
+            const step = plan.steps.find( s => s.status === 'active' && s.action === p.actionType )
+            if( !step ) continue
+            logger.info( `[planning] conscious-enaction credit: ${plan.id}/${step.id}=${step.action} (no provenance on outcome)` )
+            this._onStepOutcome( plan.id, step.id, {
+              success: p.success,
+              description: p.description ?? ( p.success ? 'Completed' : 'Failed' ),
+              outcomeQuality: p.outcomeQuality,
+            } )
+            return   // credit exactly one step per outcome
+          }
+          return
+        }
         if( !this._store.has( p.planId ) ) return
 
         this._onStepOutcome( p.planId, p.stepId, {
@@ -279,6 +305,17 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
   ): Promise<EngineResult> {
     this._lastTick = tick as unknown as number
     const commands: StateCommands = { set: [], delete: [], metrics: [] }
+
+    // 0a. Legacy sweep (once per session): delete the raw `plan-executive-*`
+    //     entities the executive commands path used to write in parallel with
+    //     this engine's ingest. They froze at 'ready' forever and polluted the
+    //     Active-Plans awareness (phantom drafts → re-authoring pressure).
+    if( !this._legacyPlanSweepDone ){
+      this._legacyPlanSweepDone = true
+      for( const entity of state.entities.values() )
+        if( entity.type === 'plan' && entity.id.startsWith('plan-executive-') )
+          commands.delete!.push( entity.id )
+    }
 
     // 0. Channel A (subconscious): refresh trait-driven dispositions from the
     //    persona-prior mirror before acting on them this tick.

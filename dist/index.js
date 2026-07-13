@@ -7628,20 +7628,6 @@ function buildStateCommands(output, footprint, state, deps, recentActionTypes) {
   const ideo = buildIdeomotorIntents(output, state, footprint);
   commands.set.push(...ideo.set);
   commands.delete.push(...ideo.delete);
-  if (output.plans)
-    for (const plan of output.plans)
-      commands.set.push({
-        id: `plan-executive-${plan.goalId}-${footprint.tickObserved}`,
-        type: "plan",
-        metadata: {
-          goalId: plan.goalId,
-          steps: plan.steps.map((s, i) => ({ ...s, order: i })),
-          estimatedCost: plan.estimatedCost,
-          confidence: plan.feasibility,
-          status: "ready",
-          source: "executive"
-        }
-      });
   if (output.newBeliefs && deps.semanticIntegrator) {
     const integrator = deps.semanticIntegrator;
     for (let idx = 0; idx < output.newBeliefs.length; idx++) {
@@ -13830,6 +13816,8 @@ var PlanningEngine = class {
    * replay state) from off-tick callbacks like _activateStep / _onStepOutcome.
    */
   _lastTick = 0;
+  /** One-time deletion of legacy `plan-executive-*` entities (see react step 0a). */
+  _legacyPlanSweepDone = false;
   /**
    * Monotonic suffix counter for activity-listener subscription ids. These ids
    * are transient bus-subscription keys (HTTP/SSE-driven, never entering the
@@ -13922,7 +13910,22 @@ var PlanningEngine = class {
       }
       case "action.outcome": {
         const p = e.payload;
-        if (!p.planId || !p.stepId) return;
+        if (!p.planId || !p.stepId) {
+          if (!p.actionType || typeof p.success !== "boolean") return;
+          for (const plan of this._store.all()) {
+            if (plan.status !== "executing") continue;
+            const step = plan.steps.find((s) => s.status === "active" && s.action === p.actionType);
+            if (!step) continue;
+            logger.info(`[planning] conscious-enaction credit: ${plan.id}/${step.id}=${step.action} (no provenance on outcome)`);
+            this._onStepOutcome(plan.id, step.id, {
+              success: p.success,
+              description: p.description ?? (p.success ? "Completed" : "Failed"),
+              outcomeQuality: p.outcomeQuality
+            });
+            return;
+          }
+          return;
+        }
         if (!this._store.has(p.planId)) return;
         this._onStepOutcome(p.planId, p.stepId, {
           success: p.success,
@@ -13982,6 +13985,12 @@ var PlanningEngine = class {
   async react(_delta, tick, state, context) {
     this._lastTick = tick;
     const commands = { set: [], delete: [], metrics: [] };
+    if (!this._legacyPlanSweepDone) {
+      this._legacyPlanSweepDone = true;
+      for (const entity of state.entities.values())
+        if (entity.type === "plan" && entity.id.startsWith("plan-executive-"))
+          commands.delete.push(entity.id);
+    }
     this._readConfigFromState(state);
     this._ingestExecutivePlans(tick);
     this._executePlans();

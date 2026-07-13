@@ -28,7 +28,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { WillStem } from '#stem/index'
-import type { WillConfig, WillIdentity, Anatomy, InitialGoal, WillModelConfig } from '#stem/mind'
+import type { WillConfig, WillIdentity, Anatomy, InitialGoal, WillModelConfig, WillLLMConfig } from '#stem/mind'
 import type { PMASnapshot } from '#pma/index'
 import type { effectorInvocation } from '#types'
 import type { EffectorDeclaration, SchemaPrecondition } from '#agency/types'
@@ -167,6 +167,10 @@ export interface CreateWillOptions {
    *  deliberation?, embedding? } — unset thinking roles fall back to executive).
    *  Unset → env / provider default. */
   model?: string | WillModelConfig
+  /** Per-Will LLM transport overrides (provider, BYO apiKey, baseUrl, caps).
+   *  Unset fields fall back to WILL_LLM_* envs. apiKey stays in memory only.
+   *  (Named llmConfig because `llm` is the mock/anthropic MODE switch.) */
+  llmConfig?: WillLLMConfig
   /**
    * LLM mode. 'mock' (default when no ANTHROPIC_API_KEY) runs a deterministic
    * canned executive — zero keys, zero cost. 'anthropic' calls the real model
@@ -466,6 +470,7 @@ export class Will {
       },
       anatomy: opts.anatomy ?? 'mind',
       model:   opts.model,
+      llm:     opts.llmConfig,
       testMode:   useMock,
       persistentMemory: opts.persist ?? false,
       snapshotInterval: 100,

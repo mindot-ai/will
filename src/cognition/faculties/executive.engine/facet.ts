@@ -424,7 +424,7 @@ export class ExecutiveFacet {
         ideationUserMessage,
         tick: currentState.tick,
         proposeTemperature,
-        meta: { category: 'executive', attribute: 'facet', function: 'ideation', scope: this.facetId },
+        meta: { category: 'executive', attribute: 'facet', function: this._currentFocus?.function ?? 'ideation', scope: this.facetId },
       } )
       logger.info(
         `[executive.facet] ${this.facetId} ◆ deliberate propose tick=${currentState.tick}  ` +

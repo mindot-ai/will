@@ -124,8 +124,25 @@ export interface WillModelConfig {
   summarizer?:   string
   /** The deliberation facet — action choice under contest. */
   deliberation?: string
+  /** Conversation + outreach facets — the user-facing voice (latency/tone lever). */
+  conversation?: string
   /** Semantic-memory embedder ('provider/model' form supported). */
   embedding?:    string
+}
+
+/**
+ * Per-Will LLM transport overrides — provider, credentials, limits. Every
+ * field falls back to the corresponding env (WILL_LLM_*); the primary use is
+ * BYO keys: a host billing LLM spend to the customer's own provider account.
+ * `apiKey` is held in memory only — it is never mirrored into state entities,
+ * session logs, or the PMA.
+ */
+export interface WillLLMConfig {
+  provider?:        LLMProvider
+  apiKey?:          string
+  baseUrl?:         string
+  maxOutputTokens?: number
+  timeoutMs?:       number
 }
 
 /** Executive-side resolved roles (embedding is threaded separately). */
@@ -133,6 +150,7 @@ export interface ExecutiveModelRoles {
   executive:    string | null
   summarizer:   string | null
   deliberation: string | null
+  conversation: string | null
 }
 
 /**
@@ -145,13 +163,14 @@ export function resolveModelRoles( model?: string | WillModelConfig ): Executive
   const map = typeof model === 'string' ? { executive: model } : ( model ?? {} )
   const pin = process.env.WILL_LLM_MODEL
   if( pin )
-    return { executive: pin, summarizer: pin, deliberation: pin, embedding: map.embedding ?? null }
+    return { executive: pin, summarizer: pin, deliberation: pin, conversation: pin, embedding: map.embedding ?? null }
 
   const executive = map.executive ?? null
   return {
     executive,
     summarizer:   map.summarizer   ?? executive,
     deliberation: map.deliberation ?? executive,
+    conversation: map.conversation ?? executive,
     embedding:    map.embedding    ?? null,
   }
 }
@@ -213,6 +232,13 @@ export interface WillConfig {
    * reaching the engine.
    */
   model?: string | WillModelConfig
+
+  /**
+   * Per-Will LLM transport overrides (provider, BYO apiKey, baseUrl, output
+   * cap, timeout). Unset fields fall back to WILL_LLM_* envs. The apiKey never
+   * touches state, logs, or the PMA.
+   */
+  llm?: WillLLMConfig
 
   /** Whether to persist snapshots between restarts. */
   persistentMemory: boolean
@@ -720,10 +746,12 @@ function _constructCognition(
   const executiveEngine   = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5 })
 
   executiveEngine.willId = willId
+  executiveEngine.llm    = config.llm ?? null
   executiveEngine.models = {
     executive:    modelRoles.executive,
     summarizer:   modelRoles.summarizer,
     deliberation: modelRoles.deliberation,
+    conversation: modelRoles.conversation,
   }
   if( config.testMode ) executiveEngine.setTestMode( true )
   executiveEngine.attachWorkingMemory( workingMemory )

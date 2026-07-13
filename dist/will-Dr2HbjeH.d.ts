@@ -4409,6 +4409,8 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     private _willId;
     /** Per-Will, per-role model ids (config.model, resolved in mind.ts). */
     private _models;
+    /** Per-Will LLM transport overrides (config.llm) — env fallbacks apply per field. */
+    private _llm;
     /** One director per distinct model — same config, different model. Shared
      *  tracker/recorder/willId, so ledger attribution and replay hold per role. */
     private _directorCache;
@@ -4459,12 +4461,22 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         executive: string | null;
         summarizer: string | null;
         deliberation: string | null;
+        conversation: string | null;
     });
     get models(): {
         executive: string | null;
         summarizer: string | null;
         deliberation: string | null;
+        conversation: string | null;
     };
+    /** Per-Will LLM transport overrides (config.llm). Set before the first tick. */
+    set llm(c: {
+        provider?: string;
+        apiKey?: string;
+        baseUrl?: string;
+        maxOutputTokens?: number;
+        timeoutMs?: number;
+    } | null);
     /** The executive-role model id (back-compat read). */
     get modelId(): string | null;
     get latestOutput(): ExecutiveOutputFull | null;
@@ -4483,7 +4495,7 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      */
     /** Get-or-create the director for a model id (shared config, per-Will). */
     private _directorFor;
-    spawnFacet(role?: 'deliberation'): {
+    spawnFacet(role?: 'deliberation' | 'conversation' | 'outreach' | 'supervision'): {
         attention: 'available' | 'full';
         handle?: ExecutiveFacetHandle;
     };
@@ -6758,8 +6770,24 @@ interface WillModelConfig {
     summarizer?: string;
     /** The deliberation facet — action choice under contest. */
     deliberation?: string;
+    /** Conversation + outreach facets — the user-facing voice (latency/tone lever). */
+    conversation?: string;
     /** Semantic-memory embedder ('provider/model' form supported). */
     embedding?: string;
+}
+/**
+ * Per-Will LLM transport overrides — provider, credentials, limits. Every
+ * field falls back to the corresponding env (WILL_LLM_*); the primary use is
+ * BYO keys: a host billing LLM spend to the customer's own provider account.
+ * `apiKey` is held in memory only — it is never mirrored into state entities,
+ * session logs, or the PMA.
+ */
+interface WillLLMConfig {
+    provider?: LLMProvider;
+    apiKey?: string;
+    baseUrl?: string;
+    maxOutputTokens?: number;
+    timeoutMs?: number;
 }
 interface WillIdentity {
     /**
@@ -6811,6 +6839,12 @@ interface WillConfig {
      * reaching the engine.
      */
     model?: string | WillModelConfig;
+    /**
+     * Per-Will LLM transport overrides (provider, BYO apiKey, baseUrl, output
+     * cap, timeout). Unset fields fall back to WILL_LLM_* envs. The apiKey never
+     * touches state, logs, or the PMA.
+     */
+    llm?: WillLLMConfig;
     /** Whether to persist snapshots between restarts. */
     persistentMemory: boolean;
     /** How many ticks between in-memory snapshots. */
@@ -7829,6 +7863,10 @@ interface CreateWillOptions {
      *  deliberation?, embedding? } — unset thinking roles fall back to executive).
      *  Unset → env / provider default. */
     model?: string | WillModelConfig;
+    /** Per-Will LLM transport overrides (provider, BYO apiKey, baseUrl, caps).
+     *  Unset fields fall back to WILL_LLM_* envs. apiKey stays in memory only.
+     *  (Named llmConfig because `llm` is the mock/anthropic MODE switch.) */
+    llmConfig?: WillLLMConfig;
     /**
      * LLM mode. 'mock' (default when no ANTHROPIC_API_KEY) runs a deterministic
      * canned executive — zero keys, zero cost. 'anthropic' calls the real model

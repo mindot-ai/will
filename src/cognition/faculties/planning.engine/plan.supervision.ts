@@ -105,7 +105,7 @@ export class PlanSupervisor {
     if( !this._executiveEngine ) return
 
     try {
-      const { attention, handle: facet } = this._executiveEngine.spawnFacet()
+      const { attention, handle: facet } = this._executiveEngine.spawnFacet('supervision')
       if( !facet || attention === 'full' ){
         plan.executionTier = 'automatic'
         logger.info( `[planning] attention full — plan ${plan.id} stays automatic (no facet)` )

@@ -146,8 +146,10 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   // ── Injected dependencies ──────────────────────────────────
   private _willId: string | null = null
   /** Per-Will, per-role model ids (config.model, resolved in mind.ts). */
-  private _models: { executive: string | null; summarizer: string | null; deliberation: string | null } =
-    { executive: null, summarizer: null, deliberation: null }
+  private _models: { executive: string | null; summarizer: string | null; deliberation: string | null; conversation: string | null } =
+    { executive: null, summarizer: null, deliberation: null, conversation: null }
+  /** Per-Will LLM transport overrides (config.llm) — env fallbacks apply per field. */
+  private _llm: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number } | null = null
   /** One director per distinct model — same config, different model. Shared
    *  tracker/recorder/willId, so ledger attribution and replay hold per role. */
   private _directorCache = new Map<string, LLMDirector>()
@@ -266,8 +268,10 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   set willId( willId: string ){ this._willId = willId }
 
   /** Per-Will role models (config.model, resolved). Set before the first tick. */
-  set models( m: { executive: string | null; summarizer: string | null; deliberation: string | null } ){ this._models = m }
-  get models(): { executive: string | null; summarizer: string | null; deliberation: string | null } { return this._models }
+  set models( m: { executive: string | null; summarizer: string | null; deliberation: string | null; conversation: string | null } ){ this._models = m }
+  get models(): { executive: string | null; summarizer: string | null; deliberation: string | null; conversation: string | null } { return this._models }
+  /** Per-Will LLM transport overrides (config.llm). Set before the first tick. */
+  set llm( c: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number } | null ){ this._llm = c }
   /** The executive-role model id (back-compat read). */
   get modelId(): string | null { return this._models.executive }
 
@@ -300,17 +304,18 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   private _directorFor( model: string ): LLMDirector {
     let d = this._directorCache.get( model )
     if( !d ){
+      // Per-Will transport overrides first (BYO keys), env per field otherwise.
       d = new LLMDirector( {
         willId: this._willId!,
         model,
-        maxOutputTokens: parseInt( process.env.WILL_MAX_OUTPUT_TOKENS ?? '8096' ),
+        maxOutputTokens: this._llm?.maxOutputTokens ?? parseInt( process.env.WILL_MAX_OUTPUT_TOKENS ?? '8096' ),
         // Provider-agnostic key; falls back to ANTHROPIC_API_KEY for back-compat.
-        apiKey: process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? '',
-        provider: ( process.env.WILL_LLM_PROVIDER ?? 'anthropic' ) as LLMProvider,
+        apiKey: this._llm?.apiKey ?? process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? '',
+        provider: ( this._llm?.provider ?? process.env.WILL_LLM_PROVIDER ?? 'anthropic' ) as LLMProvider,
         // Optional base-URL override (e.g. Ollama / Azure / self-hosted). Unset →
         // the director uses the provider's official endpoint.
-        baseUrl: process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
-        timeoutMs: process.env.WILL_LLM_TIMEOUT_MS ? parseInt( process.env.WILL_LLM_TIMEOUT_MS ) : undefined,
+        baseUrl: this._llm?.baseUrl ?? process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
+        timeoutMs: this._llm?.timeoutMs ?? ( process.env.WILL_LLM_TIMEOUT_MS ? parseInt( process.env.WILL_LLM_TIMEOUT_MS ) : undefined ),
         sessionLogger: this._sessionLogger,
         mock: this._testMode,
         // Inject the per-Will tracker (R4) so live calls record usage here, not
@@ -322,13 +327,18 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     return d
   }
 
-   spawnFacet( role?: 'deliberation' ): { attention: 'available' | 'full', handle?: ExecutiveFacetHandle } {
+   spawnFacet( role?: 'deliberation' | 'conversation' | 'outreach' | 'supervision' ): { attention: 'available' | 'full', handle?: ExecutiveFacetHandle } {
     // Delegate to FacetSupervisor (R5-g-3), passing the current engine
     // attachments. The supervisor owns the registry + attention budget and
     // performs the throw-checks on bus / director / state ref.
     // A role with its own configured model gets that role's director; every
     // other facet shares the executive's (one self, role-appropriate depth).
-    const roleModel = role === 'deliberation' ? this._models.deliberation : null
+    // Outreach speaks with the conversation voice; supervision thinks with the
+    // executive's depth.
+    const roleModel =
+      role === 'deliberation'                        ? this._models.deliberation :
+      role === 'conversation' || role === 'outreach' ? this._models.conversation :
+      null
     const director  = roleModel && this._llmDirector ? this._directorFor( roleModel ) : this._llmDirector
     return this._facetSupervisor.spawn( {
       bus:         this._bus,

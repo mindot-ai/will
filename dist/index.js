@@ -11319,7 +11319,7 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         ideationUserMessage,
         tick: currentState.tick,
         proposeTemperature,
-        meta: { category: "executive", attribute: "facet", function: "ideation", scope: this.facetId }
+        meta: { category: "executive", attribute: "facet", function: this._currentFocus?.function ?? "ideation", scope: this.facetId }
       });
       logger.info(
         `[executive.facet] ${this.facetId} \u25C6 deliberate propose tick=${currentState.tick}  candidates=${ideationCandidates?.length ?? 0}  temp=${proposeTemperature.toFixed(2)}`
@@ -12572,7 +12572,9 @@ var ExecutiveEngine = class extends AsyncEngine {
   // ── Injected dependencies ──────────────────────────────────
   _willId = null;
   /** Per-Will, per-role model ids (config.model, resolved in mind.ts). */
-  _models = { executive: null, summarizer: null, deliberation: null };
+  _models = { executive: null, summarizer: null, deliberation: null, conversation: null };
+  /** Per-Will LLM transport overrides (config.llm) — env fallbacks apply per field. */
+  _llm = null;
   /** One director per distinct model — same config, different model. Shared
    *  tracker/recorder/willId, so ledger attribution and replay hold per role. */
   _directorCache = /* @__PURE__ */ new Map();
@@ -12695,6 +12697,10 @@ var ExecutiveEngine = class extends AsyncEngine {
   get models() {
     return this._models;
   }
+  /** Per-Will LLM transport overrides (config.llm). Set before the first tick. */
+  set llm(c) {
+    this._llm = c;
+  }
   /** The executive-role model id (back-compat read). */
   get modelId() {
     return this._models.executive;
@@ -12726,14 +12732,14 @@ var ExecutiveEngine = class extends AsyncEngine {
       d = new LLMDirector({
         willId: this._willId,
         model,
-        maxOutputTokens: parseInt(process.env.WILL_MAX_OUTPUT_TOKENS ?? "8096"),
+        maxOutputTokens: this._llm?.maxOutputTokens ?? parseInt(process.env.WILL_MAX_OUTPUT_TOKENS ?? "8096"),
         // Provider-agnostic key; falls back to ANTHROPIC_API_KEY for back-compat.
-        apiKey: process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? "",
-        provider: process.env.WILL_LLM_PROVIDER ?? "anthropic",
+        apiKey: this._llm?.apiKey ?? process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? "",
+        provider: this._llm?.provider ?? process.env.WILL_LLM_PROVIDER ?? "anthropic",
         // Optional base-URL override (e.g. Ollama / Azure / self-hosted). Unset →
         // the director uses the provider's official endpoint.
-        baseUrl: process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
-        timeoutMs: process.env.WILL_LLM_TIMEOUT_MS ? parseInt(process.env.WILL_LLM_TIMEOUT_MS) : void 0,
+        baseUrl: this._llm?.baseUrl ?? process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
+        timeoutMs: this._llm?.timeoutMs ?? (process.env.WILL_LLM_TIMEOUT_MS ? parseInt(process.env.WILL_LLM_TIMEOUT_MS) : void 0),
         sessionLogger: this._sessionLogger,
         mock: this._testMode,
         // Inject the per-Will tracker (R4) so live calls record usage here, not
@@ -12745,7 +12751,7 @@ var ExecutiveEngine = class extends AsyncEngine {
     return d;
   }
   spawnFacet(role) {
-    const roleModel = role === "deliberation" ? this._models.deliberation : null;
+    const roleModel = role === "deliberation" ? this._models.deliberation : role === "conversation" || role === "outreach" ? this._models.conversation : null;
     const director = roleModel && this._llmDirector ? this._directorFor(roleModel) : this._llmDirector;
     return this._facetSupervisor.spawn({
       bus: this._bus,
@@ -13507,7 +13513,7 @@ var PlanSupervisor = class {
   activateFacet(plan, prime = true) {
     if (!this._executiveEngine) return;
     try {
-      const { attention, handle: facet } = this._executiveEngine.spawnFacet();
+      const { attention, handle: facet } = this._executiveEngine.spawnFacet("supervision");
       if (!facet || attention === "full") {
         plan.executionTier = "automatic";
         logger.info(`[planning] attention full \u2014 plan ${plan.id} stays automatic (no facet)`);
@@ -17961,7 +17967,7 @@ var AuditionEngine = class extends BaseSenseEngine {
     }
     let handle = this._facets.get(percept.speakerEntityId);
     if (!handle) {
-      const result = this._executiveEngine.spawnFacet();
+      const result = this._executiveEngine.spawnFacet("conversation");
       if (result.attention === "full" || !result.handle) {
         logger.warn(
           `[audition-engine] Executive attention full \u2014 cannot open conversation facet for ${percept.speakerEntityId}.`
@@ -18089,7 +18095,7 @@ var AuditionEngine = class extends BaseSenseEngine {
    */
   async authorOutreach(entityId, entityName, gist) {
     if (!this._executiveEngine) return [];
-    const spawned = this._executiveEngine.spawnFacet();
+    const spawned = this._executiveEngine.spawnFacet("outreach");
     if (spawned.attention === "full" || !spawned.handle) {
       logger.warn(`[audition-engine] facet budget full \u2014 cannot author outreach to ${entityId}`);
       return [];
@@ -22629,12 +22635,13 @@ function resolveModelRoles(model) {
   const map = typeof model === "string" ? { executive: model } : model ?? {};
   const pin = process.env.WILL_LLM_MODEL;
   if (pin)
-    return { executive: pin, summarizer: pin, deliberation: pin, embedding: map.embedding ?? null };
+    return { executive: pin, summarizer: pin, deliberation: pin, conversation: pin, embedding: map.embedding ?? null };
   const executive = map.executive ?? null;
   return {
     executive,
     summarizer: map.summarizer ?? executive,
     deliberation: map.deliberation ?? executive,
+    conversation: map.conversation ?? executive,
     embedding: map.embedding ?? null
   };
 }
@@ -22815,10 +22822,12 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   const accessGrants = new AccessGrants(resolvedEffectorNames);
   const executiveEngine = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5 });
   executiveEngine.willId = willId;
+  executiveEngine.llm = config.llm ?? null;
   executiveEngine.models = {
     executive: modelRoles.executive,
     summarizer: modelRoles.summarizer,
-    deliberation: modelRoles.deliberation
+    deliberation: modelRoles.deliberation,
+    conversation: modelRoles.conversation
   };
   if (config.testMode) executiveEngine.setTestMode(true);
   executiveEngine.attachWorkingMemory(workingMemory);
@@ -26472,6 +26481,7 @@ var Will = class _Will {
       },
       anatomy: opts.anatomy ?? "mind",
       model: opts.model,
+      llm: opts.llmConfig,
       testMode: useMock,
       persistentMemory: opts.persist ?? false,
       snapshotInterval: 100,

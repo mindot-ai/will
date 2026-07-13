@@ -99,7 +99,7 @@ describe( 'buildMcpHandler — enaction → tool → reafference', () => {
 describe( 'connectMcpEffectors — tools become the Will\'s abilities', () => {
   it( 'registers each tool as a learnable affordance with its meaning', async () => {
     const will = await Will.create( { name: 'Toolsmith', identity: { prompt: 'I use tools.' },
-      llm: 'mock', engineTier: 'standard', tickMs: 10, seed: 5 } )
+      llm: 'mock', anatomy: 'mind', tickMs: 10, seed: 5 } )
     try {
       const { names, close } = await connectMcpEffectors( will, { client }, { cost: 0.3 } )
       expect( names ).toEqual( expect.arrayContaining( [ 'search_docs', 'ping', 'always_fails' ] ) )

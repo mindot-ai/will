@@ -62,8 +62,7 @@ function makeConfig( testMode: boolean ): WillConfig {
       traits: { openness: 0.7, caution: 0.5 },
       style:  'concise',
     },
-    engineTier:        'standard',                       // adds the ExecutiveEngine (LLM in the loop)
-    modelTier:         'haiku',
+    anatomy: 'mind',                       // adds the ExecutiveEngine (LLM in the loop)
     persistentMemory:  false,
     snapshotInterval:  999_999,
     tickIntervalMs:    0,

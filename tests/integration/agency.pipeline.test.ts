@@ -13,8 +13,7 @@ import type { SimulationEntity } from '#core/types'
 
 const BASE: Omit<WillConfig, 'id' | 'enableAgency'> = {
   name:             'AgencySmoke',
-  engineTier:       'basic',          // no LLM — the substrate pipeline needs none
-  modelTier:        'haiku',
+  anatomy: 'reflex',          // no LLM — the substrate pipeline needs none
   persistentMemory: false,
   snapshotInterval: 999999,
   tickIntervalMs:   0,

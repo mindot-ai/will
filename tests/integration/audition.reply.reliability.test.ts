@@ -28,7 +28,7 @@ const WAIT_MS            = 8_000
 async function replyLatency( message: string, withEffector: boolean ): Promise<{ replied: boolean; latency: number }> {
   const will = await Will.create( {
     name: 'Echo', identity: { prompt: 'I am Echo, a friendly presence.' },
-    llm: 'mock', engineTier: 'standard', tickMs: 10, seed: 7,
+    llm: 'mock', anatomy: 'mind', tickMs: 10, seed: 7,
     ...( withEffector ? { effectors: { remember_note: { handler: async () => 'ok', description: 'Store a note' } } } : {} ),
   } )
   try {

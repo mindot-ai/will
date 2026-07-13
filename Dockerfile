@@ -7,7 +7,7 @@
 #
 # The mind PERSISTS across container restarts: it hibernates its PMA artifact
 # to the /data volume on SIGTERM and wakes as the same self on the next start.
-# Configure via env (see `will --help`): WILL_NAME, WILL_IDENTITY, WILL_TIER,
+# Configure via env (see `will --help`): WILL_NAME, WILL_IDENTITY, WILL_ANATOMY,
 # WILL_LLM (+ ANTHROPIC_API_KEY for a live mind; defaults to the zero-key
 # mock), WILL_TICK_MS, WILL_MCP_SERVERS.
 #

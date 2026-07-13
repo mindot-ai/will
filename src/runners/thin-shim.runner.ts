@@ -11,7 +11,7 @@
 //
 // Usage:
 //   bun run src/stem/runner.ts
-//   WILL_ENGINE_TIER=full WILL_MAX_TICKS=200 bun run src/stem/runner.ts
+//   WILL_ANATOMY=mind WILL_MAX_TICKS=200 bun run src/stem/runner.ts
 // ─────────────────────────────────────────────────────────────
 
 import type { WillConfig } from '#stem/mind'
@@ -26,8 +26,7 @@ const TICK_MS        = parseInt( process.env.WILL_TICK_MS       ?? '1000')
 const MAX_TICKS      = parseInt( process.env.WILL_MAX_TICKS     ?? '0'    )
 const LOG_INTERVAL   = parseInt( process.env.WILL_LOG_INTERVAL  ?? '10'   )
 const RANDOM_SEED    = parseInt( process.env.WILL_SEED          ?? String( Date.now() ) )
-const ENGINE_TIER    = ( process.env.WILL_ENGINE_TIER ?? 'full'   ) as WillConfig['engineTier']
-const MODEL_TIER     = ( process.env.WILL_MODEL_TIER  ?? 'sonnet') as WillConfig['modelTier']
+const ANATOMY        = ( process.env.WILL_ANATOMY ?? 'mind' ) as WillConfig['anatomy']
 const EXECUTIVE_INT    = process.env.WILL_EXECUTIVE_INTERVAL
   ? parseInt( process.env.WILL_EXECUTIVE_INTERVAL )
   : undefined
@@ -37,8 +36,7 @@ const EXECUTIVE_INT    = process.env.WILL_EXECUTIVE_INTERVAL
 const willConfig: WillConfig = {
   id:               WILL_ID,
   name:             WILL_NAME,
-  engineTier:       ENGINE_TIER,
-  modelTier:        MODEL_TIER,
+  anatomy:          ANATOMY,
   persistentMemory: process.env.WILL_PERSIST === 'true',
   snapshotInterval: parseInt( process.env.WILL_SNAPSHOT_INTERVAL ?? '10'  ),
   tickIntervalMs:   TICK_MS,
@@ -136,7 +134,7 @@ async function main(): Promise<void> {
 
   console.log('═══════════════════════════════════════════════════')
   console.log(' Will — Simulated Mind (dev runner)')
-  console.log(`  id=${WILL_ID}  tier=${ENGINE_TIER}/${MODEL_TIER}  tick_ms=${TICK_MS}  max_ticks=${MAX_TICKS || '∞'}`)
+  console.log(`  id=${WILL_ID}  anatomy=${ANATOMY}  tick_ms=${TICK_MS}  max_ticks=${MAX_TICKS || '∞'}`)
   console.log(`  seed=${RANDOM_SEED}`)
   console.log('═══════════════════════════════════════════════════\n')
 

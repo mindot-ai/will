@@ -7,9 +7,10 @@
 //
 // Design rules:
 //   • All engine instances are always created (satisfies Cognition type).
-//   • Only standard/full tiers add ExecutiveEngine to the simulation.
-//     Basic tier runs entirely on heuristics — zero LLM cost.
-//   • Tier controls the executive cadence (interval between LLM calls).
+//   • Anatomy is the only structural variant: 'mind' registers everything;
+//     'reflex' is the no-LLM shell (regulatory + senses + agency heuristics).
+//   • Everything else is a BUDGET (cadence, model, ceilings) — host-supplied
+//     parameters, never tier vocabulary.
 //   • minExecutiveInterval is the plan floor — the customer cannot go below it.
 // ─────────────────────────────────────────────────────────────
 
@@ -100,8 +101,15 @@ import { buildEngineConfigEntities, EngineConfigEntity } from '#cognition/config
 
 // ── Public types ─────────────────────────────────────────────
 
-export type EngineTier = 'basic' | 'standard' | 'full'
-export type ModelTier  = 'haiku' | 'sonnet' | 'opus'
+/**
+ * Anatomy — the only structural variant a Will has.
+ *   mind   — the whole cognitive architecture (default). Faculties are not a
+ *            pricing axis; hosts differentiate on model + budgets (cadence,
+ *            ceilings), never by amputating engines.
+ *   reflex — a no-LLM shell: regulatory + senses + agency heuristics only,
+ *            for embedded / offline deployments (no System 2 at all).
+ */
+export type Anatomy = 'mind' | 'reflex'
 
 export interface WillIdentity {
   /**
@@ -148,20 +156,17 @@ export interface WillConfig {
   /** Persona definition seeded into the will.identity entity. */
   identity: WillIdentity
 
-  /**
-   * Engine tier controls which cognitive layers are active.
-   *   basic    — regulatory + perceptual + memory + heuristic decisions. No LLM.
-   *   standard — + affective + ExecutiveEngine on Haiku cadence.
-   *   full     — + meta-cognitive + social + ExecutiveEngine on Sonnet cadence.
-   */
-  engineTier: EngineTier
+  /** Anatomy — 'mind' (default) or the no-LLM 'reflex' shell. */
+  anatomy?: Anatomy
 
   /**
-   * Model tier is informational — actual provider/model is resolved from
-   * WILL_LLM_PROVIDER / WILL_LLM_MODEL env vars or future per-Will config.
-   * TODO: thread model config through LLM layer for true multi-model support.
+   * Concrete LLM model id for this Will (e.g. 'claude-sonnet-4-5-20250929').
+   * An explicit WILL_LLM_MODEL env still wins (operator pin / self-hosting);
+   * unset → the LLMDirector's built-in default. Product-level labels
+   * (starter/pro tiers, model families) live host-side and resolve to a
+   * concrete id BEFORE reaching the engine.
    */
-  modelTier: ModelTier
+  model?: string
 
   /** Whether to persist snapshots between restarts. */
   persistentMemory: boolean
@@ -188,15 +193,13 @@ export interface WillConfig {
   clock?: ClockConfig
 
   /**
-   * How many ticks between executive (LLM) calls.
-   * Clamped to minExecutiveInterval if set.
-   * Falls back to tier default if omitted.
+   * How many ticks between executive (LLM) calls — the cadence budget.
+   * Clamped to minExecutiveInterval if set. Default: balanced (60).
    */
   executiveInterval?: number
 
   /**
-   * Plan-enforced floor for executiveInterval.
-   * Prevents lower-cadence tier-based overrides from overriding to faster cadence.
+   * Plan-enforced floor for executiveInterval — the customer cannot go faster.
    */
   minExecutiveInterval?: number
 
@@ -297,35 +300,6 @@ export const EXECUTIVE_CADENCE = {
   economy:    90,  // Haiku  — Starter default
 } as const
 
-const TIER_EXECUTIVE_INTERVAL: Record<EngineTier, number> = {
-  basic:    0,                           // irrelevant — ExecutiveEngine not added
-  standard: EXECUTIVE_CADENCE.economy,   // 90 — Haiku (Starter)
-  full:     EXECUTIVE_CADENCE.balanced,  // 60 — Sonnet (Pro); 30 (responsive) is opt-in
-}
-
-/**
- * Per-tier model id, by provider. Maintained here; an explicit `WILL_LLM_MODEL`
- * env overrides it (operator pin / self-hosting). Only the primary provider
- * (anthropic) is mapped out of the box — other providers fall back to env or the
- * director's built-in default.
- */
-const TIER_MODEL: Partial<Record<LLMProvider, Record<ModelTier, string>>> = {
-  anthropic: {
-    haiku:  'claude-haiku-4-5-20251001',
-    sonnet: 'claude-sonnet-4-5-20250929',
-    opus:   'claude-opus-4-7',
-  },
-}
-
-/**
- * Resolve the model id for a Will from its `modelTier`. An explicit
- * `WILL_LLM_MODEL` env wins (so single-model / self-hosted deployments are
- * unchanged); the tier map applies only when it is unset. Returns `undefined`
- * when neither resolves — the LLMDirector then uses its built-in default.
- */
-export function resolveModelId( provider: LLMProvider, modelTier: ModelTier ): string | undefined {
-  return process.env.WILL_LLM_MODEL ?? TIER_MODEL[ provider ]?.[ modelTier ]
-}
 
 // ── Vector memory resolver ────────────────────────────────────
 //
@@ -510,12 +484,12 @@ const DEFAULT_IDENTITY: WillIdentity = {
 // ── Factory ───────────────────────────────────────────────────
 
 export function assembleMind( willId: string, config: WillConfig ): MindAssembly {
-  const { engineTier } = config
+  const anatomy = config.anatomy ?? 'mind'
 
   // Single source of truth for the run's seed — shared by the simulation core
   // and the vector index so both replay deterministically off the same value.
   const randomSeed        = config.randomSeed ?? Date.now()
-  const executiveInterval = resolveExecutiveInterval( engineTier, config )
+  const executiveInterval = resolveExecutiveInterval( config )
 
   // Resolve the world profile once: it contributes the granted effector set
   // (in _constructCognition) and the "## My Environment" context block
@@ -544,7 +518,7 @@ export function assembleMind( willId: string, config: WillConfig ): MindAssembly
 
   // ── Register ─────────────────────────────────────────────
   // Tier controls which engines actively tick; priority controls tick order.
-  _registerEngines( simulation, cognition, engineTier )
+  _registerEngines( simulation, cognition, anatomy )
 
   // ── Wiring audit ─────────────────────────────────────────
   // Surface any attach-point left null after assembly (the silent-no-op bug
@@ -554,7 +528,7 @@ export function assembleMind( willId: string, config: WillConfig ): MindAssembly
   // tier, so a NEW unwired attachment fails loudly in CI, not here.
   for( const rec of auditAssemblyWiring( simulation.orchestrator.engines ) )
     if( rec.status === 'unwired' )
-      logger.debug( `[assembly] ${willId}: ${rec.engine}.${rec.method} unwired at assembly (tier=${engineTier})` )
+      logger.debug( `[assembly] ${willId}: ${rec.engine}.${rec.method} unwired at assembly (anatomy=${anatomy})` )
 
   // ── Seed readable simulation state ───────────────────────
   // Identity, optional initial goals, and the engine-config mirror.
@@ -608,7 +582,7 @@ interface ConstructCognitionArgs {
 function _constructCognition(
   { simulation, willId, config, randomSeed, executiveInterval, profile }: ConstructCognitionArgs
 ): { cognition: Cognition; outbox: OutboxMessage[] } {
-  const { engineTier } = config
+  const anatomy = config.anatomy ?? 'mind'
 
   // ── Generic ──────────────────────────────────────────────
   // Per-Will token tracker (R4): a fresh instance per mind, not a process
@@ -688,16 +662,14 @@ function _constructCognition(
   const accessGrants = new AccessGrants( resolvedEffectorNames )
 
   // ── Executive Engine ────────────────────────────────────────
-  // Created for all tiers so the Cognition type is always satisfied.
-  // Only ADDED to the simulation for standard/full tier — basic runs heuristics only.
+  // Created for both anatomies so the Cognition type is always satisfied.
+  // Only ADDED to the simulation for 'mind' — reflex runs heuristics only.
   const executiveEngine   = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5 })
 
   executiveEngine.willId = willId
-  // Per-Will model selection from modelTier (env WILL_LLM_MODEL still overrides).
-  executiveEngine.modelId = resolveModelId(
-    ( process.env.WILL_LLM_PROVIDER ?? 'anthropic' ) as LLMProvider,
-    config.modelTier,
-  ) ?? null
+  // Per-Will model: a concrete id from config (env WILL_LLM_MODEL still
+  // overrides — operator pin). No tier vocabulary inside the engine.
+  executiveEngine.modelId = process.env.WILL_LLM_MODEL ?? config.model ?? null
   if( config.testMode ) executiveEngine.setTestMode( true )
   executiveEngine.attachWorkingMemory( workingMemory )
   executiveEngine.attachGoalManager( goalManager )
@@ -717,7 +689,7 @@ function _constructCognition(
   // ── Planning Engine ──────────────────────────────────────
   const planningEngine = new PlanningEngine()
   planningEngine.attachGoalManager( goalManager )
-  if( engineTier !== 'basic' ) planningEngine.attachExecutiveEngine( executiveEngine )
+  if( anatomy !== 'reflex' ) planningEngine.attachExecutiveEngine( executiveEngine )
   executiveEngine.attachPlanningEngine( planningEngine )
 
   // ── Executive ────────────────────────────────────────────
@@ -736,7 +708,7 @@ function _constructCognition(
   autobiographicalNarrator.attachEpisodicConsolidator( episodicConsolidator )
   autobiographicalNarrator.attachSemanticIntegrator( semanticIntegrator )
   // Satellites harvest the executive's own output — attach wherever it runs.
-  if( engineTier !== 'basic' ){
+  if( anatomy !== 'reflex' ){
     autobiographicalNarrator.attachExecutiveEngine( executiveEngine )
     introspectionEngine.attachExecutiveEngine( executiveEngine )
   }
@@ -751,8 +723,8 @@ function _constructCognition(
 
   empathySimulator.attachTheoryOfMind( theoryOfMind )
 
-  // ── Context compaction components (standard + full only) ──
-  if( engineTier !== 'basic' ){
+  // ── Context compaction components (mind anatomy only) ──
+  if( anatomy !== 'reflex' ){
     const summarizer = new ExecutiveSummarizer({
       summaryInterval:   parseInt( process.env.WILL_SUMMARY_INTERVAL   ?? '10'),
       bufferSize:        parseInt( process.env.WILL_SUMMARY_BUFFER_SIZE ?? '12'),
@@ -790,7 +762,7 @@ function _constructCognition(
   const olfactionEngine       = new OlfactionEngine()
   const gustationEngine       = new GustationEngine()
 
-  if( engineTier !== 'basic' )
+  if( anatomy !== 'reflex' )
     auditionEngine.attachExecutiveEngine( executiveEngine )
 
   // §5.4 — cold-spawn digest hydration: on the first turn for an entity, seed an
@@ -846,16 +818,16 @@ function _constructCognition(
   // Deliberation (System 2) — the only LLM seam in the pipeline, recruited only
   // when the selector marks a choice 'deliberating'. It reasons through a UNIFIED
   // facet of the executive consciousness (same persona/identity/context as the
-  // master — no bespoke prompt, no identity fracture). Attached for tiers that run
-  // the executive; basic tier leaves it off and the engine confirms the
-  // substrate's winner (graceful System-1 degradation).
+  // master — no bespoke prompt, no identity fracture). Attached for the 'mind'
+  // anatomy; reflex leaves it off and the engine confirms the substrate's
+  // winner (graceful System-1 degradation).
   const deliberationEngine = new DeliberationEngine()
   deliberationEngine.setWillName( config.name )
-  if( engineTier !== 'basic' )
+  if( anatomy !== 'reflex' )
     deliberationEngine.attachExecutive( executiveEngine )
 
   // ── Build Cognition ──────────────────────────────────────
-  // All engines exist regardless of tier. Cognition is always fully typed.
+  // All engines exist regardless of anatomy. Cognition is always fully typed.
   const cognition: Cognition = {
     instructionIntake,
     tokenTracker,
@@ -922,7 +894,7 @@ function _constructCognition(
  * All engines are constructed regardless of tier; this decides which tick.
  * Engines are sorted by priority so tick order is deterministic.
  */
-function _registerEngines( simulation: DefaultSimulation, cognition: Cognition, engineTier: EngineTier ): void {
+function _registerEngines( simulation: DefaultSimulation, cognition: Cognition, anatomy: Anatomy ): void {
   const coreEngines = [
     cognition.tokenTracker,
     cognition.energyRegulator,
@@ -982,7 +954,7 @@ function _registerEngines( simulation: DefaultSimulation, cognition: Cognition, 
   ]
 
   // Sense engines registered at all tiers — shells are structural no-ops.
-  // AuditionEngine is functional only when engineTier !== 'basic'
+  // AuditionEngine is functional only when anatomy !== 'reflex'
   // (enforced by attachExecutiveEngine in _constructCognition).
   const senseEngines = [
     cognition.auditionEngine,
@@ -1007,16 +979,16 @@ function _registerEngines( simulation: DefaultSimulation, cognition: Cognition, 
 
   const activeEngines = [
     ...coreEngines,
-    ...( engineTier !== 'basic'   ? affectiveEngines           : [] ),
-    ...( engineTier !== 'basic'   ? [ cognition.executiveEngine ] : [] ),
+    ...( anatomy !== 'reflex'   ? affectiveEngines           : [] ),
+    ...( anatomy !== 'reflex'   ? [ cognition.executiveEngine ] : [] ),
     // Satellites run wherever the executive runs — they only consume its output.
-    ...( engineTier !== 'basic'   ? executiveSatellites        : [] ),
-    ...( engineTier === 'full'    ? metaCognitiveEngines       : [] ),
-    ...( engineTier === 'full'    ? socialEngines              : [] ),
+    ...( anatomy !== 'reflex'   ? executiveSatellites        : [] ),
+    ...( anatomy !== 'reflex'    ? metaCognitiveEngines       : [] ),
+    ...( anatomy !== 'reflex'    ? socialEngines              : [] ),
     ...senseEngines,
     // Cross-modal binder ticks after the senses so each tick's percepts bind same-tick.
     // Standard+ (where conversation + the executive run); the dossiers feed the prompt.
-    ...( engineTier !== 'basic'   ? [ cognition.knownEntityTracker ] : [] ),
+    ...( anatomy !== 'reflex'   ? [ cognition.knownEntityTracker ] : [] ),
     // Agency pipeline ticks last, after perception + known-entity, so the field it
     // synthesizes reflects this tick's percepts and dossiers. 
     ...agencyEngines,
@@ -1116,10 +1088,11 @@ function _seedEngineConfigs( simulation: DefaultSimulation, entities: EngineConf
 
 // ── Helpers ──────────────────────────────────────────────────
 
-export function resolveExecutiveInterval( tier: EngineTier, config: WillConfig ): number {
-  const tierDefault = TIER_EXECUTIVE_INTERVAL[ tier ]
-  const requested   = config.executiveInterval ?? tierDefault
-  const floor       = config.minExecutiveInterval ?? 0
+export function resolveExecutiveInterval( config: WillConfig ): number {
+  // Cadence is a BUDGET, not an anatomy: hosts set it per plan/preset.
+  // Default: balanced (60). Reflex anatomy never adds the executive anyway.
+  const requested = config.executiveInterval ?? EXECUTIVE_CADENCE.balanced
+  const floor     = config.minExecutiveInterval ?? 0
 
   return Math.max( requested, floor )
 }

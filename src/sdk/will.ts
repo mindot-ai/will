@@ -28,7 +28,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { WillStem } from '#stem/index'
-import type { WillConfig, WillIdentity, EngineTier, ModelTier, InitialGoal } from '#stem/mind'
+import type { WillConfig, WillIdentity, Anatomy, InitialGoal } from '#stem/mind'
 import type { PMASnapshot } from '#pma/index'
 import type { effectorInvocation } from '#types'
 import type { EffectorDeclaration, SchemaPrecondition } from '#agency/types'
@@ -161,10 +161,10 @@ export interface CreateWillOptions {
   name: string
   /** Persona: who this Will is. All fields optional except by your intent. */
   identity: Partial<WillIdentity> & { prompt: string }
-  /** basic | standard (default) | full. */
-  engineTier?: EngineTier
-  /** haiku (default) | sonnet | opus — informational tier hint. */
-  model?: ModelTier
+  /** 'mind' (default: the whole architecture) | 'reflex' (no-LLM shell). */
+  anatomy?: Anatomy
+  /** Concrete LLM model id (e.g. 'claude-sonnet-4-5-20250929'). Unset → env / provider default. */
+  model?: string
   /**
    * LLM mode. 'mock' (default when no ANTHROPIC_API_KEY) runs a deterministic
    * canned executive — zero keys, zero cost. 'anthropic' calls the real model
@@ -462,8 +462,8 @@ export class Will {
         traits: opts.identity.traits ?? {},
         style:  opts.identity.style ?? '',
       },
-      engineTier: opts.engineTier ?? 'standard',
-      modelTier:  opts.model ?? 'haiku',
+      anatomy: opts.anatomy ?? 'mind',
+      model:   opts.model,
       testMode:   useMock,
       persistentMemory: opts.persist ?? false,
       snapshotInterval: 100,

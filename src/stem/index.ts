@@ -94,12 +94,12 @@ export interface WillSummary {
   tickCount:  number
   createdAt:  Date
   lastTickAt: Date | null
-  engineTier: WillConfig['engineTier']
-  modelTier:  WillConfig['modelTier']
+  anatomy:    WillConfig['anatomy']
+  model:      WillConfig['model']
 }
 
 // Re-export WillConfig so the API layer only imports from manager
-export type { WillConfig, EngineTier, ModelTier, InitialGoal, WillIdentity } from './mind'
+export type { WillConfig, Anatomy, InitialGoal, WillIdentity } from './mind'
 export type { ExecutiveOutputFull } from '#faculties/executive.engine'
 export type { StorageAdapter } from '#core/abstracts'
 export type { PMASnapshot, PMAIdentity, PMABelief, PMAGoal, PMAEmotionalBaseline, PMABehavioral } from '../pma'
@@ -288,8 +288,8 @@ export class WillStem {
       type:       'session.start',
       willId:     config.id,
       willName:   config.name,
-      engineTier: config.engineTier,
-      modelTier:  config.modelTier,
+      anatomy:    config.anatomy ?? 'mind',
+      model:      config.model ?? null,
       startedAt:  new Date().toISOString(),
     })
 
@@ -931,8 +931,8 @@ export class WillStem {
       tickCount:  inst.tickCount,
       createdAt:  inst.createdAt,
       lastTickAt: inst.lastTickAt,
-      engineTier: inst.config.engineTier,
-      modelTier:  inst.config.modelTier,
+      anatomy:    inst.config.anatomy ?? 'mind',
+      model:      inst.config.model,
     }))
   }
 

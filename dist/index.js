@@ -12571,7 +12571,7 @@ var ExecutiveEngine = class extends AsyncEngine {
   _lastExecutiveTick = -100;
   // ── Injected dependencies ──────────────────────────────────
   _willId = null;
-  /** Per-Will model id (resolved from modelTier in mind.ts). Null → env/default. */
+  /** Per-Will model id (config.model, resolved in mind.ts). Null → env/default. */
   _modelId = null;
   _workingMemory = null;
   _goalManager = null;
@@ -12685,9 +12685,12 @@ var ExecutiveEngine = class extends AsyncEngine {
   set willId(willId) {
     this._willId = willId;
   }
-  /** Per-Will model id (from modelTier). Must be set before the first tick. */
+  /** Per-Will model id (config.model). Must be set before the first tick. */
   set modelId(id) {
     this._modelId = id;
+  }
+  get modelId() {
+    return this._modelId;
   }
   // ── Public surface ─────────────────────────────────────────
   get latestOutput() {
@@ -12780,9 +12783,10 @@ var ExecutiveEngine = class extends AsyncEngine {
     if (!this._llmDirector && this._willId) {
       this._llmDirector = new LLMDirector({
         willId: this._willId,
-        // Per-Will model (from modelTier, resolved in mind.ts). An explicit
-        // WILL_LLM_MODEL env still wins (operator pin / self-hosting); the tier
-        // model only applies when it's unset.
+        // Per-Will model (config.model, resolved in mind.ts). An explicit
+        // mind.ts resolves env-first (WILL_LLM_MODEL pin > config.model), so
+        // _modelId already carries the operator pin when one exists; the env
+        // fallback here only covers a director created before assembly set it.
         model: this._modelId ?? process.env.WILL_LLM_MODEL ?? "claude-sonnet-4-5-20250929",
         maxOutputTokens: parseInt(process.env.WILL_MAX_OUTPUT_TOKENS ?? "8096"),
         // Provider-agnostic key; falls back to ANTHROPIC_API_KEY for back-compat.
@@ -22170,8 +22174,8 @@ function buildEngineConfigEntities(config, executiveInterval) {
       id: "engine-config-system",
       engine: "system",
       params: {
-        engineTier: config.engineTier,
-        modelTier: config.modelTier,
+        anatomy: config.anatomy ?? "mind",
+        model: config.model ?? "",
         tickIntervalMs: config.tickIntervalMs ?? 1e3
       }
     },
@@ -22608,29 +22612,7 @@ function buildEngineConfigEntities(config, executiveInterval) {
 // src/stem/mind.ts
 var EXECUTIVE_CADENCE = {
   // Sonnet — premium/Enterprise; opt in via executiveInterval
-  balanced: 60,
-  // Sonnet — Pro default
-  economy: 90
-  // Haiku  — Starter default
-};
-var TIER_EXECUTIVE_INTERVAL = {
-  basic: 0,
-  // irrelevant — ExecutiveEngine not added
-  standard: EXECUTIVE_CADENCE.economy,
-  // 90 — Haiku (Starter)
-  full: EXECUTIVE_CADENCE.balanced
-  // 60 — Sonnet (Pro); 30 (responsive) is opt-in
-};
-var TIER_MODEL = {
-  anthropic: {
-    haiku: "claude-haiku-4-5-20251001",
-    sonnet: "claude-sonnet-4-5-20250929",
-    opus: "claude-opus-4-7"
-  }
-};
-function resolveModelId(provider, modelTier) {
-  return process.env.WILL_LLM_MODEL ?? TIER_MODEL[provider]?.[modelTier];
-}
+  balanced: 60};
 function _resolveVectorMemory(willId, seed, overrideAdapter, disable, tokenTracker, testMode) {
   if (overrideAdapter) return { embedder: null, vectorMemory: overrideAdapter };
   if (disable) return { embedder: null, vectorMemory: null };
@@ -22714,9 +22696,9 @@ var DEFAULT_IDENTITY = {
   style: "reflective, measured, curious"
 };
 function assembleMind(willId, config) {
-  const { engineTier } = config;
+  const anatomy = config.anatomy ?? "mind";
   const randomSeed = config.randomSeed ?? Date.now();
-  const executiveInterval = resolveExecutiveInterval(engineTier, config);
+  const executiveInterval = resolveExecutiveInterval(config);
   const profile = config.profile ? resolveProfile(config.profile) : void 0;
   const idGuard = validateWillIdentity({
     identity: config.identity,
@@ -22730,10 +22712,10 @@ function assembleMind(willId, config) {
   config = { ...config, identity: idGuard.sanitized.identity };
   const simulation = _buildSimulation(willId, config, randomSeed);
   const { cognition, outbox } = _constructCognition({ simulation, willId, config, randomSeed, executiveInterval, profile });
-  _registerEngines(simulation, cognition, engineTier);
+  _registerEngines(simulation, cognition, anatomy);
   for (const rec of auditAssemblyWiring(simulation.orchestrator.engines))
     if (rec.status === "unwired")
-      logger.debug(`[assembly] ${willId}: ${rec.engine}.${rec.method} unwired at assembly (tier=${engineTier})`);
+      logger.debug(`[assembly] ${willId}: ${rec.engine}.${rec.method} unwired at assembly (anatomy=${anatomy})`);
   _seedIdentity(simulation, config, profile);
   _seedInitialGoals(simulation, config);
   _seedEngineConfigs(simulation, buildEngineConfigEntities(config, executiveInterval));
@@ -22757,7 +22739,7 @@ function _buildSimulation(willId, config, randomSeed) {
   });
 }
 function _constructCognition({ simulation, willId, config, randomSeed, executiveInterval, profile }) {
-  const { engineTier } = config;
+  const anatomy = config.anatomy ?? "mind";
   const tokenTracker = new TokenTracker({
     emitCostEvents: true,
     costWarningThresholdUsd: 0.02,
@@ -22804,10 +22786,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   const accessGrants = new AccessGrants(resolvedEffectorNames);
   const executiveEngine = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5 });
   executiveEngine.willId = willId;
-  executiveEngine.modelId = resolveModelId(
-    process.env.WILL_LLM_PROVIDER ?? "anthropic",
-    config.modelTier
-  ) ?? null;
+  executiveEngine.modelId = process.env.WILL_LLM_MODEL ?? config.model ?? null;
   if (config.testMode) executiveEngine.setTestMode(true);
   executiveEngine.attachWorkingMemory(workingMemory);
   executiveEngine.attachGoalManager(goalManager);
@@ -22820,7 +22799,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   spacedRepetition.attachExecutiveEngine(executiveEngine);
   const planningEngine = new PlanningEngine();
   planningEngine.attachGoalManager(goalManager);
-  if (engineTier !== "basic") planningEngine.attachExecutiveEngine(executiveEngine);
+  if (anatomy !== "reflex") planningEngine.attachExecutiveEngine(executiveEngine);
   executiveEngine.attachPlanningEngine(planningEngine);
   const inhibitionCtrl = new InhibitionController();
   const taskSwitcher = new TaskSwitcher();
@@ -22833,7 +22812,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   selfModelUpdater.attachSemanticIntegrator(semanticIntegrator);
   autobiographicalNarrator.attachEpisodicConsolidator(episodicConsolidator);
   autobiographicalNarrator.attachSemanticIntegrator(semanticIntegrator);
-  if (engineTier !== "basic") {
+  if (anatomy !== "reflex") {
     autobiographicalNarrator.attachExecutiveEngine(executiveEngine);
     introspectionEngine.attachExecutiveEngine(executiveEngine);
   }
@@ -22842,7 +22821,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   const reputationTracker = new ReputationTracker();
   const knownEntityTracker = new KnownEntityTracker();
   empathySimulator.attachTheoryOfMind(theoryOfMind);
-  if (engineTier !== "basic") {
+  if (anatomy !== "reflex") {
     const summarizer = new ExecutiveSummarizer({
       summaryInterval: parseInt(process.env.WILL_SUMMARY_INTERVAL ?? "10"),
       bufferSize: parseInt(process.env.WILL_SUMMARY_BUFFER_SIZE ?? "12"),
@@ -22862,7 +22841,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   const somatosensationEngine = new SomatosensationEngine();
   const olfactionEngine = new OlfactionEngine();
   const gustationEngine = new GustationEngine();
-  if (engineTier !== "basic")
+  if (anatomy !== "reflex")
     auditionEngine.attachExecutiveEngine(executiveEngine);
   auditionEngine.attachEpisodicConsolidator(episodicConsolidator);
   auditionEngine.attachOutboxWriter(outboxWriter);
@@ -22882,7 +22861,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   const reafferenceEngine = new ReafferenceEngine(schemaRepertoire);
   const deliberationEngine = new DeliberationEngine();
   deliberationEngine.setWillName(config.name);
-  if (engineTier !== "basic")
+  if (anatomy !== "reflex")
     deliberationEngine.attachExecutive(executiveEngine);
   const cognition = {
     instructionIntake,
@@ -22943,7 +22922,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   };
   return { cognition, outbox };
 }
-function _registerEngines(simulation, cognition, engineTier) {
+function _registerEngines(simulation, cognition, anatomy) {
   const coreEngines = [
     cognition.tokenTracker,
     cognition.energyRegulator,
@@ -23008,16 +22987,16 @@ function _registerEngines(simulation, cognition, engineTier) {
   ];
   const activeEngines = [
     ...coreEngines,
-    ...engineTier !== "basic" ? affectiveEngines : [],
-    ...engineTier !== "basic" ? [cognition.executiveEngine] : [],
+    ...anatomy !== "reflex" ? affectiveEngines : [],
+    ...anatomy !== "reflex" ? [cognition.executiveEngine] : [],
     // Satellites run wherever the executive runs — they only consume its output.
-    ...engineTier !== "basic" ? executiveSatellites : [],
-    ...engineTier === "full" ? metaCognitiveEngines : [],
-    ...engineTier === "full" ? socialEngines : [],
+    ...anatomy !== "reflex" ? executiveSatellites : [],
+    ...anatomy !== "reflex" ? metaCognitiveEngines : [],
+    ...anatomy !== "reflex" ? socialEngines : [],
     ...senseEngines,
     // Cross-modal binder ticks after the senses so each tick's percepts bind same-tick.
     // Standard+ (where conversation + the executive run); the dossiers feed the prompt.
-    ...engineTier !== "basic" ? [cognition.knownEntityTracker] : [],
+    ...anatomy !== "reflex" ? [cognition.knownEntityTracker] : [],
     // Agency pipeline ticks last, after perception + known-entity, so the field it
     // synthesizes reflects this tick's percepts and dossiers. 
     ...agencyEngines
@@ -23083,9 +23062,8 @@ function _seedEngineConfigs(simulation, entities) {
       metadata: { engine: cfg.engine, params: cfg.params }
     });
 }
-function resolveExecutiveInterval(tier, config) {
-  const tierDefault = TIER_EXECUTIVE_INTERVAL[tier];
-  const requested = config.executiveInterval ?? tierDefault;
+function resolveExecutiveInterval(config) {
+  const requested = config.executiveInterval ?? EXECUTIVE_CADENCE.balanced;
   const floor = config.minExecutiveInterval ?? 0;
   return Math.max(requested, floor);
 }
@@ -25381,8 +25359,8 @@ var WillStem = class {
       type: "session.start",
       willId: config.id,
       willName: config.name,
-      engineTier: config.engineTier,
-      modelTier: config.modelTier,
+      anatomy: config.anatomy ?? "mind",
+      model: config.model ?? null,
       startedAt: (/* @__PURE__ */ new Date()).toISOString()
     });
     instance._eventBusUnsub = simulation.eventBus.subscribeAll((event, context) => {
@@ -25893,8 +25871,8 @@ var WillStem = class {
       tickCount: inst.tickCount,
       createdAt: inst.createdAt,
       lastTickAt: inst.lastTickAt,
-      engineTier: inst.config.engineTier,
-      modelTier: inst.config.modelTier
+      anatomy: inst.config.anatomy ?? "mind",
+      model: inst.config.model
     }));
   }
   // ── Tick loop (internal) ───────────────────────────────────
@@ -26459,8 +26437,8 @@ var Will = class _Will {
         traits: opts.identity.traits ?? {},
         style: opts.identity.style ?? ""
       },
-      engineTier: opts.engineTier ?? "standard",
-      modelTier: opts.model ?? "haiku",
+      anatomy: opts.anatomy ?? "mind",
+      model: opts.model,
       testMode: useMock,
       persistentMemory: opts.persist ?? false,
       snapshotInterval: 100,

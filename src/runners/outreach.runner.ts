@@ -24,7 +24,7 @@
 // ─────────────────────────────────────────────────────────────
 
 // Force a FAST model for this path test. The real model is WILL_LLM_MODEL
-// (modelTier in WillConfig is informational), and .env was loaded with
+// (model resolves from WILL_LLM_MODEL env when unset), and .env was loaded with
 // override:true — so we set it HERE, after dotenv, to win. Sonnet's ~30s/call
 // latency starves the conversation facet's 60s turn budget; Haiku completes in
 // time so the reactive reply + proactive reach-out can actually deliver.
@@ -40,10 +40,7 @@ const SAFETY_MS  = 200_000   // ~3.3 min hard wall-clock cap
 
 const willConfig: WillConfig = {
   id:               WILL_ID,
-  name:             'William',
-  engineTier:       'full',
-  modelTier:        'sonnet',
-  persistentMemory: false,
+  name:             'William',  persistentMemory: false,
   snapshotInterval: 10,
   tickIntervalMs:   1000,
   maxTicks:         0,

@@ -25,10 +25,7 @@ const SAFETY_MS  = 6 * 60_000   // hard wall-clock cap for the background run
 
 const willConfig: WillConfig = {
   id:               WILL_ID,
-  name:             'William',
-  engineTier:       'full',
-  modelTier:        'sonnet',
-  persistentMemory: false,
+  name:             'William',  persistentMemory: false,
   snapshotInterval: 10,
   tickIntervalMs:   1000,
   maxTicks:         0,

@@ -48,7 +48,7 @@ export interface BootedWill {
   name:       string
   pmaPath:    string
   tickMs:     number
-  engineTier: NonNullable<CreateWillOptions['engineTier']>
+  anatomy:    NonNullable<CreateWillOptions['anatomy']>
   /** Run before hibernate on shutdown (close servers/transports). LIFO. */
   onCleanup:  ( fn: () => Promise<void> | void ) => void
   /** Hibernate → persist → exit(0). Idempotent; SIGINT/SIGTERM already wired. */
@@ -60,10 +60,11 @@ export async function bootWillFromEnv(): Promise<BootedWill> {
   const name       = process.env.WILL_NAME ?? 'Will'
   const pmaPath    = resolve( process.env.WILL_PMA_PATH ?? `.will/${ slug( name ) }.pma.json` )
   const tickMs     = parseInt( process.env.WILL_TICK_MS ?? '1000' )
-  const engineTier = ( process.env.WILL_TIER as CreateWillOptions['engineTier'] ) ?? 'standard'
+  const anatomy = ( process.env.WILL_ANATOMY as CreateWillOptions['anatomy'] ) ?? 'mind'
 
   const opts: Omit<CreateWillOptions, 'identity'> = {
-    name, engineTier, tickMs,
+    name, anatomy, tickMs,
+    ...( process.env.WILL_LLM_MODEL ? { model: process.env.WILL_LLM_MODEL } : {} ),
     ...( process.env.WILL_LLM  ? { llm: process.env.WILL_LLM as 'mock' | 'anthropic' } : {} ),
     ...( process.env.WILL_SEED ? { seed: parseInt( process.env.WILL_SEED ) } : {} ),
   }
@@ -120,7 +121,7 @@ export async function bootWillFromEnv(): Promise<BootedWill> {
   process.on( 'SIGTERM', () => void shutdown( 'SIGTERM' ) )
 
   return {
-    will, name, pmaPath, tickMs, engineTier: engineTier ?? 'standard',
+    will, name, pmaPath, tickMs, anatomy,
     onCleanup: fn => cleanups.push( fn ),
     shutdown,
   }

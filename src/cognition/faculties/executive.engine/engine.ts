@@ -145,7 +145,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
   // ── Injected dependencies ──────────────────────────────────
   private _willId: string | null = null
-  /** Per-Will model id (resolved from modelTier in mind.ts). Null → env/default. */
+  /** Per-Will model id (config.model, resolved in mind.ts). Null → env/default. */
   private _modelId: string | null = null
   private _workingMemory: WorkingMemory | null = null
   private _goalManager: GoalManager | null = null
@@ -261,8 +261,9 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
   set willId( willId: string ){ this._willId = willId }
 
-  /** Per-Will model id (from modelTier). Must be set before the first tick. */
+  /** Per-Will model id (config.model). Must be set before the first tick. */
   set modelId( id: string | null ){ this._modelId = id }
+  get modelId(): string | null { return this._modelId }
 
   // ── Public surface ─────────────────────────────────────────
 
@@ -390,9 +391,10 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     if( !this._llmDirector && this._willId ){
       this._llmDirector = new LLMDirector( {
         willId: this._willId,
-        // Per-Will model (from modelTier, resolved in mind.ts). An explicit
-        // WILL_LLM_MODEL env still wins (operator pin / self-hosting); the tier
-        // model only applies when it's unset.
+        // Per-Will model (config.model, resolved in mind.ts). An explicit
+        // mind.ts resolves env-first (WILL_LLM_MODEL pin > config.model), so
+        // _modelId already carries the operator pin when one exists; the env
+        // fallback here only covers a director created before assembly set it.
         model: this._modelId ?? process.env.WILL_LLM_MODEL ?? 'claude-sonnet-4-5-20250929',
         maxOutputTokens: parseInt( process.env.WILL_MAX_OUTPUT_TOKENS ?? '8096' ),
         // Provider-agnostic key; falls back to ANTHROPIC_API_KEY for back-compat.

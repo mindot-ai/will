@@ -54,8 +54,7 @@ const stateOf = ( entities: SimulationEntity[] ): SimulationState => ({
 
 const BASE_CONFIG: Omit<WillConfig, 'id'> = {
   name:             'TestWill',
-  engineTier:       'basic',
-  modelTier:        'haiku',
+  anatomy: 'reflex',
   persistentMemory: false,
   snapshotInterval: 999999,
   tickIntervalMs:   0,

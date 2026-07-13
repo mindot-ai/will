@@ -22,8 +22,7 @@ import { PMAEvalHarness, STANDARD_PROBES } from '#pma/eval'
 
 const BASE_CONFIG: Omit<WillConfig, 'id'> = {
   name:             'TestWill',
-  engineTier:       'basic',   // no LLM — fast + deterministic
-  modelTier:        'haiku',
+  anatomy: 'reflex',   // no LLM — fast + deterministic
   persistentMemory: false,
   snapshotInterval: 999999,
   tickIntervalMs:   0,
@@ -514,7 +513,7 @@ describe('PMA Reconstruction Fidelity', () => {
       const pma    = makePMA()
       const report = await harness.evaluate( pma, {
         ...BASE_CONFIG,
-        engineTier: 'standard',  // need executive engine for LLM cycles
+        anatomy: 'mind',  // need executive engine for LLM cycles
       }, { runBehavioralProbes: true } )
 
       expect( report.behavioralProbesRan ).toBe( true )

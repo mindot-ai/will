@@ -4407,7 +4407,7 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     private _lastExecutiveOutput;
     private _lastExecutiveTick;
     private _willId;
-    /** Per-Will model id (resolved from modelTier in mind.ts). Null → env/default. */
+    /** Per-Will model id (config.model, resolved in mind.ts). Null → env/default. */
     private _modelId;
     private _workingMemory;
     private _goalManager;
@@ -4451,8 +4451,9 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      */
     attachCompletionInbox(inbox: CompletionInbox): void;
     set willId(willId: string);
-    /** Per-Will model id (from modelTier). Must be set before the first tick. */
+    /** Per-Will model id (config.model). Must be set before the first tick. */
     set modelId(id: string | null);
+    get modelId(): string | null;
     get latestOutput(): ExecutiveOutputFull | null;
     isFresh(currentTick: Tick): boolean;
     /**
@@ -6720,8 +6721,15 @@ interface ExternalTransport {
     close(): void;
 }
 
-type EngineTier = 'basic' | 'standard' | 'full';
-type ModelTier = 'haiku' | 'sonnet' | 'opus';
+/**
+ * Anatomy — the only structural variant a Will has.
+ *   mind   — the whole cognitive architecture (default). Faculties are not a
+ *            pricing axis; hosts differentiate on model + budgets (cadence,
+ *            ceilings), never by amputating engines.
+ *   reflex — a no-LLM shell: regulatory + senses + agency heuristics only,
+ *            for embedded / offline deployments (no System 2 at all).
+ */
+type Anatomy = 'mind' | 'reflex';
 interface WillIdentity {
     /**
      * Persona overlay — who this Will is: backstory, personality, world context.
@@ -6761,19 +6769,16 @@ interface WillConfig {
     profile?: string | null;
     /** Persona definition seeded into the will.identity entity. */
     identity: WillIdentity;
+    /** Anatomy — 'mind' (default) or the no-LLM 'reflex' shell. */
+    anatomy?: Anatomy;
     /**
-     * Engine tier controls which cognitive layers are active.
-     *   basic    — regulatory + perceptual + memory + heuristic decisions. No LLM.
-     *   standard — + affective + ExecutiveEngine on Haiku cadence.
-     *   full     — + meta-cognitive + social + ExecutiveEngine on Sonnet cadence.
+     * Concrete LLM model id for this Will (e.g. 'claude-sonnet-4-5-20250929').
+     * An explicit WILL_LLM_MODEL env still wins (operator pin / self-hosting);
+     * unset → the LLMDirector's built-in default. Product-level labels
+     * (starter/pro tiers, model families) live host-side and resolve to a
+     * concrete id BEFORE reaching the engine.
      */
-    engineTier: EngineTier;
-    /**
-     * Model tier is informational — actual provider/model is resolved from
-     * WILL_LLM_PROVIDER / WILL_LLM_MODEL env vars or future per-Will config.
-     * TODO: thread model config through LLM layer for true multi-model support.
-     */
-    modelTier: ModelTier;
+    model?: string;
     /** Whether to persist snapshots between restarts. */
     persistentMemory: boolean;
     /** How many ticks between in-memory snapshots. */
@@ -6793,14 +6798,12 @@ interface WillConfig {
      */
     clock?: ClockConfig;
     /**
-     * How many ticks between executive (LLM) calls.
-     * Clamped to minExecutiveInterval if set.
-     * Falls back to tier default if omitted.
+     * How many ticks between executive (LLM) calls — the cadence budget.
+     * Clamped to minExecutiveInterval if set. Default: balanced (60).
      */
     executiveInterval?: number;
     /**
-     * Plan-enforced floor for executiveInterval.
-     * Prevents lower-cadence tier-based overrides from overriding to faster cadence.
+     * Plan-enforced floor for executiveInterval — the customer cannot go faster.
      */
     minExecutiveInterval?: number;
     /**
@@ -7322,8 +7325,8 @@ interface WillSummary {
     tickCount: number;
     createdAt: Date;
     lastTickAt: Date | null;
-    engineTier: WillConfig['engineTier'];
-    modelTier: WillConfig['modelTier'];
+    anatomy: WillConfig['anatomy'];
+    model: WillConfig['model'];
 }
 
 interface WillInstance {
@@ -7788,10 +7791,10 @@ interface CreateWillOptions {
     identity: Partial<WillIdentity> & {
         prompt: string;
     };
-    /** basic | standard (default) | full. */
-    engineTier?: EngineTier;
-    /** haiku (default) | sonnet | opus — informational tier hint. */
-    model?: ModelTier;
+    /** 'mind' (default: the whole architecture) | 'reflex' (no-LLM shell). */
+    anatomy?: Anatomy;
+    /** Concrete LLM model id (e.g. 'claude-sonnet-4-5-20250929'). Unset → env / provider default. */
+    model?: string;
     /**
      * LLM mode. 'mock' (default when no ANTHROPIC_API_KEY) runs a deterministic
      * canned executive — zero keys, zero cost. 'anthropic' calls the real model

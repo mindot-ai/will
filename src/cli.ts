@@ -45,14 +45,14 @@ async function main(): Promise<void> {
     process.exit( sub ? 2 : 0 )
   }
 
-  const { will, name, pmaPath, tickMs, engineTier, onCleanup, shutdown } = await bootWillFromEnv()
+  const { will, name, pmaPath, tickMs, anatomy, onCleanup, shutdown } = await bootWillFromEnv()
 
   if( sub === 'mcp' ){
     // The MCP client owns our stdin — its disconnect is the shutdown signal.
     process.stdin.on( 'end', () => void shutdown( 'client disconnected' ) )
     const server = buildWillMcpServer( will, { pmaPath } )
     await server.connect( new StdioServerTransport() )
-    console.error( `[will] ${ name } is listening on MCP stdio (tick ${ tickMs }ms, tier ${ engineTier })` )
+    console.error( `[will] ${ name } is listening on MCP stdio (tick ${ tickMs }ms, anatomy ${ anatomy })` )
     return
   }
 
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
     server.once( 'error', reject )
     server.listen( port, host, () => resolve() )
   } )
-  console.error( `[will] ${ name } is listening on http://${ host }:${ port } (tick ${ tickMs }ms, tier ${ engineTier })` )
+  console.error( `[will] ${ name } is listening on http://${ host }:${ port } (tick ${ tickMs }ms, anatomy ${ anatomy })` )
   console.error( `[will] try: curl -X POST http://${ host }:${ port }/perceive -H 'content-type: application/json' -d '{"text":"Hello"}'` )
 }
 

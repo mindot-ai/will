@@ -46,7 +46,7 @@ function makeConfig( id: string ): WillConfig {
       prompt: 'I am a long-lived test mind used to prove bounded growth.',
       values: [ 'endurance' ], traits: {}, style: 'quiet',
     },
-    engineTier: 'standard', modelTier: 'haiku',
+    anatomy: 'mind',
     persistentMemory: false, snapshotInterval: 999_999, tickIntervalMs: 0,
     randomSeed: 4242, executiveInterval: 50, testMode: true,
     clock: { fixedDeltaMs: 1000, startTime: 0 },

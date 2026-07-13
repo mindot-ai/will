@@ -15,7 +15,7 @@ import { setLogger, resetLogger } from '#core/logger'
 setLogger( { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } )
 afterAll( () => resetLogger() )
 
-const base = { llm: 'mock' as const, engineTier: 'standard' as const, tickMs: 10, seed: 3 }
+const base = { llm: 'mock' as const, anatomy: 'mind' as const, tickMs: 10, seed: 3 }
 
 describe( 'Will facade', () => {
   it( 'create() returns a running Will with a well-formed state summary', async () => {

@@ -28,7 +28,7 @@ let client: Client
 beforeAll( async () => {
   will = await Will.create( {
     name: 'Echo', identity: { prompt: 'I am Echo.' },
-    llm: 'mock', engineTier: 'standard', tickMs: 10, seed: 7,
+    llm: 'mock', anatomy: 'mind', tickMs: 10, seed: 7,
   } )
   const server = buildWillMcpServer( will, { pmaPath: PMA_PATH } )
   client = new Client( { name: 'test-client', version: '0.0.0' } )

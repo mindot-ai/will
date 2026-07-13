@@ -53,7 +53,7 @@ function makeConfig(): WillConfig {
       prompt: 'I am a test mind whose emergent behavioral profile is being measured.',
       values: [ 'steadiness' ], traits: {}, style: 'calm',
     },
-    engineTier: 'standard', modelTier: 'haiku',
+    anatomy: 'mind',
     persistentMemory: false, snapshotInterval: 999_999, tickIntervalMs: 0,
     randomSeed: 20_260_704, executiveInterval: 50, testMode: true,
     clock: { fixedDeltaMs: 1000, startTime: 0 },

@@ -27,15 +27,15 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { assembleMind } from '#stem/mind'
-import type { WillConfig, EngineTier } from '#stem/mind'
+import type { WillConfig, Anatomy } from '#stem/mind'
 import { auditAssemblyWiring, wiringKeys } from '#stem/assembly.audit'
 import { setLogger, resetLogger } from '#core/logger'
 
-function makeConfig( tier: EngineTier ): WillConfig {
+function makeConfig( anatomy: Anatomy ): WillConfig {
   return {
-    id: `assembly-${tier}`, name: 'A', profile: null,
+    id: `assembly-${anatomy}`, name: 'A', profile: null,
     identity: { prompt: 'assembly probe', values: [ 'x' ], traits: {}, style: 'x' },
-    engineTier: tier, modelTier: 'haiku',
+    anatomy,
     persistentMemory: false, snapshotInterval: 999_999, tickIntervalMs: 0,
     randomSeed: 1, executiveInterval: 50, testMode: true,
     clock: { fixedDeltaMs: 1000, startTime: 0 },
@@ -86,22 +86,15 @@ const AGENCY_ORDER = [
   'motor-schema-executor', 'reafference',
 ]
 
-const EXPECTED_ORDER: Record<EngineTier, string[]> = {
-  basic: [
+// Two anatomies only: 'reflex' (no-LLM shell) and 'mind' (everything).
+// There is deliberately nothing in between — faculties are not a tier axis.
+const EXPECTED_ORDER: Record<Anatomy, string[]> = {
+  reflex: [
     ...CORE_ORDER,
     ...SENSE_ORDER,
     ...AGENCY_ORDER,
   ],
-  standard: [
-    ...CORE_ORDER,
-    ...AFFECTIVE_ORDER,
-    'executive-engine',
-    ...EXEC_SATELLITE_ORDER,
-    ...SENSE_ORDER,
-    'known-entity-tracker',
-    ...AGENCY_ORDER,
-  ],
-  full: [
+  mind: [
     ...CORE_ORDER,
     ...AFFECTIVE_ORDER,
     'executive-engine',
@@ -133,18 +126,14 @@ const LATE_WIRED_ALWAYS = [
   'vision-engine.attachGrants',
 ]
 
-const EXPECTED_UNWIRED: Record<EngineTier, string[]> = {
-  // basic: the executive tier-gates off planning + audition (documented).
-  basic: [
+const EXPECTED_UNWIRED: Record<Anatomy, string[]> = {
+  // reflex: no System 2 — the executive attachments stay off (documented).
+  reflex: [
     ...LATE_WIRED_ALWAYS,
     'audition-engine.attachExecutiveEngine',
     'planning-engine.attachExecutiveEngine',
   ].sort(),
-  standard: [
-    ...LATE_WIRED_ALWAYS,
-    'executive-engine.attachSessionLogger',
-  ].sort(),
-  full: [
+  mind: [
     ...LATE_WIRED_ALWAYS,
     'executive-engine.attachSessionLogger',
   ].sort(),
@@ -154,16 +143,36 @@ describe( 'mind assembly — order + wiring as reviewed artifacts', () => {
   beforeAll( () => setLogger( { debug: () => {}, info: () => {}, warn: () => {}, error: console.error } ) )
   afterAll( () => resetLogger() )
 
-  for( const tier of [ 'basic', 'standard', 'full' ] as EngineTier[] ){
-    it( `${tier}: engine execution order matches the pinned artifact`, () => {
-      const { simulation } = assembleMind( `assembly-${tier}`, makeConfig( tier ) )
-      expect( simulation.orchestrator.engineNames ).toEqual( EXPECTED_ORDER[ tier ] )
+  for( const anatomy of [ 'reflex', 'mind' ] as Anatomy[] ){
+    it( `${anatomy}: engine execution order matches the pinned artifact`, () => {
+      const { simulation } = assembleMind( `assembly-${anatomy}`, makeConfig( anatomy ) )
+      expect( simulation.orchestrator.engineNames ).toEqual( EXPECTED_ORDER[ anatomy ] )
     } )
 
-    it( `${tier}: no attachment is unwired beyond the pinned expected set`, () => {
-      const { simulation } = assembleMind( `assembly-audit-${tier}`, makeConfig( tier ) )
+    it( `${anatomy}: no attachment is unwired beyond the pinned expected set`, () => {
+      const { simulation } = assembleMind( `assembly-audit-${anatomy}`, makeConfig( anatomy ) )
       const audit = auditAssemblyWiring( simulation.orchestrator.engines )
-      expect( wiringKeys( audit, 'unwired' ) ).toEqual( EXPECTED_UNWIRED[ tier ] )
+      expect( wiringKeys( audit, 'unwired' ) ).toEqual( EXPECTED_UNWIRED[ anatomy ] )
     } )
   }
+
+  it( 'threads config.model to the executive as a concrete id (env pin wins)', () => {
+    const saved = process.env['WILL_LLM_MODEL']
+    delete process.env['WILL_LLM_MODEL']
+    try {
+      const { cognition } = assembleMind( 'assembly-model', {
+        ...makeConfig('mind'), id: 'assembly-model', model: 'test-model-id',
+      } )
+      expect( cognition.executiveEngine.modelId ).toBe( 'test-model-id' )
+
+      process.env['WILL_LLM_MODEL'] = 'operator-pin'
+      const { cognition: c2 } = assembleMind( 'assembly-model-2', {
+        ...makeConfig('mind'), id: 'assembly-model-2', model: 'test-model-id',
+      } )
+      expect( c2.executiveEngine.modelId ).toBe( 'operator-pin' )
+    } finally {
+      if( saved === undefined ) delete process.env['WILL_LLM_MODEL']
+      else process.env['WILL_LLM_MODEL'] = saved
+    }
+  } )
 } )

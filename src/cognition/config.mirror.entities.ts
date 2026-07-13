@@ -33,8 +33,8 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
       id: 'engine-config-system',
       engine: 'system',
       params: {
-        engineTier:     config.engineTier,
-        modelTier:      config.modelTier,
+        anatomy:        config.anatomy ?? 'mind',
+        model:          config.model ?? '',
         tickIntervalMs: config.tickIntervalMs ?? 1000
       }
     },

@@ -144,7 +144,7 @@ Host a Will over the [Model Context Protocol](https://modelcontextprotocol.io) �
 }
 ```
 
-The surface keeps the paradigm: `perceive` delivers a stimulus (it returns when *delivered*, not answered), `next_utterance` awaits the mind's next words (**silence is a valid outcome**, reported — never an error), `state` reads its inner life, and `save` checkpoints it without stopping it. There is deliberately no `ask()`-shaped tool. Config via env: `WILL_TIER` (basic|standard|full), `WILL_LLM` (mock|anthropic — defaults to the zero-key mock unless `ANTHROPIC_API_KEY` is set), `WILL_TICK_MS`, `WILL_PMA_PATH`.
+The surface keeps the paradigm: `perceive` delivers a stimulus (it returns when *delivered*, not answered), `next_utterance` awaits the mind's next words (**silence is a valid outcome**, reported — never an error), `state` reads its inner life, and `save` checkpoints it without stopping it. There is deliberately no `ask()`-shaped tool. Config via env: `WILL_ANATOMY` (mind|reflex — reflex is the no-LLM shell), `WILL_LLM_MODEL` (concrete model id), `WILL_LLM` (mock|anthropic — defaults to the zero-key mock unless `ANTHROPIC_API_KEY` is set), `WILL_TICK_MS`, `WILL_PMA_PATH`.
 
 ### Employing MCP tools — the mind gets abilities
 
@@ -204,8 +204,7 @@ const config: WillConfig = {
     traits: { conscientiousness: 0.9, neuroticism: 0.4 },
     style:  'measured and warm',
   },
-  engineTier: 'full',     // required — see WillConfig reference (full = all layers)
-  modelTier:  'sonnet',   // which model the executive recruits
+  model: 'claude-sonnet-4-5-20250929',   // concrete model id (optional — env/provider default otherwise)
   allowedGenericEffectors: ['listen', 'talk', 'text'],  // opt in to communication
   persistentMemory: true,
   snapshotInterval: 10,
@@ -510,10 +509,10 @@ const config: WillConfig = {
 
   // REQUIRED. How many cognitive layers run (see WillConfig reference below).
   // 'full' runs the complete mind — the normal choice.
-  engineTier: 'full',
+
 
   // REQUIRED. Which model the executive recruits when it fires.
-  modelTier:  'sonnet',
+  model: 'claude-sonnet-4-5-20250929',
 
   // Communication effectors this Will is permitted to use.
   // Omit or set null for a Will with no communication surface.
@@ -539,8 +538,8 @@ Traits seed the PersonaPrior as a *starting disposition*, not a fixed personalit
 | `id` | ✅ | — | Unique identifier — thread key and filesystem path segment |
 | `name` | ✅ | — | Human-readable display name |
 | `identity` | ✅ | — | Persona: `{ prompt, values[], traits{}, style }` (Layer 2) |
-| `engineTier` | ✅ | — | `'basic' \| 'standard' \| 'full'` — how many cognitive layers run. `full` = all engines (regulatory→perceptual→affective→memory→executive→meta-cognitive→social). Lower tiers drop upper layers and use a slower default cadence. **Use `'full'` unless you have a reason not to.** |
-| `modelTier` | ✅ | — | `'haiku' \| 'sonnet' \| 'opus'` — which model the executive recruits |
+| `anatomy` | — | `'mind'` | `'mind' \| 'reflex'` — the only structural variant. `mind` runs the whole architecture; `reflex` is a no-LLM shell (regulatory + senses + agency heuristics) for embedded use. Faculties are not a pricing axis — budgets are. |
+| `model` | — | env / provider default | Concrete LLM model id (e.g. `'claude-sonnet-4-5-20250929'`). `WILL_LLM_MODEL` env pins over this. Product tier labels resolve to a concrete id host-side, before the engine. |
 | `persistentMemory` | ✅ | — | Persist snapshots so beliefs/goals/narrative survive restarts |
 | `snapshotInterval` | ✅ | — | Ticks between in-memory snapshots |
 | `profile` | — | `null` | World profile preset (effectors + environment context). Merged with `allowedGenericEffectors` |

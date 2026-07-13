@@ -37,8 +37,7 @@ function makeConfig( id: string ): WillConfig {
       traits: { openness: 0.5 },
       style:  'concise',
     },
-    engineTier:       'standard',          // standard tier wires the ExecutiveEngine + tracker
-    modelTier:        'haiku',
+    anatomy: 'mind',          // standard tier wires the ExecutiveEngine + tracker
     persistentMemory: false,
     snapshotInterval: 999_999,
     tickIntervalMs:   0,

@@ -30,7 +30,7 @@ let base:   string
 beforeAll( async () => {
   will = await Will.create( {
     name: 'Echo', identity: { prompt: 'I am Echo.' },
-    llm: 'mock', engineTier: 'standard', tickMs: 10, seed: 7,
+    llm: 'mock', anatomy: 'mind', tickMs: 10, seed: 7,
   } )
   server = buildWillHttpServer( will, { pmaPath: PMA_PATH } )
   await new Promise<void>( r => server.listen( 0, '127.0.0.1', () => r() ) )

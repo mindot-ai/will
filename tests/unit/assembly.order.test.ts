@@ -165,6 +165,15 @@ describe( 'mind assembly — order + wiring as reviewed artifacts', () => {
       } )
       expect( cognition.executiveEngine.modelId ).toBe( 'test-model-id' )
 
+      // Per-role map: summarizer diverges, deliberation falls back to executive.
+      const { cognition: c3 } = assembleMind( 'assembly-model-3', {
+        ...makeConfig('mind'), id: 'assembly-model-3',
+        model: { executive: 'big-model', summarizer: 'small-model' },
+      } )
+      expect( c3.executiveEngine.models ).toEqual( {
+        executive: 'big-model', summarizer: 'small-model', deliberation: 'big-model',
+      } )
+
       process.env['WILL_LLM_MODEL'] = 'operator-pin'
       const { cognition: c2 } = assembleMind( 'assembly-model-2', {
         ...makeConfig('mind'), id: 'assembly-model-2', model: 'test-model-id',

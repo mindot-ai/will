@@ -28,7 +28,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { WillStem } from '#stem/index'
-import type { WillConfig, WillIdentity, Anatomy, InitialGoal } from '#stem/mind'
+import type { WillConfig, WillIdentity, Anatomy, InitialGoal, WillModelConfig } from '#stem/mind'
 import type { PMASnapshot } from '#pma/index'
 import type { effectorInvocation } from '#types'
 import type { EffectorDeclaration, SchemaPrecondition } from '#agency/types'
@@ -163,8 +163,10 @@ export interface CreateWillOptions {
   identity: Partial<WillIdentity> & { prompt: string }
   /** 'mind' (default: the whole architecture) | 'reflex' (no-LLM shell). */
   anatomy?: Anatomy
-  /** Concrete LLM model id (e.g. 'claude-sonnet-4-5-20250929'). Unset → env / provider default. */
-  model?: string
+  /** Concrete LLM model id, or a per-role map ({ executive, summarizer?,
+   *  deliberation?, embedding? } — unset thinking roles fall back to executive).
+   *  Unset → env / provider default. */
+  model?: string | WillModelConfig
   /**
    * LLM mode. 'mock' (default when no ANTHROPIC_API_KEY) runs a deterministic
    * canned executive — zero keys, zero cost. 'anthropic' calls the real model

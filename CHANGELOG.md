@@ -9,7 +9,7 @@
   utterances route via a durable roster (last shared channel → DM → home
   channel). New `@mindot/will/discord` subpath export (`connectDiscord`);
   `discord.js` ships as an optionalDependency and is imported lazily. Docs:
-  `docs/discord.md`; example: `examples/discord.ts`.
+  `docs/channels/discord.md`; example: `examples/discord.ts`.
 
 - **Deterministic replay now holds end-to-end with the LLM in the loop** — the
   R2-d capstone (record a run's completions → re-feed into a fresh same-seed

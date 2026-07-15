@@ -43,7 +43,7 @@ relationships — on the next start. Who-is-reachable-where survives too
 
 ## Configuration
 
-All the [shared host env](../README.md#configuration-reference) applies
+All the [shared host env](../../README.md#configuration-reference) applies
 (`WILL_NAME`, `WILL_IDENTITY`, `WILL_LLM_MODEL`, `WILL_TICK_MS`, `WILL_PMA_PATH`, …), plus:
 
 | Variable | Default | Description |
@@ -70,14 +70,14 @@ await bridge.start()
 // … later: await bridge.close()   (the Will keeps ticking — it only loses this surface)
 ```
 
-Runnable: [`examples/discord.ts`](../examples/discord.ts). `discord.js` ships as
+Runnable: [`examples/discord.ts`](../../examples/discord.ts). `discord.js` ships as
 an `optionalDependency`; if your install omitted optionals, `bun add discord.js`.
 
 ## Operator notes
 
 - **Perception scope = attack surface.** The bridge grants no tools and runs no
   commands; the Will can only *say things* here. Abilities come separately (and
-  explicitly) via effectors or [MCP tools](../README.md#employing-mcp-tools--the-mind-gets-abilities).
+  explicitly) via effectors or [MCP tools](../../README.md#employing-mcp-tools--the-mind-gets-abilities).
 - **Busy servers:** start with `WILL_DISCORD_CHANNELS` scoped to one or two
   rooms. Perceiving is cheap (no LLM per message), but attention is finite —
   a firehose crowds out what matters.

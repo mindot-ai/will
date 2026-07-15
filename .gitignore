@@ -3,6 +3,7 @@
 /node_modules
 /build
 /data
+/.will
 
 .env
 .DS_Store

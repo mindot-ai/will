@@ -138,7 +138,7 @@ ANTHROPIC_API_KEY=sk-ant-… npx -y @mindot/will discord
 
 No command prefix, no forced replies. It perceives the rooms it can see (salience-scored — perceiving costs no LLM call), **decides for itself when to speak** (silence is a valid outcome), learns people's names as *learned* knowledge (`discord:<userId>` is one entity across servers), keeps each channel as its own conversation thread, and **can message first** — proactive utterances route to the addressee's last shared channel, then their DM, then `WILL_DISCORD_HOME_CHANNEL`. On shutdown it hibernates to its PMA and returns as the same self, still knowing everyone.
 
-Scope it with `WILL_DISCORD_CHANNELS` (id allowlist) and `WILL_DISCORD_MENTION_ONLY` for busy servers. The bridge grants no tools — it is a mouth and ears, not hands; abilities stay explicit (effectors / MCP). Setup + SDK embedding (`import { connectDiscord } from '@mindot/will/discord'`): [docs/discord.md](docs/discord.md) · runnable: [`examples/discord.ts`](examples/discord.ts).
+Scope it with `WILL_DISCORD_CHANNELS` (id allowlist) and `WILL_DISCORD_MENTION_ONLY` for busy servers. The bridge grants no tools — it is a mouth and ears, not hands; abilities stay explicit (effectors / MCP). Setup + SDK embedding (`import { connectDiscord } from '@mindot/will/discord'`): [docs/channels/discord.md](docs/channels/discord.md) · runnable: [`examples/discord.ts`](examples/discord.ts).
 
 ### The MCP server — a persistent mind in Claude Desktop / Claude Code
 
@@ -800,7 +800,7 @@ cd will && bun run build
 | `WILL_EMBEDDING_MODEL` | `text-embedding-3-small` *(when keyed)* | Embedding model for episodic recall; `none` disables |
 | `WILL_EMBEDDING_URL` | *(provider default)* | Base URL for an OpenAI-compatible embedding endpoint |
 | `WILL_TRANSPORT` | `off` | Delivery mode used by the host: `off` (outbox polling) · `stream` (in-process) · `socketio` (peer) |
-| `DISCORD_BOT_TOKEN` | — | Bot token for `will discord` (see [docs/discord.md](docs/discord.md)) |
+| `DISCORD_BOT_TOKEN` | — | Bot token for `will discord` (see [docs/channels/discord.md](docs/channels/discord.md)) |
 | `WILL_DISCORD_CHANNELS` | *(all visible)* | Comma-separated channel ids the Will inhabits |
 | `WILL_DISCORD_MENTION_ONLY` | `false` | Perceive guild messages only when @mentioned (DMs always perceived) |
 | `WILL_DISCORD_HOME_CHANNEL` | — | Fallback channel for utterances with no reachable addressee |

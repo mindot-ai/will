@@ -4,7 +4,7 @@
 //
 //   DISCORD_BOT_TOKEN=…  ANTHROPIC_API_KEY=sk-ant-…  bun run examples/discord.ts
 //
-// Setup (once, ~90s): docs/discord.md — create a bot, enable the Message
+// Setup (once, ~90s): docs/channels/discord.md — create a bot, enable the Message
 // Content intent, invite it. Then run this. The Will perceives the rooms it
 // can see, replies when IT decides to, remembers people across restarts
 // (Ctrl-C hibernates it to ./.will/), and may message first.
@@ -21,7 +21,7 @@ setLogger( { debug: () => {}, info: () => {}, warn: () => {}, error: console.err
 
 const token = process.env.DISCORD_BOT_TOKEN
 if( !token ){
-  console.error( 'DISCORD_BOT_TOKEN is required — see docs/discord.md for the 90-second setup.' )
+  console.error( 'DISCORD_BOT_TOKEN is required — see docs/channels/discord.md for the 90-second setup.' )
   process.exit( 2 )
 }
 

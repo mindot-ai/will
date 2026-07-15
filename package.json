@@ -21,7 +21,9 @@
     "zod": "^4.0.0"
   },
   "optionalDependencies": {
+    "baileys": "^7.0.0-rc13",
     "discord.js": "^14.16.3",
+    "qrcode-terminal": "^0.12.0",
     "socket.io-client": "^4.8.1"
   },
   "exports": {
@@ -36,16 +38,23 @@
     "./discord": {
       "import": "./dist/channels/discord.js",
       "types": "./dist/channels/discord.d.ts"
+    },
+    "./whatsapp": {
+      "import": "./dist/channels/whatsapp.js",
+      "types": "./dist/channels/whatsapp.d.ts"
     }
   },
   "bugs": {
     "url": "https://github.com/mindot-ai/will/issues"
   },
-  "description": "Will — an engine for persistent machine minds. A Will is a continuously-ticking synthetic mind built from 38 cognitive faculties, a learning agency pipeline, and a dual-process executive — deterministic, persistent, and portable (PMA).",
+  "description": "Will \u2014 an engine for persistent machine minds. A Will is a continuously-ticking synthetic mind built from 38 cognitive faculties, a learning agency pipeline, and a dual-process executive \u2014 deterministic, persistent, and portable (PMA).",
   "engines": {
     "bun": ">=1.0.0"
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "homepage": "https://github.com/mindot-ai/will#readme",
   "keywords": [
     "ai",

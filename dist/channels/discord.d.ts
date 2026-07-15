@@ -1,14 +1,5 @@
 import { cy as Will } from '../will-Bq1y3RRf.js';
-
-/** A running connection between one Will and one platform. */
-interface ChannelBridge {
-    /** Platform kind, e.g. 'discord'. */
-    readonly kind: string;
-    /** Connect and start relaying. Resolves once the bridge is live. */
-    start(): Promise<void>;
-    /** Disconnect and release resources. Idempotent. */
-    close(): Promise<void>;
-}
+import { C as ChannelBridge } from '../types-E9-HV-SW.js';
 
 interface DiscordLikeChannel {
     send(content: string): Promise<unknown>;

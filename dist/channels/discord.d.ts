@@ -1,4 +1,4 @@
-import { cy as Will } from '../will-Dr2HbjeH.js';
+import { cy as Will } from '../will-Bq1y3RRf.js';
 
 /** A running connection between one Will and one platform. */
 interface ChannelBridge {

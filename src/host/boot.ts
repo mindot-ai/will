@@ -12,8 +12,9 @@
 //   WILL_NAME        display name                    (default "Will")
 //   WILL_IDENTITY    persona prompt                  (default a minimal self)
 //   WILL_TIER        basic | standard | full         (default standard)
-//   WILL_LLM         mock | anthropic                (default: auto — anthropic when
-//                                                     ANTHROPIC_API_KEY is set, else mock)
+//   WILL_LLM         mock | anthropic | glm          (default: auto — anthropic when
+//                                                     ANTHROPIC_API_KEY is set, glm when
+//                                                     ZAI_API_KEY is, else mock)
 //   WILL_TICK_MS     ms per tick                     (default 1000)
 //   WILL_SEED        deterministic seed (testing)    (default unseeded/wall-time)
 //   WILL_PMA_PATH    PMA artifact path               (default ./.will/<name>.pma.json)
@@ -27,6 +28,7 @@ import { setLogger } from '#core/logger'
 import { Will, type CreateWillOptions } from '#sdk/will'
 import type { PMASnapshot } from '#pma/index'
 import { connectMcpEffectors, type McpToolsSource } from '#root/mcp/effectors'
+import { anthropicWireHeaders, defaultBaseFor, defaultModelFor } from '#llm/index'
 
 /**
  * Route every engine log line to stderr. For `will mcp`, stdout is the MCP
@@ -41,6 +43,23 @@ export function routeLogsToStderr(): void {
 
 function slug( s: string ): string {
   return s.toLowerCase().replace( /[^a-z0-9]+/g, '-' ).replace( /^-+|-+$/g, '' ) || 'will'
+}
+
+/** The LLM mode the hosts will boot with: an explicit WILL_LLM, else whichever
+ *  provider's key is present, else the zero-key mock. */
+export function resolveLlmMode(): 'mock' | 'anthropic' | 'glm' {
+  const explicit = process.env.WILL_LLM as 'mock' | 'anthropic' | 'glm' | undefined
+  if( explicit ) return explicit
+  if( process.env.ANTHROPIC_API_KEY ) return 'anthropic'
+  if( process.env.ZAI_API_KEY ) return 'glm'
+  return 'mock'
+}
+
+/** The key for a live mode — the provider-agnostic override first, then the
+ *  provider's own env. */
+function resolveLlmKey( mode: 'anthropic' | 'glm' ): string | undefined {
+  return process.env.WILL_LLM_API_KEY
+    ?? ( mode === 'glm' ? process.env.ZAI_API_KEY : process.env.ANTHROPIC_API_KEY )
 }
 
 /**
@@ -59,25 +78,28 @@ function slug( s: string ): string {
  * Skipped for the mock executive and the no-LLM `reflex` anatomy.
  */
 async function preflightLLM( anatomy: string ): Promise<void> {
-  const mode = process.env.WILL_LLM ?? ( process.env.ANTHROPIC_API_KEY ? 'anthropic' : 'mock' )
+  const mode = resolveLlmMode()
   if( mode === 'mock' || anatomy === 'reflex' ) return
 
-  const key = process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY
+  const key = resolveLlmKey( mode )
   if( !key ){
-    console.error( '[will] WILL_LLM=anthropic but no ANTHROPIC_API_KEY / WILL_LLM_API_KEY is set.' )
+    const expected = mode === 'glm' ? 'ZAI_API_KEY' : 'ANTHROPIC_API_KEY'
+    console.error( `[will] WILL_LLM=${ mode } but no ${ expected } / WILL_LLM_API_KEY is set.` )
     console.error( '[will] The Will would boot, perceive, and never speak. Set a key, or run keyless with WILL_LLM=mock.' )
     process.exit( 2 )
   }
 
   // The ping validates key + balance + reachability, which is the failure class
   // that strands an operator. It uses the pinned model when there is one, so a
-  // bad model id is caught too; otherwise the cheapest model stands in.
-  const base  = process.env.WILL_LLM_BASE_URL ?? 'https://api.anthropic.com/v1'
-  const model = process.env.WILL_LLM_MODEL ?? 'claude-haiku-4-5-20251001'
+  // bad model id is caught too; otherwise the cheapest model stands in. GLM
+  // speaks the same wire at Z.ai's compat endpoint, so one ping serves both.
+  const base  = process.env.WILL_LLM_BASE_URL ?? defaultBaseFor( mode )
+  const model = process.env.WILL_LLM_MODEL
+    ?? ( mode === 'glm' ? defaultModelFor( 'glm' ) : 'claude-haiku-4-5-20251001' )
   try {
     const res = await fetch( `${ base }/messages`, {
       method:  'POST',
-      headers: { 'content-type': 'application/json', 'anthropic-version': '2023-06-01', 'x-api-key': key },
+      headers: anthropicWireHeaders( mode, key ),
       body:    JSON.stringify( { model, max_tokens: 1, messages: [ { role: 'user', content: 'ping' } ] } ),
       signal:  AbortSignal.timeout( 20_000 ),
     } )
@@ -125,7 +147,7 @@ export async function bootWillFromEnv(): Promise<BootedWill> {
   const opts: Omit<CreateWillOptions, 'identity'> = {
     name, anatomy, tickMs,
     ...( process.env.WILL_LLM_MODEL ? { model: process.env.WILL_LLM_MODEL } : {} ),
-    ...( process.env.WILL_LLM  ? { llm: process.env.WILL_LLM as 'mock' | 'anthropic' } : {} ),
+    ...( process.env.WILL_LLM ? { llm: process.env.WILL_LLM as CreateWillOptions['llm'] } : {} ),
     ...( process.env.WILL_SEED ? { seed: parseInt( process.env.WILL_SEED ) } : {} ),
   }
 

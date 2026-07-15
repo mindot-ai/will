@@ -171,12 +171,14 @@ export interface CreateWillOptions {
    *  Unset fields fall back to WILL_LLM_* envs. apiKey stays in memory only.
    *  (Named llmConfig because `llm` is the mock/anthropic MODE switch.) */
   llmConfig?: WillLLMConfig
-  /**
-   * LLM mode. 'mock' (default when no ANTHROPIC_API_KEY) runs a deterministic
-   * canned executive — zero keys, zero cost. 'anthropic' calls the real model
-   * (needs ANTHROPIC_API_KEY / WILL_LLM_* env). Omit to auto-detect.
+   /**
+   * LLM mode. 'mock' (default when no key is present) runs a deterministic
+   * canned executive — zero keys, zero cost. 'anthropic' calls Claude (needs
+   * ANTHROPIC_API_KEY / WILL_LLM_* env); 'glm' calls Z.ai's GLM over its
+   * Anthropic-compatible endpoint (needs ZAI_API_KEY / WILL_LLM_*). Omit to
+   * auto-detect from whichever key is set.
    */
-  llm?: 'mock' | 'anthropic'
+  llm?: 'mock' | 'anthropic' | 'glm'
   /**
    * Abilities the Will can choose to enact. `name → handler`, or
    * `name → { handler, description?, cost?, valence?, preconditions? }` to seed
@@ -459,7 +461,14 @@ export class Will {
   // ── Internals ──────────────────────────────────────────────
 
   private _buildConfig( id: string, opts: CreateWillOptions ): WillConfig {
-    const useMock = ( opts.llm ?? ( process.env.ANTHROPIC_API_KEY ? 'anthropic' : 'mock' ) ) === 'mock'
+    // Auto-detect from whichever provider key is present; explicit `llm` wins.
+    const mode = opts.llm
+      ?? ( process.env.ANTHROPIC_API_KEY ? 'anthropic' : process.env.ZAI_API_KEY ? 'glm' : 'mock' )
+    const useMock = mode === 'mock'
+    // `llm: 'glm'` selects the provider; an explicit llmConfig still overrides it.
+    const llmConfig = mode === 'glm'
+      ? { provider: 'glm' as const, ...opts.llmConfig }
+      : opts.llmConfig
     return {
       id, name: opts.name,
       identity: {
@@ -470,7 +479,7 @@ export class Will {
       },
       anatomy: opts.anatomy ?? 'mind',
       model:   opts.model,
-      llm:     opts.llmConfig,
+      llm:     llmConfig,
       testMode:   useMock,
       persistentMemory: opts.persist ?? false,
       snapshotInterval: 100,

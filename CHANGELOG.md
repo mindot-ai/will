@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **First-run UX: a broken LLM now fails at boot, not into silence.** The hosts
+  ping the executive's provider before raising a mind: a bad key, an empty
+  balance, or an unknown model exits with the provider's own reason instead of
+  booting a Will that perceives and can never speak (config errors are fatal;
+  rate limits / 5xx only warn). Waking from an artifact now says so when
+  `WILL_IDENTITY` is set but ignored. The Discord bridge stopped subscribing to
+  discord.js' deprecated `ready` event (polls `isReady()` instead).
+
 - **`will discord` — a persistent mind in a Discord server** (the first channel
   bridge, `src/channels/`). One command (`npx -y @mindot/will discord`) puts a
   Will in a server: every author is a learned entity (`discord:<userId>`), every

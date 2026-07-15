@@ -43,6 +43,64 @@ function slug( s: string ): string {
   return s.toLowerCase().replace( /[^a-z0-9]+/g, '-' ).replace( /^-+|-+$/g, '' ) || 'will'
 }
 
+/**
+ * Ask the executive's provider one trivial question BEFORE raising the mind.
+ *
+ * A Will whose LLM fails cannot reason, and an unreasoning Will is *silent* —
+ * which is precisely what a Will that chose silence looks like. Mid-run that
+ * ambiguity is the paradigm working. At boot it is indistinguishable from
+ * broken, and costs an operator an afternoon of watching a mind that joined,
+ * perceived, and never spoke. So we fail loudly here instead.
+ *
+ * Config errors (bad key, empty balance, unknown model) are fatal — the Will
+ * would never speak. Transient ones (rate limit, provider 5xx) only warn: the
+ * mind is worth raising, and the executive retries on its own cadence.
+ *
+ * Skipped for the mock executive and the no-LLM `reflex` anatomy.
+ */
+async function preflightLLM( anatomy: string ): Promise<void> {
+  const mode = process.env.WILL_LLM ?? ( process.env.ANTHROPIC_API_KEY ? 'anthropic' : 'mock' )
+  if( mode === 'mock' || anatomy === 'reflex' ) return
+
+  const key = process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY
+  if( !key ){
+    console.error( '[will] WILL_LLM=anthropic but no ANTHROPIC_API_KEY / WILL_LLM_API_KEY is set.' )
+    console.error( '[will] The Will would boot, perceive, and never speak. Set a key, or run keyless with WILL_LLM=mock.' )
+    process.exit( 2 )
+  }
+
+  // The ping validates key + balance + reachability, which is the failure class
+  // that strands an operator. It uses the pinned model when there is one, so a
+  // bad model id is caught too; otherwise the cheapest model stands in.
+  const base  = process.env.WILL_LLM_BASE_URL ?? 'https://api.anthropic.com/v1'
+  const model = process.env.WILL_LLM_MODEL ?? 'claude-haiku-4-5-20251001'
+  try {
+    const res = await fetch( `${ base }/messages`, {
+      method:  'POST',
+      headers: { 'content-type': 'application/json', 'anthropic-version': '2023-06-01', 'x-api-key': key },
+      body:    JSON.stringify( { model, max_tokens: 1, messages: [ { role: 'user', content: 'ping' } ] } ),
+      signal:  AbortSignal.timeout( 20_000 ),
+    } )
+    if( res.ok ) return
+
+    const detail = ( await res.text().catch( () => '' ) ).slice( 0, 300 )
+    const fatal  = res.status === 400 || res.status === 401 || res.status === 403
+    if( !fatal ){
+      console.error( `[will] the executive's LLM answered ${ res.status } on a test call — raising the mind anyway (it retries): ${ detail }` )
+      return
+    }
+    console.error( `[will] the executive's LLM refused a test call (${ res.status }) — this Will would boot, perceive, and never speak:` )
+    console.error( `       ${ detail }` )
+    console.error( '[will] fix the key / credit / model above, or run keyless with WILL_LLM=mock.' )
+    process.exit( 1 )
+  }
+  catch( e ){
+    console.error( `[will] could not reach the executive's LLM: ${ ( e as Error ).message }` )
+    console.error( '[will] the Will would boot and stay silent. Check the network / WILL_LLM_BASE_URL, or run keyless with WILL_LLM=mock.' )
+    process.exit( 1 )
+  }
+}
+
 export interface BootedWill {
   will:       Will
   name:       string
@@ -62,6 +120,8 @@ export async function bootWillFromEnv(): Promise<BootedWill> {
   const tickMs     = parseInt( process.env.WILL_TICK_MS ?? '1000' )
   const anatomy = ( process.env.WILL_ANATOMY as CreateWillOptions['anatomy'] ) ?? 'mind'
 
+  await preflightLLM( anatomy )
+
   const opts: Omit<CreateWillOptions, 'identity'> = {
     name, anatomy, tickMs,
     ...( process.env.WILL_LLM_MODEL ? { model: process.env.WILL_LLM_MODEL } : {} ),
@@ -74,6 +134,11 @@ export async function bootWillFromEnv(): Promise<BootedWill> {
     const pma = JSON.parse( readFileSync( pmaPath, 'utf8' ) ) as PMASnapshot
     will = await Will.wake( pma, opts )
     console.error( `[will] ${ name } woke from ${ pmaPath }` )
+    // A woken Will carries its own identity — that is the point of an artifact.
+    // But an operator editing WILL_IDENTITY and seeing nothing change deserves
+    // to know why, rather than concluding the persona layer is broken.
+    if( process.env.WILL_IDENTITY )
+      console.error( `[will] note: WILL_IDENTITY is ignored — ${ name } woke as itself. Delete ${ pmaPath } to be born fresh from it.` )
   }
   else {
     will = await Will.create( {

@@ -19,7 +19,7 @@ Regulatory → Perceptual → Affective → Memory → Executive → Meta-cognit
 
 The mind is not re-derived from a prompt each run. It **accretes**: traits develop from experience, beliefs consolidate, skills proceduralise, and a coherent self carries across restarts as a portable, eval-verified artifact.
 
-Embed it four ways — [**SDK facade**](#the-will-sdk-facade--recommended) (Node/TS) · [**Claude Desktop via MCP**](#the-mcp-server--a-persistent-mind-in-claude-desktop--claude-code) · [**MCP tools as its abilities**](#employing-mcp-tools--the-mind-gets-abilities) · [**HTTP sidecar / Docker**](#the-http-sidecar--will-serve-any-language-or-docker) (any language). [Pick a surface →](#use-it-in-your-project)
+Embed it five ways — [**SDK facade**](#the-will-sdk-facade--recommended) (Node/TS) · [**Discord**](#a-will-in-your-discord-server--will-discord) (a mind in your server) · [**Claude Desktop via MCP**](#the-mcp-server--a-persistent-mind-in-claude-desktop--claude-code) · [**MCP tools as its abilities**](#employing-mcp-tools--the-mind-gets-abilities) · [**HTTP sidecar / Docker**](#the-http-sidecar--will-serve-any-language-or-docker) (any language). [Pick a surface →](#use-it-in-your-project)
 
 ---
 
@@ -84,11 +84,12 @@ ticks — or earlier when physiology demands it.
 
 ## Use it in your project
 
-Runs anywhere **Node 18+ or Bun** runs (the engine is Node-compatible; Bun is the primary target). **Four surfaces**, one paradigm — you *perceive* things to a mind and *observe what it projects*; it may act, speak, or stay silent, and it persists across restarts via its [PMA artifact](#pma--the-persistent-mind-artifact):
+Runs anywhere **Node 18+ or Bun** runs (the engine is Node-compatible; Bun is the primary target). **Five surfaces**, one paradigm — you *perceive* things to a mind and *observe what it projects*; it may act, speak, or stay silent, and it persists across restarts via its [PMA artifact](#pma--the-persistent-mind-artifact):
 
 | Surface | You are… | Start with |
 |---|---|---|
 | [**SDK facade**](#the-will-sdk-facade--recommended) | a Node/TypeScript app embedding a mind | `import { Will } from '@mindot/will'` |
+| [**Discord**](#a-will-in-your-discord-server--will-discord) | a server where a mind should *live* | `npx -y @mindot/will discord` |
 | [**MCP host**](#the-mcp-server--a-persistent-mind-in-claude-desktop--claude-code) | Claude Desktop / Claude Code / an IDE | `npx -y @mindot/will mcp` |
 | [**MCP tools as abilities**](#employing-mcp-tools--the-mind-gets-abilities) | giving the mind tools it *chooses* to use | `import { connectMcpEffectors } from '@mindot/will/mcp'` |
 | [**HTTP sidecar**](#the-http-sidecar--will-serve-any-language-or-docker) | Python, Go, a game server — any language, or Docker | `npx -y @mindot/will serve` |
@@ -124,6 +125,20 @@ const revived = await Will.wake(pma, { name: 'Aria' })
 ```
 
 `will.state()` returns a compact read of the mind (energy, mood, goals, beliefs, self-narrative). Drop to `will.stem` for the full `WillStem` contract at any time. Runnable: [`examples/effectors.ts`](examples/effectors.ts).
+
+### A Will in your Discord server — `will discord`
+
+Two minutes from a bot token to a persistent mind *living* in your server — not a command bot:
+
+```bash
+DISCORD_BOT_TOKEN=… WILL_NAME=Aria \
+WILL_IDENTITY="I am Aria — curious, dry-witted, fond of this server's people." \
+ANTHROPIC_API_KEY=sk-ant-… npx -y @mindot/will discord
+```
+
+No command prefix, no forced replies. It perceives the rooms it can see (salience-scored — perceiving costs no LLM call), **decides for itself when to speak** (silence is a valid outcome), learns people's names as *learned* knowledge (`discord:<userId>` is one entity across servers), keeps each channel as its own conversation thread, and **can message first** — proactive utterances route to the addressee's last shared channel, then their DM, then `WILL_DISCORD_HOME_CHANNEL`. On shutdown it hibernates to its PMA and returns as the same self, still knowing everyone.
+
+Scope it with `WILL_DISCORD_CHANNELS` (id allowlist) and `WILL_DISCORD_MENTION_ONLY` for busy servers. The bridge grants no tools — it is a mouth and ears, not hands; abilities stay explicit (effectors / MCP). Setup + SDK embedding (`import { connectDiscord } from '@mindot/will/discord'`): [docs/discord.md](docs/discord.md) · runnable: [`examples/discord.ts`](examples/discord.ts).
 
 ### The MCP server — a persistent mind in Claude Desktop / Claude Code
 
@@ -785,6 +800,10 @@ cd will && bun run build
 | `WILL_EMBEDDING_MODEL` | `text-embedding-3-small` *(when keyed)* | Embedding model for episodic recall; `none` disables |
 | `WILL_EMBEDDING_URL` | *(provider default)* | Base URL for an OpenAI-compatible embedding endpoint |
 | `WILL_TRANSPORT` | `off` | Delivery mode used by the host: `off` (outbox polling) · `stream` (in-process) · `socketio` (peer) |
+| `DISCORD_BOT_TOKEN` | — | Bot token for `will discord` (see [docs/discord.md](docs/discord.md)) |
+| `WILL_DISCORD_CHANNELS` | *(all visible)* | Comma-separated channel ids the Will inhabits |
+| `WILL_DISCORD_MENTION_ONLY` | `false` | Perceive guild messages only when @mentioned (DMs always perceived) |
+| `WILL_DISCORD_HOME_CHANNEL` | — | Fallback channel for utterances with no reachable addressee |
 | `OPENAI_BASE_URL` | — | Base URL override for local / OpenAI-compatible models |
 
 ---

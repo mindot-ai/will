@@ -3,8 +3,9 @@
 // src/cli.ts — the `will` command: host a persistent mind
 // ─────────────────────────────────────────────────────────────
 //
-//   will mcp     host over MCP stdio (Claude Desktop / Claude Code / IDEs)
-//   will serve   host over HTTP (any language; the sidecar) — WILL_PORT/WILL_HOST
+//   will mcp      host over MCP stdio (Claude Desktop / Claude Code / IDEs)
+//   will serve    host over HTTP (any language; the sidecar) — WILL_PORT/WILL_HOST
+//   will discord  a presence in a Discord server — DISCORD_BOT_TOKEN
 //
 // Both hosts raise the same mind the same way (see host/boot.ts): env-configured,
 // woken from its PMA artifact when one exists, hibernated back on the way out —
@@ -24,14 +25,17 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { routeLogsToStderr, bootWillFromEnv } from '#root/host/boot'
 import { buildWillMcpServer } from '#root/mcp/server'
 import { buildWillHttpServer } from '#root/serve/server'
+import { connectDiscord } from '#channels/discord'
 
 // stdout is the MCP protocol channel under `will mcp` — route logs FIRST.
 routeLogsToStderr()
 
-const USAGE = `usage: will <mcp | serve>
+const USAGE = `usage: will <mcp | serve | discord>
 
-  mcp     host a persistent mind over MCP stdio (Claude Desktop / Claude Code)
-  serve   host a persistent mind over HTTP (any language; WILL_PORT, default 7777)
+  mcp      host a persistent mind over MCP stdio (Claude Desktop / Claude Code)
+  serve    host a persistent mind over HTTP (any language; WILL_PORT, default 7777)
+  discord  put a persistent mind in a Discord server (DISCORD_BOT_TOKEN; optional
+           WILL_DISCORD_CHANNELS, WILL_DISCORD_MENTION_ONLY, WILL_DISCORD_HOME_CHANNEL)
 
 Shared env: WILL_NAME, WILL_IDENTITY, WILL_TIER, WILL_LLM, WILL_TICK_MS,
 WILL_SEED, WILL_PMA_PATH, WILL_MCP_SERVERS. The mind persists across runs via
@@ -40,9 +44,15 @@ its PMA artifact.`
 async function main(): Promise<void> {
   const sub = process.argv[2]
 
-  if( sub !== 'mcp' && sub !== 'serve' ){
+  if( sub !== 'mcp' && sub !== 'serve' && sub !== 'discord' ){
     console.error( sub ? `unknown subcommand: ${ sub }\n\n${ USAGE }` : USAGE )
     process.exit( sub ? 2 : 0 )
+  }
+
+  // Fail on missing platform credentials BEFORE raising a mind.
+  if( sub === 'discord' && !process.env.DISCORD_BOT_TOKEN ){
+    console.error( '[will] DISCORD_BOT_TOKEN is required for `will discord` — create a bot at https://discord.com/developers/applications (enable the Message Content intent) and set the token.' )
+    process.exit( 2 )
   }
 
   const { will, name, pmaPath, tickMs, anatomy, onCleanup, shutdown } = await bootWillFromEnv()
@@ -53,6 +63,21 @@ async function main(): Promise<void> {
     const server = buildWillMcpServer( will, { pmaPath } )
     await server.connect( new StdioServerTransport() )
     console.error( `[will] ${ name } is listening on MCP stdio (tick ${ tickMs }ms, anatomy ${ anatomy })` )
+    return
+  }
+
+  if( sub === 'discord' ){
+    const csv = ( v?: string ) => v?.split( ',' ).map( s => s.trim() ).filter( Boolean )
+    const bridge = await connectDiscord( will, {
+      token:         process.env.DISCORD_BOT_TOKEN!,
+      channels:      csv( process.env.WILL_DISCORD_CHANNELS ),
+      mentionOnly:   /^(1|true|yes)$/i.test( process.env.WILL_DISCORD_MENTION_ONLY ?? '' ),
+      homeChannelId: process.env.WILL_DISCORD_HOME_CHANNEL,
+      rosterPath:    pmaPath.replace( /(\.pma)?\.json$/, '' ) + '.discord.json',
+    } )
+    onCleanup( () => bridge.close() )
+    await bridge.start()
+    console.error( `[will] ${ name } is present on Discord (tick ${ tickMs }ms, anatomy ${ anatomy }) — it speaks when it decides to.` )
     return
   }
 

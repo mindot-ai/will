@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry:            [ 'src/index.ts', 'src/cli.ts', 'src/mcp/effectors.ts' ],
+  entry:            [ 'src/index.ts', 'src/cli.ts', 'src/mcp/effectors.ts', 'src/channels/discord.ts' ],
   outDir:           'dist',
   format:           [ 'esm' ],
   target:           'esnext',
@@ -10,6 +10,9 @@ export default defineConfig({
   clean:            true,            // wipe dist/ before each build
   splitting:        false,
   treeshake:        true,
+  // optionalDependencies are NOT auto-externalized (only dependencies are) —
+  // without this, discord.js and its WASM inline into dist/channels/discord.js.
+  external:         [ 'discord.js' ],
   // Resolve the will package's own #-aliases so dist has no bare-specifier imports
   // (mirrors the paths in tsconfig.json exactly)
   esbuildOptions( opts ){

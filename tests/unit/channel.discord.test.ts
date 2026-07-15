@@ -1,0 +1,200 @@
+// ─────────────────────────────────────────────────────────────
+// tests/unit/channel.discord.test.ts
+// ─────────────────────────────────────────────────────────────
+/**
+ * Discord bridge — both directions of the paradigm over a fake client:
+ * inbound messages become perceive() stimuli (entity id, learned speaker,
+ * per-channel thread), outbound utterances route via the roster, and the
+ * gates (bots, allowlist, mentionOnly) narrow perception without ever
+ * fabricating a reply.
+ */
+
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import type { Will, Stimulus, WillMessage } from '#sdk/will'
+import { connectDiscord, type DiscordLikeClient, type DiscordLikeMessage } from '#channels/discord'
+
+// ── fakes ────────────────────────────────────────────────────────────────────
+
+class FakeChannel {
+  sent: string[] = []
+  typed = 0
+  async send( content: string ){ this.sent.push( content ) }
+  async sendTyping(){ this.typed++ }
+}
+
+class FakeClient implements DiscordLikeClient {
+  user = { id: 'BOT' }
+  channelsById = new Map<string, FakeChannel>()
+  dmByUser = new Map<string, FakeChannel>()
+  destroyed = false
+  private handlers: Array<( m: DiscordLikeMessage ) => void> = []
+
+  on( _e: 'messageCreate', fn: ( m: DiscordLikeMessage ) => void ){ this.handlers.push( fn ) }
+  once( _e: string, _fn: () => void ){ /* pre-logged-in fake — never fires */ }
+  async login(){ return 'token' }
+  destroy(){ this.destroyed = true }
+
+  channels = { fetch: async ( id: string ) => {
+    const c = this.channelsById.get( id )
+    if( !c ) throw new Error( 'unknown channel' )
+    return c
+  } }
+  users = { fetch: async ( id: string ) => {
+    const dm = this.dmByUser.get( id )
+    if( !dm ) throw new Error( 'unknown user' )
+    return dm
+  } }
+
+  emit( m: Partial<DiscordLikeMessage> & { content: string; channelId: string } ): void {
+    const channel = this.channelsById.get( m.channelId ) ?? new FakeChannel()
+    this.channelsById.set( m.channelId, channel )
+    const full: DiscordLikeMessage = {
+      guildId: 'G', author: { id: 'U1', username: 'ada' },
+      mentions: { has: () => false }, channel,
+      ...m,
+    }
+    for( const fn of this.handlers ) fn( full )
+  }
+}
+
+/** The slice of the Will facade the bridge touches, recorded. */
+class FakeWill {
+  id = 'aria'
+  name = 'Aria'
+  perceived: Stimulus[] = []
+  private messageHandlers: Array<( m: WillMessage ) => void> = []
+  async perceive( s: Stimulus ){ this.perceived.push( s ) }
+  on( _e: 'message', fn: ( m: WillMessage ) => void ){ this.messageHandlers.push( fn ); return this }
+  utter( m: WillMessage ){ for( const fn of this.messageHandlers ) fn( m ) }
+}
+
+const flush = () => new Promise( r => setTimeout( r, 0 ) )
+
+let dir: string
+beforeEach( () => { dir = mkdtempSync( join( tmpdir(), 'will-discord-' ) ) } )
+afterEach( () => rmSync( dir, { recursive: true, force: true } ) )
+
+async function bridgeUp( opts: Partial<Parameters<typeof connectDiscord>[1]> = {} ){
+  const client = new FakeClient()
+  const will = new FakeWill()
+  const bridge = await connectDiscord( will as unknown as Will, {
+    client, rosterPath: join( dir, 'roster.json' ), log: () => {}, ...opts,
+  } )
+  await bridge.start()
+  return { client, will, bridge }
+}
+
+// ── inbound ──────────────────────────────────────────────────────────────────
+
+describe( 'discord bridge — inbound', () => {
+  it( 'maps a guild message onto perceive: stable entity id, learned speaker, per-channel thread', async () => {
+    const { client, will } = await bridgeUp()
+    client.emit( { content: 'hello there', channelId: 'c1', author: { id: 'U1', username: 'ada' }, member: { displayName: 'Ada L.' } } )
+    await flush()
+
+    expect( will.perceived ).toHaveLength( 1 )
+    expect( will.perceived[0] ).toMatchObject( {
+      text: 'hello there', from: 'discord:U1', speaker: 'Ada L.', thread: 'discord:c1',
+    } )
+  } )
+
+  it( 'never perceives bots or itself, and skips empty content', async () => {
+    const { client, will } = await bridgeUp()
+    client.emit( { content: 'beep', channelId: 'c1', author: { id: 'B2', bot: true } } )
+    client.emit( { content: 'echo', channelId: 'c1', author: { id: 'BOT' } } )
+    client.emit( { content: '   ',  channelId: 'c1', author: { id: 'U1' } } )
+    await flush()
+    expect( will.perceived ).toHaveLength( 0 )
+  } )
+
+  it( 'honours the channel allowlist', async () => {
+    const { client, will } = await bridgeUp( { channels: [ 'allowed' ] } )
+    client.emit( { content: 'in-room', channelId: 'allowed' } )
+    client.emit( { content: 'elsewhere', channelId: 'other' } )
+    await flush()
+    expect( will.perceived.map( s => s.text ) ).toEqual( [ 'in-room' ] )
+  } )
+
+  it( 'mentionOnly gates guild chatter but never DMs', async () => {
+    const { client, will } = await bridgeUp( { mentionOnly: true } )
+    client.emit( { content: 'ambient chatter', channelId: 'c1' } )
+    client.emit( { content: 'hey @Aria', channelId: 'c1', mentions: { has: id => id === 'BOT' } } )
+    client.emit( { content: 'psst', channelId: 'dm1', guildId: null } )
+    await flush()
+    expect( will.perceived.map( s => s.text ) ).toEqual( [ 'hey @Aria', 'psst' ] )
+  } )
+
+  it( 'sends a typing cue only when addressed — and typing is not a reply', async () => {
+    const { client, will } = await bridgeUp()
+    client.emit( { content: 'ambient', channelId: 'c1' } )
+    client.emit( { content: 'hey you', channelId: 'c1', mentions: { has: () => true } } )
+    await flush()
+
+    const channel = client.channelsById.get( 'c1' )!
+    expect( channel.typed ).toBe( 1 )
+    expect( channel.sent ).toHaveLength( 0 )      // perceiving ≠ answering
+    expect( will.perceived ).toHaveLength( 2 )    // ambient chatter is still perceived
+  } )
+} )
+
+// ── outbound ─────────────────────────────────────────────────────────────────
+
+describe( 'discord bridge — outbound', () => {
+  it( 'routes an utterance to the addressee via their last shared channel', async () => {
+    const { client, will } = await bridgeUp()
+    client.emit( { content: 'hi', channelId: 'c1', author: { id: 'U1', username: 'ada' } } )
+    await flush()
+
+    will.utter( { id: 'm1', content: 'hello Ada', to: 'discord:U1' } )
+    await flush()
+    expect( client.channelsById.get( 'c1' )!.sent ).toEqual( [ 'hello Ada' ] )
+  } )
+
+  it( 'falls back to the DM when no shared channel is known (proactive reach)', async () => {
+    const { client, will } = await bridgeUp()
+    client.emit( { content: 'psst', channelId: 'dm1', guildId: null, author: { id: 'U2', username: 'sam' } } )
+    await flush()
+
+    will.utter( { id: 'm2', content: 'thinking of you', to: 'discord:U2' } )
+    await flush()
+    expect( client.channelsById.get( 'dm1' )!.sent ).toEqual( [ 'thinking of you' ] )
+  } )
+
+  it( 'uses the home channel for unknown addressees, else drops silently', async () => {
+    const { client, will } = await bridgeUp( { homeChannelId: 'home' } )
+    const home = new FakeChannel()
+    client.channelsById.set( 'home', home )
+
+    will.utter( { id: 'm3', content: 'is anyone there?', to: 'discord:GHOST' } )
+    await flush()
+    expect( home.sent ).toEqual( [ 'is anyone there?' ] )
+  } )
+
+  it( 'chunks long utterances under the 2000-char platform limit', async () => {
+    const { client, will } = await bridgeUp()
+    client.emit( { content: 'hi', channelId: 'c1', author: { id: 'U1' } } )
+    await flush()
+
+    will.utter( { id: 'm4', content: 'para one\n\n' + 'x'.repeat( 2500 ), to: 'discord:U1' } )
+    await flush()
+    const sent = client.channelsById.get( 'c1' )!.sent
+    expect( sent.length ).toBeGreaterThan( 1 )
+    for( const chunk of sent ) expect( chunk.length ).toBeLessThanOrEqual( 2000 )
+  } )
+
+  it( 'close() stops delivery and disconnects the client', async () => {
+    const { client, will, bridge } = await bridgeUp()
+    client.emit( { content: 'hi', channelId: 'c1', author: { id: 'U1' } } )
+    await flush()
+
+    await bridge.close()
+    await bridge.close()                          // idempotent
+    will.utter( { id: 'm5', content: 'too late', to: 'discord:U1' } )
+    await flush()
+    expect( client.channelsById.get( 'c1' )!.sent ).toHaveLength( 0 )
+    expect( client.destroyed ).toBe( true )
+  } )
+} )

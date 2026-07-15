@@ -142,8 +142,16 @@ async function connectDiscord(will, opts) {
     async start() {
       if (!client.user) {
         const ready = new Promise((resolve) => {
-          client.once("clientReady", resolve);
-          client.once("ready", resolve);
+          let poll = null;
+          const done = () => {
+            if (poll) clearInterval(poll);
+            resolve();
+          };
+          client.once("clientReady", done);
+          poll = setInterval(() => {
+            if (client.isReady?.()) done();
+          }, 100);
+          poll.unref?.();
         });
         await client.login(opts.token ?? "");
         await ready;

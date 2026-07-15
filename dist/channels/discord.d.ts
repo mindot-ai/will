@@ -38,6 +38,8 @@ interface DiscordLikeClient {
         id: string;
         setPresence?(p: unknown): void;
     } | null;
+    /** discord.js ≥14.22; polled so we needn't subscribe to the deprecated `ready`. */
+    isReady?(): boolean;
     on(event: 'messageCreate', fn: (m: DiscordLikeMessage) => void): unknown;
     once(event: string, fn: () => void): unknown;
     login(token: string): Promise<unknown>;

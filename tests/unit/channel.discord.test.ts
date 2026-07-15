@@ -185,6 +185,29 @@ describe( 'discord bridge — outbound', () => {
     for( const chunk of sent ) expect( chunk.length ).toBeLessThanOrEqual( 2000 )
   } )
 
+  it( 'waits for readiness without subscribing to the deprecated `ready` event', async () => {
+    // A client that is not yet logged in: `user` is null until login resolves.
+    const events: string[] = []
+    let ready = false
+    const client = {
+      user: null as { id: string } | null,
+      isReady: () => ready,
+      on(){},
+      once( e: string ){ events.push( e ) },
+      async login(){ setTimeout( () => { ready = true; client.user = { id: 'BOT' } }, 10 ); return 'ok' },
+      destroy(){},
+      channels: { fetch: async () => { throw new Error( 'none' ) } },
+      users:    { fetch: async () => { throw new Error( 'none' ) } },
+    }
+    const bridge = await connectDiscord( new FakeWill() as unknown as Will, {
+      client: client as unknown as DiscordLikeClient, rosterPath: join( dir, 'r.json' ), log: () => {},
+    } )
+    await bridge.start()                          // resolves via the isReady poll
+
+    expect( events ).not.toContain( 'ready' )     // the deprecated name is never subscribed
+    expect( events ).toContain( 'clientReady' )
+  } )
+
   it( 'close() stops delivery and disconnects the client', async () => {
     const { client, will, bridge } = await bridgeUp()
     client.emit( { content: 'hi', channelId: 'c1', author: { id: 'U1' } } )

@@ -25955,11 +25955,47 @@ function routeLogsToStderr() {
 function slug2(s) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "will";
 }
+async function preflightLLM(anatomy) {
+  const mode = process.env.WILL_LLM ?? (process.env.ANTHROPIC_API_KEY ? "anthropic" : "mock");
+  if (mode === "mock" || anatomy === "reflex") return;
+  const key = process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY;
+  if (!key) {
+    console.error("[will] WILL_LLM=anthropic but no ANTHROPIC_API_KEY / WILL_LLM_API_KEY is set.");
+    console.error("[will] The Will would boot, perceive, and never speak. Set a key, or run keyless with WILL_LLM=mock.");
+    process.exit(2);
+  }
+  const base = process.env.WILL_LLM_BASE_URL ?? "https://api.anthropic.com/v1";
+  const model = process.env.WILL_LLM_MODEL ?? "claude-haiku-4-5-20251001";
+  try {
+    const res = await fetch(`${base}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": key },
+      body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: "user", content: "ping" }] }),
+      signal: AbortSignal.timeout(2e4)
+    });
+    if (res.ok) return;
+    const detail = (await res.text().catch(() => "")).slice(0, 300);
+    const fatal = res.status === 400 || res.status === 401 || res.status === 403;
+    if (!fatal) {
+      console.error(`[will] the executive's LLM answered ${res.status} on a test call \u2014 raising the mind anyway (it retries): ${detail}`);
+      return;
+    }
+    console.error(`[will] the executive's LLM refused a test call (${res.status}) \u2014 this Will would boot, perceive, and never speak:`);
+    console.error(`       ${detail}`);
+    console.error("[will] fix the key / credit / model above, or run keyless with WILL_LLM=mock.");
+    process.exit(1);
+  } catch (e) {
+    console.error(`[will] could not reach the executive's LLM: ${e.message}`);
+    console.error("[will] the Will would boot and stay silent. Check the network / WILL_LLM_BASE_URL, or run keyless with WILL_LLM=mock.");
+    process.exit(1);
+  }
+}
 async function bootWillFromEnv() {
   const name = process.env.WILL_NAME ?? "Will";
   const pmaPath = resolve(process.env.WILL_PMA_PATH ?? `.will/${slug2(name)}.pma.json`);
   const tickMs = parseInt(process.env.WILL_TICK_MS ?? "1000");
   const anatomy = process.env.WILL_ANATOMY ?? "mind";
+  await preflightLLM(anatomy);
   const opts = {
     name,
     anatomy,
@@ -25973,6 +26009,8 @@ async function bootWillFromEnv() {
     const pma = JSON.parse(readFileSync(pmaPath, "utf8"));
     will = await Will.wake(pma, opts);
     console.error(`[will] ${name} woke from ${pmaPath}`);
+    if (process.env.WILL_IDENTITY)
+      console.error(`[will] note: WILL_IDENTITY is ignored \u2014 ${name} woke as itself. Delete ${pmaPath} to be born fresh from it.`);
   } else {
     will = await Will.create({
       ...opts,
@@ -26390,8 +26428,16 @@ async function connectDiscord(will, opts) {
     async start() {
       if (!client.user) {
         const ready = new Promise((resolve2) => {
-          client.once("clientReady", resolve2);
-          client.once("ready", resolve2);
+          let poll = null;
+          const done = () => {
+            if (poll) clearInterval(poll);
+            resolve2();
+          };
+          client.once("clientReady", done);
+          poll = setInterval(() => {
+            if (client.isReady?.()) done();
+          }, 100);
+          poll.unref?.();
         });
         await client.login(opts.token ?? "");
         await ready;

@@ -48,6 +48,8 @@ export interface DiscordLikeMessage {
 
 export interface DiscordLikeClient {
   user: { id: string; setPresence?( p: unknown ): void } | null
+  /** discord.js ≥14.22; polled so we needn't subscribe to the deprecated `ready`. */
+  isReady?(): boolean
   on( event: 'messageCreate', fn: ( m: DiscordLikeMessage ) => void ): unknown
   once( event: string, fn: () => void ): unknown
   login( token: string ): Promise<unknown>
@@ -167,9 +169,15 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
     kind: 'discord',
     async start(): Promise<void> {
       if( !client.user ){
+        // discord.js ≥14.22 renamed `ready` → `clientReady`. Subscribing to the
+        // old name is what triggers its DeprecationWarning, so we take the new
+        // name and poll `isReady()` for older builds rather than listening.
         const ready = new Promise<void>( resolve => {
-          client.once( 'clientReady', resolve )
-          client.once( 'ready', resolve )
+          let poll: ReturnType<typeof setInterval> | null = null
+          const done = (): void => { if( poll ) clearInterval( poll ); resolve() }
+          client.once( 'clientReady', done )
+          poll = setInterval( () => { if( client.isReady?.() ) done() }, 100 )
+          poll.unref?.()
         } )
         await client.login( opts.token ?? '' )
         await ready

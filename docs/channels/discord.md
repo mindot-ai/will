@@ -73,6 +73,20 @@ await bridge.start()
 Runnable: [`examples/discord.ts`](../../examples/discord.ts). `discord.js` ships as
 an `optionalDependency`; if your install omitted optionals, `bun add discord.js`.
 
+## It joined but says nothing
+
+Silence is a valid outcome, so a *broken* Will looks exactly like a thoughtful
+one. Work down this list:
+
+| Symptom | Cause |
+|---|---|
+| Boot exits with `the executive's LLM refused a test call` | The mind can't reason — bad key, empty balance, unknown model. Fix it, or `WILL_LLM=mock` to test the wiring keyless. The Will is preflighted at boot precisely so this never becomes silent |
+| Bot missing from the member list | It logged in but was never added to a guild — the invite needs the **`bot`** scope, not just an app installation |
+| It never reacts to anything | The **Message Content intent** is off in the portal (the bot is deaf), or the channel isn't visible to its role, or `WILL_DISCORD_CHANNELS` excludes it |
+| Nothing at `.will/<name>.discord.json` | No message has ever been perceived — the roster only writes once it has met someone. A good confirmation your inbound path is dead |
+| Personality edits do nothing | It woke from its artifact and carries its own identity: `WILL_IDENTITY` is ignored (the boot log says so). Delete the PMA to be born fresh |
+| It's addressed and still quiet | This one may be real. Check `state()` / the debug prompts under `data/wills/<id>/debug/` before assuming a bug |
+
 ## Operator notes
 
 - **Perception scope = attack surface.** The bridge grants no tools and runs no

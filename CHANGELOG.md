@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.4.0 — 2026-07-15 · a mind in your Discord server
+
+The first **channel bridge**: `npx -y @mindot/will discord` puts a persistent
+mind in a server where people already are — it perceives the room, decides for
+itself when to speak, learns everyone, and comes back as the same self.
+
 - **First-run UX: a broken LLM now fails at boot, not into silence.** The hosts
   ping the executive's provider before raising a mind: a bad key, an empty
   balance, or an unknown model exits with the provider's own reason instead of

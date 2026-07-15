@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **`will whatsapp` — a persistent mind on WhatsApp** (second channel bridge).
+  QR-pairs as a linked device (Baileys); credentials persist next to the PMA so
+  later runs reconnect silently. Every author is a learned entity
+  (`whatsapp:<number>`), each chat its own thread, proactive utterances route
+  last-shared-group → DM — and a DM jid is *derivable from the number*, so an
+  unmet addressee is still reachable. New `@mindot/will/whatsapp` subpath
+  (`connectWhatsApp`); `baileys` + `qrcode-terminal` as optionalDependencies,
+  lazily imported, tsup-external. **Unofficial protocol — ban risk; the guide
+  (docs/channels/whatsapp.md) says use a spare number.** The `WaLikeSocket`
+  seam is where a ToS-clean Cloud API transport would slot in later.
+- docs: the Discord guide now names `ZAI_API_KEY`/GLM as the other way to give
+  the mind a real executive.
+
 - **GLM (Z.ai) is a supported provider — `WILL_LLM_PROVIDER=glm`.** Z.ai ships a
   real Anthropic-compatible endpoint, so GLM rides will's Anthropic wire rather
   than the non-streaming OpenAI scaffold: it gets token streaming, the TTFT

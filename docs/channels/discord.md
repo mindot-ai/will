@@ -53,8 +53,11 @@ All the [shared host env](../../README.md#configuration-reference) applies
 | `WILL_DISCORD_MENTION_ONLY` | `false` | Perceive guild messages only when @mentioned (DMs always perceived). For busy servers |
 | `WILL_DISCORD_HOME_CHANNEL` | — | Fallback channel id for utterances with no reachable addressee |
 
-No API key? Omit `ANTHROPIC_API_KEY` and the Will runs on the deterministic
-mock executive — fine for wiring things up, but the room will find it terse.
+The executive runs on either supported provider: `ANTHROPIC_API_KEY` for Claude,
+or `ZAI_API_KEY` for GLM-5.2 (≈ $1.40/$4.40 per Mtok — half Sonnet's rate, which
+matters for an always-on mind). Whichever key is present selects the provider.
+No key at all? The Will runs on the deterministic mock executive — fine for
+wiring things up, but the room will find it terse.
 
 ## From the SDK instead
 

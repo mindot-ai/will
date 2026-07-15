@@ -60,7 +60,7 @@ import {
   type GatingState
 } from '#faculties/executive.engine/gating'
 import { LLMDirector } from '#llm/index'
-import type { LLMProvider } from '#llm/index'
+import { defaultModelFor, type LLMProvider } from '#llm/index'
 import { buildFallbackOutput, parseResponse } from '#faculties/executive.engine/parser'
 import { selectProcess, ideationTemperature, DELIBERATE_THRESHOLD } from '#faculties/executive.engine/effort.gate'
 import { proposeCandidates } from '#faculties/executive.engine/deliberate.reasoning'
@@ -436,7 +436,8 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // Initialize LLM directors if not yet done (requires willId). One director
     // per distinct role model; roles that share a model share the instance.
     if( !this._llmDirector && this._willId ){
-      const execModel = this._models.executive ?? process.env.WILL_LLM_MODEL ?? 'claude-sonnet-4-5-20250929'
+      const execModel = this._models.executive ?? process.env.WILL_LLM_MODEL
+        ?? defaultModelFor( ( this._llm?.provider ?? process.env.WILL_LLM_PROVIDER ?? 'anthropic' ) as LLMProvider )
       this._llmDirector = this._directorFor( execModel )
       // The summarizer runs its role's model (falls back to executive) with the
       // same provider, session logging and token tracking.

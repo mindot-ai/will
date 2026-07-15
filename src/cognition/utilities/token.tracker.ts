@@ -53,6 +53,12 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'anthropic/claude-haiku-4':    { input: 1.00,  output: 5.00  },
   'anthropic/claude-opus-4':     { input: 5.00,  output: 25.00 },
   
+  // Z.ai (GLM-5 family). `glm-5.2[1m]` is the same model asking for its 1M
+  // context window — same rate, so it gets its own row rather than relying on
+  // the normalizer (a future long-context tier would price differently).
+  'glm/glm-5.2':                { input: 1.40,  output: 4.40  },
+  'glm/glm-5.2[1m]':            { input: 1.40,  output: 4.40  },
+
   // Google
   'google/gemini-2.0-flash':    { input: 0.10,  output: 0.40  },
   'google/gemini-2.0-pro':      { input: 1.25,  output: 5.00  },

@@ -3862,6 +3862,11 @@ var MODEL_PRICING = {
   // Legacy aliases kept for backward compat
   "anthropic/claude-haiku-4": { input: 1, output: 5 },
   "anthropic/claude-opus-4": { input: 5, output: 25 },
+  // Z.ai (GLM-5 family). `glm-5.2[1m]` is the same model asking for its 1M
+  // context window — same rate, so it gets its own row rather than relying on
+  // the normalizer (a future long-context tier would price differently).
+  "glm/glm-5.2": { input: 1.4, output: 4.4 },
+  "glm/glm-5.2[1m]": { input: 1.4, output: 4.4 },
   // Google
   "google/gemini-2.0-flash": { input: 0.1, output: 0.4 },
   "google/gemini-2.0-pro": { input: 1.25, output: 5 },
@@ -13153,6 +13158,38 @@ async function withGate(fn, label, gate = llmGate) {
 }
 
 // src/llm/index.ts
+var ANTHROPIC_WIRE = /* @__PURE__ */ new Set(["anthropic", "glm"]);
+function speaksAnthropicWire(provider) {
+  return ANTHROPIC_WIRE.has(provider);
+}
+function defaultBaseFor(provider) {
+  switch (provider) {
+    case "anthropic":
+      return "https://api.anthropic.com/v1";
+    // Z.ai documents the base as `…/api/anthropic` because the Anthropic SDK
+    // appends `/v1/messages`; this client appends `/messages`, so the version
+    // segment belongs here — verified against the live endpoint.
+    case "glm":
+      return "https://api.z.ai/api/anthropic/v1";
+    case "openai":
+      return "https://api.openai.com/v1";
+    case "deepseek":
+      return "https://api.deepseek.com/v1";
+    case "google":
+      return "https://generativelanguage.googleapis.com/v1beta";
+  }
+}
+function defaultModelFor(provider) {
+  return provider === "glm" ? "glm-5.2" : "claude-sonnet-4-5-20250929";
+}
+function anthropicWireHeaders(provider, apiKey) {
+  return {
+    "Content-Type": "application/json",
+    "anthropic-version": "2023-06-01",
+    "x-api-key": apiKey,
+    ...provider === "glm" ? { Authorization: `Bearer ${apiKey}` } : {}
+  };
+}
 var DEFAULT_CALL_META = { category: "executive", attribute: "master", function: "decision" };
 var LLMDirector = class {
   _willId;
@@ -13255,7 +13292,7 @@ var LLMDirector = class {
       this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - start, true);
       return result2;
     }
-    const result = this._provider === "anthropic" ? await this._callAnthropicStream(systemPrompt, userMessage, onChunk, temperature) : await (async () => {
+    const result = speaksAnthropicWire(this._provider) ? await this._callAnthropicStream(systemPrompt, userMessage, onChunk, temperature) : await (async () => {
       const r = await this._callProvider(systemPrompt, userMessage, temperature);
       onChunk(r.text);
       return r;
@@ -13335,11 +13372,7 @@ var LLMDirector = class {
     try {
       res = await fetch(`${this._resolvedBase()}/messages`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "anthropic-version": "2023-06-01",
-          "x-api-key": this._apiKey
-        },
+        headers: anthropicWireHeaders(this._provider, this._apiKey),
         body: JSON.stringify({
           model: this._model,
           max_tokens: this._maxOutputTokens,
@@ -13414,7 +13447,7 @@ var LLMDirector = class {
       return result2;
     }
     const result = await withGate(
-      () => this._provider === "anthropic" ? this._callAnthropicStream(systemPrompt, userMessage, () => {
+      () => speaksAnthropicWire(this._provider) ? this._callAnthropicStream(systemPrompt, userMessage, () => {
       }, temperature) : this._callProvider(systemPrompt, userMessage, temperature),
       "executive/direct"
     );
@@ -13425,6 +13458,8 @@ var LLMDirector = class {
   _callProvider(systemPrompt, userMessage, temperature) {
     switch (this._provider) {
       case "anthropic":
+        return this._callAnthropic(systemPrompt, userMessage, temperature);
+      case "glm":
         return this._callAnthropic(systemPrompt, userMessage, temperature);
       case "deepseek":
         return this._callOpenAI(systemPrompt, userMessage, temperature);
@@ -13438,16 +13473,7 @@ var LLMDirector = class {
   }
   /** Default API base URL (including version segment) for a provider. */
   _baseFor(provider) {
-    switch (provider) {
-      case "anthropic":
-        return "https://api.anthropic.com/v1";
-      case "openai":
-        return "https://api.openai.com/v1";
-      case "deepseek":
-        return "https://api.deepseek.com/v1";
-      case "google":
-        return "https://generativelanguage.googleapis.com/v1beta";
-    }
+    return defaultBaseFor(provider);
   }
   /** Resolved API base: explicit override wins, else the provider default. */
   _resolvedBase() {
@@ -13487,15 +13513,11 @@ var LLMDirector = class {
     };
     const res = await this._fetchWithTimeout(`${this._resolvedBase()}/messages`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-        "x-api-key": this._apiKey
-      },
+      headers: anthropicWireHeaders(this._provider, this._apiKey),
       body: JSON.stringify(body)
     });
     if (!res.ok)
-      throw new Error(`Anthropic API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      throw new Error(`${this._provider} API ${res.status}: ${(await res.text()).slice(0, 300)}`);
     const data = await res.json(), text = data.content.find((b) => b.type === "text")?.text ?? "";
     return {
       text,
@@ -14275,7 +14297,7 @@ var ExecutiveEngine = class extends AsyncEngine {
     this._gatingState.executiveInterval = rtConfig.executiveInterval;
     this._gatingState.cooldownTicks = rtConfig.cooldownTicks;
     if (!this._llmDirector && this._willId) {
-      const execModel = this._models.executive ?? process.env.WILL_LLM_MODEL ?? "claude-sonnet-4-5-20250929";
+      const execModel = this._models.executive ?? process.env.WILL_LLM_MODEL ?? defaultModelFor(this._llm?.provider ?? process.env.WILL_LLM_PROVIDER ?? "anthropic");
       this._llmDirector = this._directorFor(execModel);
       this._summarizer?.attachLLMDirector(this._directorFor(this._models.summarizer ?? execModel));
     }
@@ -22198,12 +22220,13 @@ async function checkIdentityCoherence(input, reviewer) {
   return { ok: !issues.some((i) => i.severity === "error"), ran: true, issues, raw: text };
 }
 async function reviewIdentityCoherence(input, opts = {}) {
+  const provider = process.env.WILL_LLM_PROVIDER ?? "anthropic";
   const director = new LLMDirector({
     willId: opts.willId ?? "identity-coherence",
-    model: process.env.WILL_LLM_MODEL ?? "claude-sonnet-4-5-20250929",
+    model: process.env.WILL_LLM_MODEL ?? defaultModelFor(provider),
     maxOutputTokens: 512,
     apiKey: process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? "",
-    provider: process.env.WILL_LLM_PROVIDER ?? "anthropic",
+    provider,
     sessionLogger: null,
     baseUrl: process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
     // When a per-Will tracker is supplied, the creation-time review records under
@@ -25760,7 +25783,9 @@ var Will = class _Will {
   }
   // ── Internals ──────────────────────────────────────────────
   _buildConfig(id, opts) {
-    const useMock = (opts.llm ?? (process.env.ANTHROPIC_API_KEY ? "anthropic" : "mock")) === "mock";
+    const mode = opts.llm ?? (process.env.ANTHROPIC_API_KEY ? "anthropic" : process.env.ZAI_API_KEY ? "glm" : "mock");
+    const useMock = mode === "mock";
+    const llmConfig = mode === "glm" ? { provider: "glm", ...opts.llmConfig } : opts.llmConfig;
     return {
       id,
       name: opts.name,
@@ -25772,7 +25797,7 @@ var Will = class _Will {
       },
       anatomy: opts.anatomy ?? "mind",
       model: opts.model,
-      llm: opts.llmConfig,
+      llm: llmConfig,
       testMode: useMock,
       persistentMemory: opts.persist ?? false,
       snapshotInterval: 100,
@@ -25955,21 +25980,32 @@ function routeLogsToStderr() {
 function slug2(s) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "will";
 }
+function resolveLlmMode() {
+  const explicit = process.env.WILL_LLM;
+  if (explicit) return explicit;
+  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  if (process.env.ZAI_API_KEY) return "glm";
+  return "mock";
+}
+function resolveLlmKey(mode) {
+  return process.env.WILL_LLM_API_KEY ?? (mode === "glm" ? process.env.ZAI_API_KEY : process.env.ANTHROPIC_API_KEY);
+}
 async function preflightLLM(anatomy) {
-  const mode = process.env.WILL_LLM ?? (process.env.ANTHROPIC_API_KEY ? "anthropic" : "mock");
+  const mode = resolveLlmMode();
   if (mode === "mock" || anatomy === "reflex") return;
-  const key = process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY;
+  const key = resolveLlmKey(mode);
   if (!key) {
-    console.error("[will] WILL_LLM=anthropic but no ANTHROPIC_API_KEY / WILL_LLM_API_KEY is set.");
+    const expected = mode === "glm" ? "ZAI_API_KEY" : "ANTHROPIC_API_KEY";
+    console.error(`[will] WILL_LLM=${mode} but no ${expected} / WILL_LLM_API_KEY is set.`);
     console.error("[will] The Will would boot, perceive, and never speak. Set a key, or run keyless with WILL_LLM=mock.");
     process.exit(2);
   }
-  const base = process.env.WILL_LLM_BASE_URL ?? "https://api.anthropic.com/v1";
-  const model = process.env.WILL_LLM_MODEL ?? "claude-haiku-4-5-20251001";
+  const base = process.env.WILL_LLM_BASE_URL ?? defaultBaseFor(mode);
+  const model = process.env.WILL_LLM_MODEL ?? (mode === "glm" ? defaultModelFor("glm") : "claude-haiku-4-5-20251001");
   try {
     const res = await fetch(`${base}/messages`, {
       method: "POST",
-      headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": key },
+      headers: anthropicWireHeaders(mode, key),
       body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: "user", content: "ping" }] }),
       signal: AbortSignal.timeout(2e4)
     });

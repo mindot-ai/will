@@ -778,11 +778,12 @@ cd will && bun run build
 
 | Variable | Default | Description |
 |---|---|---|
-| `WILL_LLM_PROVIDER` | `anthropic` | `anthropic` supported today; `openai` · `deepseek` · `google` scaffolded |
-| `WILL_LLM_MODEL` | *(model default)* | Model name for the chosen provider |
-| `WILL_LLM_API_KEY` | — | API key for the chosen provider. Falls back to `ANTHROPIC_API_KEY` |
-| `WILL_LLM_BASE_URL` | *(provider default)* | Override the provider API base URL (e.g. `http://localhost:11434/v1`). Falls back to `OPENAI_BASE_URL` |
-| `WILL_LLM_TIMEOUT_MS` | `90000` | LLM timeout. On Anthropic (streaming) this is a *first-byte*/TTFT deadline — long completions aren't aborted mid-generation |
+| `WILL_LLM_PROVIDER` | `anthropic` | `anthropic` · `glm` supported today; `openai` · `deepseek` · `google` scaffolded |
+| `WILL_LLM_MODEL` | *(provider default)* | Model id for the chosen provider (`claude-sonnet-4-5-20250929` / `glm-5.2`) |
+| `WILL_LLM_API_KEY` | — | API key for the chosen provider. Falls back to `ANTHROPIC_API_KEY` (or `ZAI_API_KEY` on `glm`) |
+| `ZAI_API_KEY` | — | Z.ai key. Its presence alone selects the `glm` provider when `WILL_LLM` is unset |
+| `WILL_LLM_BASE_URL` | *(provider default)* | Override the provider API base URL (e.g. a self-hosted GLM at `http://localhost:8000/anthropic`). Falls back to `OPENAI_BASE_URL` |
+| `WILL_LLM_TIMEOUT_MS` | `90000` | LLM timeout. On the Anthropic-wire providers (`anthropic`, `glm` — both streaming) this is a *first-byte*/TTFT deadline — long completions aren't aborted mid-generation |
 | `WILL_LLM_CONCURRENCY` | `3` | Max concurrent LLM calls (min 3: executive + conversation + summary) |
 | `WILL_TICK_MS` | `1000` | Milliseconds between ticks |
 | `WILL_MAX_TICKS` | `0` | Stop after N ticks. `0` = run forever |
@@ -810,12 +811,27 @@ cd will && bun run build
 
 ## LLM provider
 
-**Anthropic is the supported provider today** — the only one with full streaming + structured-output support and the only one currently exercised in production.
+**Two providers are supported today** — Anthropic and Z.ai's GLM. Both speak the Anthropic Messages wire, so both get the full path: token streaming, the first-byte (TTFT) deadline, prompt-cache breakpoints, and the structured-output contract.
 
-| Provider | `WILL_LLM_PROVIDER` | Status |
-|---|---|---|
-| Anthropic | `anthropic` | ✅ Supported — streaming, structured output |
-| OpenAI · DeepSeek · Google | `openai` · `deepseek` · `google` | ⚠️ Scaffolded — code paths exist (non-streaming), not yet production-ready |
+| Provider | `WILL_LLM_PROVIDER` | Key | Status |
+|---|---|---|---|
+| Anthropic | `anthropic` | `ANTHROPIC_API_KEY` | ✅ Supported — streaming, structured output |
+| **Z.ai — GLM** | `glm` | `ZAI_API_KEY` | ✅ Supported — streaming, structured output (via Z.ai's Anthropic-compatible endpoint) |
+| OpenAI · DeepSeek · Google | `openai` · `deepseek` · `google` | `WILL_LLM_API_KEY` | ⚠️ Scaffolded — code paths exist (non-streaming), not yet production-ready |
+
+### Running a mind on GLM
+
+```bash
+ZAI_API_KEY=… WILL_NAME=Aria npx -y @mindot/will discord
+```
+
+That's all — the mode auto-detects from the key present, `WILL_LLM_PROVIDER=glm` defaults to `https://api.z.ai/api/anthropic`, and the model defaults to `glm-5.2`. Pin the 1M-context variant with `WILL_LLM_MODEL=glm-5.2[1m]`.
+
+Why it matters for a Will specifically: a mind is **always on**. It reasons every N ticks whether or not anyone spoke, so the executive is a standing cost, not a per-request one — the arithmetic that makes a cheaper capable model matter more here than in a request/response agent. GLM-5.2 runs about **$1.40 / $4.40** per Mtok against Claude Sonnet's $3 / $15, with a 1M context.
+
+`WILL_LLM_BASE_URL` points `glm` at any **Anthropic-compatible** endpoint — a gateway (LiteLLM, claude-code-router), or one fronting the open weights (GLM-5.2 is MIT-licensed). Note the wire, not just the model: vLLM/SGLang serve an *OpenAI*-shaped API, so a bare self-host belongs on `WILL_LLM_PROVIDER=openai` — today's scaffold, no streaming — until an Anthropic-compatible shim sits in front.
+
+A Will's identity survives the swap either way: the [PMA](#pma--the-persistent-mind-artifact) carries the self across a model change, and `runPMAEval` scores how faithfully — continuity across providers is measurable, not asserted.
 
 The provider layer is an in-house `fetch` client (`src/llm/index.ts`) with a global concurrency gate (`src/llm/gate.ts`) — no Mastra / ai-sdk runtime dependency.
 

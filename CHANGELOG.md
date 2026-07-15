@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **GLM (Z.ai) is a supported provider — `WILL_LLM_PROVIDER=glm`.** Z.ai ships a
+  real Anthropic-compatible endpoint, so GLM rides will's Anthropic wire rather
+  than the non-streaming OpenAI scaffold: it gets token streaming, the TTFT
+  deadline, prompt-cache breakpoints and structured output — full parity, the
+  second production provider. Defaults to `https://api.z.ai/api/anthropic` and
+  model `glm-5.2` (pin `glm-5.2[1m]` for the 1M context); `ZAI_API_KEY` alone
+  selects it; `WILL_LLM_BASE_URL` points the same provider at any other
+  Anthropic-compatible gateway. Priced in the token tracker at $1.40/$4.40 per
+  Mtok.
+  Fixes along the way: the executive's default model was **hardcoded to a Claude
+  id**, so any non-Anthropic provider without an explicit `WILL_LLM_MODEL` sent
+  `claude-sonnet-4-5-*` to the wrong host — it is now provider-derived. Errors
+  from the Anthropic wire name the actual provider instead of always saying
+  "Anthropic API 401".
+
 ## 0.4.0 — 2026-07-15 · a mind in your Discord server
 
 The first **channel bridge**: `npx -y @mindot/will discord` puts a persistent

@@ -12,7 +12,68 @@ import type { LLMCompletionRecord } from '#core/completion.recorder'
 import { withGate } from '#llm/gate'
 import { matchConversationFocus, wrapReplyText } from '#llm/wire.contracts'
 
-export type LLMProvider = 'anthropic' | 'deepseek' | 'openai' | 'google'
+export type LLMProvider = 'anthropic' | 'glm' | 'deepseek' | 'openai' | 'google'
+
+/**
+ * Providers that speak the Anthropic Messages wire.
+ *
+ * Z.ai ships a real Anthropic-compatible endpoint for GLM — it is what Claude
+ * Code itself targets — so GLM rides this path rather than the OpenAI scaffold.
+ * That buys it everything the path already has: token streaming, the first-byte
+ * deadline, prompt-cache breakpoints, and the structured-output contract. GLM is
+ * therefore a second *production* provider, not a fifth scaffold.
+ */
+const ANTHROPIC_WIRE = new Set<LLMProvider>( [ 'anthropic', 'glm' ] )
+
+/** Does this provider accept Anthropic-shaped requests? */
+export function speaksAnthropicWire( provider: LLMProvider ): boolean {
+  return ANTHROPIC_WIRE.has( provider )
+}
+
+/** Official API base URL (including version segment) for a provider. */
+export function defaultBaseFor( provider: LLMProvider ): string {
+  switch( provider ){
+    case 'anthropic': return 'https://api.anthropic.com/v1'
+    // Z.ai documents the base as `…/api/anthropic` because the Anthropic SDK
+    // appends `/v1/messages`; this client appends `/messages`, so the version
+    // segment belongs here — verified against the live endpoint.
+    case 'glm':       return 'https://api.z.ai/api/anthropic/v1'
+    case 'openai':    return 'https://api.openai.com/v1'
+    case 'deepseek':  return 'https://api.deepseek.com/v1'
+    case 'google':    return 'https://generativelanguage.googleapis.com/v1beta'
+  }
+}
+
+/**
+ * The model the executive recruits when none is pinned.
+ *
+ * Provider-specific because the default is *sent* — a GLM Will with no
+ * `WILL_LLM_MODEL` would otherwise ask Z.ai for a Claude id and get a 404 it
+ * could do nothing with. The scaffolded providers (openai/deepseek/google) keep
+ * today's value: they need an explicit `WILL_LLM_MODEL` to work at all, and
+ * inventing ids for them here would look like support that does not exist.
+ */
+export function defaultModelFor( provider: LLMProvider ): string {
+  return provider === 'glm' ? 'glm-5.2' : 'claude-sonnet-4-5-20250929'
+}
+
+/**
+ * Auth + version headers for the Anthropic wire.
+ *
+ * Anthropic authenticates with `x-api-key`. Z.ai's compat endpoint accepts
+ * either that or the `Authorization: Bearer` its own docs describe (both were
+ * probed against the live endpoint; each is read and validated). GLM sends both
+ * — same secret, same host — so the mind keeps working whichever one Z.ai
+ * eventually settles on.
+ */
+export function anthropicWireHeaders( provider: LLMProvider, apiKey: string ): Record<string, string> {
+  return {
+    'Content-Type':      'application/json',
+    'anthropic-version': '2023-06-01',
+    'x-api-key':         apiKey,
+    ...( provider === 'glm' ? { Authorization: `Bearer ${ apiKey }` } : {} ),
+  }
+}
 export interface LLMDirectorConfig {
   willId: string
   model: string
@@ -216,7 +277,7 @@ export class LLMDirector {
       return result
     }
 
-    const result = this._provider === 'anthropic'
+    const result = speaksAnthropicWire( this._provider )
       ? await this._callAnthropicStream( systemPrompt, userMessage, onChunk, temperature )
       : await ( async () => {
           // Other providers: fall back to regular call, emit whole response as one chunk
@@ -328,11 +389,7 @@ export class LLMDirector {
     try {
       res = await fetch(`${this._resolvedBase()}/messages`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'anthropic-version': '2023-06-01',
-          'x-api-key': this._apiKey,
-        },
+        headers: anthropicWireHeaders( this._provider, this._apiKey ),
         body: JSON.stringify({
           model:      this._model,
           max_tokens: this._maxOutputTokens,
@@ -438,13 +495,14 @@ export class LLMDirector {
       return result
     }
 
-    // Anthropic routes through the streaming path so the deadline is first-byte
-    // (TTFT), not whole-request: a long-but-healthy executive completion (often
-    // 20–40s on Sonnet) no longer trips the timeout mid-generation. onChunk is a
-    // no-op here — call() returns the full accumulated text; live token chunks go
-    // through callStream(). Other providers keep the whole-request deadline.
+    // The Anthropic-wire providers route through the streaming path so the
+    // deadline is first-byte (TTFT), not whole-request: a long-but-healthy
+    // executive completion (often 20–40s on Sonnet) no longer trips the timeout
+    // mid-generation. onChunk is a no-op here — call() returns the full
+    // accumulated text; live token chunks go through callStream(). Other
+    // providers keep the whole-request deadline.
     const result = await withGate(
-      () => this._provider === 'anthropic'
+      () => speaksAnthropicWire( this._provider )
         ? this._callAnthropicStream( systemPrompt, userMessage, () => {}, temperature )
         : this._callProvider( systemPrompt, userMessage, temperature ),
       'executive/direct',
@@ -465,6 +523,7 @@ export class LLMDirector {
   ): Promise<LLMCallResult> {
     switch( this._provider ){
       case 'anthropic': return this._callAnthropic( systemPrompt, userMessage, temperature )
+      case 'glm': return this._callAnthropic( systemPrompt, userMessage, temperature )
       case 'deepseek': return this._callOpenAI( systemPrompt, userMessage, temperature )
       case 'openai': return this._callOpenAI( systemPrompt, userMessage, temperature )
       case 'google': return this._callGoogle( systemPrompt, userMessage, temperature )
@@ -474,12 +533,7 @@ export class LLMDirector {
 
   /** Default API base URL (including version segment) for a provider. */
   private _baseFor( provider: LLMProvider ): string {
-    switch( provider ){
-      case 'anthropic': return 'https://api.anthropic.com/v1'
-      case 'openai':    return 'https://api.openai.com/v1'
-      case 'deepseek':  return 'https://api.deepseek.com/v1'
-      case 'google':    return 'https://generativelanguage.googleapis.com/v1beta'
-    }
+    return defaultBaseFor( provider )
   }
 
   /** Resolved API base: explicit override wins, else the provider default. */
@@ -526,16 +580,12 @@ export class LLMDirector {
 
     const res = await this._fetchWithTimeout(`${this._resolvedBase()}/messages`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'anthropic-version': '2023-06-01',
-        'x-api-key': this._apiKey
-      },
+      headers: anthropicWireHeaders( this._provider, this._apiKey ),
       body: JSON.stringify( body )
     })
 
     if( !res.ok )
-      throw new Error(`Anthropic API ${res.status}: ${( await res.text() ).slice(0, 300)}`)
+      throw new Error(`${this._provider} API ${res.status}: ${( await res.text() ).slice(0, 300)}`)
 
     const
     data = await res.json() as {

@@ -18,7 +18,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { WillIdentity } from '#stem/mind'
-import { LLMDirector, type LLMProvider, type LLMCallMeta } from '#llm/index'
+import { LLMDirector, defaultModelFor, type LLMProvider, type LLMCallMeta } from '#llm/index'
 import type { TokenTracker } from '#cognition/utilities/token.tracker'
 
 export interface CoherenceIssue {
@@ -112,12 +112,13 @@ export async function reviewIdentityCoherence(
   input: CoherenceInput,
   opts:  { willId?: string; tokenTracker?: TokenTracker | null } = {},
 ): Promise<CoherenceResult> {
+  const provider = ( process.env.WILL_LLM_PROVIDER ?? 'anthropic' ) as LLMProvider
   const director = new LLMDirector({
     willId:          opts.willId ?? 'identity-coherence',
-    model:           process.env.WILL_LLM_MODEL ?? 'claude-sonnet-4-5-20250929',
+    model:           process.env.WILL_LLM_MODEL ?? defaultModelFor( provider ),
     maxOutputTokens: 512,
     apiKey:          process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? '',
-    provider:        ( process.env.WILL_LLM_PROVIDER ?? 'anthropic' ) as LLMProvider,
+    provider,
     sessionLogger:   null,
     baseUrl:         process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
     // When a per-Will tracker is supplied, the creation-time review records under

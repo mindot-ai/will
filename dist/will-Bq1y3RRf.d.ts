@@ -3859,7 +3859,7 @@ declare class CompletionInbox {
     clear(): number;
 }
 
-type LLMProvider = 'anthropic' | 'deepseek' | 'openai' | 'google';
+type LLMProvider = 'anthropic' | 'glm' | 'deepseek' | 'openai' | 'google';
 interface LLMDirectorConfig {
     willId: string;
     model: string;
@@ -7868,11 +7868,13 @@ interface CreateWillOptions {
      *  (Named llmConfig because `llm` is the mock/anthropic MODE switch.) */
     llmConfig?: WillLLMConfig;
     /**
-     * LLM mode. 'mock' (default when no ANTHROPIC_API_KEY) runs a deterministic
-     * canned executive — zero keys, zero cost. 'anthropic' calls the real model
-     * (needs ANTHROPIC_API_KEY / WILL_LLM_* env). Omit to auto-detect.
-     */
-    llm?: 'mock' | 'anthropic';
+    * LLM mode. 'mock' (default when no key is present) runs a deterministic
+    * canned executive — zero keys, zero cost. 'anthropic' calls Claude (needs
+    * ANTHROPIC_API_KEY / WILL_LLM_* env); 'glm' calls Z.ai's GLM over its
+    * Anthropic-compatible endpoint (needs ZAI_API_KEY / WILL_LLM_*). Omit to
+    * auto-detect from whichever key is set.
+    */
+    llm?: 'mock' | 'anthropic' | 'glm';
     /**
      * Abilities the Will can choose to enact. `name → handler`, or
      * `name → { handler, description?, cost?, valence?, preconditions? }` to seed

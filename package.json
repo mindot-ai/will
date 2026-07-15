@@ -21,6 +21,7 @@
     "zod": "^4.0.0"
   },
   "optionalDependencies": {
+    "discord.js": "^14.16.3",
     "socket.io-client": "^4.8.1"
   },
   "exports": {
@@ -31,6 +32,10 @@
     "./mcp": {
       "import": "./dist/mcp/effectors.js",
       "types": "./dist/mcp/effectors.d.ts"
+    },
+    "./discord": {
+      "import": "./dist/channels/discord.js",
+      "types": "./dist/channels/discord.d.ts"
     }
   },
   "bugs": {

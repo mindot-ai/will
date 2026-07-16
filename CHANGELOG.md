@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.5.0 — 2026-07-15 · WhatsApp, and a choice of executive
+
+The second channel bridge — `npx -y @mindot/will whatsapp`, QR-pair and go —
+and a second production LLM provider: GLM-5.2 over Z.ai's Anthropic-compatible
+endpoint, at roughly half Sonnet's rate for an always-on mind.
+
 - **`will whatsapp` — a persistent mind on WhatsApp** (second channel bridge).
   QR-pairs as a linked device (Baileys); credentials persist next to the PMA so
   later runs reconnect silently. Every author is a learned entity
@@ -19,7 +25,8 @@
   real Anthropic-compatible endpoint, so GLM rides will's Anthropic wire rather
   than the non-streaming OpenAI scaffold: it gets token streaming, the TTFT
   deadline, prompt-cache breakpoints and structured output — full parity, the
-  second production provider. Defaults to `https://api.z.ai/api/anthropic` and
+  second production provider. Defaults to `https://api.z.ai/api/anthropic/v1`
+  (the `/v1` is required — verified against the live endpoint) and
   model `glm-5.2` (pin `glm-5.2[1m]` for the 1M context); `ZAI_API_KEY` alone
   selects it; `WILL_LLM_BASE_URL` points the same provider at any other
   Anthropic-compatible gateway. Priced in the token tracker at $1.40/$4.40 per

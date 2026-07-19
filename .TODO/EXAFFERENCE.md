@@ -159,15 +159,23 @@ a tick — the race-safe rule is correct); no LLM in any matching path.
 >   landed). Cost: revocation takes effect T+1 — acceptable, deterministic,
 >   race-free by construction.
 
-### P1 — Expected-consequence descriptors (dark: no consumer)
-- [ ] Executor: at the efference-copy moment, also write descriptor records
-      (entity or engine-state map keyed by intentId; TTL tick-denominated;
-      snapshot/restore round-trips — FN9). Composite expansion registers per-sub
-      descriptors as each sub enacts.
-- [ ] Expire descriptors at their own TTL only (P0 amendment: they deliberately
-      outlive intent resolution — the echo arrives after the ack).
-- [ ] Tests: lifecycle (register → resolve/expire), TTL under fixed clock, replay
-      determinism (descriptors identical across replays), snapshot round-trip.
+### P1 — Expected-consequence descriptors (dark: no consumer) ⟶ done (2026-07-19)
+- [x] Executor writes `agency.consequence` **entities** (`consequence.ts`:
+      `CONSEQUENCE_TYPE`, `CONSEQUENCE_TTL_TICKS = 30`, FNV-1a `fnv1a` +
+      canonical `paramsKey` — the shared match keys P2 will reuse) at both
+      world-facing enaction moments: delivered communicate (`textHash` over the
+      authored bubbles, effector, target) and the async hold (`paramsHash` +
+      schema + target; mode communicate|external). Sync innate enactions
+      register none. Entities ride StateManager snapshot/restore (FN9 for free);
+      composite subs register through the same hold/deliver paths as they enact.
+- [x] TTL-only expiry sweep at the top of the executor's `react()` (before the
+      await-timeout sweep); verified a descriptor outlives its intent's timeout
+      resolution and dies exactly at its own TTL.
+- [x] Tests (`agency.consequence.test.ts`, 8 cases): hash/canonicalization
+      determinism, delivered-communicate registration, external-hold
+      registration, no-descriptor for sync innate + blocked communicate, TTL
+      sweep, descriptor-outlives-resolution, replay determinism (two identical
+      runs → identical entity sets). Full unit suite 925/925.
 
 ### P2 — Corollary-discharge matcher (percepts gain provenance)
 - [ ] Deterministic matcher at the percept boundary (extend where percepts are

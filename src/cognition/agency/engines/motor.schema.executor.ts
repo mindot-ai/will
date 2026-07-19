@@ -38,6 +38,10 @@ import type { AccessGrants } from '#agency/access.grants'
 import type { ActionRequest, ActionResult } from '#types'
 import { INNATE_SCHEMAS } from '#agency/schemas/innate'
 import { enact, type Enaction } from '#agency/execution.primitives'
+import {
+  CONSEQUENCE_TYPE, CONSEQUENCE_TTL_TICKS,
+  consequenceEntity, fnv1a, paramsKey,
+} from '#agency/consequence'
 
 /** Ticks an async (communicate/external) intent may stay 'awaiting' before it is abandoned. */
 const AWAIT_TIMEOUT = 15
@@ -137,6 +141,14 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     const energy = state.metrics.get('energy.level') ?? 100
     const stress = state.metrics.get('stress.load'  ) ?? 0
 
+    // ── Expire consequence descriptors (EXAFFERENCE P1) ──────────
+    // Descriptors deliberately outlive intent resolution (the sensory echo of a
+    // reconciled action still arrives); their only cleanup is this TTL sweep.
+    for( const [ id, e ] of state.entities ){
+      if( e.type !== CONSEQUENCE_TYPE ) continue
+      if( tick >= num( e.metadata?.['expiresAt'], 0 ) ) del.push( id )
+    }
+
     // ── Timeout stranded async intents ───────────────────────────
     // An 'awaiting' intent whose host/delivery never returned would block the
     // serial Will forever. After AWAIT_TIMEOUT ticks, abandon it as a failed
@@ -224,6 +236,19 @@ export class MotorSchemaExecutor implements CognitiveEngine {
               predictedValence: predicted.expectedValence,
             },
           })
+          // EXAFFERENCE P1 — the dispatched action's expected sensory footprint,
+          // so the world's answer can be recognized as ours when it arrives
+          // through the senses (P2). Host acks correlate by intent id already.
+          set.push( consequenceEntity({
+            intentId: id, schema: intent.schema,
+            mode: enaction.mode === 'communicate' ? 'communicate' : 'external',
+            ...( enaction.mode === 'communicate'
+              ? { effector: COMM_SCHEMA_TO_EFFECTOR[ intent.schema ] ?? intent.schema }
+              : {} ),
+            ...( intent.targetEntityId ? { targetEntityId: intent.targetEntityId } : {} ),
+            paramsHash: fnv1a( paramsKey( intent.parameters ) ),
+            expiresAt: tick + CONSEQUENCE_TTL_TICKS, tick,
+          }) )
           this._emitDispatch( intent, enaction.mode, tick )
           metrics.push([ enaction.mode === 'communicate'
             ? 'agency.communicate.dispatched'
@@ -401,6 +426,16 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       outcomeQuality: result.feedback.outcomeQuality, valence: 0, description: result.description }
     set.push( outcomeEntity( tick, intent, out, predicted ) )
     del.push( id )
+    // EXAFFERENCE P1 — the delivered words' sensory footprint: the channel echo
+    // or a quote-back of this exact text should read as ours, not as the world
+    // surprising us (P2 matches on the content hash).
+    if( result.success )
+      set.push( consequenceEntity({
+        intentId: id, schema: intent.schema, mode: 'communicate', effector,
+        ...( intent.targetEntityId ? { targetEntityId: intent.targetEntityId } : {} ),
+        textHash: fnv1a( bubbles.join('\n') ),
+        expiresAt: tick + CONSEQUENCE_TTL_TICKS, tick,
+      }) )
     this._emitEnacted( intent, out, predicted, tick )
     this._emitActionOutcome( intent, result.success, result.feedback.outcomeQuality,
       clamp01( Math.abs( predicted.expectedReward - result.feedback.outcomeQuality ) ), tick )

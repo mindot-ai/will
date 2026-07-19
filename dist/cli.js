@@ -19896,9 +19896,7 @@ var AffordanceSynthesizer = class {
       if (e.type === "affordance") del.push(id);
     const floor = schemas.filter((s) => s.binds === "none");
     for (const schema of floor)
-      set.push(this._toEntity(
-        this._build(schema, tick, state, valence, energyLow, skills, {})
-      ));
+      set.push(this._toEntity(this._build(schema, tick, state, valence, energyLow, skills, {})));
     const candidates = [];
     const goalTargets = collectGoalTargets(state);
     const perceptSchema = schemas.find((s) => s.binds === "percept");
@@ -20171,13 +20169,24 @@ var ActionSelector = class {
         if (!activeMacroSub) blocking = true;
       }
     }
-    const busy = (n) => ({ commands: { metrics: [
-      ["agency.field.eligible", n],
-      ["agency.selection.busy", 1]
-    ] } });
+    const busy = (n) => ({
+      commands: {
+        metrics: [
+          ["agency.field.eligible", n],
+          ["agency.selection.busy", 1]
+        ]
+      }
+    });
     if (blocking) return busy(eligible.length);
     if (eligible.length === 0)
-      return { commands: { metrics: [["agency.field.eligible", 0], ["agency.selection.busy", awaiting || composite ? 1 : 0]] } };
+      return {
+        commands: {
+          metrics: [
+            ["agency.field.eligible", 0],
+            ["agency.selection.busy", awaiting || composite ? 1 : 0]
+          ]
+        }
+      };
     const bias = buildBias(state);
     const effSwitchCost = effectiveSwitchCost(state);
     const weights = effectiveWeights(state);
@@ -20188,22 +20197,33 @@ var ActionSelector = class {
       const different = winner.affordance.schema !== composite.schema;
       const switchCost = effSwitchCost * (1 - stakes(winner.affordance, bias));
       if (different && winner.activation > composite.activation + switchCost) {
-        if (this._bus) try {
-          this._bus.publish({
-            type: "agency.action.preempted",
-            version: 1,
-            sourceEngine: this.name,
-            salience: 0.8,
-            payload: { from: composite.schema, to: winner.affordance.schema, activation: winner.activation, tick }
-          });
-        } catch (err) {
-          logger.warn(`[selector] preempt publish failed: ${err instanceof Error ? err.message : String(err)}`);
-        }
-        return { commands: { delete: [composite.id], metrics: [
-          ["agency.field.eligible", eligible.length],
-          ["agency.selection.busy", 1],
-          ["agency.selection.preempted", 1]
-        ] } };
+        if (this._bus)
+          try {
+            this._bus.publish({
+              type: "agency.action.preempted",
+              version: 1,
+              sourceEngine: this.name,
+              salience: 0.8,
+              payload: {
+                from: composite.schema,
+                to: winner.affordance.schema,
+                activation: winner.activation,
+                tick
+              }
+            });
+          } catch (err) {
+            logger.warn(`[selector] preempt publish failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        return {
+          commands: {
+            delete: [composite.id],
+            metrics: [
+              ["agency.field.eligible", eligible.length],
+              ["agency.selection.busy", 1],
+              ["agency.selection.preempted", 1]
+            ]
+          }
+        };
       }
       return busy(eligible.length);
     }
@@ -20613,6 +20633,34 @@ function clamp019(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
+// src/cognition/agency/consequence.ts
+var CONSEQUENCE_TYPE = "agency.consequence";
+var CONSEQUENCE_TTL_TICKS = 30;
+function fnv1a(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+function paramsKey(value) {
+  if (value === null || typeof value !== "object")
+    return typeof value === "string" ? JSON.stringify(value) : String(value);
+  if (Array.isArray(value))
+    return `[${value.map(paramsKey).join(",")}]`;
+  const obj = value;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${k}:${paramsKey(obj[k])}`).join(",")}}`;
+}
+function consequenceEntity(d) {
+  return {
+    id: `agency-consequence-${d.intentId}`,
+    type: CONSEQUENCE_TYPE,
+    metadata: { ...d }
+  };
+}
+
 // src/cognition/agency/engines/motor.schema.executor.ts
 var AWAIT_TIMEOUT = 15;
 var COMM_SCHEMA_TO_EFFECTOR = {
@@ -20693,6 +20741,10 @@ var MotorSchemaExecutor = class {
     const energy = state.metrics.get("energy.level") ?? 100;
     const stress = state.metrics.get("stress.load") ?? 0;
     for (const [id, e] of state.entities) {
+      if (e.type !== CONSEQUENCE_TYPE) continue;
+      if (tick >= num3(e.metadata?.["expiresAt"], 0)) del.push(id);
+    }
+    for (const [id, e] of state.entities) {
       if (e.type !== "agency.intent" || str5(e.metadata?.["status"]) !== "awaiting") continue;
       const dispatchedAt = num3(e.metadata?.["dispatchedAt"], tick);
       if (tick - dispatchedAt < AWAIT_TIMEOUT) continue;
@@ -20766,6 +20818,16 @@ var MotorSchemaExecutor = class {
               predictedValence: predicted.expectedValence
             }
           });
+          set.push(consequenceEntity({
+            intentId: id,
+            schema: intent.schema,
+            mode: enaction.mode === "communicate" ? "communicate" : "external",
+            ...enaction.mode === "communicate" ? { effector: COMM_SCHEMA_TO_EFFECTOR[intent.schema] ?? intent.schema } : {},
+            ...intent.targetEntityId ? { targetEntityId: intent.targetEntityId } : {},
+            paramsHash: fnv1a(paramsKey(intent.parameters)),
+            expiresAt: tick + CONSEQUENCE_TTL_TICKS,
+            tick
+          }));
           this._emitDispatch(intent, enaction.mode, tick);
           metrics.push([enaction.mode === "communicate" ? "agency.communicate.dispatched" : "agency.invocation.dispatched", 1]);
         }
@@ -20932,6 +20994,17 @@ var MotorSchemaExecutor = class {
     };
     set.push(outcomeEntity(tick, intent, out, predicted));
     del.push(id);
+    if (result.success)
+      set.push(consequenceEntity({
+        intentId: id,
+        schema: intent.schema,
+        mode: "communicate",
+        effector,
+        ...intent.targetEntityId ? { targetEntityId: intent.targetEntityId } : {},
+        textHash: fnv1a(bubbles.join("\n")),
+        expiresAt: tick + CONSEQUENCE_TTL_TICKS,
+        tick
+      }));
     this._emitEnacted(intent, out, predicted, tick);
     this._emitActionOutcome(
       intent,

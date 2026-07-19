@@ -117,30 +117,55 @@ a tick — the race-safe rule is correct); no LLM in any matching path.
 
 ## Phases (each its own green PR; monolith behavior byte-identical until armed)
 
-### P0 — Decisions + safety audit (no code)
-- [ ] Audit the Deliberator's resolve path for **orphan safety**: if its
-      `deliberating` intent is deleted mid-flight, the facet's late result must drop
-      cleanly (no resurrect, no throw). Document the finding here; if unsafe, P4
-      gains a pre-item.
-- [ ] Inventory per-channel match keys for descriptors: outbox message ids
-      (delivery-confirm path already exists), effector name+target, text-hash for
-      channel echo. Decide the descriptor schema + `CONSEQUENCE_TTL_TICKS`
-      (proposal: 2 × `AWAIT_TIMEOUT` = 30).
-- [ ] Decide rupture gates: `RUPTURE_SALIENCE_GATE` (start near
-      `WORKSPACE_THRESHOLD` so rupture ≈ "would seize the workspace"),
-      `RUPTURE_REVOKE_GATE` (higher — revocation is rarer than recruitment), and
-      `ATTENUATION` (proposal 0.25). Constants live beside the selector's existing
-      gate constants; persona-tunability deferred.
-- [ ] Confirm bridge self-drop inventory (Discord/WhatsApp/socket) so P2's
-      cognitive tagging is additive, not a replacement.
+### P0 — Decisions + safety audit (no code) ⟶ done (2026-07-19)
+- [x] **Orphan-safety audit — naive delete is UNSAFE (resurrection race).** The
+      Deliberator itself is stateless across ticks (pickup → facet → commit happen
+      inside one `react()`, re-read from frozen state each tick — no dangling
+      handle to a vanished intent). The hazard is *command application order*:
+      registration order is Synthesizer → **Selector → Deliberation** → Executor →
+      Reafference (`mind.ts`), so a same-tick selector `delete` + deliberation
+      `set` on the same intent id applies set-after-delete — the intent is
+      **resurrected as `selected`** and the executor enacts it despite revocation.
+      **P4 design amended accordingly (tombstone, below).**
+- [x] **Match-key inventory + descriptor schema.** Two world-facing enaction
+      moments in the executor: (1) sync-delivered communicate (`_deliver` success —
+      keys: `textHash` over the authored bubbles, `targetEntityId`, effector);
+      (2) the async `'awaiting'` hold for communicate-unauthored/external (keys:
+      schema/effector + `targetEntityId` + `paramsHash`). Host acks already
+      correlate by intent id — descriptors cover the *sensory* footprint only.
+      Sync innate enactions get **no** descriptor (internal effects; noise).
+      `CONSEQUENCE_TTL_TICKS = 30` (2 × `AWAIT_TIMEOUT`).
+- [x] **Gates decided:** `RUPTURE_SALIENCE_GATE = 0.4` (= `WORKSPACE_THRESHOLD`,
+      executive.engine/config.ts — rupture ≈ "would seize the workspace"),
+      `RUPTURE_REVOKE_GATE = 0.7`, `ATTENUATION = 0.25`. Constants land beside the
+      selector's gate constants; persona-tunability deferred.
+- [x] **Bridge self-drop confirmed additive:** `channels/whatsapp.ts:133`
+      (`m.key.fromMe` → return) and `channels/discord.ts:101`
+      (`author.id === self.id || author.bot` → return). Transport guard stays;
+      P2's tagging is the graded layer above it.
+
+> **P0 amendments to later phases:**
+> - **P1:** descriptors expire at their own TTL **only** — *not* on intent
+>   resolution. A host ack does not stop the sensory echo from arriving two ticks
+>   later; the descriptor must outlive the intent to catch it (TTL 30 > await
+>   timeout 15 covers the stranded case too, and one sweep is simpler than two).
+> - **P4:** revocation must **never delete a `deliberating` intent from the
+>   selector directly.** Instead the selector writes a separate **tombstone
+>   entity** (`agency.revocation`, keyed by intent id — no same-entity write
+>   race). One tick later both honor it from frozen state: the Deliberation
+>   engine skips + deletes tombstoned intents before deliberating; the Executor
+>   refuses to enact a `selected` intent whose tombstone exists (covers the
+>   half-race where deliberation committed `selected` the same tick the tombstone
+>   landed). Cost: revocation takes effect T+1 — acceptable, deterministic,
+>   race-free by construction.
 
 ### P1 — Expected-consequence descriptors (dark: no consumer)
 - [ ] Executor: at the efference-copy moment, also write descriptor records
       (entity or engine-state map keyed by intentId; TTL tick-denominated;
       snapshot/restore round-trips — FN9). Composite expansion registers per-sub
       descriptors as each sub enacts.
-- [ ] Expire descriptors at TTL and on intent resolution/timeout (share the
-      `AWAIT_TIMEOUT` sweep).
+- [ ] Expire descriptors at their own TTL only (P0 amendment: they deliberately
+      outlive intent resolution — the echo arrives after the ack).
 - [ ] Tests: lifecycle (register → resolve/expire), TTL under fixed clock, replay
       determinism (descriptors identical across replays), snapshot round-trip.
 
@@ -176,10 +201,12 @@ a tick — the race-safe rule is correct); no LLM in any matching path.
       `RUPTURE_REVOKE_GATE`; stability EMA restores hardening after quiet ticks).
 
 ### P4 — Commitment revocation (the letting-go)
-- [ ] Above `RUPTURE_REVOKE_GATE`: cancel a `deliberating` intent (delete + emit
-      **`agency.commitment.revoked`** `{ from: schema, reason: 'exafferent-rupture',
-      rupture, tick }`) relying on P0's orphan-safety finding; the Deliberator's
-      late facet result drops cleanly.
+- [ ] Above `RUPTURE_REVOKE_GATE`: revoke via **tombstone** (P0 amendment — never
+      a direct delete): selector writes `agency.revocation` keyed by intent id +
+      emits **`agency.commitment.revoked`** `{ from: schema, reason:
+      'exafferent-rupture', rupture, tick }`; next tick the Deliberation engine
+      skips + deletes tombstoned intents, and the Executor refuses tombstoned
+      `selected` intents (both then clean up tombstone + intent).
 - [ ] Revocation does **not** commit a successor in the same tick — the field
       re-forms (the rupturing percept's un-attenuated salience carries it through
       the attention budget) and the next tick selects. Channel B: the *next*

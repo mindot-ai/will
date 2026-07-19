@@ -59,8 +59,8 @@ async function build( recs: VectorRecord[], m: number ): Promise<HNSWIndex> {
   return index
 }
 
-describe( 'HNSWIndex — neighbour pruning (FN6)', () => {
-  it( 'caps every node degree at Mmax (M*2 at level 0, M above)', async () => {
+describe('HNSWIndex — neighbour pruning (FN6)', () => {
+  it('caps every node degree at Mmax (M*2 at level 0, M above)', async () => {
     const M = 4
     const index = await build( clustered( 250 ), M )
     const graph = graphOf( index )
@@ -81,7 +81,7 @@ describe( 'HNSWIndex — neighbour pruning (FN6)', () => {
     expect( maxUpper ).toBeLessThanOrEqual( M )
   })
 
-  it( 'keeps the graph searchable after heavy pruning', async () => {
+  it('keeps the graph searchable after heavy pruning', async () => {
     const index = await build( clustered( 250 ), 4 )
     // Query near node "10" — a real neighbour must come back, proving pruning
     // didn't sever the graph.
@@ -89,7 +89,7 @@ describe( 'HNSWIndex — neighbour pruning (FN6)', () => {
     expect( hits.length ).toBeGreaterThan( 0 )
   })
 
-  it( 'no node lists a stale id after pruning (all neighbours resolve)', async () => {
+  it('no node lists a stale id after pruning (all neighbours resolve)', async () => {
     const graph = graphOf( await build( clustered( 200 ), 4 ) )
     const ids = new Set( graph.nodes.map( n => n.id ) )
     for( const node of graph.nodes )
@@ -99,8 +99,8 @@ describe( 'HNSWIndex — neighbour pruning (FN6)', () => {
   })
 })
 
-describe( 'HNSWIndex — entry-point reselection (FN6)', () => {
-  it( 'promotes the highest-level remaining node and resyncs maxLevel', async () => {
+describe('HNSWIndex — entry-point reselection (FN6)', () => {
+  it('promotes the highest-level remaining node and resyncs maxLevel', async () => {
     const index = await build( clustered( 120 ), 8 )
     const before = graphOf( index )
 
@@ -120,7 +120,7 @@ describe( 'HNSWIndex — entry-point reselection (FN6)', () => {
     expect( entry!.level ).toBe( remainingMax )
   })
 
-  it( 'nulls the entry point and maxLevel when the last node is deleted', async () => {
+  it('nulls the entry point and maxLevel when the last node is deleted', async () => {
     const index = await build( clustered( 1 ), 8 )
     const only = graphOf( index ).entryPoint!
     await index.delete( only )

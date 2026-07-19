@@ -42,8 +42,8 @@ async function build( seed: number, recs: VectorRecord[] ): Promise<HNSWIndex> {
 
 const decode = ( bytes: Uint8Array ) => new TextDecoder().decode( bytes )
 
-describe( 'HNSWIndex — deterministic topology (FN5)', () => {
-  it( 'produces a byte-identical graph for the same seed and insertion order', async () => {
+describe('HNSWIndex — deterministic topology (FN5)', () => {
+  it('produces a byte-identical graph for the same seed and insertion order', async () => {
     const recs = dataset( 120 )
     const a = await build( 7, recs )
     const b = await build( 7, recs )
@@ -51,7 +51,7 @@ describe( 'HNSWIndex — deterministic topology (FN5)', () => {
     expect( decode( a.serialize() ) ).toBe( decode( b.serialize() ) )
   })
 
-  it( 'produces a different graph for a different seed', async () => {
+  it('produces a different graph for a different seed', async () => {
     const recs = dataset( 120 )
     const a = await build( 7, recs )
     const b = await build( 99999, recs )
@@ -61,7 +61,7 @@ describe( 'HNSWIndex — deterministic topology (FN5)', () => {
     expect( decode( a.serialize() ) ).not.toBe( decode( b.serialize() ) )
   })
 
-  it( 'reproduces the graph after clear() + rebuild from the same order', async () => {
+  it('reproduces the graph after clear() + rebuild from the same order', async () => {
     const recs = dataset( 80 )
     const index = await build( 7, recs )
     const before = decode( index.serialize() )
@@ -73,9 +73,9 @@ describe( 'HNSWIndex — deterministic topology (FN5)', () => {
     expect( after ).toBe( before )
   })
 
-  it( 'continues the same PRNG sequence across serialize/deserialize', async () => {
+  it('continues the same PRNG sequence across serialize/deserialize', async () => {
     const recs = dataset( 40 )
-    const more = dataset( 40 ).map( r => makeRecord( `x${r.id}`, r.vector ) )
+    const more = dataset( 40 ).map( r => makeRecord(`x${r.id}`, r.vector ) )
 
     // Reference: one index that inserts the full sequence in a single lifetime.
     const reference = await build( 7, recs )

@@ -87,13 +87,13 @@ export class DreamSimulator implements SimulationEngine, CognitiveEngine {
 
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
-    if( e.type === 'executive.prediction.formed' ){
+    if( e.type === 'executive.prediction.formed'){
       const p = e.payload as { predictedDomains: string[]; confidence: number }
       if( p.predictedDomains.includes('memory') )
-        this._model.setPrecision( 'dream.reactivation', 1.0 + p.confidence * 0.5 )
+        this._model.setPrecision('dream.reactivation', 1.0 + p.confidence * 0.5 )
     }
-    if( e.type === 'sleep.begun' ) this._isSleeping = true
-    if( e.type === 'sleep.ended' ) this._isSleeping = false
+    if( e.type === 'sleep.begun') this._isSleeping = true
+    if( e.type === 'sleep.ended') this._isSleeping = false
   }
 
   snapshot(): Record<string, unknown> { return {} }
@@ -197,7 +197,7 @@ export class DreamSimulator implements SimulationEngine, CognitiveEngine {
     // Phase C + F: publish cognitive event — gated by prediction error
     const _bus = this._bus
     if( _bus && reactivated > 0 ){
-      const predErr = this._model.observe( 'dream.reactivation', reactivated )
+      const predErr = this._model.observe('dream.reactivation', reactivated )
       if( !predErr.gated )
         _bus.publish({ type: 'dream.active', version: 1, sourceEngine: this.name, salience: Math.max( 0.3, predErr.salience ), payload: { reactivated } })
     }

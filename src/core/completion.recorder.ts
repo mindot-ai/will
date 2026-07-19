@@ -97,11 +97,11 @@ export class RecordedCompletionSource implements LLMCompletionSource {
   nextCompletion( tick: number, systemPrompt: string, userMessage: string ): LLMCompletionRecord {
     const queue = this._byTick.get( tick )
     if( !queue || queue.length === 0 )
-      throw new Error( `replay: no recorded LLM completion for tick ${tick} (recording is incomplete or call timing diverged)` )
+      throw new Error(`replay: no recorded LLM completion for tick ${tick} (recording is incomplete or call timing diverged)`)
 
     const idx = queue.findIndex( r => r.systemPrompt === systemPrompt && r.userMessage === userMessage )
     if( idx === -1 )
-      throw new Error( `replay: LLM prompt diverged at tick ${tick} — no recorded completion matches this call (upstream non-determinism)` )
+      throw new Error(`replay: LLM prompt diverged at tick ${tick} — no recorded completion matches this call (upstream non-determinism)`)
 
     return queue.splice( idx, 1 )[ 0 ]!
   }

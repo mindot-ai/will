@@ -90,14 +90,14 @@ export class EmpathySimulator implements SimulationEngine, CognitiveEngine {
 
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
-    if( e.type === 'executive.prediction.formed' ){
+    if( e.type === 'executive.prediction.formed'){
       const p = e.payload as { predictedDomains: string[]; confidence: number }
       if( p.predictedDomains.includes('social') )
-        this._model.setPrecision( 'empathy.active', 1.0 + p.confidence * 0.5 )
+        this._model.setPrecision('empathy.active', 1.0 + p.confidence * 0.5 )
     }
-    if( e.type === 'interaction.occurred' ){
+    if( e.type === 'interaction.occurred'){
       const p = e.payload as { keid: string; valence: number; intensity: number; directedAtSelf: boolean }
-      if( p.keid && p.keid !== 'agent-self' )
+      if( p.keid && p.keid !== 'agent-self')
         this._pendingInteractions.push( p )
     }
   }
@@ -117,7 +117,7 @@ export class EmpathySimulator implements SimulationEngine, CognitiveEngine {
     // Channel A (agreeableness → empathy): how strongly the Will resonates with others'
     // emotions is refreshed each tick as base ⊕ persona-prior. An agreeable Will develops
     // a higher resonance and feels others' states more. (Seed existed but was ignored.)
-    this._resonanceStrength = readEffectiveParams( state, 'engine-config-empathy' ).resonanceStrength ?? this._resonanceStrength
+    this._resonanceStrength = readEffectiveParams( state, 'engine-config-empathy').resonanceStrength ?? this._resonanceStrength
 
     if( !this._theoryOfMind ){
       commands.metrics!.push([ 'empathy.active_models', 0 ])
@@ -183,7 +183,7 @@ export class EmpathySimulator implements SimulationEngine, CognitiveEngine {
     // blender folds the vicarious valence/arousal into the blended PAD.
     let vicariousValence = 0, vicariousArousal = 0
     for( const es of empathicStates ){
-      const bond = ( state.entities.get( `bond-${es.targetKeid}` )?.metadata?.attachmentStrength as number ) ?? 0
+      const bond = ( state.entities.get(`bond-${es.targetKeid}`)?.metadata?.attachmentStrength as number ) ?? 0
       const w = es.resonanceStrength * ( 1 + EMPATHY_BOND_AMPLIFY * bond )
       vicariousValence += es.estimatedEmotion.valence * w
       vicariousArousal += es.estimatedEmotion.arousal * w
@@ -217,7 +217,7 @@ export class EmpathySimulator implements SimulationEngine, CognitiveEngine {
     // Phase C + F: publish cognitive event — gated by prediction error
     const _bus = this._bus
     if( _bus && empathicStates.length > 0 ){
-      const predErr = this._model.observe( 'empathy.active', empathicStates.length )
+      const predErr = this._model.observe('empathy.active', empathicStates.length )
       if( !predErr.gated )
         _bus.publish({ type: 'empathy.resonance', version: 1, sourceEngine: this.name, salience: Math.max( 0.3, predErr.salience ), payload: { activeModels: empathicStates.length } })
     }

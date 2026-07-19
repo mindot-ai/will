@@ -148,7 +148,7 @@ export function buildStateCommands(
     const integrator = deps.semanticIntegrator
     const bus        = deps.bus
     output.knownEntityUpdates.forEach( ( u, ui ) => {
-      if( !u.keid || u.keid === 'agent-self' ) return
+      if( !u.keid || u.keid === 'agent-self') return
 
       const facts = u.learned ?? []
       facts.forEach( ( fact, fi ) => {
@@ -380,7 +380,7 @@ const COMMUNICATE_ACTION_TYPES = new Set([
 function resolveKnownEntity( target: string, state: ReadonlySimulationState ): string | undefined {
   const t = target.trim().toLowerCase()
   for( const e of state.entities.values() ){
-    if( e.type !== 'known-entity' ) continue
+    if( e.type !== 'known-entity') continue
     const m    = e.metadata as Record<string, unknown> | undefined
     const keid = typeof m?.['keid'] === 'string' ? m['keid'] as string : undefined
     const name = typeof m?.['name'] === 'string' ? m['name'] as string : undefined
@@ -414,9 +414,9 @@ function buildIdeomotorIntents(
   // the executive can only pre-activate what the situation actually offers.
   const externalBySchema = new Map<string, string>()
   for( const e of state.entities.values() ){
-    if( e.type !== 'affordance' ) continue
+    if( e.type !== 'affordance') continue
     const m = e.metadata as Record<string, unknown> | undefined
-    if( m?.['source'] !== 'external' ) continue
+    if( m?.['source'] !== 'external') continue
     const schema = typeof m['schema'] === 'string' ? m['schema'] as string : undefined
     if( schema ) externalBySchema.set( schema.toLowerCase(), schema )
   }
@@ -439,8 +439,8 @@ function buildIdeomotorIntents(
 
     // A host ability the executive imagines enacting, with its conscious args.
     const schema = externalBySchema.get( t )
-    if( !schema || seen.has( `ability:${ schema }` ) ) continue
-    seen.add( `ability:${ schema }` )
+    if( !schema || seen.has(`ability:${ schema }`) ) continue
+    seen.add(`ability:${ schema }`)
     const keid = action.target ? resolveKnownEntity( action.target, state ) : undefined
     set.push({
       id:   `ideomotor-${ schema }${ keid ? `-${ keid }` : '' }`,

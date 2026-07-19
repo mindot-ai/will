@@ -62,8 +62,8 @@ afterEach( () => { vi.restoreAllMocks() } )
 
 // ── 1. Clock advance ──────────────────────────────────────────
 
-describe( 'Orchestrator — tick advances + syncs the clock (R7)', () => {
-  it( 'advances currentTick and pushes the sim time into the state manager', async () => {
+describe('Orchestrator — tick advances + syncs the clock (R7)', () => {
+  it('advances currentTick and pushes the sim time into the state manager', async () => {
     const { orch, clock, stateManager } = makeHarness()
 
     await orch.step( 1 )
@@ -80,14 +80,14 @@ describe( 'Orchestrator — tick advances + syncs the clock (R7)', () => {
 
 // ── 2. Registration order ─────────────────────────────────────
 
-describe( 'Orchestrator — engines run in registration order (R7)', () => {
-  it( 'reacts engines sequentially in the order they were added', async () => {
+describe('Orchestrator — engines run in registration order (R7)', () => {
+  it('reacts engines sequentially in the order they were added', async () => {
     const { orch } = makeHarness()
     const order: string[] = []
 
-    orch.addEngine( makeEngine( 'a', async () => { order.push( 'a' ); return {} } ) )
-    orch.addEngine( makeEngine( 'b', async () => { order.push( 'b' ); return {} } ) )
-    orch.addEngine( makeEngine( 'c', async () => { order.push( 'c' ); return {} } ) )
+    orch.addEngine( makeEngine('a', async () => { order.push('a'); return {} } ) )
+    orch.addEngine( makeEngine('b', async () => { order.push('b'); return {} } ) )
+    orch.addEngine( makeEngine('c', async () => { order.push('c'); return {} } ) )
 
     await orch.step( 1 )
     expect( order ).toEqual( [ 'a', 'b', 'c' ] )
@@ -96,17 +96,17 @@ describe( 'Orchestrator — engines run in registration order (R7)', () => {
 
 // ── 3. Double-buffer snapshot isolation ───────────────────────
 
-describe( 'Orchestrator — frozen snapshot isolates same-tick writes (R7)', () => {
-  it( 'a later engine does not see an earlier engine\'s write until the next tick', async () => {
+describe('Orchestrator — frozen snapshot isolates same-tick writes (R7)', () => {
+  it('a later engine does not see an earlier engine\'s write until the next tick', async () => {
     const { orch, stateManager } = makeHarness()
     const sees: boolean[] = []
 
     // writer sets 'x' every tick; reader (registered after) records visibility.
-    orch.addEngine( makeEngine( 'writer', async () => (
+    orch.addEngine( makeEngine('writer', async () => (
       { commands: { set: [ { id: 'x', type: 'thing' } ] } }
     ) ) )
-    orch.addEngine( makeEngine( 'reader', async ( _d, _t, state ) => {
-      sees.push( state.entities.has( 'x' ) )
+    orch.addEngine( makeEngine('reader', async ( _d, _t, state ) => {
+      sees.push( state.entities.has('x') )
       return {}
     } ) )
 
@@ -115,122 +115,122 @@ describe( 'Orchestrator — frozen snapshot isolates same-tick writes (R7)', () 
 
     await orch.step( 1 )
     expect( sees ).toEqual( [ false, true ] )      // visible on the next tick's snapshot
-    expect( stateManager.getEntity( 'x' ) ).toBeDefined()
+    expect( stateManager.getEntity('x') ).toBeDefined()
   } )
 } )
 
 // ── 4. Atomic command application ─────────────────────────────
 
-describe( 'Orchestrator — commands applied after all engines run (R7)', () => {
-  it( 'commits entity sets and metric writes returned by an engine', async () => {
+describe('Orchestrator — commands applied after all engines run (R7)', () => {
+  it('commits entity sets and metric writes returned by an engine', async () => {
     const { orch, stateManager } = makeHarness()
 
-    orch.addEngine( makeEngine( 'e', async () => (
+    orch.addEngine( makeEngine('e', async () => (
       { commands: { set: [ { id: 'y', type: 'thing' } ], metrics: [ [ 'm', 5 ] ] } }
     ) ) )
 
     await orch.step( 1 )
-    expect( stateManager.getEntity( 'y' )?.id ).toBe( 'y' )
-    expect( stateManager.getMetric( 'm' ) ).toBe( 5 )
+    expect( stateManager.getEntity('y')?.id ).toBe('y')
+    expect( stateManager.getMetric('m') ).toBe( 5 )
   } )
 } )
 
 // ── 5. Pre-commit validation ──────────────────────────────────
 
-describe( 'Orchestrator — onBeforeCommit gates the commit (R7)', () => {
-  it( 'aborts the commit when a validator returns errors: no commands, no events', async () => {
-    vi.spyOn( console, 'error' ).mockImplementation( () => {} )
+describe('Orchestrator — onBeforeCommit gates the commit (R7)', () => {
+  it('aborts the commit when a validator returns errors: no commands, no events', async () => {
+    vi.spyOn( console, 'error').mockImplementation( () => {} )
 
     const blocking: CommitValidator = () => [ 'blocked' ]
     const { orch, stateManager, eventBus } = makeHarness({ onBeforeCommit: [ blocking ] } )
 
     const fired: string[] = []
-    eventBus.subscribe( 'test.evt', () => { fired.push( 'fired' ) } )
+    eventBus.subscribe('test.evt', () => { fired.push('fired') } )
 
-    orch.addEngine( makeEngine( 'e', async () => ({
+    orch.addEngine( makeEngine('e', async () => ({
       commands: { set: [ { id: 'z', type: 'thing' } ] },
       events:   [ { type: 'test.evt', source: 'e', payload: {} } ],
     } ) ) )
 
     await orch.step( 1 )
-    expect( stateManager.getEntity( 'z' ) ).toBeUndefined()   // commit aborted
+    expect( stateManager.getEntity('z') ).toBeUndefined()   // commit aborted
     expect( fired ).toEqual( [] )                             // events not published
   } )
 
-  it( 'applies the commit when every validator passes', async () => {
+  it('applies the commit when every validator passes', async () => {
     const passing: CommitValidator = () => true
     const { orch, stateManager, eventBus } = makeHarness({ onBeforeCommit: [ passing ] } )
 
     const fired: string[] = []
-    eventBus.subscribe( 'test.evt', () => { fired.push( 'fired' ) } )
+    eventBus.subscribe('test.evt', () => { fired.push('fired') } )
 
-    orch.addEngine( makeEngine( 'e', async () => ({
+    orch.addEngine( makeEngine('e', async () => ({
       commands: { set: [ { id: 'z', type: 'thing' } ] },
       events:   [ { type: 'test.evt', source: 'e', payload: {} } ],
     } ) ) )
 
     await orch.step( 1 )
-    expect( stateManager.getEntity( 'z' ) ).toBeDefined()
+    expect( stateManager.getEntity('z') ).toBeDefined()
     expect( fired ).toEqual( [ 'fired' ] )
   } )
 } )
 
 // ── 6. Engine error isolation ─────────────────────────────────
 
-describe( 'Orchestrator — engine failures are isolated (R7)', () => {
-  it( 'routes a throw to onError, collects its fallback, and keeps running later engines', async () => {
+describe('Orchestrator — engine failures are isolated (R7)', () => {
+  it('routes a throw to onError, collects its fallback, and keeps running later engines', async () => {
     const { orch, stateManager } = makeHarness()
     const order: string[] = []
 
     const bad: SimulationEngine = {
       name:  'bad',
-      react: async () => { throw new Error( 'boom' ) },
+      react: async () => { throw new Error('boom') },
       onError: async () => {
-        order.push( 'onError' )
+        order.push('onError')
         return { commands: { metrics: [ [ 'recovered', 1 ] ] } }
       },
     }
 
     orch.addEngine( bad )
-    orch.addEngine( makeEngine( 'good', async () => {
-      order.push( 'good' )
+    orch.addEngine( makeEngine('good', async () => {
+      order.push('good')
       return { commands: { set: [ { id: 'g', type: 'thing' } ] } }
     } ) )
 
     await orch.step( 1 )                              // must not throw
     expect( order ).toEqual( [ 'onError', 'good' ] )
-    expect( stateManager.getMetric( 'recovered' ) ).toBe( 1 )   // fallback applied
-    expect( stateManager.getEntity( 'g' ) ).toBeDefined()       // later engine still ran
+    expect( stateManager.getMetric('recovered') ).toBe( 1 )   // fallback applied
+    expect( stateManager.getEntity('g') ).toBeDefined()       // later engine still ran
   } )
 
-  it( 'logs and continues when a throwing engine has no onError', async () => {
-    const errSpy = vi.spyOn( console, 'error' ).mockImplementation( () => {} )
+  it('logs and continues when a throwing engine has no onError', async () => {
+    const errSpy = vi.spyOn( console, 'error').mockImplementation( () => {} )
     const { orch, stateManager } = makeHarness()
 
-    orch.addEngine( makeEngine( 'bad', async () => { throw new Error( 'boom' ) } ) )
-    orch.addEngine( makeEngine( 'good', async () => (
+    orch.addEngine( makeEngine('bad', async () => { throw new Error('boom') } ) )
+    orch.addEngine( makeEngine('good', async () => (
       { commands: { set: [ { id: 'g', type: 'thing' } ] } }
     ) ) )
 
     await orch.step( 1 )                              // must not throw
-    expect( stateManager.getEntity( 'g' ) ).toBeDefined()
+    expect( stateManager.getEntity('g') ).toBeDefined()
     expect( errSpy ).toHaveBeenCalled()
   } )
 } )
 
 // ── 7. Before/after-tick snapshot phases ──────────────────────
 
-describe( 'Orchestrator — before/after-tick snapshot phases (R7)', () => {
-  it( 'onBeforeTick sees pre-commit state, onAfterTick sees post-commit state', async () => {
+describe('Orchestrator — before/after-tick snapshot phases (R7)', () => {
+  it('onBeforeTick sees pre-commit state, onAfterTick sees post-commit state', async () => {
     const before: boolean[] = []
     const after:  boolean[] = []
 
     const { orch } = makeHarness({
-      onBeforeTick: ( _t, s ) => { before.push( s.entities.has( 'w' ) ) },
-      onAfterTick:  ( _t, s ) => { after.push( s.entities.has( 'w' ) ) },
+      onBeforeTick: ( _t, s ) => { before.push( s.entities.has('w') ) },
+      onAfterTick:  ( _t, s ) => { after.push( s.entities.has('w') ) },
     } )
 
-    orch.addEngine( makeEngine( 'w-writer', async () => (
+    orch.addEngine( makeEngine('w-writer', async () => (
       { commands: { set: [ { id: 'w', type: 'thing' } ] } }
     ) ) )
 
@@ -242,18 +242,18 @@ describe( 'Orchestrator — before/after-tick snapshot phases (R7)', () => {
 
 // ── 8. Event publishing order ─────────────────────────────────
 
-describe( 'Orchestrator — events published post-commit with tick stamp (R7)', () => {
-  it( 'stamps the current tick and flushes events after commands apply', async () => {
+describe('Orchestrator — events published post-commit with tick stamp (R7)', () => {
+  it('stamps the current tick and flushes events after commands apply', async () => {
     const { orch, stateManager, eventBus } = makeHarness()
 
     let stampedTick: number | undefined
     let entityVisibleInHandler = false
-    eventBus.subscribe( 'test.evt', evt => {
+    eventBus.subscribe('test.evt', evt => {
       stampedTick = evt.tick
-      entityVisibleInHandler = stateManager.getEntity( 'q' ) !== undefined
+      entityVisibleInHandler = stateManager.getEntity('q') !== undefined
     } )
 
-    orch.addEngine( makeEngine( 'e', async () => ({
+    orch.addEngine( makeEngine('e', async () => ({
       commands: { set: [ { id: 'q', type: 'thing' } ] },
       events:   [ { type: 'test.evt', source: 'e', payload: {} } ],
     } ) ) )

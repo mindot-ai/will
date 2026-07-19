@@ -14,7 +14,7 @@ import { deepFreeze } from '#core/utils'
  */
 function resolveFreezeState(): boolean {
   const flag = process.env.WILL_FREEZE_STATE
-  if( flag !== undefined && flag !== '' )
+  if( flag !== undefined && flag !== '')
     return flag !== '0' && flag.toLowerCase() !== 'false'
   return process.env.NODE_ENV !== 'production'
 }

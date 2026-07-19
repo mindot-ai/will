@@ -100,20 +100,20 @@ export class FrustrationEvaluator implements SimulationEngine, CognitiveEngine {
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
 
-    if( e.type === 'executive.prediction.formed' ){
+    if( e.type === 'executive.prediction.formed'){
       const p = e.payload as { predictedDomains: string[]; confidence: number }
       if( p.predictedDomains.includes('affect') )
-        this._model.setPrecision( 'emotion.frustration', 1.0 + p.confidence * 0.5 )
+        this._model.setPrecision('emotion.frustration', 1.0 + p.confidence * 0.5 )
       this._cachedConfidence = p.confidence
     }
 
-    if( e.type === 'goal.blocked' ){
+    if( e.type === 'goal.blocked'){
       const p = e.payload as { goalId: string; ticksStuck: number; priority: number }
       this._blockedGoals.set( p.goalId, { ticksStuck: p.ticksStuck, priority: p.priority, refreshedAt: this._reactCount } )
       this._goalBlockedCounts.set( p.goalId, ( this._goalBlockedCounts.get( p.goalId ) ?? 0 ) + 1 )
     }
 
-    if( e.type === 'interaction.occurred' ){
+    if( e.type === 'interaction.occurred'){
       const p = e.payload as { keid: string; valence: number; intensity: number; directedAtSelf: boolean }
       if( p.directedAtSelf && p.valence < -0.5 )
         this._unfairnessSignal = Math.min( 1, this._unfairnessSignal + 0.3 )
@@ -137,7 +137,7 @@ export class FrustrationEvaluator implements SimulationEngine, CognitiveEngine {
     // steady affect develops a lower build-rate here, so it stays even-keeled longer —
     // distinct from resilience's frustrationTolerance (how much is *tolerated*). Pure +
     // deterministic; falls back to the constructor default when no seed/prior is present.
-    const frustrationCfg   = readEffectiveParams( state, 'engine-config-frustration' )
+    const frustrationCfg   = readEffectiveParams( state, 'engine-config-frustration')
     const irritabilityRate = frustrationCfg.irritabilityRate ?? this._irritabilityRate
 
     // Channel A (agreeableness — "yielding in conflict"): how strongly provocation
@@ -236,7 +236,7 @@ export class FrustrationEvaluator implements SimulationEngine, CognitiveEngine {
     // Phase C + F: publish cognitive event — gated by prediction error
     const _bus = this._bus
     if( _bus && frustration > 0.5 ){
-      const predErr = this._model.observe( 'emotion.frustration', frustration )
+      const predErr = this._model.observe('emotion.frustration', frustration )
       if( !predErr.gated )
         _bus.publish({ type: 'emotion.frustration.elevated', version: 1, sourceEngine: this.name, salience: Math.min(1, frustration), payload: { frustration } })
     }

@@ -148,7 +148,7 @@ export class RewardEvaluator implements SimulationEngine, CognitiveEngine {
           this._cachedSocialReward = Math.min( 1, Math.max( 0,
             this._cachedSocialReward + contribution * this._socialWarmthBoost
           ))
-          this._model.observe( 'reward.social', this._cachedSocialReward )
+          this._model.observe('reward.social', this._cachedSocialReward )
         }
         break
       }
@@ -161,7 +161,7 @@ export class RewardEvaluator implements SimulationEngine, CognitiveEngine {
         const priority = p.priority ?? 0.5
         this._cachedGoalReward     = Math.min( 1, this._cachedGoalReward + priority * 0.9 )
         this._goalsCompletedRecently = Math.min( 2, this._goalsCompletedRecently + 1 )
-        this._model.observe( 'reward.goal', this._cachedGoalReward )
+        this._model.observe('reward.goal', this._cachedGoalReward )
         break
       }
 
@@ -185,7 +185,7 @@ export class RewardEvaluator implements SimulationEngine, CognitiveEngine {
    * No-op at boot: mirror params equal the constructor defaults (reconciled in #83).
    */
   private _readConfigFromState( state: ReadonlySimulationState ): void {
-    const p = readEffectiveParams( state, 'engine-config-reward' )
+    const p = readEffectiveParams( state, 'engine-config-reward')
     if( p.goalWeight      != null ) this._goalWeight      = p.goalWeight
     if( p.socialWeight    != null ) this._socialWeight    = p.socialWeight
     if( p.resourceWeight  != null ) this._resourceWeight  = p.resourceWeight
@@ -289,7 +289,7 @@ export class RewardEvaluator implements SimulationEngine, CognitiveEngine {
       // workspace, a fully-expected reward goes quiet (dopamine-RPE analogue),
       // precision-modulated (set on 'reward.value'). observe() runs every tick so
       // the baseline tracks; the one value is reused across the reward events.
-      const rewardSalience = this._model.observe( 'reward.value', rewardLevel ).salience
+      const rewardSalience = this._model.observe('reward.value', rewardLevel ).salience
 
       if( joy > 0.5 )
         _bus.publish({ type: 'emotion.joy.peak', version: 1, sourceEngine: this.name, salience: rewardSalience, payload: { joy } })

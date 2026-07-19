@@ -59,11 +59,11 @@ for( const [ key, value ] of Object.entries( pma as Record<string, unknown> ) ){
   const desc = Array.isArray( value ) ? `${value.length} item(s)`
     : typeof value === 'object' && value !== null ? Object.keys( value ).length + ' field(s)'
     : String( value )
-  console.log( `   ${key}: ${desc}` )
+  console.log(`   ${key}: ${desc}`)
 }
 
 const bond1 = ( pma.relationships as Array<Record<string, unknown>> )[0]
-if( bond1 ) console.log( `\n🤝 The mind met someone: ${JSON.stringify( bond1 ).slice( 0, 140 )}…` )
+if( bond1 ) console.log(`\n🤝 The mind met someone: ${JSON.stringify( bond1 ).slice( 0, 140 )}…`)
 
 // ── Death ─────────────────────────────────────────────────────
 
@@ -85,9 +85,9 @@ const pma2  = stem.distillPMA( life2 )
 const bond2 = ( pma2.relationships as Array<Record<string, unknown>> )[0]
 
 console.log('\n🔁 Inside the resurrected mind:')
-console.log( `   identity:      ${( pma2.identity as { name?: string } )?.name ?? 'Memo'} — restored` )
-console.log( `   relationships: ${( pma2.relationships as unknown[] ).length} — ${bond2 ? 'Ada survived death: ' + JSON.stringify( bond2 ).slice( 0, 100 ) + '…' : '(none)'}` )
-console.log( `   emotional baseline + behavioral profile: carried over` )
+console.log(`   identity:      ${( pma2.identity as { name?: string } )?.name ?? 'Memo'} — restored`)
+console.log(`   relationships: ${( pma2.relationships as unknown[] ).length} — ${bond2 ? 'Ada survived death: ' + JSON.stringify( bond2 ).slice( 0, 100 ) + '…' : '(none)'}`)
+console.log(`   emotional baseline + behavioral profile: carried over`)
 
 await stem.archiveWill( life2 )
 console.log('\n✨ Same artifact → same mind. The PMA is version control for a self.')

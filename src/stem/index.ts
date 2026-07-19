@@ -225,10 +225,10 @@ export class WillStem {
         const previousState = await simulation.snapshotManager.loadLatestFromStorage()
         if( previousState ){
           simulation.stateManager.restore( previousState, { entities: true, metrics: false } )
-          logger.info( `[WillStem] Restored snapshot for ${config.id} — ${previousState.entities.size} entities loaded` )
+          logger.info(`[WillStem] Restored snapshot for ${config.id} — ${previousState.entities.size} entities loaded`)
         }
       }
-      catch( err ){ logger.warn( `[WillStem] Snapshot restore failed for ${config.id} — starting fresh:`, err ) }
+      catch( err ){ logger.warn(`[WillStem] Snapshot restore failed for ${config.id} — starting fresh:`, err ) }
 
     const
     dataDir       = process.env.WILL_DATA_DIR ?? './data',
@@ -310,7 +310,7 @@ export class WillStem {
       // Buffer host-owned effector invocations for delivery. The MotorSchemaExecutor
       // emits `agency.invocation` (intentId = correlation handle) when it holds an
       // external action 'awaiting'; the host executes it and acks → confirmExecution.
-      if( event.type === 'agency.invocation' )
+      if( event.type === 'agency.invocation')
         this._effector.bufferInvocation( instance, event.payload as Record<string, unknown> )
 
       if( instance.simulationEventListeners.size === 0 ) return
@@ -457,7 +457,7 @@ export class WillStem {
       instance.simulation.stateManager.applyCommands( flushCmds )
     const pauseState = instance.simulation.stateManager.snapshot()
     instance.simulation.snapshotManager.persistNow( pauseState )
-      .catch( err => logger.error( `[WillStem] snapshot persist failed on pause (${id}):`, err ))
+      .catch( err => logger.error(`[WillStem] snapshot persist failed on pause (${id}):`, err ))
 
     this._biography.writeSessionSummary( instance )
     this._biography.writeEmotionalBiographySummary( instance )
@@ -1029,9 +1029,9 @@ export class WillStem {
       // executive confidence, goal outcomes, and significant emotional events.
       if( instance._sessionBehavior ){
         const sb = instance._sessionBehavior
-        const v = snapshot.metrics.get( 'affect.valence' ) ?? 0
-        const a = snapshot.metrics.get( 'affect.arousal' ) ?? 0
-        const c = snapshot.metrics.get( 'executive.confidence' )
+        const v = snapshot.metrics.get('affect.valence') ?? 0
+        const a = snapshot.metrics.get('affect.arousal') ?? 0
+        const c = snapshot.metrics.get('executive.confidence')
 
         // ── Range tracking ──────────────────────────────────────
         if( v < sb.valenceMin ) sb.valenceMin = v
@@ -1039,8 +1039,8 @@ export class WillStem {
         if( a < sb.arousalMin ) sb.arousalMin = a
         if( a > sb.arousalMax ) sb.arousalMax = a
         if( c !== undefined ){ sb.confidenceSum += c; sb.confidenceCount++ }
-        const gt = snapshot.metrics.get( 'goals.total' )
-        const gc = snapshot.metrics.get( 'goals.completed_total' )
+        const gt = snapshot.metrics.get('goals.total')
+        const gc = snapshot.metrics.get('goals.completed_total')
         if( gt !== undefined ) sb.goalsTotal     = gt
         if( gc !== undefined ) sb.goalsCompleted = gc
 
@@ -1101,8 +1101,8 @@ export class WillStem {
         sb.prevArousal = a
 
         // Track impulsive actions: ticks where executive fired with low confidence
-        const conf      = snapshot.metrics.get( 'executive.confidence' )
-        const actCount  = Math.round( snapshot.metrics.get( 'executive.action_count' ) ?? 0 )
+        const conf      = snapshot.metrics.get('executive.confidence')
+        const actCount  = Math.round( snapshot.metrics.get('executive.action_count') ?? 0 )
         if( conf !== undefined && conf < 0.35 && actCount > 0 )
           sb.impulsiveActionCount += actCount
       }

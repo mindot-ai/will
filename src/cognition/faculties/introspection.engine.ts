@@ -183,7 +183,7 @@ export class IntrospectionEngine implements SimulationEngine, CognitiveEngine {
     // mismatched: precision set on .significance, salience read off .total).
     const _bus = this._bus
     if( _bus && introspectedThisTick )
-      _bus.publish({ type: 'introspection.insight', version: 1, sourceEngine: this.name, salience: Math.max( 0.3, this._model.observe( 'introspection.significance', significance ).salience ), payload: { total: this._introspectionHistory.length, significance } })
+      _bus.publish({ type: 'introspection.insight', version: 1, sourceEngine: this.name, salience: Math.max( 0.3, this._model.observe('introspection.significance', significance ).salience ), payload: { total: this._introspectionHistory.length, significance } })
     return { events: events.length > 0 ? events : undefined, commands }
   }
 
@@ -200,7 +200,7 @@ export class IntrospectionEngine implements SimulationEngine, CognitiveEngine {
     // that observation stays.)
     const detectedBiases: string[] = []
     for( const entity of state.entities.values() )
-      if( entity.type === 'cognitive_bias' )
+      if( entity.type === 'cognitive_bias')
         detectedBiases.push(
           ( entity.metadata?.description as string )
           ?? ( entity.metadata?.type as string )
@@ -234,7 +234,7 @@ export class IntrospectionEngine implements SimulationEngine, CognitiveEngine {
    * drift — so reading base⊕prior is safe here.)
    */
   private _readConfigFromState( state: ReadonlySimulationState ): void {
-    const p = readEffectiveParams( state, 'engine-config-introspection' )
+    const p = readEffectiveParams( state, 'engine-config-introspection')
     if( p.cooldownTicks != null )         this._cooldownTicks         = p.cooldownTicks
     if( p.significanceThreshold != null ) this._significanceThreshold = p.significanceThreshold
   }

@@ -91,7 +91,7 @@ await stem.ingestText( willId, {
 })
 
 const reply = await replyArrived
-console.log( reply ? `🧠 Dot: "${reply}"` : '🧠 (no reply within 45 s — see docs)' )
+console.log( reply ? `🧠 Dot: "${reply}"` : '🧠 (no reply within 45 s — see docs)')
 
 // ── Peek inside ───────────────────────────────────────────────
 
@@ -99,8 +99,8 @@ const cognition = stem.getWillCognition( willId )
 const goals     = cognition.goalManager.getActiveGoals()
 const beliefs   = cognition.semanticIntegrator.getBeliefs()
 
-console.log( `\n🔍 Inside the mind: ${goals.length} active goal(s), ${beliefs.length} belief(s)` )
-for( const g of goals.slice( 0, 3 ) ) console.log( `   goal: ${g.description}` )
+console.log(`\n🔍 Inside the mind: ${goals.length} active goal(s), ${beliefs.length} belief(s)`)
+for( const g of goals.slice( 0, 3 ) ) console.log(`   goal: ${g.description}`)
 
 unsub()
 await stem.archiveWill( willId )

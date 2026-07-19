@@ -19,11 +19,11 @@ export function computeReadySet( plan: Plan ): PlanStep[] {
   const ready: PlanStep[] = []
 
   for( const step of plan.steps ){
-    if( step.status !== 'pending' ) continue
+    if( step.status !== 'pending') continue
 
     const allPrereqsSatisfied = step.prerequisites.every( prereqId => {
       const prereqStep = plan.steps.find( s => s.id === prereqId )
-      return prereqStep && ( prereqStep.status === 'completed' || prereqStep.status === 'skipped' )
+      return prereqStep && ( prereqStep.status === 'completed' || prereqStep.status === 'skipped')
     } )
 
     allPrereqsSatisfied && ready.push( step )
@@ -52,17 +52,17 @@ export function projectFrontier(
 ): void {
   // Clear the previous tick's priors — they are transient.
   for( const [ id, e ] of state.entities )
-    if( e.type === 'plan.prior' ) commands.delete!.push( id )
+    if( e.type === 'plan.prior') commands.delete!.push( id )
 
   for( const plan of plans ){
-    if( plan.status !== 'executing' ) continue
+    if( plan.status !== 'executing') continue
 
     // Channel A: conscientiousness develops `planBiasGain` UP, so a conscientious
     // Will pushes its plan's frontier harder against competing impulses.
     const strength = clamp01( ( 0.5 * goalPriority( plan.goalId ) + 0.5 * plan.confidence ) * biasGain )
 
     for( const step of plan.steps ){
-      if( step.status !== 'active' ) continue
+      if( step.status !== 'active') continue
       commands.set!.push({
         // tick in the id (like the affordance field) so this tick's fresh prior
         // never collides with last tick's cleared one in the same command batch.

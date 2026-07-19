@@ -44,26 +44,26 @@ async function makeTransport( fake: FakeSocket, ackTimeoutMs = 50 ){
   return t
 }
 
-describe( 'SocketIoTransport', () => {
+describe('SocketIoTransport', () => {
   let fake: FakeSocket
   beforeEach( () => { fake = new FakeSocket() } )
 
-  it( 'emit() resolves via the ack callback', async () => {
+  it('emit() resolves via the ack callback', async () => {
     fake.autoAck = { received: true }
     const t = await makeTransport( fake )
 
     const res = await t.emit( reply() )
     expect( res ).toEqual({ acked: true, via: 'callback', payload: { received: true } })
-    expect( fake.emitted[0]!.event ).toBe( 'envelope' )
+    expect( fake.emitted[0]!.event ).toBe('envelope')
   } )
 
-  it( 'emit() times out when the peer never acks', async () => {
+  it('emit() times out when the peer never acks', async () => {
     const t = await makeTransport( fake, 20 )   // no autoAck → never acked
     const res = await t.emit( reply() )
     expect( res ).toEqual({ acked: false, via: 'timeout' })
   } )
 
-  it( 'emit() returns timeout when disconnected (caller keeps buffered)', async () => {
+  it('emit() returns timeout when disconnected (caller keeps buffered)', async () => {
     fake.connected = false
     const t = await makeTransport( fake )
     const res = await t.emit( reply() )
@@ -71,58 +71,58 @@ describe( 'SocketIoTransport', () => {
     expect( fake.emitted ).toHaveLength( 0 )   // nothing sent on a dead socket
   } )
 
-  it( 'routes inbound envelope events to onInbound handlers', async () => {
+  it('routes inbound envelope events to onInbound handlers', async () => {
     const t = await makeTransport( fake )
     const seen: InboundEnvelope[] = []
     t.onInbound( e => seen.push( e ) )
 
-    fake.trigger( 'envelope', { channel: 'inbound_message', kind: 'text', entityId: 'a', threadId: 't', content: 'yo', willId: 'will-1', correlationId: 'm1', seq: 1, wallTime: 0 } )
+    fake.trigger('envelope', { channel: 'inbound_message', kind: 'text', entityId: 'a', threadId: 't', content: 'yo', willId: 'will-1', correlationId: 'm1', seq: 1, wallTime: 0 } )
 
     expect( seen ).toHaveLength( 1 )
-    expect( seen[0]!.channel ).toBe( 'inbound_message' )
+    expect( seen[0]!.channel ).toBe('inbound_message')
   } )
 
-  it( 'synthesizes a result ack from a discrete effector.invoked.ack event', async () => {
+  it('synthesizes a result ack from a discrete effector.invoked.ack event', async () => {
     const t = await makeTransport( fake )
     const seen: InboundEnvelope[] = []
     t.onInbound( e => seen.push( e ) )
 
-    fake.trigger( 'effector.invoked.ack', { correlationId: 'inv-1', result: { success: true, description: 'done' } } )
+    fake.trigger('effector.invoked.ack', { correlationId: 'inv-1', result: { success: true, description: 'done' } } )
 
     expect( seen ).toHaveLength( 1 )
     const e = seen[0] as any
-    expect( e.channel ).toBe( 'ack' )
-    expect( e.ackKind ).toBe( 'result' )
-    expect( e.correlationId ).toBe( 'inv-1' )
+    expect( e.channel ).toBe('ack')
+    expect( e.ackKind ).toBe('result')
+    expect( e.correlationId ).toBe('inv-1')
     expect( e.result ).toEqual({ success: true, description: 'done' })
   } )
 
-  it( 'synthesizes a delivery ack from a discrete message.delivered event', async () => {
+  it('synthesizes a delivery ack from a discrete message.delivered event', async () => {
     const t = await makeTransport( fake )
     const seen: InboundEnvelope[] = []
     t.onInbound( e => seen.push( e ) )
 
-    fake.trigger( 'message.delivered', { correlationId: 'out-7' } )
+    fake.trigger('message.delivered', { correlationId: 'out-7' } )
 
     const e = seen[0] as any
-    expect( e.channel ).toBe( 'ack' )
-    expect( e.ackKind ).toBe( 'delivery' )
+    expect( e.channel ).toBe('ack')
+    expect( e.ackKind ).toBe('delivery')
     expect( e.delivered ).toBe( true )
-    expect( e.correlationId ).toBe( 'out-7' )
+    expect( e.correlationId ).toBe('out-7')
   } )
 
-  it( 'propagates status events and reflects connected', async () => {
+  it('propagates status events and reflects connected', async () => {
     const t = await makeTransport( fake )
     const statuses: string[] = []
     t.onStatus( s => statuses.push( s ) )
 
-    fake.trigger( 'disconnect' )
-    fake.trigger( 'connect' )
+    fake.trigger('disconnect')
+    fake.trigger('connect')
     expect( statuses ).toEqual( ['disconnected', 'connected'] )
     expect( t.connected ).toBe( true )
   } )
 
-  it( 'close() disconnects the socket', async () => {
+  it('close() disconnects the socket', async () => {
     const t = await makeTransport( fake )
     t.close()
     expect( fake.connected ).toBe( false )

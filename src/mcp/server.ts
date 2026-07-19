@@ -35,7 +35,7 @@ export interface WillMcpOptions {
 function serverVersion(): string {
   // Same relative depth from src/mcp/ and dist/mcp/ — resolves in both.
   try {
-    return JSON.parse( readFileSync( new URL( '../../package.json', import.meta.url ), 'utf8' ) ).version ?? '0.0.0'
+    return JSON.parse( readFileSync( new URL('../../package.json', import.meta.url ), 'utf8') ).version ?? '0.0.0'
   }
   catch { return '0.0.0' }
 }
@@ -54,7 +54,7 @@ export function buildWillMcpServer( will: Will, opts: WillMcpOptions = {} ): Mcp
 
   // ── Tools ─────────────────────────────────────────────────
 
-  server.registerTool( 'perceive', {
+  server.registerTool('perceive', {
     title: 'Perceive',
     description:
       `Deliver a stimulus (something said or observed) into ${ will.name }'s sensory field. ` +
@@ -62,9 +62,9 @@ export function buildWillMcpServer( will: Will, opts: WillMcpOptions = {} ): Mcp
       `NOT when it has responded. Its response — if it chooses to give one — arrives as its next ` +
       `utterance (use the next_utterance tool). Staying silent is a valid choice, not an error.`,
     inputSchema: {
-      text:    z.string().describe( 'What is said or observed.' ),
+      text:    z.string().describe('What is said or observed.'),
       from:    z.string().optional().describe( "Who it's from (entity id, default 'user'). Use a stable id per person." ),
-      speaker: z.string().optional().describe( 'Display name of the speaker.' ),
+      speaker: z.string().optional().describe('Display name of the speaker.'),
     },
   }, async ( { text, from, speaker } ) => {
     await will.perceive( { text, ...( from ? { from } : {} ), ...( speaker ? { speaker } : {} ) } )
@@ -77,15 +77,15 @@ export function buildWillMcpServer( will: Will, opts: WillMcpOptions = {} ): Mcp
     }
   } )
 
-  server.registerTool( 'next_utterance', {
+  server.registerTool('next_utterance', {
     title: 'Next utterance',
     description:
       `Await ${ will.name }'s next spontaneous utterance. Returns what it says next, or reports ` +
       `that it chose silence within the wait window — silence is a real outcome, not a failure. ` +
       `Call after perceive to hear the response, or on its own to listen for unprompted speech.`,
     inputSchema: {
-      within_ms: z.number().optional().describe( 'How long to wait before accepting silence (default 15000, max 120000).' ),
-      from:      z.string().optional().describe( 'Only accept an utterance addressed to this entity id.' ),
+      within_ms: z.number().optional().describe('How long to wait before accepting silence (default 15000, max 120000).'),
+      from:      z.string().optional().describe('Only accept an utterance addressed to this entity id.'),
     },
   }, async ( { within_ms, from } ) => {
     const within = Math.min( Math.max( within_ms ?? 15_000, 100 ), 120_000 )
@@ -101,7 +101,7 @@ export function buildWillMcpServer( will: Will, opts: WillMcpOptions = {} ): Mcp
     }
   } )
 
-  server.registerTool( 'state', {
+  server.registerTool('state', {
     title: 'Inner state',
     description:
       `Read a snapshot of ${ will.name }'s current inner life: tick, body/affect metrics ` +
@@ -112,7 +112,7 @@ export function buildWillMcpServer( will: Will, opts: WillMcpOptions = {} ): Mcp
     { content: [ { type: 'text', text: JSON.stringify( will.state(), null, 2 ) } ] }
   ) )
 
-  server.registerTool( 'save', {
+  server.registerTool('save', {
     title: 'Save (checkpoint)',
     description:
       `Checkpoint ${ will.name } into a portable PMA artifact on disk — non-destructive, it keeps ` +
@@ -130,12 +130,12 @@ export function buildWillMcpServer( will: Will, opts: WillMcpOptions = {} ): Mcp
 
   // ── Resources (read-only projections) ─────────────────────
 
-  server.registerResource( 'state', 'will://state',
+  server.registerResource('state', 'will://state',
     { title: `${ will.name } — inner state`, description: 'Live snapshot of the mind: metrics, goals, beliefs, narrative.', mimeType: 'application/json' },
     async uri => ( { contents: [ { uri: uri.href, mimeType: 'application/json', text: JSON.stringify( will.state(), null, 2 ) } ] } ),
   )
 
-  server.registerResource( 'narrative', 'will://narrative',
+  server.registerResource('narrative', 'will://narrative',
     { title: `${ will.name } — self-narrative`, description: 'The story the mind currently tells about itself.', mimeType: 'text/plain' },
     async uri => ( { contents: [ { uri: uri.href, mimeType: 'text/plain', text: will.state().narrative || '(no narrative formed yet)' } ] } ),
   )

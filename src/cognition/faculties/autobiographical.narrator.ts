@@ -107,7 +107,7 @@ export class AutobiographicalNarrator implements SimulationEngine, CognitiveEngi
       case 'executive.prediction.formed': {
         const p = e.payload as { predictedDomains: string[]; confidence: number }
         if( p.predictedDomains.includes('narrative') )
-          this._model.setPrecision( 'narrative.change', 1.0 + p.confidence * 0.5 )
+          this._model.setPrecision('narrative.change', 1.0 + p.confidence * 0.5 )
         break
       }
     }
@@ -245,7 +245,7 @@ export class AutobiographicalNarrator implements SimulationEngine, CognitiveEngi
     // Phase C + F: publish cognitive event — gated by prediction error
     const _bus = this._bus
     if( _bus && this._narrative.version > 0 ){
-      const predErr = this._model.observe( 'narrative.change', narrativeSignificance )
+      const predErr = this._model.observe('narrative.change', narrativeSignificance )
       if( !predErr.gated )
         _bus.publish({ type: 'narrative.updated', version: 1, sourceEngine: this.name, salience: Math.max( 0.2, predErr.salience ), payload: { version: this._narrative.version, significance: narrativeSignificance } })
     }
@@ -269,7 +269,7 @@ export class AutobiographicalNarrator implements SimulationEngine, CognitiveEngi
    * re-narrates its life story sooner.
    */
   private _readConfigFromState( state: ReadonlySimulationState ): void {
-    const p = readEffectiveParams( state, 'engine-config-narrator' )
+    const p = readEffectiveParams( state, 'engine-config-narrator')
     if( p.minIntervalTicks   != null ) this._minIntervalTicks   = p.minIntervalTicks
     if( p.maxNarrativeLength != null ) this._maxNarrativeLength = p.maxNarrativeLength
   }

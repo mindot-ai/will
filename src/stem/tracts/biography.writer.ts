@@ -38,15 +38,15 @@ export class BiographyWriter {
     if( !fileLoggingEnabled() ) return
 
     const dataDir = process.env[ 'WILL_DATA_DIR' ] ?? './data'
-    const dir     = join( dataDir, 'wills', willId, 'profiles' )
+    const dir     = join( dataDir, 'wills', willId, 'profiles')
     try {
       if( !this._ensuredDirs.has( dir ) ){
         mkdirSync( dir, { recursive: true } )
         this._ensuredDirs.add( dir )
       }
-      appendFileSync( join( dir, file ), JSON.stringify( record ) + '\n', 'utf8' )
+      appendFileSync( join( dir, file ), JSON.stringify( record ) + '\n', 'utf8')
     } catch( err ){
-      logger.error( `[biography] ${file} write failed:`, err )
+      logger.error(`[biography] ${file} write failed:`, err )
     }
   }
   /**

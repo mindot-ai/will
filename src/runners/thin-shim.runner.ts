@@ -26,7 +26,7 @@ const TICK_MS        = parseInt( process.env.WILL_TICK_MS       ?? '1000')
 const MAX_TICKS      = parseInt( process.env.WILL_MAX_TICKS     ?? '0'    )
 const LOG_INTERVAL   = parseInt( process.env.WILL_LOG_INTERVAL  ?? '10'   )
 const RANDOM_SEED    = parseInt( process.env.WILL_SEED          ?? String( Date.now() ) )
-const ANATOMY        = ( process.env.WILL_ANATOMY ?? 'mind' ) as WillConfig['anatomy']
+const ANATOMY        = ( process.env.WILL_ANATOMY ?? 'mind') as WillConfig['anatomy']
 const EXECUTIVE_INT    = process.env.WILL_EXECUTIVE_INTERVAL
   ? parseInt( process.env.WILL_EXECUTIVE_INTERVAL )
   : undefined

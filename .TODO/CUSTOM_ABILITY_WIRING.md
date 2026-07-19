@@ -46,7 +46,7 @@ feeds the agency learning loop like any other action.
 - **Entity binding.** ✅ DONE (2026-07-05). An effector may declare `binds: 'entity'`
   (EffectorDeclaration / facade EffectorSpec); `externalSchemas()` sets it, and the
   AffordanceSynthesizer's entity pass was generalised from a single `find` to
-  `filter( s => s.binds === 'entity' )` — every entity-bound schema (innate
+  `filter( s => s.binds === 'entity')` — every entity-bound schema (innate
   `reach-out` PLUS host effectors) is now bound against each perceived *sentient*
   known-entity, so the Will can `give`/`greet`/… someone in particular. The bound
   target reaches the host as `ctx.targetEntityId`; ids stay unique per

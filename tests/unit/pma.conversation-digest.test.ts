@@ -64,31 +64,31 @@ const BASE_CONFIG: Omit<WillConfig, 'id'> = {
 
 // ── Tests ──────────────────────────────────────────────────────
 
-describe( 'PMA — conversation digest derivation (§8 distill)', () => {
-  it( 'derives lastConversationDigest from the most recent conversation.exchange episode', () => {
+describe('PMA — conversation digest derivation (§8 distill)', () => {
+  it('derives lastConversationDigest from the most recent conversation.exchange episode', () => {
     const state = stateOf([
-      reputation( 'alice', 'Alice' ),
-      episode( 'alice', 'Alice', 'EARLIER summary', 3 ),
-      episode( 'alice', 'Alice', 'LATEST summary',  9 ),
+      reputation('alice', 'Alice'),
+      episode('alice', 'Alice', 'EARLIER summary', 3 ),
+      episode('alice', 'Alice', 'LATEST summary',  9 ),
     ])
 
-    const pma = new PMADistiller().distill( 'w', 'W', state, 's' )
-    const alice = pma.relationships.find( r => r.keid === 'alice' )
+    const pma = new PMADistiller().distill('w', 'W', state, 's')
+    const alice = pma.relationships.find( r => r.keid === 'alice')
 
     expect( alice ).toBeDefined()
-    expect( alice!.lastConversationDigest ).toBe( 'LATEST summary' )
+    expect( alice!.lastConversationDigest ).toBe('LATEST summary')
   } )
 
-  it( 'leaves the digest unset when there is no conversation episode', () => {
-    const pma = new PMADistiller().distill( 'w', 'W', stateOf([ reputation( 'bob', 'Bob' ) ]), 's' )
-    const bob = pma.relationships.find( r => r.keid === 'bob' )
+  it('leaves the digest unset when there is no conversation episode', () => {
+    const pma = new PMADistiller().distill('w', 'W', stateOf([ reputation('bob', 'Bob') ]), 's')
+    const bob = pma.relationships.find( r => r.keid === 'bob')
     expect( bob?.lastConversationDigest ).toBeUndefined()
   } )
 } )
 
-describe( 'PMA — conversation digest restore (§8 load)', () => {
-  it( 're-seeds the digest as a conversation.exchange working-memory item', () => {
-    const { simulation, cognition } = assembleMind( 'pma-digest-restore', { id: 'pma-digest-restore', ...BASE_CONFIG } )
+describe('PMA — conversation digest restore (§8 load)', () => {
+  it('re-seeds the digest as a conversation.exchange working-memory item', () => {
+    const { simulation, cognition } = assembleMind('pma-digest-restore', { id: 'pma-digest-restore', ...BASE_CONFIG } )
 
     const pma: PMASnapshot = {
       schemaVersion:   PMA_SCHEMA_VERSION,
@@ -110,14 +110,14 @@ describe( 'PMA — conversation digest restore (§8 load)', () => {
 
     new PMALoader().load( pma, simulation, cognition )
 
-    const restored = simulation.stateManager.getEntity( 'wm-exchange-restored-alice' )
+    const restored = simulation.stateManager.getEntity('wm-exchange-restored-alice')
     expect( restored ).toBeDefined()
-    expect( restored!.type ).toBe( 'working_memory.item' )
+    expect( restored!.type ).toBe('working_memory.item')
     const md = ( restored!.metadata ?? {} ) as Record<string, unknown>
-    expect( md.wmType ).toBe( 'conversation.exchange' )
-    expect( md.summary ).toBe( 'we agreed to meet Friday' )
-    expect( md.tags ).toContain( 'pma-restored' )
-    expect( md.tags ).toContain( 'entity:alice' )
-    expect( md.entityId ).toBe( 'alice' )
+    expect( md.wmType ).toBe('conversation.exchange')
+    expect( md.summary ).toBe('we agreed to meet Friday')
+    expect( md.tags ).toContain('pma-restored')
+    expect( md.tags ).toContain('entity:alice')
+    expect( md.entityId ).toBe('alice')
   } )
 } )

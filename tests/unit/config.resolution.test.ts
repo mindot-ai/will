@@ -20,37 +20,37 @@ const cfg = ( over: Partial<WillConfig> = {} ): WillConfig => ( {
   ...over,
 } as WillConfig )
 
-describe( 'resolveExecutiveInterval — the cadence budget', () => {
-  it( 'defaults to balanced (60); the named cadences stay pinned', () => {
+describe('resolveExecutiveInterval — the cadence budget', () => {
+  it('defaults to balanced (60); the named cadences stay pinned', () => {
     expect( resolveExecutiveInterval( cfg() ) ).toBe( EXECUTIVE_CADENCE.balanced )
     expect( EXECUTIVE_CADENCE ).toMatchObject({ responsive: 30, balanced: 60, economy: 90 })
   } )
 
-  it( 'honours an explicit executiveInterval (host budget knob)', () => {
+  it('honours an explicit executiveInterval (host budget knob)', () => {
     expect( resolveExecutiveInterval( cfg({ executiveInterval: 30 }) ) ).toBe( 30 )
     expect( resolveExecutiveInterval( cfg({ executiveInterval: 90 }) ) ).toBe( 90 )
   } )
 
-  it( 'clamps up to minExecutiveInterval (plan floor — cannot go faster)', () => {
+  it('clamps up to minExecutiveInterval (plan floor — cannot go faster)', () => {
     expect( resolveExecutiveInterval( cfg({ executiveInterval: 20, minExecutiveInterval: 60 }) ) ).toBe( 60 )
   } )
 } )
 
-describe( 'resolveModelRoles — per-role model map', () => {
+describe('resolveModelRoles — per-role model map', () => {
   const saved = process.env['WILL_LLM_MODEL']
   afterEach( () => {
     if( saved === undefined ) delete process.env['WILL_LLM_MODEL']
     else process.env['WILL_LLM_MODEL'] = saved
   } )
 
-  it( 'a plain string is the executive model; thinking roles fall back to it', () => {
+  it('a plain string is the executive model; thinking roles fall back to it', () => {
     delete process.env['WILL_LLM_MODEL']
-    expect( resolveModelRoles( 'model-x' ) ).toEqual( {
+    expect( resolveModelRoles('model-x') ).toEqual( {
       executive: 'model-x', summarizer: 'model-x', deliberation: 'model-x', conversation: 'model-x', embedding: null,
     } )
   } )
 
-  it( 'map roles win; unset thinking roles fall back to executive; embedding never falls back to a chat model', () => {
+  it('map roles win; unset thinking roles fall back to executive; embedding never falls back to a chat model', () => {
     delete process.env['WILL_LLM_MODEL']
     expect( resolveModelRoles( { executive: 'big', summarizer: 'small' } ) ).toEqual( {
       executive: 'big', summarizer: 'small', deliberation: 'big', conversation: 'big', embedding: null,
@@ -60,7 +60,7 @@ describe( 'resolveModelRoles — per-role model map', () => {
     } )
   } )
 
-  it( 'WILL_LLM_MODEL pins ALL thinking roles (operator single-model deployment), never embedding', () => {
+  it('WILL_LLM_MODEL pins ALL thinking roles (operator single-model deployment), never embedding', () => {
     process.env['WILL_LLM_MODEL'] = 'pinned'
     expect( resolveModelRoles( { executive: 'big', summarizer: 'small', conversation: 'chatty', embedding: 'e' } ) ).toEqual( {
       executive: 'pinned', summarizer: 'pinned', deliberation: 'pinned', conversation: 'pinned', embedding: 'e',

@@ -18,38 +18,38 @@ import type { ExecutiveContext } from '#faculties/executive.engine/types'
 
 const affordanceState = () => {
   const entities = new Map<string, any>()
-  entities.set( 'aff-give-ada', { id: 'aff-give-ada', type: 'affordance', metadata: {
+  entities.set('aff-give-ada', { id: 'aff-give-ada', type: 'affordance', metadata: {
     schema: 'give', source: 'external', available: true, description: 'Offer an item to someone present',
     targetEntityId: 'ada', parameters: { targetEntityName: 'Ada' } } } )
-  entities.set( 'aff-forage', { id: 'aff-forage', type: 'affordance', metadata: {
+  entities.set('aff-forage', { id: 'aff-forage', type: 'affordance', metadata: {
     schema: 'forage', source: 'external', available: true, description: 'Search the area for food' } } )
   // innate stance — already in the preamble, must NOT surface here
-  entities.set( 'aff-rest', { id: 'aff-rest', type: 'affordance', metadata: { schema: 'rest', source: 'innate', available: true } } )
+  entities.set('aff-rest', { id: 'aff-rest', type: 'affordance', metadata: { schema: 'rest', source: 'innate', available: true } } )
   // unavailable external — filtered out
-  entities.set( 'aff-sprint', { id: 'aff-sprint', type: 'affordance', metadata: { schema: 'sprint', source: 'external', available: false, description: 'x' } } )
+  entities.set('aff-sprint', { id: 'aff-sprint', type: 'affordance', metadata: { schema: 'sprint', source: 'external', available: false, description: 'x' } } )
   return { tick: 1, entities, metrics: new Map() } as any
 }
 
-describe( 'extractAbilities — afforded host abilities from the field', () => {
-  it( 'surfaces available external abilities with meaning + bound target; skips innate + unavailable', () => {
+describe('extractAbilities — afforded host abilities from the field', () => {
+  it('surfaces available external abilities with meaning + bound target; skips innate + unavailable', () => {
     const abilities = extractAbilities( affordanceState() )!
     const names = abilities.map( a => a.name )
-    expect( names ).toContain( 'give' )
-    expect( names ).toContain( 'forage' )
-    expect( names ).not.toContain( 'rest' )      // innate — omitted
-    expect( names ).not.toContain( 'sprint' )    // unavailable — omitted
+    expect( names ).toContain('give')
+    expect( names ).toContain('forage')
+    expect( names ).not.toContain('rest')      // innate — omitted
+    expect( names ).not.toContain('sprint')    // unavailable — omitted
 
-    const give = abilities.find( a => a.name === 'give' )!
-    expect( give.description ).toBe( 'Offer an item to someone present' )
-    expect( give.target ).toBe( 'Ada' )          // resolved from parameters.targetEntityName
+    const give = abilities.find( a => a.name === 'give')!
+    expect( give.description ).toBe('Offer an item to someone present')
+    expect( give.target ).toBe('Ada')          // resolved from parameters.targetEntityName
   } )
 
-  it( 'returns undefined when no external abilities are afforded', () => {
+  it('returns undefined when no external abilities are afforded', () => {
     expect( extractAbilities( { tick: 1, entities: new Map(), metrics: new Map() } as any ) ).toBeUndefined()
   } )
 } )
 
-describe( 'buildUserMessage — renders the abilities block', () => {
+describe('buildUserMessage — renders the abilities block', () => {
   const baseCtx = (): ExecutiveContext => ( {
     identity: { name: 'Aria', prompt: 'I am.', values: [], traits: {}, style: 'plain' },
     worldState: { energyLevel: 80, sleepPressure: 10, stressLoad: 5, circadianPhase: 0.5, timeOfDay: 12, threatLevel: 0 },
@@ -67,18 +67,18 @@ describe( 'buildUserMessage — renders the abilities block', () => {
       focus: { title: 'T', content: 'c' }, mode: 'master',
     } )
 
-  it( 'renders available abilities with target + meaning', () => {
+  it('renders available abilities with target + meaning', () => {
     const msg = render( [
       { name: 'give', description: 'Offer an item', target: 'Ada' },
       { name: 'forage', description: 'Search for food' },
     ] )
-    expect( msg ).toContain( '## Abilities Available Now' )
-    expect( msg ).toContain( '**give** (toward Ada) — Offer an item' )
-    expect( msg ).toContain( '**forage** — Search for food' )
+    expect( msg ).toContain('## Abilities Available Now')
+    expect( msg ).toContain('**give** (toward Ada) — Offer an item')
+    expect( msg ).toContain('**forage** — Search for food')
   } )
 
-  it( 'omits the block when there are no abilities', () => {
-    expect( render() ).not.toContain( '## Abilities Available Now' )
-    expect( render( [] ) ).not.toContain( '## Abilities Available Now' )
+  it('omits the block when there are no abilities', () => {
+    expect( render() ).not.toContain('## Abilities Available Now')
+    expect( render( [] ) ).not.toContain('## Abilities Available Now')
   } )
 } )

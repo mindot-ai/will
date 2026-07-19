@@ -471,7 +471,7 @@ export class SpacedRepetition implements SimulationEngine, CognitiveEngine {
       belief.lastUpdatedAt = tick
       
       // Record history if SemanticIntegrator exposes it
-      this._recordBeliefHistory( belief, tick, prevConfidence, 'spaced_repetition_reinforced' )
+      this._recordBeliefHistory( belief, tick, prevConfidence, 'spaced_repetition_reinforced')
     }
     else {
       // Failed review — reset interval and decrease confidence
@@ -483,7 +483,7 @@ export class SpacedRepetition implements SimulationEngine, CognitiveEngine {
       belief.confidence = newConfidence
       belief.lastUpdatedAt = tick
       
-      this._recordBeliefHistory( belief, tick, prevConfidence, 'spaced_repetition_failed' )
+      this._recordBeliefHistory( belief, tick, prevConfidence, 'spaced_repetition_failed')
     }
 
     record.lastReviewedAt = tick

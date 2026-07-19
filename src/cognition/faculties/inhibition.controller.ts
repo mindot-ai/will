@@ -93,7 +93,7 @@ export class InhibitionController implements SimulationEngine, CognitiveEngine {
     // Effective config = base engine-config-inhibition ⊕ persona-prior (single-source).
     // The persona-consolidator raises baseInhibitionStrength when reasoning bias
     // recurs (edge 6) → more self-restraint while the bias is being worked through.
-    const p = readEffectiveParams( state, 'engine-config-inhibition' )
+    const p = readEffectiveParams( state, 'engine-config-inhibition')
     if( p.baseInhibitionStrength != null ) this._baseInhibitionStrength = p.baseInhibitionStrength
     if( p.arousalThreshold       != null ) this._arousalThreshold       = p.arousalThreshold
     if( p.maxDeferralsPerTick    != null ) this._maxDeferralsPerTick    = p.maxDeferralsPerTick
@@ -132,7 +132,7 @@ export class InhibitionController implements SimulationEngine, CognitiveEngine {
       case 'executive.prediction.formed': {
         const p = e.payload as { predictedDomains: string[]; confidence: number }
         if( p.predictedDomains.includes('executive') )
-          this._model.setPrecision( 'inhibition.strength', 1.0 + p.confidence * 0.5 )
+          this._model.setPrecision('inhibition.strength', 1.0 + p.confidence * 0.5 )
         break
       }
     }
@@ -253,7 +253,7 @@ export class InhibitionController implements SimulationEngine, CognitiveEngine {
     // Phase C + F: publish cognitive event — gated by prediction error
     const _bus = this._bus
     if( _bus && vetoedActions.length > 0 ){
-      const predErr = this._model.observe( 'inhibition.strength', inhibitionStrength )
+      const predErr = this._model.observe('inhibition.strength', inhibitionStrength )
       if( !predErr.gated )
         _bus.publish({ type: 'inhibition.vetoed', version: 1, sourceEngine: this.name, salience: 0.7, payload: { vetoedActions, inhibitionStrength } })
     }

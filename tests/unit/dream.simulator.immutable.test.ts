@@ -39,7 +39,7 @@ function emptyState(): ReadonlySimulationState {
   return { tick: 1, time: 0, entities: new Map(), metrics: new Map() } as unknown as ReadonlySimulationState
 }
 
-const ctx = createContext( 'sim', 'run', 42 )
+const ctx = createContext('sim', 'run', 42 )
 
 function sleepingDream( config = {} ): DreamSimulator {
   const dream = new DreamSimulator( config )
@@ -48,12 +48,12 @@ function sleepingDream( config = {} ): DreamSimulator {
   return dream
 }
 
-describe( 'DreamSimulator — no shared-state mutation', () => {
-  it( 'does not mutate live episodes in place (reactivation + dampening)', async () => {
+describe('DreamSimulator — no shared-state mutation', () => {
+  it('does not mutate live episodes in place (reactivation + dampening)', async () => {
     const consolidator = new EpisodicConsolidator( { autoIndex: false } )
     const dream = sleepingDream( { maxReactivationsPerTick: 5, emotionalDampeningRate: 0.5, recombinationProbability: 0 } )
     dream.attachConsolidator( consolidator )
-    consolidator.restoreEpisodes( [ makeEpisode( 'a', { activationStrength: 0.5, emotionalTags: { fear: 0.8 } } ) ] )
+    consolidator.restoreEpisodes( [ makeEpisode('a', { activationStrength: 0.5, emotionalTags: { fear: 0.8 } } ) ] )
 
     const refA = consolidator.getAllEpisodes()[0]!
     deepFreeze( refA )
@@ -72,14 +72,14 @@ describe( 'DreamSimulator — no shared-state mutation', () => {
     expect( after.emotionalTags.fear ).toBeCloseTo( 0.4, 6 )    // 0.8 * (1 - 0.5)
   } )
 
-  it( 'replaces only touched episodes, leaving the rest by reference', async () => {
+  it('replaces only touched episodes, leaving the rest by reference', async () => {
     const consolidator = new EpisodicConsolidator( { autoIndex: false } )
     // Only the single highest-scoring episode is reactivated; the other is left alone.
     const dream = sleepingDream( { maxReactivationsPerTick: 1, recombinationProbability: 0 } )
     dream.attachConsolidator( consolidator )
     consolidator.restoreEpisodes( [
-      makeEpisode( 'hot',  { emotionalTags: { fear: 0.9 } } ),  // higher reactivation score
-      makeEpisode( 'cold', { emotionalTags: {} } ),             // untouched
+      makeEpisode('hot',  { emotionalTags: { fear: 0.9 } } ),  // higher reactivation score
+      makeEpisode('cold', { emotionalTags: {} } ),             // untouched
     ] )
 
     const before = consolidator.getAllEpisodes()
@@ -92,13 +92,13 @@ describe( 'DreamSimulator — no shared-state mutation', () => {
     expect( after[1] ).toBe( refCold )       // untouched → same reference
   } )
 
-  it( 'cross-pollinates tags via recombination without mutating shared objects', async () => {
+  it('cross-pollinates tags via recombination without mutating shared objects', async () => {
     const consolidator = new EpisodicConsolidator( { autoIndex: false } )
     const dream = sleepingDream( { maxReactivationsPerTick: 1, recombinationProbability: 1 } )
     dream.attachConsolidator( consolidator )
     consolidator.restoreEpisodes( [
-      makeEpisode( 'src',  { emotionalTags: { joy: 0.9 }, tags: [ 'shared', 'a' ] } ),  // reactivated, recombines
-      makeEpisode( 'peer', { emotionalTags: {},           tags: [ 'shared', 'b' ] } ),  // recombination partner
+      makeEpisode('src',  { emotionalTags: { joy: 0.9 }, tags: [ 'shared', 'a' ] } ),  // reactivated, recombines
+      makeEpisode('peer', { emotionalTags: {},           tags: [ 'shared', 'b' ] } ),  // recombination partner
     ] )
 
     const before = consolidator.getAllEpisodes()
@@ -114,7 +114,7 @@ describe( 'DreamSimulator — no shared-state mutation', () => {
     // src gained peer's distinct tag on a fresh object; peer got its recombination boost.
     const after = consolidator.getAllEpisodes()
     expect( after[0] ).not.toBe( refSrc )
-    expect( after[0]!.tags ).toContain( 'b' )
+    expect( after[0]!.tags ).toContain('b')
     expect( after[0]!.tags ).toEqual( [ 'shared', 'a', 'b' ] )
     expect( after[1] ).not.toBe( refPeer )
     expect( after[1]!.activationStrength ).toBeCloseTo( 0.52, 6 )  // +0.02 recombination

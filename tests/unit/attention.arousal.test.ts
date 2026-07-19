@@ -32,29 +32,29 @@ const mv = ( r: any, k: string ): number =>
 async function sample( arousal?: number ){
   const a = new AttentionAllocator()
   const r = await a.react( 50, 1 as any, stateArousal( arousal ), CTX )
-  return { factor: mv( r, 'attention.arousal_factor' ), capacity: mv( r, 'attention.capacity' ), free: mv( r, 'attention.free_fraction' ) }
+  return { factor: mv( r, 'attention.arousal_factor'), capacity: mv( r, 'attention.capacity'), free: mv( r, 'attention.free_fraction') }
 }
 
-describe( 'AttentionAllocator — arousal-raised ceiling (Option A)', () => {
-  it( 'calm arousal applies no boost (factor 1.0)', async () => {
+describe('AttentionAllocator — arousal-raised ceiling (Option A)', () => {
+  it('calm arousal applies no boost (factor 1.0)', async () => {
     expect( ( await sample( 0.2 ) ).factor ).toBeCloseTo( 1.0, 5 )
   } )
 
-  it( 'a missing arousal metric defaults to calm (factor 1.0)', async () => {
+  it('a missing arousal metric defaults to calm (factor 1.0)', async () => {
     expect( ( await sample( undefined ) ).factor ).toBeCloseTo( 1.0, 5 )
   } )
 
-  it( 'optimal arousal mobilizes the ceiling above baseline (factor 1.3)', async () => {
+  it('optimal arousal mobilizes the ceiling above baseline (factor 1.3)', async () => {
     expect( ( await sample( 0.65 ) ).factor ).toBeCloseTo( 1.3, 5 )
   } )
 
-  it( 'extreme arousal collapses the ceiling — fragmentation (factor < 1.0)', async () => {
+  it('extreme arousal collapses the ceiling — fragmentation (factor < 1.0)', async () => {
     const f = ( await sample( 1.0 ) ).factor
     expect( f ).toBeLessThan( 1.0 )
     expect( f ).toBeCloseTo( 0.6, 5 )
   } )
 
-  it( 'follows the inverted-U: optimal > calm > panic (capacity)', async () => {
+  it('follows the inverted-U: optimal > calm > panic (capacity)', async () => {
     const calm    = await sample( 0.2 )
     const optimal = await sample( 0.65 )
     const panic   = await sample( 1.0 )
@@ -62,7 +62,7 @@ describe( 'AttentionAllocator — arousal-raised ceiling (Option A)', () => {
     expect( calm.capacity ).toBeGreaterThan( panic.capacity )
   } )
 
-  it( 'mobilization widens the facet budget; fragmentation narrows it (free fraction)', async () => {
+  it('mobilization widens the facet budget; fragmentation narrows it (free fraction)', async () => {
     const calm    = await sample( 0.2 )
     const optimal = await sample( 0.65 )
     const panic   = await sample( 1.0 )

@@ -132,7 +132,7 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
       case 'executive.prediction.formed': {
         const p = e.payload as { predictedDomains: string[]; confidence: number }
         if( p.predictedDomains.includes('memory') )
-          this._model.setPrecision( 'memory.working.load', 1.0 + p.confidence * 0.5 )
+          this._model.setPrecision('memory.working.load', 1.0 + p.confidence * 0.5 )
         break
       }
     }
@@ -174,7 +174,7 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
    * No-op at boot: mirror params equal the constructor defaults (reconciled in #83).
    */
   private _readConfigFromState( state: ReadonlySimulationState ): void {
-    const p = readEffectiveParams( state, 'engine-config-working-memory' )
+    const p = readEffectiveParams( state, 'engine-config-working-memory')
     if( p.maxChunks           != null ) this._maxChunks           = p.maxChunks
     if( p.baseDecayRate       != null ) this._baseDecayRate       = p.baseDecayRate
     if( p.attentionProtection != null ) this._attentionProtection = p.attentionProtection
@@ -241,7 +241,7 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
         type: 'memory.working.changed',
         version: 1,
         sourceEngine: this.name,
-        salience: this._model.observe( 'memory.working.load', load ).salience,
+        salience: this._model.observe('memory.working.load', load ).salience,
         payload: { items: this._items.length, capacity: this._modulatedCapacity, load },
       })
 
@@ -275,10 +275,10 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
    */
   private _ingestPercepts( state: ReadonlySimulationState, tick: Tick ): void {
     for( const entity of state.entities.values() ){
-      if( entity.type !== 'percept' ) continue
+      if( entity.type !== 'percept') continue
       if( this._items.some( i => i.sourceEntityId === entity.id ) ) continue
 
-      const summary = ( entity.metadata?.summary ?? entity.metadata?.content ?? '' ) as string
+      const summary = ( entity.metadata?.summary ?? entity.metadata?.content ?? '') as string
       if( !summary || summary.startsWith('New percept:') ) continue
 
       this._evictIfNeeded()
@@ -301,8 +301,8 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
    */
   private _ingestGoals( state: ReadonlySimulationState, tick: Tick ): void {
     for( const entity of state.entities.values() ){
-      if( entity.type !== 'goal' ) continue
-      if( entity.metadata?.status !== 'active' ) continue
+      if( entity.type !== 'goal') continue
+      if( entity.metadata?.status !== 'active') continue
       if( this._items.some( i => i.sourceEntityId === entity.id ) ) continue
 
       this._evictIfNeeded()
@@ -335,7 +335,7 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
 
     // State-entity fallback: attention.focus entities
     for( const entity of state.entities.values() ){
-      if( entity.type !== 'attention.focus' ) continue
+      if( entity.type !== 'attention.focus') continue
       const targetId = entity.metadata?.targetEntityId as string | undefined
       if( !targetId ) continue
       const item = this._items.find( i => i.sourceEntityId === targetId )

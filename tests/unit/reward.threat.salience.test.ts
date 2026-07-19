@@ -19,7 +19,7 @@ import { createContext } from '#core/utils'
 import type { CognitiveBus } from '#cognition/bus'
 import type { ReadonlySimulationState, SimulationEntity, Duration, Tick } from '#core/types'
 
-const ctx = createContext( 'sim', 'run', 1 )
+const ctx = createContext('sim', 'run', 1 )
 
 function capturing(): { bus: CognitiveBus; events: Array<{ type: string; salience: number }> } {
   const events: Array<{ type: string; salience: number }> = []
@@ -36,15 +36,15 @@ function threatState( intensity: number, tick: number ): ReadonlySimulationState
   return { tick, time: 0, entities: new Map([ [ e.id, e ] ]), metrics: new Map<string, number>() } as unknown as ReadonlySimulationState
 }
 
-describe( 'threat salience is surprise-based (Option B)', () => {
-  it( 'a threat SPIKE is far more salient than the SAME threat once sustained (habituation)', async () => {
+describe('threat salience is surprise-based (Option B)', () => {
+  it('a threat SPIKE is far more salient than the SAME threat once sustained (habituation)', async () => {
     const { bus, events } = capturing()
     const te = new ThreatEvaluator(); te.attachBus( bus )
 
     const fearSalienceAt = async ( intensity: number, tick: number ): Promise<number | undefined> => {
       events.length = 0
       await te.react( 0 as Duration, tick as Tick, threatState( intensity, tick ), ctx )
-      return events.find( e => e.type === 'emotion.fear.elevated' )?.salience
+      return events.find( e => e.type === 'emotion.fear.elevated')?.salience
     }
 
     await fearSalienceAt( 0.15, 1 )                  // low baseline — seeds the stream (no event)
@@ -59,8 +59,8 @@ describe( 'threat salience is surprise-based (Option B)', () => {
   })
 })
 
-describe( 'guardrail — tonic threat level survives event habituation', () => {
-  it( 'buildExecutiveContext carries threat.level into worldState (representation ≠ attention)', async () => {
+describe('guardrail — tonic threat level survives event habituation', () => {
+  it('buildExecutiveContext carries threat.level into worldState (representation ≠ attention)', async () => {
     const state = {
       tick: 1, time: 0,
       entities: new Map(),

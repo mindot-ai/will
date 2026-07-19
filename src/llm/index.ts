@@ -187,7 +187,7 @@ export class LLMDirector {
    *   {"actions":[{"type":"...","reasoning":"...","expectedOutcome":"..."}],...}
    *   Strategy 1 (JSON.parse) handles this directly.
    */
-  private _mockResponse( tick: number, userMessage: string = '' ): LLMCallResult {
+  private _mockResponse( tick: number, userMessage: string = ''): LLMCallResult {
     // ── Conversation facet turn ────────────────────────────────
     // Detect the AuditionEngine facet focus via the SHARED contract (see
     // llm/wire.contracts.ts) — the render/match pair whose earlier drift
@@ -404,7 +404,7 @@ export class LLMDirector {
     catch( err ){
       clearTimeout( timer )
       if( controller.signal.aborted )
-        throw new Error( `LLM stream to ${this._provider} timed out after ${this._timeoutMs}ms (no response)` )
+        throw new Error(`LLM stream to ${this._provider} timed out after ${this._timeoutMs}ms (no response)`)
       throw err
     }
 
@@ -434,7 +434,7 @@ export class LLMDirector {
         for( const line of lines ){
           if( !line.startsWith('data: ') ) continue
           const raw = line.slice(6).trim()
-          if( raw === '[DONE]' ) break
+          if( raw === '[DONE]') break
 
           try {
             const ev = JSON.parse( raw ) as {
@@ -552,8 +552,8 @@ export class LLMDirector {
     }
     catch( err ){
       // AbortSignal.timeout rejects with a DOMException named 'TimeoutError'.
-      if( err instanceof Error && err.name === 'TimeoutError' )
-        throw new Error( `LLM request to ${this._provider} timed out after ${this._timeoutMs}ms` )
+      if( err instanceof Error && err.name === 'TimeoutError')
+        throw new Error(`LLM request to ${this._provider} timed out after ${this._timeoutMs}ms`)
       throw err
     }
   }
@@ -592,7 +592,7 @@ export class LLMDirector {
       content: Array<{ type: string; text: string }>
       usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
     },
-    text = data.content.find( b => b.type === 'text' )?.text ?? ''
+    text = data.content.find( b => b.type === 'text')?.text ?? ''
 
     return {
       text,
@@ -673,7 +673,7 @@ export class LLMDirector {
     }
 
     const text = ( data.candidates?.[ 0 ]?.content?.parts ?? [] )
-      .map( p => p.text ?? '' )
+      .map( p => p.text ?? '')
       .join('')
 
     return {
@@ -715,7 +715,7 @@ export class LLMDirector {
         userMessage,
       ].join('\n')
 
-      const filepath = `${debugDir}/prompt-tick-${String( tick ).padStart( 6, '0' )}.txt`
+      const filepath = `${debugDir}/prompt-tick-${String( tick ).padStart( 6, '0')}.txt`
       writeFileSync( filepath, content )
 
       logger.info(`[executive] Debug prompt written → ${filepath} (~${estimatedTokens} tok estimated)`)
@@ -755,7 +755,7 @@ export class LLMDirector {
         responseText,
       ].join('\n')
 
-      const filepath = `${debugDir}/response-tick-${String( tick ).padStart( 6, '0' )}.txt`
+      const filepath = `${debugDir}/response-tick-${String( tick ).padStart( 6, '0')}.txt`
       writeFileSync( filepath, content )
     }
     catch {

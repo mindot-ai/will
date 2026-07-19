@@ -23,11 +23,11 @@
 import { describe, it, expect } from 'vitest'
 import { DefaultStateManager } from '#core/state.manager'
 
-describe( 'StateManager copy-on-write snapshots (R3-b / FIX F8)', () => {
-  it( 'shares the live maps between snapshots until the next write', () => {
+describe('StateManager copy-on-write snapshots (R3-b / FIX F8)', () => {
+  it('shares the live maps between snapshots until the next write', () => {
     const sm = new DefaultStateManager()
     sm.setEntity({ id: 'e1', type: 'belief', metadata: { count: 1 } })
-    sm.setMetric( 'm', 1 )
+    sm.setMetric('m', 1 )
 
     const a = sm.snapshot()
     const b = sm.snapshot()
@@ -43,7 +43,7 @@ describe( 'StateManager copy-on-write snapshots (R3-b / FIX F8)', () => {
     expect( c.entities ).not.toBe( a.entities )
   } )
 
-  it( 'keeps a snapshot isolated from a later setEntity (point-in-time)', () => {
+  it('keeps a snapshot isolated from a later setEntity (point-in-time)', () => {
     const sm = new DefaultStateManager()
     sm.setEntity({ id: 'e1', type: 'belief', metadata: { count: 1 } })
 
@@ -51,50 +51,50 @@ describe( 'StateManager copy-on-write snapshots (R3-b / FIX F8)', () => {
     sm.updateClock( 1, 100 )
     sm.setEntity({ id: 'e1', type: 'belief', metadata: { count: 2 } })
 
-    expect( snap.entities.get( 'e1' )!.metadata!.count ).toBe( 1 )
-    expect( sm.getEntity( 'e1' )!.metadata!.count ).toBe( 2 )
-    expect( snap.entities.has( 'e2' ) ).toBe( false )
+    expect( snap.entities.get('e1')!.metadata!.count ).toBe( 1 )
+    expect( sm.getEntity('e1')!.metadata!.count ).toBe( 2 )
+    expect( snap.entities.has('e2') ).toBe( false )
   } )
 
-  it( 'keeps a snapshot isolated from a later deleteEntity', () => {
+  it('keeps a snapshot isolated from a later deleteEntity', () => {
     const sm = new DefaultStateManager()
     sm.setEntity({ id: 'e1', type: 'belief', metadata: { count: 1 } })
 
     const snap = sm.snapshot()
-    sm.deleteEntity( 'e1' )
+    sm.deleteEntity('e1')
 
-    expect( snap.entities.has( 'e1' ) ).toBe( true )   // snapshot still sees it
-    expect( sm.getEntity( 'e1' ) ).toBeUndefined()      // live state dropped it
+    expect( snap.entities.has('e1') ).toBe( true )   // snapshot still sees it
+    expect( sm.getEntity('e1') ).toBeUndefined()      // live state dropped it
   } )
 
-  it( 'keeps a snapshot isolated from later metric writes', () => {
+  it('keeps a snapshot isolated from later metric writes', () => {
     const sm = new DefaultStateManager()
-    sm.setMetric( 'energy', 10 )
+    sm.setMetric('energy', 10 )
 
     const snap = sm.snapshot()
-    sm.setMetric( 'energy', 20 )
-    sm.incrementMetric( 'energy', 5 )
+    sm.setMetric('energy', 20 )
+    sm.incrementMetric('energy', 5 )
 
-    expect( snap.metrics.get( 'energy' ) ).toBe( 10 )
-    expect( sm.getMetric( 'energy' ) ).toBe( 25 )
+    expect( snap.metrics.get('energy') ).toBe( 10 )
+    expect( sm.getMetric('energy') ).toBe( 25 )
   } )
 
-  it( 'does not wipe an outstanding snapshot when clear() runs', () => {
+  it('does not wipe an outstanding snapshot when clear() runs', () => {
     const sm = new DefaultStateManager()
     sm.setEntity({ id: 'e1', type: 'belief', metadata: { count: 1 } })
-    sm.setMetric( 'm', 7 )
+    sm.setMetric('m', 7 )
 
     const snap = sm.snapshot()
     sm.clear()
 
     // clear() replaces the maps rather than emptying the shared ones.
-    expect( snap.entities.get( 'e1' )!.metadata!.count ).toBe( 1 )
-    expect( snap.metrics.get( 'm' ) ).toBe( 7 )
+    expect( snap.entities.get('e1')!.metadata!.count ).toBe( 1 )
+    expect( snap.metrics.get('m') ).toBe( 7 )
     expect( [ ...sm.getAllEntities() ] ).toHaveLength( 0 )
-    expect( sm.getMetric( 'm' ) ).toBeUndefined()
+    expect( sm.getMetric('m') ).toBeUndefined()
   } )
 
-  it( 'does not corrupt an outstanding snapshot when restore() runs', () => {
+  it('does not corrupt an outstanding snapshot when restore() runs', () => {
     const sm = new DefaultStateManager()
     sm.setEntity({ id: 'e1', type: 'belief', metadata: { count: 1 } })
 
@@ -107,13 +107,13 @@ describe( 'StateManager copy-on-write snapshots (R3-b / FIX F8)', () => {
     })
 
     // Pre-restore snapshot is untouched; live state reflects the restore.
-    expect( snap.entities.has( 'e1' ) ).toBe( true )
-    expect( snap.entities.has( 'e2' ) ).toBe( false )
-    expect( sm.getEntity( 'e1' ) ).toBeUndefined()
-    expect( sm.getEntity( 'e2' )!.metadata!.v ).toBe( 5 )
+    expect( snap.entities.has('e1') ).toBe( true )
+    expect( snap.entities.has('e2') ).toBe( false )
+    expect( sm.getEntity('e1') ).toBeUndefined()
+    expect( sm.getEntity('e2')!.metadata!.v ).toBe( 5 )
 
     // A post-restore write must not reach back into the pre-restore snapshot.
     sm.setEntity({ id: 'e2', type: 'goal', metadata: { v: 6 } })
-    expect( snap.entities.has( 'e2' ) ).toBe( false )
+    expect( snap.entities.has('e2') ).toBe( false )
   } )
 } )

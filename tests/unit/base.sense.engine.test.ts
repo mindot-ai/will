@@ -44,7 +44,7 @@ class TestShell extends ShellSenseEngine {
   protected readonly acceptedKinds = new Set<SensoryInput['kind']>( [ 'ambient' ] )
 }
 
-const IMAGE: SensoryInput = { kind: 'image', entityId: 'e1', data: Buffer.from( '' ), mimeType: 'image/png' }
+const IMAGE: SensoryInput = { kind: 'image', entityId: 'e1', data: Buffer.from(''), mimeType: 'image/png' }
 const TEXT:  SensoryInput = { kind: 'text', entityId: 'e1', threadId: 't1', content: 'hi' }
 
 function busSpy(){
@@ -52,15 +52,15 @@ function busSpy(){
   return { bus: { publish: ( e: any ) => events.push( e ) } as any, events }
 }
 
-describe( 'BaseSenseEngine — shared pipeline (§6)', () => {
-  it( 'publishes() / subscribes() / snapshot() come from the base by default', () => {
+describe('BaseSenseEngine — shared pipeline (§6)', () => {
+  it('publishes() / subscribes() / snapshot() come from the base by default', () => {
     const e = new TestSense()
     expect( e.publishes() ).toEqual( [ { type: 'senses.vision.percept', version: 1, validate: expect.any( Function ) } ] )
     expect( e.subscribes() ).toEqual( [] )
     expect( e.snapshot() ).toEqual( { domain: 'vision' } )
   } )
 
-  it( '_perceive runs for an accepted kind and publishPercept emits on senses.<domain>.percept', async () => {
+  it('_perceive runs for an accepted kind and publishPercept emits on senses.<domain>.percept', async () => {
     const e = new TestSense()
     const { bus, events } = busSpy()
     e.attachBus( bus )
@@ -78,7 +78,7 @@ describe( 'BaseSenseEngine — shared pipeline (§6)', () => {
     expect( events[0].payload.raw ).toBe( IMAGE )
   } )
 
-  it( 'ignores a non-accepted kind silently (no _perceive, no publish)', async () => {
+  it('ignores a non-accepted kind silently (no _perceive, no publish)', async () => {
     const e = new TestSense()
     const { bus, events } = busSpy()
     e.attachBus( bus )
@@ -89,7 +89,7 @@ describe( 'BaseSenseEngine — shared pipeline (§6)', () => {
     expect( events ).toHaveLength( 0 )
   } )
 
-  it( 'gateEffector blocks ingestion when the effectorRegistry denies it', async () => {
+  it('gateEffector blocks ingestion when the effectorRegistry denies it', async () => {
     const e = new TestSense()
     e.attachGrants( { isAllowed: () => false } as any )
 
@@ -98,7 +98,7 @@ describe( 'BaseSenseEngine — shared pipeline (§6)', () => {
     expect( e.perceived ).toHaveLength( 0 )
   } )
 
-  it( 'gateEffector allows ingestion when the effectorRegistry permits it', async () => {
+  it('gateEffector allows ingestion when the effectorRegistry permits it', async () => {
     const e = new TestSense()
     e.attachGrants( { isAllowed: ( a: string ) => a === 'see' } as any )
 
@@ -107,27 +107,27 @@ describe( 'BaseSenseEngine — shared pipeline (§6)', () => {
     expect( e.perceived ).toHaveLength( 1 )
   } )
 
-  it( 'with no effectorRegistry attached the gate is skipped (engine active)', async () => {
+  it('with no effectorRegistry attached the gate is skipped (engine active)', async () => {
     const e = new TestSense()
     await e.ingest( IMAGE )
     expect( e.perceived ).toHaveLength( 1 )
   } )
 } )
 
-describe( 'ShellSenseEngine — stub contract (§6)', () => {
-  it( 'snapshot() advertises shell status', () => {
+describe('ShellSenseEngine — stub contract (§6)', () => {
+  it('snapshot() advertises shell status', () => {
     expect( new TestShell().snapshot() ).toEqual( { domain: 'olfaction', status: 'shell' } )
   } )
 
-  it( 'warns for an accepted kind but never throws', async () => {
-    const warn = vi.spyOn( console, 'warn' ).mockImplementation( () => {} )
+  it('warns for an accepted kind but never throws', async () => {
+    const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
     await expect( new TestShell().ingest( { kind: 'ambient', metricKey: 'cpu', value: 1, trend: 'rising' } ) ).resolves.toBeUndefined()
-    expect( warn ).toHaveBeenCalledWith( expect.stringContaining( 'test-shell' ) )
+    expect( warn ).toHaveBeenCalledWith( expect.stringContaining('test-shell') )
     warn.mockRestore()
   } )
 
-  it( 'is silent (no warning) for a non-accepted kind', async () => {
-    const warn = vi.spyOn( console, 'warn' ).mockImplementation( () => {} )
+  it('is silent (no warning) for a non-accepted kind', async () => {
+    const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
     await new TestShell().ingest( TEXT )
     expect( warn ).not.toHaveBeenCalled()
     warn.mockRestore()

@@ -97,7 +97,7 @@ export class SessionLogger {
   private          _count    = 0
 
   constructor( willId: string, dataDir: string = './data', opts: SessionLoggerOptions = {} ) {
-    const ts  = new Date().toISOString().replace( /[:.]/g, '-' ).slice( 0, 19 )
+    const ts  = new Date().toISOString().replace( /[:.]/g, '-').slice( 0, 19 )
     const rnd = Math.random().toString( 36 ).slice( 2, 8 )
     this.sessionId = `${ts}-${rnd}`
 
@@ -105,9 +105,9 @@ export class SessionLogger {
 
     const fileLogging = opts.fileLogging ?? false
     if( fileLogging ){
-      const dir = join( opts.dataDir ?? dataDir, 'wills', willId, 'sessions' )
+      const dir = join( opts.dataDir ?? dataDir, 'wills', willId, 'sessions')
       mkdirSync( dir, { recursive: true } )
-      this.filePath = join( dir, `${this.sessionId}.jsonl` )
+      this.filePath = join( dir, `${this.sessionId}.jsonl`)
       this._stream  = createWriteStream( this.filePath, { flags: 'a' } )
     } else {
       this.filePath = ''
@@ -133,7 +133,7 @@ export class SessionLogger {
 
     // File is a dev-only mirror.
     if( this._stream ){
-      try { this._stream.write( JSON.stringify( record ) + '\n' ) }
+      try { this._stream.write( JSON.stringify( record ) + '\n') }
       catch { /* never block the tick loop on a log failure */ }
     }
 

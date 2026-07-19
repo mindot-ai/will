@@ -91,7 +91,7 @@ export class SocketIoTransport implements ExternalTransport {
       const timer = setTimeout( () => done({ acked: false, via: 'timeout' }), timeoutMs )
 
       try {
-        socket.emit( 'envelope', stamped, ( response: unknown ) => done({ acked: true, via: 'callback', payload: response }) )
+        socket.emit('envelope', stamped, ( response: unknown ) => done({ acked: true, via: 'callback', payload: response }) )
       }
       catch( err ){
         logger.warn(`[socketio-transport] emit failed: ${( err as Error ).message}`)
@@ -159,20 +159,20 @@ export class SocketIoTransport implements ExternalTransport {
 
   /** Attach socket.io event handlers that feed the inbound + status streams. */
   private _wire( socket: SocketLike ): void {
-    socket.on( 'connect',    () => this._notifyStatus( 'connected' ) )
-    socket.on( 'disconnect', () => this._notifyStatus( 'disconnected' ) )
-    socket.on( 'reconnect_attempt', () => this._notifyStatus( 'reconnecting' ) )
+    socket.on('connect',    () => this._notifyStatus('connected') )
+    socket.on('disconnect', () => this._notifyStatus('disconnected') )
+    socket.on('reconnect_attempt', () => this._notifyStatus('reconnecting') )
 
     // Primary inbound channel — already-typed envelopes from the peer.
-    socket.on( 'envelope', ( env: InboundEnvelope ) => this._emitInbound( env ) )
+    socket.on('envelope', ( env: InboundEnvelope ) => this._emitInbound( env ) )
 
     // Discrete ack events (Section 2): in case the peer emits acks independently
     // rather than via the emit() callback. Synthesized into ack envelopes; the
     // AckReconciler (Section 3) dedups against the callback path by correlationId.
-    socket.on( 'message.delivered', ( m: { correlationId: string; delivered?: boolean } ) =>
+    socket.on('message.delivered', ( m: { correlationId: string; delivered?: boolean } ) =>
       this._emitInbound( this._deliveryAck( m.correlationId, m.delivered ?? true ) ) )
 
-    socket.on( 'effector.invoked.ack', ( m: { correlationId: string; result: AckEnvelope['result'] } ) =>
+    socket.on('effector.invoked.ack', ( m: { correlationId: string; result: AckEnvelope['result'] } ) =>
       this._emitInbound( this._resultAck( m.correlationId, m.result ) ) )
   }
 

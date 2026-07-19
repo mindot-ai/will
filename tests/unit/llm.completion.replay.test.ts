@@ -53,68 +53,68 @@ function makeDirector(){
   })
 }
 
-describe( 'LLMDirector — replay re-feed (R2-c)', () => {
+describe('LLMDirector — replay re-feed (R2-c)', () => {
   afterEach( () => clearCompletionSource( willId ) )
 
-  it( 'returns the recorded completion from call() instead of the mock', async () => {
+  it('returns the recorded completion from call() instead of the mock', async () => {
     setCompletionSource( willId, new RecordedCompletionSource([ rec() ]) )
 
-    const result = await makeDirector().call( 'SYSTEM', 'hello there', 5 )
+    const result = await makeDirector().call('SYSTEM', 'hello there', 5 )
 
-    expect( result.text ).toBe( 'recorded-output' )
+    expect( result.text ).toBe('recorded-output')
     expect( result.inputTok ).toBe( 11 )
     expect( result.outputTok ).toBe( 22 )
   })
 
-  it( 'returns the recorded completion from callStream() and streams non-mock text', async () => {
+  it('returns the recorded completion from callStream() and streams non-mock text', async () => {
     setCompletionSource( willId, new RecordedCompletionSource([ rec() ]) )
 
     const chunks: string[] = []
-    const result = await makeDirector().callStream( 'SYSTEM', 'hello there', 5, c => chunks.push( c ) )
+    const result = await makeDirector().callStream('SYSTEM', 'hello there', 5, c => chunks.push( c ) )
 
-    expect( result.text ).toBe( 'recorded-output' )
+    expect( result.text ).toBe('recorded-output')
     expect( chunks ).toEqual([ 'recorded-output' ])   // non-mock record → streamed
   })
 
-  it( 'does not stream when the recorded completion was a mock', async () => {
+  it('does not stream when the recorded completion was a mock', async () => {
     setCompletionSource( willId, new RecordedCompletionSource([ rec({ mock: true }) ]) )
 
     const chunks: string[] = []
-    await makeDirector().callStream( 'SYSTEM', 'hello there', 5, c => chunks.push( c ) )
+    await makeDirector().callStream('SYSTEM', 'hello there', 5, c => chunks.push( c ) )
 
     expect( chunks ).toEqual([] )   // mock record → not streamed, mirrors the live mock path
   })
 
-  it( 'replays multiple same-tick completions in record order (FIFO)', async () => {
+  it('replays multiple same-tick completions in record order (FIFO)', async () => {
     setCompletionSource( willId, new RecordedCompletionSource([
       rec({ text: 'first',  userMessage: 'q1' }),
       rec({ text: 'second', userMessage: 'q2' }),
     ]) )
     const d = makeDirector()
 
-    expect( ( await d.call( 'SYSTEM', 'q1', 5 ) ).text ).toBe( 'first' )
-    expect( ( await d.call( 'SYSTEM', 'q2', 5 ) ).text ).toBe( 'second' )
+    expect( ( await d.call('SYSTEM', 'q1', 5 ) ).text ).toBe('first')
+    expect( ( await d.call('SYSTEM', 'q2', 5 ) ).text ).toBe('second')
   })
 
-  it( 'throws when the prompt diverges from the recording', async () => {
+  it('throws when the prompt diverges from the recording', async () => {
     setCompletionSource( willId, new RecordedCompletionSource([ rec() ]) )
 
     await expect(
-      makeDirector().call( 'SYSTEM', 'a different message', 5 )
+      makeDirector().call('SYSTEM', 'a different message', 5 )
     ).rejects.toThrow( /prompt diverged/ )
   })
 
-  it( 'throws when no completion was recorded for the tick', async () => {
+  it('throws when no completion was recorded for the tick', async () => {
     setCompletionSource( willId, new RecordedCompletionSource([ rec({ tick: 5 }) ]) )
 
     await expect(
-      makeDirector().call( 'SYSTEM', 'hello there', 9 )
+      makeDirector().call('SYSTEM', 'hello there', 9 )
     ).rejects.toThrow( /no recorded LLM completion for tick 9/ )
   })
 
-  it( 'falls through to the live/mock path when no source is registered', async () => {
-    const result = await makeDirector().call( 'SYSTEM', 'hello there', 5 )
+  it('falls through to the live/mock path when no source is registered', async () => {
+    const result = await makeDirector().call('SYSTEM', 'hello there', 5 )
     // The mock path returns structured JSON, never the recorded sentinel.
-    expect( result.text ).not.toBe( 'recorded-output' )
+    expect( result.text ).not.toBe('recorded-output')
   })
 })

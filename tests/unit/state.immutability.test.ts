@@ -44,12 +44,12 @@ function makeManager( freeze: boolean ): DefaultStateManager {
   }
 }
 
-describe( 'State immutability — frozen entities (R3)', () => {
-  it( 'deep-freezes entities on write so direct mutation throws', () => {
+describe('State immutability — frozen entities (R3)', () => {
+  it('deep-freezes entities on write so direct mutation throws', () => {
     const sm = makeManager( true )
     sm.setEntity({ id: 'e1', type: 'belief', metadata: { score: 1, nested: { deep: true } } })
 
-    const e = sm.getEntity( 'e1' )!
+    const e = sm.getEntity('e1')!
     expect( Object.isFrozen( e ) ).toBe( true )
     expect( Object.isFrozen( e.metadata ) ).toBe( true )
     expect( Object.isFrozen( ( e.metadata as { nested: object } ).nested ) ).toBe( true )
@@ -60,30 +60,30 @@ describe( 'State immutability — frozen entities (R3)', () => {
     expect( () => { ( e.metadata as { nested: { deep: boolean } } ).nested.deep = false } ).toThrow()
 
     // State is intact — nothing got through.
-    expect( sm.getEntity( 'e1' )!.type ).toBe( 'belief' )
-    expect( sm.getEntity( 'e1' )!.metadata!.score ).toBe( 1 )
+    expect( sm.getEntity('e1')!.type ).toBe('belief')
+    expect( sm.getEntity('e1')!.metadata!.score ).toBe( 1 )
   })
 
-  it( 'freezes entities applied via applyCommands (the commit path)', () => {
+  it('freezes entities applied via applyCommands (the commit path)', () => {
     const sm = makeManager( true )
     sm.applyCommands({ set: [ { id: 'g1', type: 'goal', metadata: { priority: 5 } } ] })
 
-    const g = sm.getEntity( 'g1' )!
+    const g = sm.getEntity('g1')!
     expect( Object.isFrozen( g ) ).toBe( true )
     expect( () => { ( g.metadata as { priority: number } ).priority = 1 } ).toThrow()
   })
 
-  it( 'hands engines a frozen read-view via snapshot()', () => {
+  it('hands engines a frozen read-view via snapshot()', () => {
     const sm = makeManager( true )
     sm.setEntity({ id: 'e1', type: 'belief', metadata: { score: 1 } })
 
     const snap = sm.snapshot()
-    const view = snap.entities.get( 'e1' )!
+    const view = snap.entities.get('e1')!
     expect( Object.isFrozen( view ) ).toBe( true )
     expect( () => { ( view as { type: string } ).type = 'mutated' } ).toThrow()
   })
 
-  it( 'snapshot is a point-in-time view — later commits never mutate it', () => {
+  it('snapshot is a point-in-time view — later commits never mutate it', () => {
     const sm = makeManager( true )
 
     // tick 0: write v1
@@ -96,11 +96,11 @@ describe( 'State immutability — frozen entities (R3)', () => {
 
     // The snapshot still sees v1; the live manager sees v2. This isolation is
     // what makes rollback/replay correct — the captured state cannot drift.
-    expect( snap.entities.get( 'e1' )!.metadata!.count ).toBe( 1 )
-    expect( sm.getEntity( 'e1' )!.metadata!.count ).toBe( 2 )
+    expect( snap.entities.get('e1')!.metadata!.count ).toBe( 1 )
+    expect( sm.getEntity('e1')!.metadata!.count ).toBe( 2 )
   })
 
-  it( 're-establishes the freeze guarantee across restore()', () => {
+  it('re-establishes the freeze guarantee across restore()', () => {
     const sm = makeManager( true )
 
     // A snapshot whose entity is a plain (unfrozen) object, as if just
@@ -110,33 +110,33 @@ describe( 'State immutability — frozen entities (R3)', () => {
 
     sm.restore({ tick: 5, time: 250, entities: new Map([ [ 'e1', fresh ] ]), metrics: new Map() })
 
-    const e = sm.getEntity( 'e1' )!
+    const e = sm.getEntity('e1')!
     expect( Object.isFrozen( e ) ).toBe( true )
     expect( () => { ( e.metadata as { v: number } ).v = 2 } ).toThrow()
   })
 
-  it( 'leaves entities mutable when the gate is off (WILL_FREEZE_STATE=0)', () => {
+  it('leaves entities mutable when the gate is off (WILL_FREEZE_STATE=0)', () => {
     const sm = makeManager( false )
     sm.setEntity({ id: 'e1', type: 'belief', metadata: { score: 1 } })
 
-    const e = sm.getEntity( 'e1' )!
+    const e = sm.getEntity('e1')!
     expect( Object.isFrozen( e ) ).toBe( false )
 
     // No throw, and the mutation is observable — the production opt-out path.
     expect( () => { ( e.metadata as { score: number } ).score = 42 } ).not.toThrow()
-    expect( sm.getEntity( 'e1' )!.metadata!.score ).toBe( 42 )
+    expect( sm.getEntity('e1')!.metadata!.score ).toBe( 42 )
   })
 })
 
-describe( 'deepFreeze utility', () => {
-  it( 'passes primitives and null through unchanged', () => {
+describe('deepFreeze utility', () => {
+  it('passes primitives and null through unchanged', () => {
     expect( deepFreeze( 5 ) ).toBe( 5 )
-    expect( deepFreeze( 'x' ) ).toBe( 'x' )
+    expect( deepFreeze('x') ).toBe('x')
     expect( deepFreeze( null ) ).toBe( null )
     expect( deepFreeze( undefined ) ).toBe( undefined )
   })
 
-  it( 'freezes nested objects and arrays', () => {
+  it('freezes nested objects and arrays', () => {
     const obj = { a: { b: [ { c: 1 } ] } }
     deepFreeze( obj )
     expect( Object.isFrozen( obj ) ).toBe( true )
@@ -146,7 +146,7 @@ describe( 'deepFreeze utility', () => {
     expect( () => { obj.a.b.push( { c: 2 } ) } ).toThrow()
   })
 
-  it( 'is cycle-safe — does not recurse forever on a self-reference', () => {
+  it('is cycle-safe — does not recurse forever on a self-reference', () => {
     const a: Record<string, unknown> = { name: 'a' }
     a.self = a
     expect( () => deepFreeze( a ) ).not.toThrow()

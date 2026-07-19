@@ -134,15 +134,15 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     const del: string[]            = []
     const metrics: Array<[ string, number ]> = []
 
-    const energy = state.metrics.get( 'energy.level' ) ?? 100
-    const stress = state.metrics.get( 'stress.load'  ) ?? 0
+    const energy = state.metrics.get('energy.level') ?? 100
+    const stress = state.metrics.get('stress.load'  ) ?? 0
 
     // ── Timeout stranded async intents ───────────────────────────
     // An 'awaiting' intent whose host/delivery never returned would block the
     // serial Will forever. After AWAIT_TIMEOUT ticks, abandon it as a failed
     // outcome (which also teaches reafference the action is unreliable here).
     for( const [ id, e ] of state.entities ){
-      if( e.type !== 'agency.intent' || str( e.metadata?.['status'] ) !== 'awaiting' ) continue
+      if( e.type !== 'agency.intent' || str( e.metadata?.['status'] ) !== 'awaiting') continue
       const dispatchedAt = num( e.metadata?.['dispatchedAt'], tick )
       if( tick - dispatchedAt < AWAIT_TIMEOUT ) continue
 
@@ -160,12 +160,12 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       this._emitEnacted( intent, timedOut, predicted, tick )
       if( intent.planId && intent.planStepId )
         this._emitActionOutcome( intent, false, 0, 1, tick )
-      logger.info( `[motor] ⏱ "${ intent.schema }" timed out after ${ tick - dispatchedAt } ticks` )
+      logger.info(`[motor] ⏱ "${ intent.schema }" timed out after ${ tick - dispatchedAt } ticks`)
     }
 
     // Process committed intents in a stable order (determinism / replay).
     const selected = [ ...state.entities.entries() ]
-      .filter( ( [ , e ] ) => e.type === 'agency.intent' && str( e.metadata?.['status'] ) === 'selected' )
+      .filter( ( [ , e ] ) => e.type === 'agency.intent' && str( e.metadata?.['status'] ) === 'selected')
       .sort( ( a, b ) => ( a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0 ) )
 
     let enactedCount = 0
@@ -190,7 +190,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         : { mode: 'external', success: true, outcomeQuality: 0.5, valence: 0,
             description: `Unknown schema "${ intent.schema }" routed to the host.` }
 
-      if( enaction.mode === 'sync' ){
+      if( enaction.mode === 'sync'){
         set.push( outcomeEntity( tick, intent, enaction, predicted ) )
         del.push( id )
         if( enaction.metricDeltas ) metrics.push( ...enaction.metricDeltas )
@@ -253,7 +253,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       metadata: { ...meta, status: 'expanding', steps, cursor: 0, accumQuality: 0, accumValence: 0, completed: 0 },
     })
     set.push( this._subIntent( parentId, intent.targetEntityId, intent.parameters, steps[0]!, 0, tick ) )
-    logger.info( `[motor] composite "${ intent.schema }" → ${ steps.length } steps` )
+    logger.info(`[motor] composite "${ intent.schema }" → ${ steps.length } steps`)
   }
 
   private _advance(
@@ -380,7 +380,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     if( bubbles.length === 0 && this._author ){
       const name = str( intent.parameters['targetEntityName'] ) ?? intent.targetEntityId ?? 'them'
       try { bubbles = await this._author.authorOutreach( intent.targetEntityId ?? '', name, str( intent.parameters['gist'] ) ) }
-      catch( err ){ logger.warn( `[motor] outreach authoring failed: ${ errMsg( err ) }` ) }
+      catch( err ){ logger.warn(`[motor] outreach authoring failed: ${ errMsg( err ) }`) }
     }
     if( bubbles.length === 0 ) return false   // nothing authored to send → await
 
@@ -394,7 +394,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     }
     let result: ActionResult
     try { result = await this._comms.executeAction( request, state ) }
-    catch( err ){ logger.warn( `[motor] communicate delivery failed: ${ errMsg( err ) }` ); return false }
+    catch( err ){ logger.warn(`[motor] communicate delivery failed: ${ errMsg( err ) }`); return false }
 
     if( result.commands.set?.length ) set.push( ...result.commands.set )
     const out: Enaction = { mode: 'communicate', success: result.success,
@@ -420,7 +420,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         payload: { schema: intent.schema, success: enaction.success, outcomeQuality: enaction.outcomeQuality, surprise, tick },
       })
     }
-    catch( err ){ logger.warn( `[motor] enacted publish failed: ${ errMsg( err ) }` ) }
+    catch( err ){ logger.warn(`[motor] enacted publish failed: ${ errMsg( err ) }`) }
   }
 
   /**
@@ -452,7 +452,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         },
       })
     }
-    catch( err ){ logger.warn( `[motor] action outcome publish failed: ${ errMsg( err ) }` ) }
+    catch( err ){ logger.warn(`[motor] action outcome publish failed: ${ errMsg( err ) }`) }
   }
 
   private _emitDispatch( intent: Intent, mode: 'communicate' | 'external', tick: Tick ): void {
@@ -469,7 +469,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         },
       })
     }
-    catch( err ){ logger.warn( `[motor] dispatch publish failed: ${ errMsg( err ) }` ) }
+    catch( err ){ logger.warn(`[motor] dispatch publish failed: ${ errMsg( err ) }`) }
   }
 }
 

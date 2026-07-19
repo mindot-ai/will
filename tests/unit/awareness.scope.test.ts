@@ -58,72 +58,72 @@ function render( focus: Partial<FocusSection>, mode: 'master' | 'facet', ctx = m
 
 // ── Tests ─────────────────────────────────────────────────────
 
-describe( 'awareness scoping — buildUserMessage', () => {
-  const ctxWithPlan = makeContext( { plans: [ plan( 'plan-1', 'E1' ) ] } )
+describe('awareness scoping — buildUserMessage', () => {
+  const ctxWithPlan = makeContext( { plans: [ plan('plan-1', 'E1') ] } )
 
-  it( 'a facet that declares "plans" sees the Active Plans section', () => {
+  it('a facet that declares "plans" sees the Active Plans section', () => {
     const out = render( { awareness: [ ...DEFAULT_FACET_AWARENESS, 'plans' ] }, 'facet', ctxWithPlan )
-    expect( out ).toContain( '## Active Plans' )
-    expect( out ).toContain( 'plan-1' )
+    expect( out ).toContain('## Active Plans')
+    expect( out ).toContain('plan-1')
   } )
 
-  it( 'a facet with default awareness does NOT see plans, but still sees goals', () => {
+  it('a facet with default awareness does NOT see plans, but still sees goals', () => {
     const out = render( {}, 'facet', ctxWithPlan )   // no awareness → DEFAULT_FACET_AWARENESS
-    expect( out ).not.toContain( '## Active Plans' )
-    expect( out ).toContain( '## Active Goals' )
+    expect( out ).not.toContain('## Active Plans')
+    expect( out ).toContain('## Active Goals')
   } )
 
-  it( 'declaring an explicit scope set drops the defaults not listed', () => {
+  it('declaring an explicit scope set drops the defaults not listed', () => {
     const out = render( { awareness: [ 'plans' ] as AwarenessScope[] }, 'facet', ctxWithPlan )
-    expect( out ).toContain( '## Active Plans' )
-    expect( out ).not.toContain( '## Active Goals' )   // 'goals' not declared
-    expect( out ).not.toContain( '## My Beliefs' )
+    expect( out ).toContain('## Active Plans')
+    expect( out ).not.toContain('## Active Goals')   // 'goals' not declared
+    expect( out ).not.toContain('## My Beliefs')
   } )
 
-  it( 'awarenessEntityId scopes plans to a single requester', () => {
-    const ctx = makeContext( { plans: [ plan( 'plan-1', 'E1' ), plan( 'plan-2', 'E2' ) ] } )
+  it('awarenessEntityId scopes plans to a single requester', () => {
+    const ctx = makeContext( { plans: [ plan('plan-1', 'E1'), plan('plan-2', 'E2') ] } )
     const out = render( { awareness: [ 'plans' ] as AwarenessScope[], awarenessEntityId: 'E1' }, 'facet', ctx )
-    expect( out ).toContain( 'plan-1' )
-    expect( out ).not.toContain( 'plan-2' )
+    expect( out ).toContain('plan-1')
+    expect( out ).not.toContain('plan-2')
   } )
 
-  it( 'master mode always renders the full set regardless of focus.awareness', () => {
+  it('master mode always renders the full set regardless of focus.awareness', () => {
     const out = render( { awareness: [ 'goals' ] as AwarenessScope[] }, 'master', ctxWithPlan )
-    expect( out ).toContain( '## Active Plans' )   // master ignores the manifest
-    expect( out ).toContain( '## Active Goals' )
-    expect( out ).toContain( '## My Beliefs' )
+    expect( out ).toContain('## Active Plans')   // master ignores the manifest
+    expect( out ).toContain('## Active Goals')
+    expect( out ).toContain('## My Beliefs')
   } )
 
-  it( 'default facet awareness still includes goals, beliefs', () => {
-    const out = render( {}, 'facet' )
-    expect( out ).toContain( '## Active Goals' )
-    expect( out ).toContain( '## My Beliefs' )
+  it('default facet awareness still includes goals, beliefs', () => {
+    const out = render( {}, 'facet')
+    expect( out ).toContain('## Active Goals')
+    expect( out ).toContain('## My Beliefs')
   } )
 } )
 
 // ── Stage 2: recall-relevance scoping of plans ────────────────
 
-describe( 'awareness scoping — recall-relevance filter (Stage 2)', () => {
+describe('awareness scoping — recall-relevance filter (Stage 2)', () => {
   const twoPlans = () => makeContext( {
-    plans: [ plan( 'plan-1', 'E1' ), plan( 'plan-2', 'E2' ) ],
+    plans: [ plan('plan-1', 'E1'), plan('plan-2', 'E2') ],
     relevantPlanIds: [ 'plan-2' ],
   } )
 
-  it( 'unions the requester’s plans (entityId) with recall-surfaced plans (relevantPlanIds)', () => {
+  it('unions the requester’s plans (entityId) with recall-surfaced plans (relevantPlanIds)', () => {
     const out = render( { awareness: [ 'plans' ] as AwarenessScope[], awarenessEntityId: 'E1' }, 'facet', twoPlans() )
-    expect( out ).toContain( 'plan-1' )   // E1's own
-    expect( out ).toContain( 'plan-2' )   // recall-relevant (E2's), surfaced by relevance
+    expect( out ).toContain('plan-1')   // E1's own
+    expect( out ).toContain('plan-2')   // recall-relevant (E2's), surfaced by relevance
   } )
 
-  it( 'relevance alone scopes plans for a facet with no entityId', () => {
+  it('relevance alone scopes plans for a facet with no entityId', () => {
     const out = render( { awareness: [ 'plans' ] as AwarenessScope[] }, 'facet', twoPlans() )
-    expect( out ).toContain( 'plan-2' )       // recall-relevant
-    expect( out ).not.toContain( 'plan-1' )   // not relevant, no requester scope
+    expect( out ).toContain('plan-2')       // recall-relevant
+    expect( out ).not.toContain('plan-1')   // not relevant, no requester scope
   } )
 
-  it( 'master ignores the relevance filter (sees all plans)', () => {
+  it('master ignores the relevance filter (sees all plans)', () => {
     const out = render( { awareness: [ 'goals' ] as AwarenessScope[] }, 'master', twoPlans() )
-    expect( out ).toContain( 'plan-1' )
-    expect( out ).toContain( 'plan-2' )
+    expect( out ).toContain('plan-1')
+    expect( out ).toContain('plan-2')
   } )
 } )

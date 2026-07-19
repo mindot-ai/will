@@ -56,11 +56,11 @@ export class ReafferenceEngine implements CognitiveEngine {
   /** Creation seam: register a composite proposed by the executive/deliberation facet. */
   subscribes(): string[] { return [ 'agency.composite.proposed' ] }
   onCognitiveEvent( e: CognitiveEvent ): void {
-    if( e.type !== 'agency.composite.proposed' ) return
+    if( e.type !== 'agency.composite.proposed') return
     const p = e.payload as { id?: string; name?: string; composedOf?: unknown; tags?: unknown; cost?: number }
     const id    = p.id ?? p.name
     const steps = Array.isArray( p.composedOf )
-      ? ( p.composedOf as unknown[] ).filter( ( s ): s is string => typeof s === 'string' )
+      ? ( p.composedOf as unknown[] ).filter( ( s ): s is string => typeof s === 'string')
       : []
     if( !id || steps.length < 2 ) return   // a composite needs a name + ≥2 sub-schemas
 
@@ -68,9 +68,9 @@ export class ReafferenceEngine implements CognitiveEngine {
       id, kind: 'composite', source: 'repertoire', binds: 'none',
       cost: typeof p.cost === 'number' ? p.cost : 0.1,
       composedOf: steps,
-      tags: Array.isArray( p.tags ) ? ( p.tags as unknown[] ).filter( ( t ): t is string => typeof t === 'string' ) : [ 'composite' ],
+      tags: Array.isArray( p.tags ) ? ( p.tags as unknown[] ).filter( ( t ): t is string => typeof t === 'string') : [ 'composite' ],
     })
-    logger.info( `[reafference] registered proposed composite "${ id }" (${ steps.join( ' → ' ) })` )
+    logger.info(`[reafference] registered proposed composite "${ id }" (${ steps.join(' → ') })`)
   }
   snapshot(): Record<string, unknown> {
     return { skills: this._repertoire.skills().size }
@@ -90,7 +90,7 @@ export class ReafferenceEngine implements CognitiveEngine {
     let updates    = 0
     let discovered = 0
     for( const [ id, e ] of state.entities ){
-      if( e.type !== 'agency.outcome' ) continue
+      if( e.type !== 'agency.outcome') continue
       const m = ( e.metadata ?? {} ) as Record<string, unknown>
       const schema = str( m['schema'] )
       if( !schema ){ del.push( id ); continue }
@@ -131,14 +131,14 @@ export class ReafferenceEngine implements CognitiveEngine {
 
       if( proceduralized ){
         this._emitProceduralized( skill, tick )
-        logger.info( `[reafference] "${ schema }" proceduralized (habit ${ skill.habitStrength.toFixed( 2 ) })` )
+        logger.info(`[reafference] "${ schema }" proceduralized (habit ${ skill.habitStrength.toFixed( 2 ) })`)
       }
     }
 
     // ── 2. Forgetting curve over the competence layer ────────────
     const dropped = this._repertoire.decay( tick )
     for( const id of dropped ){
-      del.push( `agency-skill-${ id }` )
+      del.push(`agency-skill-${ id }`)
       del.push( schemaEntityId( id ) )   // composite mirror (harmless no-op for primitives)
     }
 
@@ -171,7 +171,7 @@ export class ReafferenceEngine implements CognitiveEngine {
         payload: { schema: skill.schema, habitStrength: skill.habitStrength, tick },
       })
     }
-    catch( err ){ logger.warn( `[reafference] publish failed: ${ err instanceof Error ? err.message : String( err ) }` ) }
+    catch( err ){ logger.warn(`[reafference] publish failed: ${ err instanceof Error ? err.message : String( err ) }`) }
   }
 
   /**
@@ -197,7 +197,7 @@ export class ReafferenceEngine implements CognitiveEngine {
         },
       })
     }
-    catch( err ){ logger.warn( `[reafference] plan outcome publish failed: ${ err instanceof Error ? err.message : String( err ) }` ) }
+    catch( err ){ logger.warn(`[reafference] plan outcome publish failed: ${ err instanceof Error ? err.message : String( err ) }`) }
   }
 
   private _emitDiscovered( schema: string, tick: Tick ): void {
@@ -208,7 +208,7 @@ export class ReafferenceEngine implements CognitiveEngine {
         salience: 0.5, payload: { schema, tick },
       })
     }
-    catch( err ){ logger.warn( `[reafference] discovered publish failed: ${ err instanceof Error ? err.message : String( err ) }` ) }
+    catch( err ){ logger.warn(`[reafference] discovered publish failed: ${ err instanceof Error ? err.message : String( err ) }`) }
   }
 }
 

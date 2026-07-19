@@ -80,9 +80,9 @@ function makeInstance( reply: string ){
   return { transport, instance, deps }
 }
 
-describe( 'transport — message in → reply envelope out (§7.2)', () => {
-  it( 'emits a reply envelope off-tick after an inbound message is applied', async () => {
-    const { transport, instance, deps } = makeInstance( 'Hi there' )
+describe('transport — message in → reply envelope out (§7.2)', () => {
+  it('emits a reply envelope off-tick after an inbound message is applied', async () => {
+    const { transport, instance, deps } = makeInstance('Hi there')
     const ctrl = new TransportController()
     ctrl.attach( instance )
 
@@ -94,29 +94,29 @@ describe( 'transport — message in → reply envelope out (§7.2)', () => {
     } )
 
     // Nothing is emitted before the inbound is applied.
-    expect( transport.sentOn( 'reply' ) ).toHaveLength( 0 )
+    expect( transport.sentOn('reply') ).toHaveLength( 0 )
 
     // Apply the inbound at tick 1 — dispatches to AuditionEngine.ingest (async).
     ctrl.applyInbound( instance, 1, deps )
     await flush()
 
     // The reply fast-path emitted a single reply envelope — off-tick.
-    const replies = transport.sentOn( 'reply' )
+    const replies = transport.sentOn('reply')
     expect( replies ).toHaveLength( 1 )
     const reply = replies[0]!
-    expect( reply.entityId ).toBe( 'alice' )
-    expect( reply.threadId ).toBe( 't1' )
+    expect( reply.entityId ).toBe('alice')
+    expect( reply.threadId ).toBe('t1')
     expect( reply.bubbles ).toEqual( [ 'Hi there' ] )
     expect( reply.willId ).toBe( WILL )
 
     // No tick drain happened: the reply did NOT ride the outbox (no message env).
-    expect( transport.sentOn( 'message' ) ).toHaveLength( 0 )
+    expect( transport.sentOn('message') ).toHaveLength( 0 )
 
     ctrl.detach( instance )
   } )
 
-  it( 'splits a multi-paragraph reply into separate bubbles', async () => {
-    const { transport, instance, deps } = makeInstance( 'First line.\n\nSecond line.' )
+  it('splits a multi-paragraph reply into separate bubbles', async () => {
+    const { transport, instance, deps } = makeInstance('First line.\n\nSecond line.')
     const ctrl = new TransportController()
     ctrl.attach( instance )
 
@@ -128,7 +128,7 @@ describe( 'transport — message in → reply envelope out (§7.2)', () => {
     ctrl.applyInbound( instance, 1, deps )
     await flush()
 
-    const replies = transport.sentOn( 'reply' )
+    const replies = transport.sentOn('reply')
     expect( replies ).toHaveLength( 1 )
     expect( replies[0]!.bubbles ).toEqual( [ 'First line.', 'Second line.' ] )
 

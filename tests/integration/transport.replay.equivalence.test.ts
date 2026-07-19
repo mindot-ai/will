@@ -42,7 +42,7 @@ function makeFixture(){
     _transportUnsub: null,
     cognition: {
       auditionEngine: {
-        ingest: ( i: any ) => { trace.push( `msg:${i.entityId}:${i.content ?? i.transcription}` ); return Promise.resolve() },
+        ingest: ( i: any ) => { trace.push(`msg:${i.entityId}:${i.content ?? i.transcription}`); return Promise.resolve() },
         attachReplyCallback: () => {},
         addChunkCallback:    () => () => {},
       },
@@ -51,9 +51,9 @@ function makeFixture(){
   }
 
   const deps = {
-    effector: { confirmExecution: ( _i: any, id: string ) => { trace.push( `result:${id}` ) } },
-    outbox:  { confirmDelivery:  ( _i: any, id: string ) => { trace.push( `delivery:${id}` ) } },
-    sensory: { injectEvent:      ( _i: any, e: any ) => { trace.push( `percept:${e.type}` ) } },
+    effector: { confirmExecution: ( _i: any, id: string ) => { trace.push(`result:${id}`) } },
+    outbox:  { confirmDelivery:  ( _i: any, id: string ) => { trace.push(`delivery:${id}`) } },
+    sensory: { injectEvent:      ( _i: any, e: any ) => { trace.push(`percept:${e.type}`) } },
   }
 
   return { ctrl: new TransportController(), transport, instance, deps, trace }
@@ -63,8 +63,8 @@ const base = ( correlationId: string ) => ({ willId: WILL, correlationId, seq: 1
 const msg  = ( id: string, entityId: string, content: string ): InboundEnvelope =>
   ({ channel: 'inbound_message', kind: 'text', entityId, threadId: 't', content, ...base( id ) })
 
-describe( 'Transport replay-equivalence (R2-d analog)', () => {
-  it( 're-feeds the recorded inbound stream with identical dispatch', () => {
+describe('Transport replay-equivalence (R2-d analog)', () => {
+  it('re-feeds the recorded inbound stream with identical dispatch', () => {
     // ── Run A: record ──────────────────────────────────────────
     const recorded: InboundRecord[] = []
     setInboundRecorder( WILL, { recordInbound: r => recorded.push( r ) } )
@@ -74,13 +74,13 @@ describe( 'Transport replay-equivalence (R2-d analog)', () => {
     try {
       A.ctrl.attach( A.instance )
 
-      A.transport.injectInbound( msg( 'm1', 'alice', 'hi' ) )
+      A.transport.injectInbound( msg('m1', 'alice', 'hi') )
       A.ctrl.applyInbound( A.instance, 1, A.deps as any )
 
       A.ctrl.applyInbound( A.instance, 2, A.deps as any )   // quiet tick
 
-      A.transport.injectInbound({ channel: 'ack', ackKind: 'result', result: { success: true, description: 'ok' }, ...base( 'inv1' ) })
-      A.transport.injectInbound( msg( 'm2', 'bob', 'yo' ) )
+      A.transport.injectInbound({ channel: 'ack', ackKind: 'result', result: { success: true, description: 'ok' }, ...base('inv1') })
+      A.transport.injectInbound( msg('m2', 'bob', 'yo') )
       A.ctrl.applyInbound( A.instance, 3, A.deps as any )
 
       traceA = [ ...A.trace ]
@@ -108,9 +108,9 @@ describe( 'Transport replay-equivalence (R2-d analog)', () => {
     expect( B.trace ).toEqual( traceA )
   } )
 
-  it( 'a source run does not re-record (replay is not a new recording)', () => {
+  it('a source run does not re-record (replay is not a new recording)', () => {
     const recorded: InboundRecord[] = [
-      { tick: 1, willId: WILL, timestamp: 0, envelope: msg( 'm1', 'alice', 'hi' ) },
+      { tick: 1, willId: WILL, timestamp: 0, envelope: msg('m1', 'alice', 'hi') },
     ]
     // Both a source AND a recorder registered — the source wins, recorder stays idle.
     const reRecorded: InboundRecord[] = []
@@ -129,19 +129,19 @@ describe( 'Transport replay-equivalence (R2-d analog)', () => {
   } )
 } )
 
-describe( 'RecordedInboundSource', () => {
+describe('RecordedInboundSource', () => {
   const rec = ( tick: number, id: string ): InboundRecord =>
     ({ tick, willId: WILL, timestamp: 0, envelope: msg( id, 'a', id ) })
 
-  it( 'groups by tick in record order and returns [] for a quiet tick', () => {
-    const src = new RecordedInboundSource( [ rec( 1, 'a' ), rec( 3, 'b' ), rec( 3, 'c' ) ] )
+  it('groups by tick in record order and returns [] for a quiet tick', () => {
+    const src = new RecordedInboundSource( [ rec( 1, 'a'), rec( 3, 'b'), rec( 3, 'c') ] )
     expect( ( src.envelopesAt( 1 ) as any[] ).map( e => e.correlationId ) ).toEqual( [ 'a' ] )
     expect( src.envelopesAt( 2 ) ).toEqual( [] )                       // quiet tick
     expect( ( src.envelopesAt( 3 ) as any[] ).map( e => e.correlationId ) ).toEqual( [ 'b', 'c' ] )
   } )
 
-  it( 'consumes a tick once — a second read is empty', () => {
-    const src = new RecordedInboundSource( [ rec( 1, 'a' ) ] )
+  it('consumes a tick once — a second read is empty', () => {
+    const src = new RecordedInboundSource( [ rec( 1, 'a') ] )
     expect( src.envelopesAt( 1 ) ).toHaveLength( 1 )
     expect( src.envelopesAt( 1 ) ).toEqual( [] )
   } )

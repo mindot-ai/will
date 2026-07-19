@@ -45,61 +45,61 @@ const render = ( ideationCandidates?: IdeationCandidate[] ): string =>
 
 // ── parseIdeation ─────────────────────────────────────────────
 
-describe( 'parseIdeation — the propose pass', () => {
-  it( 'parses a fenced ```json candidate block', () => {
+describe('parseIdeation — the propose pass', () => {
+  it('parses a fenced ```json candidate block', () => {
     const text = 'Here are options:\n```json\n{"candidates":[{"approach":"ask","description":"d","upside":"u","risk":"r"}]}\n```'
     const out = parseIdeation( text )
     expect( out.candidates ).toHaveLength( 1 )
     expect( out.candidates[0] ).toEqual( { approach: 'ask', description: 'd', upside: 'u', risk: 'r' } )
   } )
 
-  it( 'parses raw JSON without a code fence', () => {
-    const out = parseIdeation( '{"candidates":[{"approach":"a","description":"d","upside":"u","risk":"r"},{"approach":"b","description":"d2","upside":"u2","risk":"r2"}]}' )
+  it('parses raw JSON without a code fence', () => {
+    const out = parseIdeation('{"candidates":[{"approach":"a","description":"d","upside":"u","risk":"r"},{"approach":"b","description":"d2","upside":"u2","risk":"r2"}]}')
     expect( out.candidates ).toHaveLength( 2 )
   } )
 
-  it( 'recovers the array via balanced-bracket extraction around messy surrounding text', () => {
+  it('recovers the array via balanced-bracket extraction around messy surrounding text', () => {
     const text = 'preamble {"candidates": [{"approach":"x","description":"has a } brace in it","upside":"u","risk":"r"}]} trailing noise'
     const out = parseIdeation( text )
     expect( out.candidates ).toHaveLength( 1 )
-    expect( out.candidates[0]!.description ).toContain( '}' )
+    expect( out.candidates[0]!.description ).toContain('}')
   } )
 
-  it( 'coerces missing fields to empty strings and drops wholly-empty entries', () => {
-    const out = parseIdeation( '{"candidates":[{"approach":"a"},{},{"description":"d"}]}' )
+  it('coerces missing fields to empty strings and drops wholly-empty entries', () => {
+    const out = parseIdeation('{"candidates":[{"approach":"a"},{},{"description":"d"}]}')
     expect( out.candidates ).toHaveLength( 2 )           // the empty {} is dropped
-    expect( out.candidates[0]!.upside ).toBe( '' )
+    expect( out.candidates[0]!.upside ).toBe('')
   } )
 
-  it( 'degrades to an empty set on un-parseable garbage (never throws)', () => {
-    expect( parseIdeation( 'no json here at all' ) ).toEqual( { candidates: [] } )
+  it('degrades to an empty set on un-parseable garbage (never throws)', () => {
+    expect( parseIdeation('no json here at all') ).toEqual( { candidates: [] } )
   } )
 } )
 
 // ── Ideation format instruction ───────────────────────────────
 
-describe( 'buildIdeationFormatInstruction', () => {
-  it( 'asks to PROPOSE a divergent candidate set (not decide)', () => {
+describe('buildIdeationFormatInstruction', () => {
+  it('asks to PROPOSE a divergent candidate set (not decide)', () => {
     const inst = PromptFactory.buildIdeationFormatInstruction()
-    expect( inst ).toContain( '"candidates"' )
+    expect( inst ).toContain('"candidates"')
     expect( inst ).toMatch( /PROPOSE|Diverge|distinct/ )
-    expect( inst ).not.toContain( '"actions"' )         // ideation must not ask for committed actions
+    expect( inst ).not.toContain('"actions"')         // ideation must not ask for committed actions
   } )
 } )
 
 // ── Candidate injection into the decision pass ────────────────
 
-describe( 'buildUserMessage — ideation candidate injection (decision pass)', () => {
-  it( 'renders the candidate set when present', () => {
+describe('buildUserMessage — ideation candidate injection (decision pass)', () => {
+  it('renders the candidate set when present', () => {
     const msg = render( [ candidate( { approach: 'ask' } ), candidate( { approach: 'proceed', description: 'act on best guess' } ) ] )
-    expect( msg ).toContain( '## Candidate Approaches' )
-    expect( msg ).toContain( 'ask' )
-    expect( msg ).toContain( 'act on best guess' )
+    expect( msg ).toContain('## Candidate Approaches')
+    expect( msg ).toContain('ask')
+    expect( msg ).toContain('act on best guess')
     expect( msg ).toMatch( /why I rejected the others/ )
   } )
 
-  it( 'omits the section entirely on the System 1 path (no candidates)', () => {
-    expect( render() ).not.toContain( '## Candidate Approaches' )
-    expect( render( [] ) ).not.toContain( '## Candidate Approaches' )
+  it('omits the section entirely on the System 1 path (no candidates)', () => {
+    expect( render() ).not.toContain('## Candidate Approaches')
+    expect( render( [] ) ).not.toContain('## Candidate Approaches')
   } )
 } )

@@ -84,7 +84,7 @@ const NODE_W = 172
 const NODE_H = 54
 
 const esc = ( s: string ): string =>
-  s.replace( /&/g, '&amp;' ).replace( /</g, '&lt;' ).replace( />/g, '&gt;' )
+  s.replace( /&/g, '&amp;').replace( /</g, '&lt;').replace( />/g, '&gt;')
 
 function anchor( n: Required<Pick<GNode, 'x' | 'y'>> & { w: number; h: number }, side: Side ): { x: number; y: number } {
   switch( side ){
@@ -177,11 +177,11 @@ export function render( g: Graph ): string {
     const id = `arr-${ color.slice( 1 ) }`
     parts.push(
       `<marker id="${id}" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse">` +
-      `<path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="${color}"/></marker>` )
+      `<path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="${color}"/></marker>`)
   }
-  parts.push( `</defs>` )
-  parts.push( `<rect width="${g.width}" height="${g.height}" fill="url(#sky)"/>` )
-  parts.push( `<rect x="1" y="1" width="${g.width - 2}" height="${g.height - 2}" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>` )
+  parts.push(`</defs>`)
+  parts.push(`<rect width="${g.width}" height="${g.height}" fill="url(#sky)"/>`)
+  parts.push(`<rect x="1" y="1" width="${g.width - 2}" height="${g.height - 2}" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>`)
 
   // ── header ──
   parts.push(
@@ -217,7 +217,7 @@ export function render( g: Graph ): string {
   // ── edges (under nodes) ──
   for( const e of g.edges ){
     const a = byId.get( e.from ), b = byId.get( e.to )
-    if( !a || !b ) throw new Error( `${g.file}: edge ${e.from}→${e.to} references a missing node` )
+    if( !a || !b ) throw new Error(`${g.file}: edge ${e.from}→${e.to} references a missing node`)
     const [ autoA, autoB ] = autoSides( { cx: a.x + a.w/2, cy: a.y + a.h/2 }, { cx: b.x + b.w/2, cy: b.y + b.h/2 } )
     const sA = e.fromSide ?? autoA, sB = e.toSide ?? autoB
     const p0 = anchor( a, sA ), p1 = anchor( b, sB )
@@ -240,7 +240,7 @@ export function render( g: Graph ): string {
   for( const n of g.nodes ){
     const { color } = PALETTE[ n.cat ]
     const w = n.w ?? NODE_W, h = n.h ?? NODE_H
-    parts.push( `<g${ n.glow ? ` filter="url(#glow)" color="${color}"` : '' }>` )
+    parts.push(`<g${ n.glow ? ` filter="url(#glow)" color="${color}"` : '' }>`)
     parts.push(
       `<rect x="${n.x}" y="${n.y}" width="${w}" height="${h}" rx="12" fill="#10141d" stroke="${color}99" stroke-width="1.4"/>`,
       `<rect x="${n.x}" y="${n.y}" width="${w}" height="${h}" rx="12" fill="${color}12"/>`,
@@ -254,15 +254,15 @@ export function render( g: Graph ): string {
       )
     }
     else
-      parts.push( `<text x="${cx}" y="${n.y + h/2 + 4.5}" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">${esc( n.label )}</text>` )
-    parts.push( `</g>` )
+      parts.push(`<text x="${cx}" y="${n.y + h/2 + 4.5}" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">${esc( n.label )}</text>`)
+    parts.push(`</g>`)
   }
 
   // ── footer ──
   parts.push(
-    `<text x="40" y="${g.height - 22}" font-size="10.5" fill="#5b6372">@mindot/will · ${esc( g.file.replace( '.svg', '' ) )}</text>`,
+    `<text x="40" y="${g.height - 22}" font-size="10.5" fill="#5b6372">@mindot/will · ${esc( g.file.replace('.svg', '') )}</text>`,
     `<text x="${g.width - 40}" y="${g.height - 22}" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>`,
     `</svg>`,
   )
-  return parts.join( '\n' )
+  return parts.join('\n')
 }

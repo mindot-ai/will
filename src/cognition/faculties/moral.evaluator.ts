@@ -114,7 +114,7 @@ export class MoralEvaluator implements SimulationEngine, CognitiveEngine {
     // Effective config = base engine-config-moral ⊕ persona-prior. Channel A: a
     // conscientious Will develops a lower eventThreshold and so registers moral
     // self-evaluations (guilt/shame/pride) more readily — the dutifulness facet.
-    const p = readEffectiveParams( state, 'engine-config-moral' )
+    const p = readEffectiveParams( state, 'engine-config-moral')
 
     if( p.eventThreshold != null ) this._eventThreshold = p.eventThreshold
     if( p.decayRate != null ) this._decayRate = p.decayRate
@@ -150,10 +150,10 @@ export class MoralEvaluator implements SimulationEngine, CognitiveEngine {
 
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
-    if( e.type === 'executive.prediction.formed' ){
+    if( e.type === 'executive.prediction.formed'){
       const p = e.payload as { predictedDomains: string[]; confidence: number }
       if( p.predictedDomains.includes('moral') )
-        this._model.setPrecision( 'emotion.guilt', 1.0 + p.confidence * 0.5 )
+        this._model.setPrecision('emotion.guilt', 1.0 + p.confidence * 0.5 )
     }
   }
 
@@ -251,7 +251,7 @@ export class MoralEvaluator implements SimulationEngine, CognitiveEngine {
     // Phase C + F: publish cognitive event — gated by prediction error
     const _bus = this._bus
     if( _bus && ( guilt > 0.4 || shame > 0.4 ) ){
-      const predErr = this._model.observe( 'emotion.guilt', guilt )
+      const predErr = this._model.observe('emotion.guilt', guilt )
       if( !predErr.gated )
         _bus.publish({ type: 'emotion.guilt.elevated', version: 1, sourceEngine: this.name, salience: Math.min(1, guilt * 1.5), payload: { guilt, shame, pride } })
     }

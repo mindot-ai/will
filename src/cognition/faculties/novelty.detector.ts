@@ -81,7 +81,7 @@ export class NoveltyDetector implements SimulationEngine, CognitiveEngine {
   private _readConfigFromState( state: ReadonlySimulationState ): void {
     // Effective config = base engine-config-novelty ⊕ persona-prior. Channel A: an open
     // Will develops a lower significanceThreshold and so registers novelty more readily.
-    const p = readEffectiveParams( state, 'engine-config-novelty' )
+    const p = readEffectiveParams( state, 'engine-config-novelty')
     if( p.learningRate != null ) this._learningRate = p.learningRate
     if( p.windowSize != null ) this._windowSize = p.windowSize
     if( p.significanceThreshold != null ) this._significanceThreshold = p.significanceThreshold
@@ -93,10 +93,10 @@ export class NoveltyDetector implements SimulationEngine, CognitiveEngine {
 
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
-    if( e.type === 'executive.prediction.formed' ){
+    if( e.type === 'executive.prediction.formed'){
       const p = e.payload as { predictedDomains: string[]; confidence: number }
       if( p.predictedDomains.includes('perception') )
-        this._model.setPrecision( 'novelty.score', 1.0 + p.confidence * 0.5 )
+        this._model.setPrecision('novelty.score', 1.0 + p.confidence * 0.5 )
     }
   }
 
@@ -171,7 +171,7 @@ export class NoveltyDetector implements SimulationEngine, CognitiveEngine {
       _bus.publish({ type: 'perception.novelty.spike', version: 1, sourceEngine: this.name, salience: Math.min(1, overallNovelty * 2), payload: { novelty: overallNovelty } })
     // Phase D + F: rich state-change event — gated by prediction error
     if( _bus ){
-      const predErr = this._model.observe( 'novelty.score', overallNovelty )
+      const predErr = this._model.observe('novelty.score', overallNovelty )
       if( !predErr.gated )
         _bus.publish({ type: 'novelty.state.changed', version: 1, sourceEngine: this.name, salience: predErr.salience, payload: { novelty: overallNovelty, socialEvaluationThreat: state.metrics.get('social.evaluation_threat') ?? 0, activeAgents: state.metrics.get('social.active_agents') ?? 0, fearLevel: state.metrics.get('emotion.fear') ?? 0 } })
     }

@@ -142,8 +142,8 @@ export interface AuthorComparison {
 // Retry a failed step (the persona's maxStepRetries cap decides if it sticks),
 // advance on success, and close the plan when every step is done. Deterministic.
 const defaultSupervisor: SupervisorPolicy = ( report ) => {
-  if( report.type === 'step_failed' )    return { directive: 'retry' }
-  if( report.type === 'step_completed' )
+  if( report.type === 'step_failed')    return { directive: 'retry' }
+  if( report.type === 'step_completed')
     return { directive: report.completedSteps >= report.totalSteps ? 'complete' : 'continue' }
   return null
 }
@@ -228,8 +228,8 @@ export class PlanningEvalHarness {
       const pr = await planning.react( 0 as any, tick as any, state, {} as any )
       applyCommands( state, [ pr.commands as StateCommands ] )
       for( const [ k, v ] of ( pr.commands?.metrics ?? [] ) )
-        if( typeof k === 'string' && k.startsWith( 'planning.supervision.' ) )
-          supervision[ k.replace( 'planning.supervision.', '' ) ] = v as number
+        if( typeof k === 'string' && k.startsWith('planning.supervision.') )
+          supervision[ k.replace('planning.supervision.', '') ] = v as number
 
       // Inject scripted outcomes for every active frontier step — this deterministic
       // harness short-circuits the agency competition (it scores the planner's
@@ -239,7 +239,7 @@ export class PlanningEvalHarness {
         const plan = planning.getPlan( goalId )
         if( !plan ) continue
         for( const step of plan.steps ){
-          if( step.status !== 'active' ) continue
+          if( step.status !== 'active') continue
           const key     = `${plan.id}:${step.id}`
           const attempt = ( attempts.get( key ) ?? 0 ) + 1
           attempts.set( key, attempt )
@@ -295,11 +295,11 @@ export class PlanningEvalHarness {
   private _seedPersona( entities: Map<string, any>, persona?: EvalPersona ): void {
     if( !persona ) return
     if( persona.planning )
-      entities.set( 'engine-config-planning', { id: 'engine-config-planning', type: 'engine-config', metadata: { params: persona.planning } } )
+      entities.set('engine-config-planning', { id: 'engine-config-planning', type: 'engine-config', metadata: { params: persona.planning } } )
     if( persona.goalManager )
-      entities.set( 'engine-config-goal-manager', { id: 'engine-config-goal-manager', type: 'engine-config', metadata: { params: persona.goalManager } } )
+      entities.set('engine-config-goal-manager', { id: 'engine-config-goal-manager', type: 'engine-config', metadata: { params: persona.goalManager } } )
     if( persona.priors )
-      entities.set( 'persona-prior', { id: 'persona-prior', type: 'persona.prior', metadata: { priors: persona.priors, version: 1, updatedAtTick: 0 } } )
+      entities.set('persona-prior', { id: 'persona-prior', type: 'persona.prior', metadata: { priors: persona.priors, version: 1, updatedAtTick: 0 } } )
   }
 
   private _scorecard(
@@ -311,8 +311,8 @@ export class PlanningEvalHarness {
       const p = planning.getPlan( id )
       if( !p ) continue
       plansTotal++
-      if( p.status === 'completed' )      plansCompleted++
-      else if( p.status === 'failed' || p.status === 'rejected' ) plansFailed++
+      if( p.status === 'completed')      plansCompleted++
+      else if( p.status === 'failed' || p.status === 'rejected') plansFailed++
       else plansStuck++
     }
 

@@ -18,10 +18,10 @@ import { GoalManager } from '#faculties/goal.manager'
 const stateWith = ( tick: number, metrics: Record<string, number> ) =>
   ( { tick, entities: new Map(), metrics: new Map( Object.entries( metrics ) ) } as any )
 
-const engagementGoals = ( gm: GoalManager ) => gm.getActiveGoals().filter( g => g.tags.includes( 'boredom' ) )
+const engagementGoals = ( gm: GoalManager ) => gm.getActiveGoals().filter( g => g.tags.includes('boredom') )
 
-describe( 'GoalManager — drive goals are not born done (session-log regression)', () => {
-  it( 'does NOT spawn a drive goal whose completion condition is already met', async () => {
+describe('GoalManager — drive goals are not born done (session-log regression)', () => {
+  it('does NOT spawn a drive goal whose completion condition is already met', async () => {
     const gm = new GoalManager()
     // drive firing, but emotion.boredom (0–1 scale) already < 0.4 → the goal would be born done.
     for( let t = 100; t < 105; t++ )
@@ -29,7 +29,7 @@ describe( 'GoalManager — drive goals are not born done (session-log regression
     expect( engagementGoals( gm ) ).toHaveLength( 0 )   // never created, never the age-0 spam loop
   } )
 
-  it( 'creates the goal when there IS work, completes it later (age > 0), and does not respawn', async () => {
+  it('creates the goal when there IS work, completes it later (age > 0), and does not respawn', async () => {
     const gm = new GoalManager()
 
     // boredom 0.7 (sustained > 0.6 fired the drive) → `< 0.4` not met → genuine work → persists.
@@ -37,12 +37,12 @@ describe( 'GoalManager — drive goals are not born done (session-log regression
     const created = engagementGoals( gm )
     expect( created ).toHaveLength( 1 )
     const id = created[0]!.id
-    expect( created[0]!.status ).toBe( 'active' )       // NOT completed on its creation tick (age-0 guard)
+    expect( created[0]!.status ).toBe('active')       // NOT completed on its creation tick (age-0 guard)
     expect( created[0]!.progress ).toBeLessThan( 1 )
 
     // Boredom falls back under 0.4 (hysteresis) on a LATER tick → the goal completes (age > 0).
     await gm.react( 1000 as any, 101 as any, stateWith( 101, { 'drive.seek_engagement': 0.8, 'emotion.boredom': 0.2 } ), {} as any )
-    expect( gm.getGoal( id )!.status ).toBe( 'completed' )
+    expect( gm.getGoal( id )!.status ).toBe('completed')
 
     // And it must NOT respawn while the condition stays met — the loop is dead.
     await gm.react( 1000 as any, 102 as any, stateWith( 102, { 'drive.seek_engagement': 0.8, 'emotion.boredom': 0.2 } ), {} as any )

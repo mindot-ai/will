@@ -190,7 +190,7 @@ export class ExecutiveFacet {
       this._onMasterSync
     )
 
-    logger.info( `[executive.facet] ${facetId} created` )
+    logger.info(`[executive.facet] ${facetId} created`)
   }
 
   // ── Public API ─────────────────────────────────────────────
@@ -261,7 +261,7 @@ export class ExecutiveFacet {
     this._inflight++
     this._reason( report )
       .catch( err =>
-        logger.error( `[executive.facet] ${this.facetId} reasoning error:`, err )
+        logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err )
       )
       .finally( () => {
         this._inflight--
@@ -297,10 +297,10 @@ export class ExecutiveFacet {
     if( this._destroyed ) return
     this._destroyed = true
 
-    this._bus.unsubscribe( `executive-facet-${this.facetId}` )
+    this._bus.unsubscribe(`executive-facet-${this.facetId}`)
     this._listeners.clear()
 
-    logger.info( `[executive.facet] ${this.facetId} destroyed` )
+    logger.info(`[executive.facet] ${this.facetId} destroyed`)
   }
 
   // ── Master sync ────────────────────────────────────────────
@@ -320,11 +320,11 @@ export class ExecutiveFacet {
     // Master syncs to all facets or a specific one
     if( payload.facetId && payload.facetId !== this.facetId ) return
 
-    logger.info( `[executive.facet] ${this.facetId} synced from master (tick=${payload.tick})` )
+    logger.info(`[executive.facet] ${this.facetId} synced from master (tick=${payload.tick})`)
 
     // Store master's latest reasoning for context in next report()
     if( payload.reasoning )
-      this._masterSyncHistory.push( `[Master sync — tick ${payload.tick}] ${payload.reasoning.slice( 0, 400 )}` )
+      this._masterSyncHistory.push(`[Master sync — tick ${payload.tick}] ${payload.reasoning.slice( 0, 400 )}`)
 
     // Keep only last 5 sync entries
     if( this._masterSyncHistory.length > 5 )
@@ -336,10 +336,10 @@ export class ExecutiveFacet {
   private async _reason( report: FacetReport ): Promise<void> {
     // Ensure we have current state
     if( !this._currentStateRef )
-      throw new Error( `[executive.facet] ${this.facetId} no state reference available` )
+      throw new Error(`[executive.facet] ${this.facetId} no state reference available`)
 
     if( !this._currentFocus )
-      throw new Error( `[executive.facet] ${this.facetId} no focus set. Call setFocus() before report().` )
+      throw new Error(`[executive.facet] ${this.facetId} no focus set. Call setFocus() before report().`)
 
     const currentState = this._currentStateRef
 
@@ -377,13 +377,13 @@ export class ExecutiveFacet {
     // isn't cold on each cycle. Injected before the caller's instructions so the
     // caller content always comes last (highest recency bias from the LLM).
     const continuityBlock = this._facetReasoningHistory.length > 0
-      ? `## My Prior Reasoning (this facet)\n${this._facetReasoningHistory.join( '\n' )}`
+      ? `## My Prior Reasoning (this facet)\n${this._facetReasoningHistory.join('\n')}`
       : ''
 
     const reportContent = [
       continuityBlock,
       report.instructions ?? ''
-    ].filter( Boolean ).join( '\n\n' ) || undefined
+    ].filter( Boolean ).join('\n\n') || undefined
 
     // Dual-process — a facet is "the master over its focus", so it deliberates the same
     // way. The a-priori effort gate (shared `selectProcess`) picks fast vs deliberate
@@ -391,19 +391,19 @@ export class ExecutiveFacet {
     // so the Will's deliberativeness is unified across master and every focus. On the
     // deliberate path a propose pass generates options FOR THIS FOCUS (e.g. a planning
     // facet's continue/revise/replan/abandon), injected into the decision call below.
-    const deliberateThreshold = readEffectiveParams( currentState, 'engine-config-executive' ).deliberateThreshold ?? DELIBERATE_THRESHOLD
+    const deliberateThreshold = readEffectiveParams( currentState, 'engine-config-executive').deliberateThreshold ?? DELIBERATE_THRESHOLD
     const processSelection = selectProcess( {
       epistemicUncertainty,
       priorConfidence:   this._lastConfidence,
-      novelty:           currentState.metrics.get( 'perception.novelty' ) ?? 0,
-      stressLoad:        currentState.metrics.get( 'stress.load' ) ?? 0,
+      novelty:           currentState.metrics.get('perception.novelty') ?? 0,
+      stressLoad:        currentState.metrics.get('stress.load') ?? 0,
       // A facet's "stakes-bearing moment" is a live message awaiting reply (conversation
       // facets set focus.recallQuery to it); planning/other facets rely on uncertainty.
       hasPendingMessage: !!this._currentFocus?.recallQuery,
     }, deliberateThreshold )
 
     let ideationCandidates: IdeationCandidate[] | undefined
-    if( processSelection.process === 'deliberate' ){
+    if( processSelection.process === 'deliberate'){
       const proposeTemperature = ideationTemperature( execContext.identity.traits[ 'creativity' ] ?? 0.5 )
       const ideationUserMessage = PromptFactory.buildUserMessage( {
         context: execContext,
@@ -502,7 +502,7 @@ export class ExecutiveFacet {
     }
     catch( err ){
       const msg = err instanceof Error ? err.message : String( err )
-      logger.error( `[executive.facet] ${this.facetId} LLM call failed: ${msg.slice( 0, 200 )}` )
+      logger.error(`[executive.facet] ${this.facetId} LLM call failed: ${msg.slice( 0, 200 )}`)
 
       this._sessionLogger?.write( {
         type: 'executive.facet.response',
@@ -535,7 +535,7 @@ export class ExecutiveFacet {
     this._lastConfidence = output.confidence
 
     // Store reasoning for continuity
-    this._facetReasoningHistory.push( `[Report: ${report.type}] ${output.reasoning.slice( 0, 400 )}` )
+    this._facetReasoningHistory.push(`[Report: ${report.type}] ${output.reasoning.slice( 0, 400 )}`)
     if( this._facetReasoningHistory.length > 10 )
       this._facetReasoningHistory = this._facetReasoningHistory.slice( -10 )
 
@@ -620,10 +620,10 @@ export class ExecutiveFacet {
     const notify = (): void => {
       for( const listener of this._listeners )
         try { listener( decision ) }
-        catch( err ){ logger.error( `[executive.facet] ${this.facetId} listener error:`, err ) }
+        catch( err ){ logger.error(`[executive.facet] ${this.facetId} listener error:`, err ) }
     }
 
-    if( this._inbox ) this._inbox.enqueue( `${this.facetId}:decision`, notify )
+    if( this._inbox ) this._inbox.enqueue(`${this.facetId}:decision`, notify )
     else notify()
   }
 

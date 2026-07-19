@@ -13,7 +13,7 @@ import type { CognitiveEvent } from '#cognition/bus'
 
 function hasPendingInstructions( state: ReadonlySimulationState, pendingMessages: PendingMessage[] ): boolean {
   for( const entity of state.entities.values() ){
-    if( entity.type === 'percept' || entity.type === 'percept.social' ){
+    if( entity.type === 'percept' || entity.type === 'percept.social'){
       const salience = (entity.metadata?.salience as number) ?? 0
       if( salience > 0.7 ) return true
     }
@@ -209,7 +209,7 @@ export function updateGatingState(
   // Update crisis counters
   let activeGoalCount = 0
   for( const entity of state.entities.values() )
-    if( entity.type === 'goal' && entity.metadata?.status === 'active' )
+    if( entity.type === 'goal' && entity.metadata?.status === 'active')
       activeGoalCount++
   
   const valence = state.metrics.get('affect.valence') ?? 0

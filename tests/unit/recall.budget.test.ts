@@ -43,41 +43,41 @@ function render( memories: Memory[] ): string {
 
 /** Slice out just the "## Relevant Memories" section text. */
 function memoriesSection( prompt: string ): string {
-  const start = prompt.indexOf( '## Relevant Memories' )
+  const start = prompt.indexOf('## Relevant Memories')
   expect( start ).toBeGreaterThanOrEqual( 0 )
   const rest  = prompt.slice( start )
-  const next  = rest.indexOf( '\n## ', 1 )
+  const next  = rest.indexOf('\n## ', 1 )
   return next === -1 ? rest : rest.slice( 0, next )
 }
 
 const mem = ( content: string, relevance = 0.7, tick = 90 ): Memory =>
   ( { content, relevance, emotionalContext: 'neutral', tick } )
 
-describe( 'Relevant Memories — char budget (§5.3)', () => {
-  it( 'renders every memory in order when under budget (no omission tail)', () => {
-    const memories = [ mem( 'first thing' ), mem( 'second thing' ), mem( 'third thing' ) ]
+describe('Relevant Memories — char budget (§5.3)', () => {
+  it('renders every memory in order when under budget (no omission tail)', () => {
+    const memories = [ mem('first thing'), mem('second thing'), mem('third thing') ]
     const section  = memoriesSection( render( memories ) )
 
-    expect( section ).toContain( 'first thing' )
-    expect( section ).toContain( 'second thing' )
-    expect( section ).toContain( 'third thing' )
-    expect( section ).not.toContain( 'omitted' )
+    expect( section ).toContain('first thing')
+    expect( section ).toContain('second thing')
+    expect( section ).toContain('third thing')
+    expect( section ).not.toContain('omitted')
     // Order preserved (deterministic recall order — not re-sorted here).
-    expect( section.indexOf( 'first thing' ) ).toBeLessThan( section.indexOf( 'second thing' ) )
-    expect( section.indexOf( 'second thing' ) ).toBeLessThan( section.indexOf( 'third thing' ) )
+    expect( section.indexOf('first thing') ).toBeLessThan( section.indexOf('second thing') )
+    expect( section.indexOf('second thing') ).toBeLessThan( section.indexOf('third thing') )
   } )
 
-  it( 'truncates an oversized recall set and reports the omitted count', () => {
+  it('truncates an oversized recall set and reports the omitted count', () => {
     // 30 memories × ~200 chars each ≫ 1200-char budget → most are omitted.
     const memories = Array.from( { length: 30 }, ( _v, i ) =>
-      mem( `memory-${i} ` + 'x'.repeat( 200 ), 0.5, 90 ) )
+      mem(`memory-${i} ` + 'x'.repeat( 200 ), 0.5, 90 ) )
     const section  = memoriesSection( render( memories ) )
 
     // Budget bounds the block — far short of the full 30×~230 chars.
     expect( section.length ).toBeLessThan( 1700 )
     // Highest-priority (first) memories survive; later ones are dropped.
-    expect( section ).toContain( 'memory-0' )
-    expect( section ).not.toContain( 'memory-29' )
+    expect( section ).toContain('memory-0')
+    expect( section ).not.toContain('memory-29')
 
     // The omission tail names a positive count and the full store is intact.
     const tailMatch = section.match( /\[\+(\d+) omitted/ )
@@ -90,19 +90,19 @@ describe( 'Relevant Memories — char budget (§5.3)', () => {
     expect( rendered + omitted ).toBe( 30 )
   } )
 
-  it( 'always keeps the first memory even when it alone exceeds the budget', () => {
-    const huge     = mem( 'huge ' + 'y'.repeat( 4000 ), 0.9 )
-    const section  = memoriesSection( render( [ huge, mem( 'tiny tail', 0.1 ) ] ) )
+  it('always keeps the first memory even when it alone exceeds the budget', () => {
+    const huge     = mem('huge ' + 'y'.repeat( 4000 ), 0.9 )
+    const section  = memoriesSection( render( [ huge, mem('tiny tail', 0.1 ) ] ) )
 
-    expect( section ).toContain( 'huge' )
+    expect( section ).toContain('huge')
     // The single huge line consumed the budget — the second is omitted.
-    expect( section ).toContain( '[+1 omitted' )
-    expect( section ).not.toContain( 'tiny tail' )
+    expect( section ).toContain('[+1 omitted')
+    expect( section ).not.toContain('tiny tail')
   } )
 
-  it( 'renders the empty-state line when there are no memories', () => {
+  it('renders the empty-state line when there are no memories', () => {
     const section = memoriesSection( render( [] ) )
-    expect( section ).toContain( 'No relevant memories' )
-    expect( section ).not.toContain( 'omitted' )
+    expect( section ).toContain('No relevant memories')
+    expect( section ).not.toContain('omitted')
   } )
 } )

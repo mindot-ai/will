@@ -1022,6 +1022,6 @@ const graphs: Graph[] = [
 for( const g of graphs ){
   const svg = render( g )
   writeFileSync( join( OUT, g.file ), svg )
-  console.log( `✓ ${ g.file }  (${ ( svg.length / 1024 ).toFixed( 1 ) } KB)` )
+  console.log(`✓ ${ g.file }  (${ ( svg.length / 1024 ).toFixed( 1 ) } KB)`)
 }
-console.log( `\n${ graphs.length } graphs → docs/graphs/` )
+console.log(`\n${ graphs.length } graphs → docs/graphs/`)

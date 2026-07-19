@@ -67,10 +67,10 @@ export function describeMcpTool( tool: McpToolInfo ): string {
   const props    = tool.inputSchema?.properties ?? {}
   const required = new Set( tool.inputSchema?.required ?? [] )
   const argHints = Object.entries( props ).map( ( [ key, p ] ) =>
-    `${ key }${ required.has( key ) ? '' : '?' }${ p.description ? `: ${ p.description }` : '' }` )
+    `${ key }${ required.has( key ) ? '' : '?' }${ p.description ? `: ${ p.description }` : '' }`)
 
-  const base = ( tool.description ?? `The ${ tool.name } tool.` ).trim().replace( /\s+/g, ' ' )
-  const hint = argHints.length > 0 ? ` (args — ${ argHints.join( '; ' ) })` : ''
+  const base = ( tool.description ?? `The ${ tool.name } tool.`).trim().replace( /\s+/g, ' ')
+  const hint = argHints.length > 0 ? ` (args — ${ argHints.join('; ') })` : ''
   const full = `${ base }${ hint }`
   return full.length > MEANING_CAP ? `${ full.slice( 0, MEANING_CAP - 1 ) }…` : full
 }
@@ -90,21 +90,21 @@ export function buildMcpHandler( client: Client, tool: McpToolInfo ): EffectorHa
       if( !props || k in props ) filtered[ k ] = v
 
     const missing = ( tool.inputSchema?.required ?? [] ).filter(
-      k => filtered[ k ] === undefined || filtered[ k ] === '' )
+      k => filtered[ k ] === undefined || filtered[ k ] === '')
     if( missing.length > 0 )
       return {
         success: false,
-        description: `${ tool.name } needs ${ missing.join( ', ' ) } — enact it deliberately, supplying them in the action's args.`,
+        description: `${ tool.name } needs ${ missing.join(', ') } — enact it deliberately, supplying them in the action's args.`,
       }
 
     try {
       const res  = await client.callTool( { name: tool.name, arguments: filtered } ) as
         { content?: Array<{ type: string; text?: string }>; isError?: boolean }
       const text = ( res.content ?? [] )
-        .filter( c => c.type === 'text' && typeof c.text === 'string' )
+        .filter( c => c.type === 'text' && typeof c.text === 'string')
         .map( c => c.text as string )
-        .join( '\n' )
-        .trim() || ( res.isError ? 'The tool reported an error.' : 'Done (no output).' )
+        .join('\n')
+        .trim() || ( res.isError ? 'The tool reported an error.' : 'Done (no output).')
       const bounded = text.length > RESULT_DESCRIPTION_CAP ? `${ text.slice( 0, RESULT_DESCRIPTION_CAP - 1 ) }…` : text
       return { success: !res.isError, description: bounded }
     }
@@ -115,10 +115,10 @@ export function buildMcpHandler( client: Client, tool: McpToolInfo ): EffectorHa
 }
 
 async function connect( source: McpToolsSource ): Promise<{ client: Client; owned: boolean }> {
-  if( 'client' in source ) return { client: source.client, owned: false }
+  if('client' in source ) return { client: source.client, owned: false }
 
   const client = new Client( { name: 'mindot-will', version: '0' } )
-  if( 'url' in source )
+  if('url' in source )
     await client.connect( new StreamableHTTPClientTransport( new URL( source.url ) ) )
   else
     await client.connect( new StdioClientTransport( {

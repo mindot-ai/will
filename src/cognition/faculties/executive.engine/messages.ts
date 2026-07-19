@@ -28,7 +28,7 @@ export class MessageQueue {
     const seenIds = new Set( this.pendingMessages.map( m => m.id ) )
 
     for( const [ id, entity ] of state.entities ){
-      if( entity.type !== 'communication' ) continue
+      if( entity.type !== 'communication') continue
       if( entity.metadata?.processedByExecutive ) continue
       if( seenIds.has( id ) ) continue
 
@@ -74,7 +74,7 @@ export class MessageQueue {
   getVisibleMessageIds( state: ReadonlySimulationState, tick: Tick ): Set<string> {
     const ids = new Set<string>( this.pendingMessages.map( m => m.id ) )
     for( const [ id, entity ] of state.entities ){
-      if( entity.type !== 'communication' ) continue
+      if( entity.type !== 'communication') continue
 
       const msgTick = (entity.metadata?.tick as number) ?? 0
       if( tick - msgTick > 30 ) continue
@@ -91,7 +91,7 @@ export class MessageQueue {
   getStaleMessageIds( state: ReadonlySimulationState, tick: Tick ): string[] {
     const stale: string[] = []
     for( const [ id, entity ] of state.entities ){
-      if( entity.type !== 'communication' ) continue
+      if( entity.type !== 'communication') continue
 
       const msgTick = (entity.metadata?.tick as number) ?? 0
       tick - msgTick > 50 && stale.push( id )

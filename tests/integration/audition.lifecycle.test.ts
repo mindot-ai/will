@@ -73,7 +73,7 @@ function makeMockHandle(): {
 }
 
 /** Creates a MockExecutiveEngine that always returns available attention. */
-function makeMockExecutive( spawnBehavior: 'available' | 'full' = 'available' ): {
+function makeMockExecutive( spawnBehavior: 'available' | 'full' = 'available'): {
   engine: any
   spawns: number
   handles: ReturnType<typeof makeMockHandle>[]
@@ -84,7 +84,7 @@ function makeMockExecutive( spawnBehavior: 'available' | 'full' = 'available' ):
   const engine = {
     spawnFacet() {
       spawns++
-      if( spawnBehavior === 'full' ) return { attention: 'full' as const }
+      if( spawnBehavior === 'full') return { attention: 'full' as const }
       const h = makeMockHandle()
       handles.push( h )
       return { attention: 'available' as const, handle: h.handle }
@@ -100,7 +100,7 @@ function makeTextInput( opts: { entityId: string; threadId: string; content: str
 
 // ── Tests ─────────────────────────────────────────────────────
 
-describe( 'AuditionEngine — session lifecycle', () => {
+describe('AuditionEngine — session lifecycle', () => {
   let exec:    ReturnType<typeof makeMockExecutive>
   let engine:  AuditionEngine
 
@@ -111,27 +111,27 @@ describe( 'AuditionEngine — session lifecycle', () => {
     engine.attachExecutiveEngine( exec.engine )
   } )
 
-  it( 'spawns a facet for the first message from a new entity', async () => {
+  it('spawns a facet for the first message from a new entity', async () => {
     await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hello' }) )
     expect( exec.spawns ).toBe( 1 )
-    expect( engine.activeSessions() ).toContain( 'alice' )
+    expect( engine.activeSessions() ).toContain('alice')
   } )
 
-  it( 'reuses the existing facet for subsequent messages from the same entity', async () => {
+  it('reuses the existing facet for subsequent messages from the same entity', async () => {
     await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hello' }) )
     await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'How are you?' }) )
     expect( exec.spawns ).toBe( 1 )
   } )
 
-  it( 'creates independent facets for different entities', async () => {
+  it('creates independent facets for different entities', async () => {
     await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hi Alice' }) )
     await engine.ingest( makeTextInput({ entityId: 'bob',   threadId: 't2', content: 'Hi Bob' }) )
     expect( exec.spawns ).toBe( 2 )
-    expect( engine.activeSessions() ).toContain( 'alice' )
-    expect( engine.activeSessions() ).toContain( 'bob' )
+    expect( engine.activeSessions() ).toContain('alice')
+    expect( engine.activeSessions() ).toContain('bob')
   } )
 
-  it( 'delivers each inbound message to the facet as a report', async () => {
+  it('delivers each inbound message to the facet as a report', async () => {
     await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'msg1' }) )
     await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'msg2' }) )
 
@@ -141,31 +141,31 @@ describe( 'AuditionEngine — session lifecycle', () => {
     expect( payloads ).toEqual( ['msg1', 'msg2'] )
   } )
 
-  it( 'endSession() destroys the facet and removes it from activeSessions()', async () => {
+  it('endSession() destroys the facet and removes it from activeSessions()', async () => {
     await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hi' }) )
-    expect( engine.activeSessions() ).toContain( 'alice' )
+    expect( engine.activeSessions() ).toContain('alice')
 
-    engine.endSession( 'alice' )
+    engine.endSession('alice')
 
-    expect( engine.activeSessions() ).not.toContain( 'alice' )
+    expect( engine.activeSessions() ).not.toContain('alice')
     expect( exec.handles[0]!.destructions ).toBe( 1 )
   } )
 
-  it( 'endSession() on unknown entity does not throw', () => {
-    expect( () => engine.endSession( 'nobody' ) ).not.toThrow()
+  it('endSession() on unknown entity does not throw', () => {
+    expect( () => engine.endSession('nobody') ).not.toThrow()
   } )
 
-  it( 'clears the session when the supervisor reaps the facet (onReaped)', async () => {
+  it('clears the session when the supervisor reaps the facet (onReaped)', async () => {
     await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hi' }) )
-    expect( engine.activeSessions() ).toContain( 'alice' )
+    expect( engine.activeSessions() ).toContain('alice')
 
     // Simulate the supervisor reaping alice's facet (idle TTL / LRU eviction).
     exec.handles[0]!.reaped.forEach( fn => fn() )
 
-    expect( engine.activeSessions() ).not.toContain( 'alice' )
+    expect( engine.activeSessions() ).not.toContain('alice')
   } )
 
-  it( 'destroy() tears down all active facets', async () => {
+  it('destroy() tears down all active facets', async () => {
     await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hi' }) )
     await engine.ingest( makeTextInput({ entityId: 'bob',   threadId: 't2', content: 'Hi' }) )
 
@@ -176,8 +176,8 @@ describe( 'AuditionEngine — session lifecycle', () => {
     expect( exec.handles[1]!.destructions ).toBe( 1 )
   } )
 
-  it( 'when executive attention is full, ingest() does not throw and creates no facet', async () => {
-    const fullExec = makeMockExecutive( 'full' )
+  it('when executive attention is full, ingest() does not throw and creates no facet', async () => {
+    const fullExec = makeMockExecutive('full')
     engine.attachExecutiveEngine( fullExec.engine )
 
     await expect(
@@ -190,7 +190,7 @@ describe( 'AuditionEngine — session lifecycle', () => {
 
 // ── Thread digest persistence ─────────────────────────────────
 
-describe( 'AuditionEngine — thread digest persistence', () => {
+describe('AuditionEngine — thread digest persistence', () => {
   let engine: AuditionEngine
 
   beforeEach( () => {
@@ -200,7 +200,7 @@ describe( 'AuditionEngine — thread digest persistence', () => {
     engine.attachExecutiveEngine( exec.engine )
   } )
 
-  it( 'digest includes the inbound message after ingest()', async () => {
+  it('digest includes the inbound message after ingest()', async () => {
     await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'First msg' }) )
     // The digest includes user turn; access via internal ThreadDigestManager
     // through the engine's snapshot (domain-level data)
@@ -209,18 +209,18 @@ describe( 'AuditionEngine — thread digest persistence', () => {
     expect( snap['activeSessions'] ).toBe( 1 )
   } )
 
-  it( 'multiple messages from same thread accumulate independently of other threads', async () => {
+  it('multiple messages from same thread accumulate independently of other threads', async () => {
     await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 'thread-A', content: 'A1' }) )
     await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 'thread-A', content: 'A2' }) )
     await engine.ingest( makeTextInput({ entityId: 'bob',   threadId: 'thread-B', content: 'B1' }) )
 
     // All messages ingested without errors; both entities have active sessions
     expect( engine.activeSessions() ).toHaveLength( 2 )
-    expect( engine.activeSessions() ).toContain( 'alice' )
-    expect( engine.activeSessions() ).toContain( 'bob' )
+    expect( engine.activeSessions() ).toContain('alice')
+    expect( engine.activeSessions() ).toContain('bob')
   } )
 
-  it( 'focus section includes digest from prior turns on subsequent messages', async () => {
+  it('focus section includes digest from prior turns on subsequent messages', async () => {
     const exec = makeMockExecutive()
     const eng  = new AuditionEngine()
     eng.attachBus( createTestBus() )
@@ -235,7 +235,7 @@ describe( 'AuditionEngine — thread digest persistence', () => {
 
     // Second focus should include digest context (the first turn)
     const secondFocusContent = focuses[1]?.content ?? ''
-    expect( secondFocusContent ).toContain( 'Hello' )
-    expect( secondFocusContent ).toContain( 'How are you?' )
+    expect( secondFocusContent ).toContain('Hello')
+    expect( secondFocusContent ).toContain('How are you?')
   } )
 } )

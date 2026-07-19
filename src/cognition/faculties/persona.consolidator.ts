@@ -254,12 +254,12 @@ export class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
     switch( e.type ){
       case 'confidence.calibrated': {
         const p = e.payload as { calibrationBias?: number }
-        if( typeof p.calibrationBias === 'number' ) this._latestCalibrationBias = p.calibrationBias
+        if( typeof p.calibrationBias === 'number') this._latestCalibrationBias = p.calibrationBias
         break
       }
       case 'bias.detected': {
         const p = e.payload as { newCount?: number; types?: string[] }
-        if( typeof p.newCount === 'number' ) this._latestBiasNovelty = p.newCount
+        if( typeof p.newCount === 'number') this._latestBiasNovelty = p.newCount
         const types = Array.isArray( p.types ) ? p.types : []
         this._latestBeliefBiasNovelty = types.filter( t => BELIEF_BIAS_TYPES.has( t ) ).length
         this._latestMemoryBiasNovelty = types.filter( t => MEMORY_BIAS_TYPES.has( t ) ).length
@@ -267,13 +267,13 @@ export class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
       }
       case 'self_model.updated': {
         const p = e.payload as { changeMagnitude?: number }
-        if( typeof p.changeMagnitude === 'number' ) this._latestSelfModelChange = p.changeMagnitude
+        if( typeof p.changeMagnitude === 'number') this._latestSelfModelChange = p.changeMagnitude
         break
       }
       case 'introspection.insight': {
         // significance = how substantive this introspection was (biases + lessons surfaced).
         const p = e.payload as { significance?: number }
-        if( typeof p.significance === 'number' ) this._latestInsightSignificance = p.significance
+        if( typeof p.significance === 'number') this._latestInsightSignificance = p.significance
         break
       }
     }
@@ -293,13 +293,13 @@ export class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
 
   restore( snap: Record<string, unknown> ): void {
     if( !snap ) return
-    if( typeof snap.lastConsolidationTick  === 'number' ) this._lastConsolidationTick  = snap.lastConsolidationTick
-    if( typeof snap.latestCalibrationBias  === 'number' ) this._latestCalibrationBias  = snap.latestCalibrationBias
-    if( typeof snap.latestBiasNovelty      === 'number' ) this._latestBiasNovelty      = snap.latestBiasNovelty
-    if( typeof snap.latestBeliefBiasNovelty === 'number' ) this._latestBeliefBiasNovelty = snap.latestBeliefBiasNovelty
-    if( typeof snap.latestMemoryBiasNovelty === 'number' ) this._latestMemoryBiasNovelty = snap.latestMemoryBiasNovelty
-    if( typeof snap.latestSelfModelChange  === 'number' ) this._latestSelfModelChange  = snap.latestSelfModelChange
-    if( typeof snap.latestInsightSignificance === 'number' ) this._latestInsightSignificance = snap.latestInsightSignificance
+    if( typeof snap.lastConsolidationTick  === 'number') this._lastConsolidationTick  = snap.lastConsolidationTick
+    if( typeof snap.latestCalibrationBias  === 'number') this._latestCalibrationBias  = snap.latestCalibrationBias
+    if( typeof snap.latestBiasNovelty      === 'number') this._latestBiasNovelty      = snap.latestBiasNovelty
+    if( typeof snap.latestBeliefBiasNovelty === 'number') this._latestBeliefBiasNovelty = snap.latestBeliefBiasNovelty
+    if( typeof snap.latestMemoryBiasNovelty === 'number') this._latestMemoryBiasNovelty = snap.latestMemoryBiasNovelty
+    if( typeof snap.latestSelfModelChange  === 'number') this._latestSelfModelChange  = snap.latestSelfModelChange
+    if( typeof snap.latestInsightSignificance === 'number') this._latestInsightSignificance = snap.latestInsightSignificance
   }
 
   async react(
@@ -383,7 +383,7 @@ export class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
     // Self-model traits (developed from the Will's own behaviour) that shape grit.
     // Above-baseline deviation only — pushes grit up when persistence is demonstrated;
     // decay returns to the seeded baseline when the behaviour stops.
-    const traits     = ( state.entities.get( 'identity-self' )?.metadata?.traits ?? {} ) as Record<string, number>
+    const traits     = ( state.entities.get('identity-self')?.metadata?.traits ?? {} ) as Record<string, number>
     const persistDev = Math.max( 0, ( traits[ 'persistence' ] ?? PERSISTENCE_BASELINE ) - PERSISTENCE_BASELINE )
     const resilDev   = Math.max( 0, ( traits[ 'resilience' ]  ?? PERSISTENCE_BASELINE ) - PERSISTENCE_BASELINE )
     const conscDev   = Math.max( 0, ( traits[ 'conscientiousness' ] ?? PERSISTENCE_BASELINE ) - PERSISTENCE_BASELINE )

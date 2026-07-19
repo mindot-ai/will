@@ -112,6 +112,6 @@ export abstract class ShellSenseEngine extends BaseSenseEngine {
   }
 
   protected async _perceive( _input: SensoryInput ): Promise<void> {
-    logger.warn( `[${this.name}] ingest() called — engine is a shell, not yet implemented.` )
+    logger.warn(`[${this.name}] ingest() called — engine is a shell, not yet implemented.`)
   }
 }

@@ -243,7 +243,7 @@ export class SnapshotManager {
       return this._serializer.deserialize( JSON.stringify( parsed ) )
     }
     catch( err ){
-      logger.warn( `[SnapshotManager] Could not load latest snapshot:`, err )
+      logger.warn(`[SnapshotManager] Could not load latest snapshot:`, err )
       return undefined
     }
   }

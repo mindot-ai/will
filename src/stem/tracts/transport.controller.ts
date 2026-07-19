@@ -88,12 +88,12 @@ export class TransportController {
    * the SAME path discrete ack events take — so applyInbound() reconciles both
    * idempotently. 'none' = fire-and-forget (chunks, replies: no outbox entry to mark).
    */
-  private _emit( instance: WillInstance, env: OutboundEnvelope, reconcileAs: 'delivery' | 'result' | 'none' ): void {
+  private _emit( instance: WillInstance, env: OutboundEnvelope, reconcileAs: 'delivery' | 'result' | 'none'): void {
     const transport = instance.transport
     if( !transport ) return
 
     // Buffer state-affecting outbound until acked, so a reconnect can re-emit it.
-    if( reconcileAs !== 'none' ){
+    if( reconcileAs !== 'none'){
       const pending = this._pendingFor( instance.config.id )
       pending.set( env.correlationId, env )
       // Bound the buffer — drop the oldest un-acked envelope past the cap (FIFO).
@@ -105,7 +105,7 @@ export class TransportController {
     }
 
     const pending = transport.emit( env )
-    if( reconcileAs === 'none' ){ void pending; return }
+    if( reconcileAs === 'none'){ void pending; return }
 
     void pending.then( ack => {
       if( !ack.acked ) return
@@ -120,9 +120,9 @@ export class TransportController {
 
   /** Coerce an emit-callback ack payload into a confirmExecution result, or null. */
   private _asResult( payload: unknown ): { success: boolean; description: string; metrics?: Record<string, number> } | null {
-    if( payload && typeof payload === 'object' && typeof ( payload as { success?: unknown } ).success === 'boolean' ){
+    if( payload && typeof payload === 'object' && typeof ( payload as { success?: unknown } ).success === 'boolean'){
       const p = payload as { success: boolean; description?: unknown; metrics?: Record<string, number> }
-      return { success: p.success, description: String( p.description ?? '' ), ...( p.metrics ? { metrics: p.metrics } : {} ) }
+      return { success: p.success, description: String( p.description ?? ''), ...( p.metrics ? { metrics: p.metrics } : {} ) }
     }
     return null
   }
@@ -142,7 +142,7 @@ export class TransportController {
       seq,
       wallTime:      wallClock(),
       entry,
-    }, 'none' )
+    }, 'none')
   }
 
   /**
@@ -159,7 +159,7 @@ export class TransportController {
       seq,
       wallTime:      wallClock(),
       report,
-    }, 'none' )
+    }, 'none')
   }
 
   /**
@@ -185,7 +185,7 @@ export class TransportController {
         entityId,
         threadId,
         bubbles,
-      }, 'none' )
+      }, 'none')
     } )
 
     // Outbound chunk fast-path (2.2): stream each filtered reply token off-tick.
@@ -200,13 +200,13 @@ export class TransportController {
         entityId,
         threadId,
         content,
-      }, 'none' )
+      }, 'none')
     } )
     this._chunkUnsub.set( instance.config.id, chunkUnsub )
 
     // Outbound activity projection (2.5): forward all plan/activity events
     // ('*' wildcard = no entity filter). Observability only — fire-and-forget.
-    const activityUnsub = instance.cognition.planningEngine.addActivityListener( '*', event => {
+    const activityUnsub = instance.cognition.planningEngine.addActivityListener('*', event => {
       this._emit( instance, {
         channel:       'activity',
         willId:        instance.config.id,
@@ -216,13 +216,13 @@ export class TransportController {
         entityId:      event.requestingEntityId ?? '',
         eventType:     event.type,
         payload:       { ...event },
-      }, 'none' )
+      }, 'none')
     } )
     this._activityUnsub.set( instance.config.id, activityUnsub )
 
     // Reconnect: re-emit un-acked messages/invocations when the link returns.
     const statusUnsub = transport.onStatus( status => {
-      if( status === 'connected' ) this._reemitPending( instance )
+      if( status === 'connected') this._reemitPending( instance )
     } )
     this._statusUnsub.set( instance.config.id, statusUnsub )
 
@@ -236,7 +236,7 @@ export class TransportController {
 
     logger.info(`[transport] reconnect — re-emitting ${pending.size} un-acked envelope(s) for ${instance.config.id}`)
     for( const env of [ ...pending.values() ] )
-      this._emit( instance, env, env.channel === 'effector_invocation' ? 'result' : 'delivery' )
+      this._emit( instance, env, env.channel === 'effector_invocation' ? 'result' : 'delivery')
   }
 
   /**
@@ -258,7 +258,7 @@ export class TransportController {
         seq:           this._nextSeq( instance.config.id ),
         wallTime:      wallClock(),
         invocation,
-      }, 'result' )
+      }, 'result')
   }
 
   /**
@@ -279,7 +279,7 @@ export class TransportController {
         seq:           this._nextSeq( instance.config.id ),
         wallTime:      wallClock(),
         message,
-      }, 'delivery' )
+      }, 'delivery')
   }
 
   /** Tear down the transport and discard any un-applied inbound. */

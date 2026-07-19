@@ -53,68 +53,68 @@ function glmDirector( extra: Partial<{ baseUrl: string }> = {} ){
   } )
 }
 
-describe( 'GLM — wire selection', () => {
-  it( 'speaks the Anthropic wire (so it streams, not the OpenAI scaffold)', () => {
-    expect( speaksAnthropicWire( 'glm' ) ).toBe( true )
-    expect( speaksAnthropicWire( 'anthropic' ) ).toBe( true )
-    expect( speaksAnthropicWire( 'openai' ) ).toBe( false )
-    expect( speaksAnthropicWire( 'deepseek' ) ).toBe( false )
-    expect( speaksAnthropicWire( 'google' ) ).toBe( false )
+describe('GLM — wire selection', () => {
+  it('speaks the Anthropic wire (so it streams, not the OpenAI scaffold)', () => {
+    expect( speaksAnthropicWire('glm') ).toBe( true )
+    expect( speaksAnthropicWire('anthropic') ).toBe( true )
+    expect( speaksAnthropicWire('openai') ).toBe( false )
+    expect( speaksAnthropicWire('deepseek') ).toBe( false )
+    expect( speaksAnthropicWire('google') ).toBe( false )
   } )
 
   it( "defaults to Z.ai's Anthropic-compatible endpoint, version segment included", () => {
     // Z.ai's docs quote the base as `…/api/anthropic` because the Anthropic SDK
     // appends `/v1/messages`. This client appends only `/messages`, so `/v1`
     // belongs in the base — without it the live endpoint answers 404_NOT_FOUND.
-    expect( defaultBaseFor( 'glm' ) ).toBe( 'https://api.z.ai/api/anthropic/v1' )
-    expect( defaultBaseFor( 'anthropic' ) ).toBe( 'https://api.anthropic.com/v1' )
+    expect( defaultBaseFor('glm') ).toBe('https://api.z.ai/api/anthropic/v1')
+    expect( defaultBaseFor('anthropic') ).toBe('https://api.anthropic.com/v1')
   } )
 
-  it( 'defaults to a GLM model — never a Claude id pointed at Z.ai', () => {
-    expect( defaultModelFor( 'glm' ) ).toBe( 'glm-5.2' )
-    expect( defaultModelFor( 'anthropic' ) ).toMatch( /^claude-/ )
+  it('defaults to a GLM model — never a Claude id pointed at Z.ai', () => {
+    expect( defaultModelFor('glm') ).toBe('glm-5.2')
+    expect( defaultModelFor('anthropic') ).toMatch( /^claude-/ )
   } )
 } )
 
-describe( 'GLM — auth headers', () => {
+describe('GLM — auth headers', () => {
   // Probed live: Z.ai accepts either header (each returns "token expired or
   // incorrect" for a bogus key — i.e. read and validated — where a missing one
   // returns "Authentication parameter not received"). Sending both is the hedge.
-  it( 'carries the Bearer token Z.ai documents, plus x-api-key for either gateway', () => {
-    const h = anthropicWireHeaders( 'glm', 'zai-key' )
-    expect( h.Authorization ).toBe( 'Bearer zai-key' )
-    expect( h[ 'x-api-key' ] ).toBe( 'zai-key' )
-    expect( h[ 'anthropic-version' ] ).toBe( '2023-06-01' )
+  it('carries the Bearer token Z.ai documents, plus x-api-key for either gateway', () => {
+    const h = anthropicWireHeaders('glm', 'zai-key')
+    expect( h.Authorization ).toBe('Bearer zai-key')
+    expect( h[ 'x-api-key' ] ).toBe('zai-key')
+    expect( h[ 'anthropic-version' ] ).toBe('2023-06-01')
   } )
 
-  it( 'never sends a Bearer token to Anthropic itself', () => {
-    const h = anthropicWireHeaders( 'anthropic', 'sk-ant' )
+  it('never sends a Bearer token to Anthropic itself', () => {
+    const h = anthropicWireHeaders('anthropic', 'sk-ant')
     expect( h.Authorization ).toBeUndefined()
-    expect( h[ 'x-api-key' ] ).toBe( 'sk-ant' )
+    expect( h[ 'x-api-key' ] ).toBe('sk-ant')
   } )
 } )
 
-describe( 'GLM — pricing', () => {
-  it( 'prices glm-5.2 at Z.ai rates — bare, 1M-context, and provider-prefixed', () => {
-    expect( resolvePricing( 'glm-5.2' ) ).toEqual( { input: 1.40, output: 4.40 } )
-    expect( resolvePricing( 'glm-5.2[1m]' ) ).toEqual( { input: 1.40, output: 4.40 } )
-    expect( resolvePricing( 'glm/glm-5.2' ) ).toEqual( { input: 1.40, output: 4.40 } )
+describe('GLM — pricing', () => {
+  it('prices glm-5.2 at Z.ai rates — bare, 1M-context, and provider-prefixed', () => {
+    expect( resolvePricing('glm-5.2') ).toEqual( { input: 1.40, output: 4.40 } )
+    expect( resolvePricing('glm-5.2[1m]') ).toEqual( { input: 1.40, output: 4.40 } )
+    expect( resolvePricing('glm/glm-5.2') ).toEqual( { input: 1.40, output: 4.40 } )
   } )
 
-  it( 'does not silently fall through to the $3/$15 default', () => {
-    expect( resolvePricing( 'glm-5.2' ) ).not.toEqual( resolvePricing( 'some-unknown-model' ) )
+  it('does not silently fall through to the $3/$15 default', () => {
+    expect( resolvePricing('glm-5.2') ).not.toEqual( resolvePricing('some-unknown-model') )
   } )
 } )
 
-describe( 'GLM — the call actually reaches Z.ai', () => {
-  it( 'streams from the Z.ai host with Bearer auth and the GLM model', async () => {
-    const seen = capture( () => streamOk( 'hello from GLM' ) )
+describe('GLM — the call actually reaches Z.ai', () => {
+  it('streams from the Z.ai host with Bearer auth and the GLM model', async () => {
+    const seen = capture( () => streamOk('hello from GLM') )
     const chunks: string[] = []
-    const result = await glmDirector().callStream( 'system', 'user', 0 as never, c => chunks.push( c ) )
+    const result = await glmDirector().callStream('system', 'user', 0 as never, c => chunks.push( c ) )
 
-    expect( seen.url ).toBe( 'https://api.z.ai/api/anthropic/v1/messages' )
-    expect( seen.headers?.Authorization ).toBe( 'Bearer zai-key' )
-    expect( seen.body?.model ).toBe( 'glm-5.2' )
+    expect( seen.url ).toBe('https://api.z.ai/api/anthropic/v1/messages')
+    expect( seen.headers?.Authorization ).toBe('Bearer zai-key')
+    expect( seen.body?.model ).toBe('glm-5.2')
     expect( seen.body?.stream ).toBe( true )
 
     // The prompt-cache breakpoint rides along: Z.ai's compat endpoint is what
@@ -122,24 +122,24 @@ describe( 'GLM — the call actually reaches Z.ai', () => {
     const system = seen.body?.system as Array<{ cache_control?: unknown }>
     expect( system[0]?.cache_control ).toEqual( { type: 'ephemeral' } )
 
-    expect( result.text ).toBe( 'hello from GLM' )
-    expect( chunks.join( '' ) ).toBe( 'hello from GLM' )
+    expect( result.text ).toBe('hello from GLM')
+    expect( chunks.join('') ).toBe('hello from GLM')
   } )
 
-  it( 'routes call() through the streaming path too — the TTFT deadline, like Anthropic', async () => {
-    const seen = capture( () => streamOk( 'reasoned' ) )
-    const result = await glmDirector().call( 'system', 'user', 0 as never )
+  it('routes call() through the streaming path too — the TTFT deadline, like Anthropic', async () => {
+    const seen = capture( () => streamOk('reasoned') )
+    const result = await glmDirector().call('system', 'user', 0 as never )
 
-    expect( seen.url ).toBe( 'https://api.z.ai/api/anthropic/v1/messages' )
+    expect( seen.url ).toBe('https://api.z.ai/api/anthropic/v1/messages')
     expect( seen.body?.stream ).toBe( true )
-    expect( result.text ).toBe( 'reasoned' )
+    expect( result.text ).toBe('reasoned')
   } )
 
-  it( 'honours an explicit baseUrl (an Anthropic-compatible gateway)', async () => {
-    const seen = capture( () => streamOk( 'local' ) )
+  it('honours an explicit baseUrl (an Anthropic-compatible gateway)', async () => {
+    const seen = capture( () => streamOk('local') )
     await glmDirector( { baseUrl: 'http://localhost:8000/v1' } )
-      .callStream( 'system', 'user', 0 as never, () => {} )
+      .callStream('system', 'user', 0 as never, () => {} )
 
-    expect( seen.url ).toBe( 'http://localhost:8000/v1/messages' )
+    expect( seen.url ).toBe('http://localhost:8000/v1/messages')
   } )
 } )

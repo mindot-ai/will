@@ -22,71 +22,71 @@ const percept = ( keid: string ) => ( {
   payload: { domain: 'audition', sourceEntityId: keid, timestamp: 0, salience: 0.6, raw: {} },
 } as any )
 
-describe( 'KnownEntityTracker — recognition (referent merge)', () => {
-  it( 'fuses two same-name referents into the more-familiar canonical + an alias', async () => {
+describe('KnownEntityTracker — recognition (referent merge)', () => {
+  it('fuses two same-name referents into the more-familiar canonical + an alias', async () => {
     const t = new KnownEntityTracker()
     const entities = new Map<string, any>()
     // a thin, non-concurrent handle (web:42, last seen long ago) recognised as the known Mara.
-    entities.set( 'ke-web:42',   dossier( 'web:42',   'Mara', 0.3, 2, 10 ) )
-    entities.set( 'ke-slack:U7', dossier( 'slack:U7', 'Mara', 0.6, 4, 95 ) )
+    entities.set('ke-web:42',   dossier('web:42',   'Mara', 0.3, 2, 10 ) )
+    entities.set('ke-slack:U7', dossier('slack:U7', 'Mara', 0.6, 4, 95 ) )
     const r = await t.react( 1000 as any, 100 as any, { tick: 100, entities, metrics: new Map() } as any, {} as any )
 
-    expect( t.getDossier( 'web:42' ) ).toBeUndefined()                  // fused away
-    const canon = t.getDossier( 'slack:U7' )!
+    expect( t.getDossier('web:42') ).toBeUndefined()                  // fused away
+    const canon = t.getDossier('slack:U7')!
     expect( canon ).toBeDefined()                                       // more familiar → canonical
     expect( canon.encounterCount ).toBe( 6 )                            // 4 + 2 combined
-    expect( r.commands?.delete ?? [] ).toContain( 'ke-web:42' )
-    const aliasEntity = ( r.commands?.set ?? [] ).find( ( e: any ) => e.id === 'kea-web:42' )
-    expect( aliasEntity?.type ).toBe( 'known-entity-alias' )
-    expect( aliasEntity?.metadata?.canonicalKeid ).toBe( 'slack:U7' )
+    expect( r.commands?.delete ?? [] ).toContain('ke-web:42')
+    const aliasEntity = ( r.commands?.set ?? [] ).find( ( e: any ) => e.id === 'kea-web:42')
+    expect( aliasEntity?.type ).toBe('known-entity-alias')
+    expect( aliasEntity?.metadata?.canonicalKeid ).toBe('slack:U7')
   } )
 
-  it( 'does NOT fuse two same-name people active at the same time (distinct interlocutors)', async () => {
+  it('does NOT fuse two same-name people active at the same time (distinct interlocutors)', async () => {
     const t = new KnownEntityTracker()
     const entities = new Map<string, any>()
-    entities.set( 'ke-web:42',   dossier( 'web:42',   'Alice', 0.3, 2, 99 ) )   // both
-    entities.set( 'ke-slack:U7', dossier( 'slack:U7', 'Alice', 0.4, 3, 100 ) )  // concurrent
+    entities.set('ke-web:42',   dossier('web:42',   'Alice', 0.3, 2, 99 ) )   // both
+    entities.set('ke-slack:U7', dossier('slack:U7', 'Alice', 0.4, 3, 100 ) )  // concurrent
     const r = await t.react( 1000 as any, 100 as any, { tick: 100, entities, metrics: new Map() } as any, {} as any )
-    expect( t.getDossier( 'web:42' ) ).toBeDefined()                    // kept distinct
-    expect( t.getDossier( 'slack:U7' ) ).toBeDefined()
-    expect( r.commands?.delete ?? [] ).not.toContain( 'ke-web:42' )
+    expect( t.getDossier('web:42') ).toBeDefined()                    // kept distinct
+    expect( t.getDossier('slack:U7') ).toBeDefined()
+    expect( r.commands?.delete ?? [] ).not.toContain('ke-web:42')
   } )
 
-  it( 'does NOT fuse two well-established same-name relationships', async () => {
+  it('does NOT fuse two well-established same-name relationships', async () => {
     const t = new KnownEntityTracker()
     const entities = new Map<string, any>()
-    entities.set( 'ke-web:42',   dossier( 'web:42',   'Alice', 0.7, 12, 10 ) )  // both rich, distinct histories
-    entities.set( 'ke-slack:U7', dossier( 'slack:U7', 'Alice', 0.8, 15, 95 ) )
+    entities.set('ke-web:42',   dossier('web:42',   'Alice', 0.7, 12, 10 ) )  // both rich, distinct histories
+    entities.set('ke-slack:U7', dossier('slack:U7', 'Alice', 0.8, 15, 95 ) )
     await t.react( 1000 as any, 100 as any, { tick: 100, entities, metrics: new Map() } as any, {} as any )
-    expect( t.getDossier( 'web:42' ) ).toBeDefined()
-    expect( t.getDossier( 'slack:U7' ) ).toBeDefined()
+    expect( t.getDossier('web:42') ).toBeDefined()
+    expect( t.getDossier('slack:U7') ).toBeDefined()
   } )
 
-  it( 'redirects a later encounter of the aliased keid onto the canonical (no re-forming)', async () => {
+  it('redirects a later encounter of the aliased keid onto the canonical (no re-forming)', async () => {
     const t = new KnownEntityTracker()
     const entities = new Map<string, any>()
-    entities.set( 'ke-web:42',   dossier( 'web:42',   'Mara', 0.3, 2, 10 ) )
-    entities.set( 'ke-slack:U7', dossier( 'slack:U7', 'Mara', 0.6, 4, 95 ) )
+    entities.set('ke-web:42',   dossier('web:42',   'Mara', 0.3, 2, 10 ) )
+    entities.set('ke-slack:U7', dossier('slack:U7', 'Mara', 0.6, 4, 95 ) )
     await t.react( 1000 as any, 100 as any, { tick: 100, entities, metrics: new Map() } as any, {} as any )
 
-    t.onCognitiveEvent( percept( 'web:42' ) )                           // the aliased handle, seen again
+    t.onCognitiveEvent( percept('web:42') )                           // the aliased handle, seen again
     await t.react( 1000 as any, 101 as any, { tick: 101, entities: new Map(), metrics: new Map() } as any, {} as any )
-    expect( t.getDossier( 'web:42' ) ).toBeUndefined()                  // never re-forms
-    expect( t.getDossier( 'slack:U7' )!.encounterCount ).toBe( 7 )      // the encounter landed on the canonical
+    expect( t.getDossier('web:42') ).toBeUndefined()                  // never re-forms
+    expect( t.getDossier('slack:U7')!.encounterCount ).toBe( 7 )      // the encounter landed on the canonical
   } )
 } )
 
-describe( 'extractKnownEntities — resolves aliases to the canonical referent', () => {
-  it( 'aggregates the triple under the alias keid into the one someone', () => {
+describe('extractKnownEntities — resolves aliases to the canonical referent', () => {
+  it('aggregates the triple under the alias keid into the one someone', () => {
     const entities = new Map<string, any>()
-    entities.set( 'kea-web:42', { id: 'kea-web:42', type: 'known-entity-alias', metadata: { aliasKeid: 'web:42', canonicalKeid: 'slack:U7' } } )
-    entities.set( 'tom-web:42', { id: 'tom-web:42', type: 'theory_of_mind', metadata: { keid: 'web:42', dominantIntention: 'collaborate', estimatedEmotion: 'warm', modelConfidence: 0.7 } } )
-    entities.set( 'ke-slack:U7', dossier( 'slack:U7', 'Mara', 0.6, 4 ) )
+    entities.set('kea-web:42', { id: 'kea-web:42', type: 'known-entity-alias', metadata: { aliasKeid: 'web:42', canonicalKeid: 'slack:U7' } } )
+    entities.set('tom-web:42', { id: 'tom-web:42', type: 'theory_of_mind', metadata: { keid: 'web:42', dominantIntention: 'collaborate', estimatedEmotion: 'warm', modelConfidence: 0.7 } } )
+    entities.set('ke-slack:U7', dossier('slack:U7', 'Mara', 0.6, 4 ) )
 
     const models = extractKnownEntities( { tick: 100, entities, metrics: new Map() } as any )!
     expect( models ).toHaveLength( 1 )                                  // one someone, not two
-    expect( models[0]!.keid ).toBe( 'slack:U7' )
-    expect( models[0]!.name ).toBe( 'Mara' )
-    expect( models[0]!.intention ).toBe( 'collaborate' )               // the alias's ToM folded in
+    expect( models[0]!.keid ).toBe('slack:U7')
+    expect( models[0]!.name ).toBe('Mara')
+    expect( models[0]!.intention ).toBe('collaborate')               // the alias's ToM folded in
   } )
 } )

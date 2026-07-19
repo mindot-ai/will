@@ -36,7 +36,7 @@ function syncExecutive( onFocus?: ( f: any ) => void ){
   }
 }
 
-const text = ( content: string, threadId = 't1' ): TextMessage =>
+const text = ( content: string, threadId = 't1'): TextMessage =>
   ( { kind: 'text', entityId: 'alice', threadId, content } )
 
 // The engine seeds a cold-spawn digest via EpisodicConsolidator.semanticQuery,
@@ -53,8 +53,8 @@ const recallConsolidator = (
   },
 } )
 
-describe( 'AuditionEngine — cold-spawn digest hydration (§5.4)', () => {
-  it( 'seeds an empty thread digest from recall, surfaced in the first focus', async () => {
+describe('AuditionEngine — cold-spawn digest hydration (§5.4)', () => {
+  it('seeds an empty thread digest from recall, surfaced in the first focus', async () => {
     const calls: Array<{ query: string; limit: number }> = []
     const focuses: any[] = []
 
@@ -66,70 +66,70 @@ describe( 'AuditionEngine — cold-spawn digest hydration (§5.4)', () => {
       return [ 'alice: "where were we?" → "we were planning the trip"' ]
     } ) as any )
 
-    await engine.ingest( text( 'remind me what we discussed' ) )
+    await engine.ingest( text('remind me what we discussed') )
 
     // Recall was queried with the live message and the digest cap.
     expect( calls ).toEqual( [ { query: 'remind me what we discussed', limit: ThreadDigestManager.MAX_TURNS } ] )
     // The recalled prior exchange reached the facet focus via the seeded digest.
     expect( focuses ).toHaveLength( 1 )
-    expect( focuses[0].content ).toContain( 'planning the trip' )
+    expect( focuses[0].content ).toContain('planning the trip')
   } )
 
-  it( 'does NOT re-query recall once the facet is live (only cold spawn)', async () => {
+  it('does NOT re-query recall once the facet is live (only cold spawn)', async () => {
     let recallCount = 0
     const engine = new AuditionEngine()
     engine.attachBus( createTestBus() )
     engine.attachExecutiveEngine( syncExecutive() as any )
     engine.attachEpisodicConsolidator( recallConsolidator( async () => { recallCount++; return [ 'alice: "x" → "y"' ] } ) as any )
 
-    await engine.ingest( text( 'first' ) )
-    await engine.ingest( text( 'second' ) )
+    await engine.ingest( text('first') )
+    await engine.ingest( text('second') )
 
     expect( recallCount ).toBe( 1 )   // cold spawn only
   } )
 
-  it( 'recall failure is non-fatal — the turn still completes', async () => {
+  it('recall failure is non-fatal — the turn still completes', async () => {
     const engine = new AuditionEngine()
     engine.attachBus( createTestBus() )
     engine.attachExecutiveEngine( syncExecutive() as any )
-    engine.attachEpisodicConsolidator( recallConsolidator( async () => { throw new Error( 'vector down' ) } ) as any )
+    engine.attachEpisodicConsolidator( recallConsolidator( async () => { throw new Error('vector down') } ) as any )
 
-    await expect( engine.ingest( text( 'hi' ) ) ).resolves.toBeUndefined()
+    await expect( engine.ingest( text('hi') ) ).resolves.toBeUndefined()
   } )
 
-  it( 'no recall attached → cold spawn proceeds with an empty digest', async () => {
+  it('no recall attached → cold spawn proceeds with an empty digest', async () => {
     const focuses: any[] = []
     const engine = new AuditionEngine()
     engine.attachBus( createTestBus() )
     engine.attachExecutiveEngine( syncExecutive( f => focuses.push( f ) ) as any )
 
-    await engine.ingest( text( 'hello' ) )
+    await engine.ingest( text('hello') )
 
     expect( focuses ).toHaveLength( 1 )
     // No prior turns and nothing recalled → no thread-digest block in the focus.
-    expect( focuses[0].content ).not.toContain( '[Thread' )
+    expect( focuses[0].content ).not.toContain('[Thread')
   } )
 } )
 
-describe( 'ThreadDigestManager.hydrate — never clobbers a live digest', () => {
-  it( 'seeds an empty thread but leaves a populated one untouched', () => {
+describe('ThreadDigestManager.hydrate — never clobbers a live digest', () => {
+  it('seeds an empty thread but leaves a populated one untouched', () => {
     const d = new ThreadDigestManager()
 
-    d.hydrate( 'empty', [ 'recalled line A', 'recalled line B' ] )
-    expect( d.getDigest( 'empty' ) ).toContain( 'recalled line A' )
+    d.hydrate('empty', [ 'recalled line A', 'recalled line B' ] )
+    expect( d.getDigest('empty') ).toContain('recalled line A')
 
-    d.append( 'live', 'user', 'real turn' )
-    d.hydrate( 'live', [ 'should not appear' ] )
-    expect( d.getDigest( 'live' ) ).toContain( 'real turn' )
-    expect( d.getDigest( 'live' ) ).not.toContain( 'should not appear' )
+    d.append('live', 'user', 'real turn')
+    d.hydrate('live', [ 'should not appear' ] )
+    expect( d.getDigest('live') ).toContain('real turn')
+    expect( d.getDigest('live') ).not.toContain('should not appear')
   } )
 
-  it( 'caps the seed to MAX_TURNS (keeps the most recent)', () => {
+  it('caps the seed to MAX_TURNS (keeps the most recent)', () => {
     const d = new ThreadDigestManager()
-    const many = Array.from( { length: ThreadDigestManager.MAX_TURNS + 3 }, ( _v, i ) => `line-${i}` )
-    d.hydrate( 'cap', many )
-    const digest = d.getDigest( 'cap' )
-    expect( digest ).toContain( `line-${ThreadDigestManager.MAX_TURNS + 2}` )   // last kept
-    expect( digest ).not.toContain( 'line-0' )                                  // oldest dropped
+    const many = Array.from( { length: ThreadDigestManager.MAX_TURNS + 3 }, ( _v, i ) => `line-${i}`)
+    d.hydrate('cap', many )
+    const digest = d.getDigest('cap')
+    expect( digest ).toContain(`line-${ThreadDigestManager.MAX_TURNS + 2}`)   // last kept
+    expect( digest ).not.toContain('line-0')                                  // oldest dropped
   } )
 } )

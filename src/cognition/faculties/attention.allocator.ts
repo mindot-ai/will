@@ -132,23 +132,23 @@ export class AttentionAllocator implements SimulationEngine, CognitiveEngine {
         // Voluntary focus/rest (Option C). Clamp the requested set-point; react()
         // applies it next tick and then decays it back toward baseline.
         const t = (e.payload as Record<string,number>)['effortTarget']
-        if( typeof t === 'number' )
+        if( typeof t === 'number')
           this._effortRequest = Math.min( EFFORT_MAX, Math.max( EFFORT_MIN, t ) )
         break
       }
       case 'executive.prediction.formed': {
         const p = e.payload as { predictedDomains: string[]; confidence: number }
         if( p.predictedDomains.includes('attention') )
-          this._model.setPrecision( 'attention.usage', 1.0 + p.confidence * 0.5 )
+          this._model.setPrecision('attention.usage', 1.0 + p.confidence * 0.5 )
         break
       }
       default:
         // senses.*.percept — use the event's pre-computed salience as an
         // attention signal for the percept's source entity.
-        if( e.type.startsWith( 'senses.' ) ){
+        if( e.type.startsWith('senses.') ){
           const percept = e.payload as { sourceEntityId?: string; salience?: number }
           if( percept.sourceEntityId )
-            this._model.observe( `attention.entity.${percept.sourceEntityId}`, e.salience )
+            this._model.observe(`attention.entity.${percept.sourceEntityId}`, e.salience )
         }
         break
     }
@@ -194,7 +194,7 @@ export class AttentionAllocator implements SimulationEngine, CognitiveEngine {
     const
     energyLevel      = this._energyLevel,
     sleepPressure    = this._sleepPressure,
-    arousal          = state.metrics.get( 'affect.arousal' ) ?? AROUSAL_REST,
+    arousal          = state.metrics.get('affect.arousal') ?? AROUSAL_REST,
     energyFactor     = energyLevel < 30 ? 0.3 + ( energyLevel / 30 ) * 0.7 : 1.0,
     sleepFactor      = sleepPressure > 40
                          ? 1 - ( ( sleepPressure - 40 ) / 60 ) * 0.5
@@ -296,8 +296,8 @@ export class AttentionAllocator implements SimulationEngine, CognitiveEngine {
     // load — and thus usage — is steady; otherwise the budget would not move in a
     // quiet mind.
     if( _bus ){
-      const usageErr = this._model.observe( 'attention.usage', attentionUsage )
-      const freeErr  = this._model.observe( 'attention.free_fraction', freeFraction )
+      const usageErr = this._model.observe('attention.usage', attentionUsage )
+      const freeErr  = this._model.observe('attention.free_fraction', freeFraction )
       if( !usageErr.gated || !freeErr.gated )
         _bus.publish({ type: 'attention.state.changed', version: 1, sourceEngine: this.name, salience: Math.max( usageErr.salience, freeErr.salience ), payload: { usage: attentionUsage, focusCount, capacity: effectiveCapacity, freeFraction } })
     }
@@ -310,7 +310,7 @@ export class AttentionAllocator implements SimulationEngine, CognitiveEngine {
     // Effective config = base engine-config-attention ⊕ persona-prior (single-source).
     // The persona-consolidator lowers shiftInertia on belief-formation bias (edge 8)
     // → attention shifts more readily, loosening the fixation that feeds the bias.
-    const p = readEffectiveParams( state, 'engine-config-attention' )
+    const p = readEffectiveParams( state, 'engine-config-attention')
     if( p.maxCapacity  != null ) this._maxCapacity  = p.maxCapacity
     if( p.costPerFocus != null ) this._costPerFocus = p.costPerFocus
     if( p.maxFoci      != null ) this._maxFoci      = p.maxFoci

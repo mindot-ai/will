@@ -17,8 +17,8 @@ const facetProgress = ( knownEntityUpdates: unknown ) => ( {
   payload: { facetId: 'f1', tick: 5, knownEntityUpdates },
 } as any )
 
-describe( 'SemanticIntegrator — facet knownEntityUpdates → keid-tagged beliefs (2.2b)', () => {
-  it( 'integrates each learned fact as a keid-tagged social belief', () => {
+describe('SemanticIntegrator — facet knownEntityUpdates → keid-tagged beliefs (2.2b)', () => {
+  it('integrates each learned fact as a keid-tagged social belief', () => {
     const si = new SemanticIntegrator()
     const integrated: Array<{ statement: string; category: string; tags: string[] }> = []
     ;( si as any ).integrateExecutiveBelief = ( b: any ) => integrated.push( b )
@@ -29,11 +29,11 @@ describe( 'SemanticIntegrator — facet knownEntityUpdates → keid-tagged belie
 
     expect( integrated ).toHaveLength( 2 )
     expect( integrated.map( b => b.statement ) ).toEqual( [ 'studies coral reefs', 'lives by the sea' ] )
-    expect( integrated[0]!.category ).toBe( 'social_belief' )
-    expect( integrated[0]!.tags ).toContain( 'keid:web:42' )
+    expect( integrated[0]!.category ).toBe('social_belief')
+    expect( integrated[0]!.tags ).toContain('keid:web:42')
   } )
 
-  it( 'records nothing for an update with no learned facts (name-only)', () => {
+  it('records nothing for an update with no learned facts (name-only)', () => {
     const si = new SemanticIntegrator()
     const integrated: any[] = []
     ;( si as any ).integrateExecutiveBelief = ( b: any ) => integrated.push( b )
@@ -42,7 +42,7 @@ describe( 'SemanticIntegrator — facet knownEntityUpdates → keid-tagged belie
     expect( integrated ).toHaveLength( 0 )   // name/feeling go to the tracker, not beliefs
   } )
 
-  it( 'ignores facts attributed to the self', () => {
+  it('ignores facts attributed to the self', () => {
     const si = new SemanticIntegrator()
     const integrated: any[] = []
     ;( si as any ).integrateExecutiveBelief = ( b: any ) => integrated.push( b )

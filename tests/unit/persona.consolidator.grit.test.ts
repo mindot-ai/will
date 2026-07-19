@@ -14,10 +14,10 @@ import { PersonaConsolidator } from '#faculties/persona.consolidator'
 
 const stateWith = ( tick: number, persistence: number, resilience = 0.5 ) => {
   const entities = new Map<string, any>()
-  entities.set( 'identity-self', {
+  entities.set('identity-self', {
     id: 'identity-self', type: 'identity', metadata: { traits: { persistence, resilience } },
   } )
-  entities.set( 'engine-config-goal-manager', {
+  entities.set('engine-config-goal-manager', {
     id: 'engine-config-goal-manager', type: 'engine-config',
     metadata: { params: { gritPriority: 0.8, gritPatienceScale: 2, frustrationTolerance: 0.5 } },
   } )
@@ -25,11 +25,11 @@ const stateWith = ( tick: number, persistence: number, resilience = 0.5 ) => {
 }
 
 const priorFor = ( r: any ): Record<string, number> | undefined =>
-  ( r.commands?.set ?? [] ).find( ( e: any ) => e.id === 'persona-prior' )?.metadata
+  ( r.commands?.set ?? [] ).find( ( e: any ) => e.id === 'persona-prior')?.metadata
     ?.priors?.[ 'engine-config-goal-manager' ]
 
-describe( 'PersonaConsolidator — grit develops from self-model traits', () => {
-  it( 'demonstrated persistence makes the Will grittier (gritPriority↓, patience↑)', async () => {
+describe('PersonaConsolidator — grit develops from self-model traits', () => {
+  it('demonstrated persistence makes the Will grittier (gritPriority↓, patience↑)', async () => {
     const pc = new PersonaConsolidator()
     const r  = await pc.react( 0 as any, 100 as any, stateWith( 100, 0.9 ), {} as any )
     const gm = priorFor( r )
@@ -37,13 +37,13 @@ describe( 'PersonaConsolidator — grit develops from self-model traits', () => 
     expect( gm?.gritPatienceScale ).toBeGreaterThan( 0 ) // persist longer
   } )
 
-  it( 'demonstrated resilience raises frustration tolerance', async () => {
+  it('demonstrated resilience raises frustration tolerance', async () => {
     const pc = new PersonaConsolidator()
     const r  = await pc.react( 0 as any, 100 as any, stateWith( 100, 0.5, 0.9 ), {} as any )
     expect( priorFor( r )?.frustrationTolerance ).toBeGreaterThan( 0 )
   } )
 
-  it( 'neutral traits leave grit unpushed (decays back to the seeded baseline)', async () => {
+  it('neutral traits leave grit unpushed (decays back to the seeded baseline)', async () => {
     const pc = new PersonaConsolidator()
     const r  = await pc.react( 0 as any, 100 as any, stateWith( 100, 0.5, 0.5 ), {} as any )
     expect( priorFor( r )?.gritPriority ?? 0 ).toBe( 0 )

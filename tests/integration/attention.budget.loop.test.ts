@@ -23,7 +23,7 @@ import { FacetSupervisor } from '#faculties/executive.engine/facet.supervisor'
 import { effortTargetForActions } from '#faculties/executive.engine'
 import type { ReadonlySimulationState, SimulationContext } from '#core/types'
 
-vi.spyOn( console, 'info' ).mockImplementation( () => {} )
+vi.spyOn( console, 'info').mockImplementation( () => {} )
 
 const freshState = (): ReadonlySimulationState =>
   ( { tick: 1, time: 1000, entities: new Map(), metrics: new Map() } as unknown as ReadonlySimulationState )
@@ -34,17 +34,17 @@ function spawnDeps( tick: number ){
            contextDeps: {} as any, promptDeps: {} as any, willId: 'w' }
 }
 
-describe( 'Attention budget control loop (focus/rest → maxFacets)', () => {
-  it( 'a focus decision admits more facets than a rest decision — over the real bus', async () => {
+describe('Attention budget control loop (focus/rest → maxFacets)', () => {
+  it('a focus decision admits more facets than a rest decision — over the real bus', async () => {
     const bus       = createTestBus()
     const allocator = new AttentionAllocator()
     const supervisor = new FacetSupervisor({ idleTtlTicks: 1e9, evictLruOnPressure: false })
 
     allocator.attachBus( bus )
     // Allocator hears voluntary focus/rest (and anything else it subscribes to).
-    bus.subscribe( 'attention-allocator', allocator.subscribes(), e => { allocator.onCognitiveEvent( e ) } )
+    bus.subscribe('attention-allocator', allocator.subscribes(), e => { allocator.onCognitiveEvent( e ) } )
     // The executive's REAL bridge: attention.state.changed → supervisor budget.
-    bus.subscribe( 'executive-engine', [ 'attention.state.changed' ],
+    bus.subscribe('executive-engine', [ 'attention.state.changed' ],
       e => supervisor.setAttentionState( ( e.payload as { freeFraction: number } ).freeFraction ) )
 
     // The executive "decides" by choosing actions; the real mapping derives the
@@ -71,7 +71,7 @@ describe( 'Attention budget control loop (focus/rest → maxFacets)', () => {
 
     // Capture the freeFraction the supervisor actually receives over the bus.
     const delivered: number[] = []
-    bus.subscribe( 'probe', [ 'attention.state.changed' ], e => { delivered.push( ( e.payload as { freeFraction: number } ).freeFraction ) } )
+    bus.subscribe('probe', [ 'attention.state.changed' ], e => { delivered.push( ( e.payload as { freeFraction: number } ).freeFraction ) } )
 
     // Warm-up so the GenerativeModel's cold-start (its first observe is always
     // gated) is consumed at baseline — focus/rest then register as real,
@@ -101,14 +101,14 @@ describe( 'Attention budget control loop (focus/rest → maxFacets)', () => {
   } )
 } )
 
-describe( 'effortTargetForActions — executive action → effort mapping', () => {
-  it( 'focus → 1.0', () => expect( effortTargetForActions( [ 'focus' ] ) ).toBe( 1.0 ) )
-  it( 'rest/sleep/wait/meditate → 0.4', () => {
+describe('effortTargetForActions — executive action → effort mapping', () => {
+  it('focus → 1.0', () => expect( effortTargetForActions( [ 'focus' ] ) ).toBe( 1.0 ) )
+  it('rest/sleep/wait/meditate → 0.4', () => {
     for( const a of [ 'rest', 'sleep', 'wait', 'meditate' ] )
       expect( effortTargetForActions( [ a ] ) ).toBe( 0.4 )
   } )
-  it( 'focus wins if both are present', () =>
+  it('focus wins if both are present', () =>
     expect( effortTargetForActions( [ 'rest', 'focus' ] ) ).toBe( 1.0 ) )
-  it( 'no attention preference → null', () =>
+  it('no attention preference → null', () =>
     expect( effortTargetForActions( [ 'observe', 'reflect' ] ) ).toBeNull() )
 } )

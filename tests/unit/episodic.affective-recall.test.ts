@@ -46,8 +46,8 @@ async function makeConsolidator(){
   const consolidator = new EpisodicConsolidator( { vectorMemory: adapter } )
 
   const entities = new Map<string, unknown>()
-  entities.set( 'ep-pos', episodicEntity( 'ep-pos', 0.8 ) )
-  entities.set( 'ep-neg', episodicEntity( 'ep-neg', -0.8 ) )
+  entities.set('ep-pos', episodicEntity('ep-pos', 0.8 ) )
+  entities.set('ep-neg', episodicEntity('ep-neg', -0.8 ) )
   const state = { tick: 1, time: 0, metrics: new Map(), entities } as never
 
   // First react restores episodes into the store + builds the vector index.
@@ -55,24 +55,24 @@ async function makeConsolidator(){
   return consolidator
 }
 
-describe( 'EpisodicConsolidator.semanticQuery — mood-congruent recall', () => {
-  it( 'surfaces the positively-encoded memory first in a positive mood', async () => {
+describe('EpisodicConsolidator.semanticQuery — mood-congruent recall', () => {
+  it('surfaces the positively-encoded memory first in a positive mood', async () => {
     const c = await makeConsolidator()
-    const out = await c.semanticQuery( 'lakeside morning', { limit: 2, affectiveBias: { valence: 0.9, weight: 0.5 } } )
-    expect( out[0]?.id ).toBe( 'ep-pos' )
+    const out = await c.semanticQuery('lakeside morning', { limit: 2, affectiveBias: { valence: 0.9, weight: 0.5 } } )
+    expect( out[0]?.id ).toBe('ep-pos')
     expect( out.map( e => e.id ).sort() ).toEqual( [ 'ep-neg', 'ep-pos' ] )  // re-ranks, does not filter
   } )
 
-  it( 'surfaces the negatively-encoded memory first in a negative mood', async () => {
+  it('surfaces the negatively-encoded memory first in a negative mood', async () => {
     const c = await makeConsolidator()
-    const out = await c.semanticQuery( 'lakeside morning', { limit: 2, affectiveBias: { valence: -0.9, weight: 0.5 } } )
-    expect( out[0]?.id ).toBe( 'ep-neg' )
+    const out = await c.semanticQuery('lakeside morning', { limit: 2, affectiveBias: { valence: -0.9, weight: 0.5 } } )
+    expect( out[0]?.id ).toBe('ep-neg')
   } )
 
-  it( 'weight 0 (or no bias) leaves similarity ordering untouched', async () => {
+  it('weight 0 (or no bias) leaves similarity ordering untouched', async () => {
     const c = await makeConsolidator()
-    const biased   = await c.semanticQuery( 'lakeside morning', { limit: 2, affectiveBias: { valence: 0.9, weight: 0 } } )
-    const unbiased = await c.semanticQuery( 'lakeside morning', { limit: 2 } )
+    const biased   = await c.semanticQuery('lakeside morning', { limit: 2, affectiveBias: { valence: 0.9, weight: 0 } } )
+    const unbiased = await c.semanticQuery('lakeside morning', { limit: 2 } )
     expect( biased.map( e => e.id ) ).toEqual( unbiased.map( e => e.id ) )
   } )
 } )

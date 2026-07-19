@@ -47,7 +47,7 @@ export class BunStorageAdapter implements StorageAdapter {
       return Bun.file( path ).text()
 
     const { readFile } = await import('node:fs/promises')
-    return readFile( path, 'utf8' )
+    return readFile( path, 'utf8')
   }
 
   async readBytes( path: string ): Promise<Uint8Array> {

@@ -24,7 +24,7 @@ export function planShapeKey(
   steps: ReadonlyArray<{ action: string; prerequisites?: readonly string[] }>,
 ): string {
   return steps
-    .map( s => `${ s.action }${ ( s.prerequisites?.length ?? 0 ) > 0 ? `<${ s.prerequisites!.length }` : '' }` )
+    .map( s => `${ s.action }${ ( s.prerequisites?.length ?? 0 ) > 0 ? `<${ s.prerequisites!.length }` : '' }`)
     .join('>')
 }
 

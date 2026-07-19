@@ -5,7 +5,8 @@
 // The ActionSelector runs every tick with no LLM. It reads the affordance field
 // the synthesizer wrote, assembles the bias signals the affective / drive /
 // inhibition engines already expose, and runs a soft winner-take-all (see
-// scoring.ts). The winner is committed as an `agency.intent` for the executor.
+// selection.scoring.ts). The winner is committed as an `agency.intent` for 
+// the executor.
 //
 // System 1 is the default: the substrate selects and commits on its own. The
 // executive (System 2, the LLM) is recruited only when the choice is genuinely
@@ -131,11 +132,14 @@ export class ActionSelector implements CognitiveEngine {
     const eligible: Affordance[] = []
     const intents: Array<{ id: string; st: string; parentIntentId?: string; activation: number; schema: string; target: string; dispatchedAt: number }> = []
     const expandingParents = new Set<string>()
+
     for( const [ id, e ] of state.entities ){
-      if( e.type === 'agency.intent' ){
+      if( e.type === 'agency.intent'){
         const m  = ( e.metadata ?? {} ) as Record<string, unknown>
         const st = str( m['status'] ) ?? ''
-        if( st === 'expanding' ) expandingParents.add( id )
+
+        if( st === 'expanding') expandingParents.add( id )
+          
         intents.push({
           id, st,
           parentIntentId: str( m['parentIntentId'] ),
@@ -144,9 +148,12 @@ export class ActionSelector implements CognitiveEngine {
           target:         str( m['targetEntityId'] ) ?? '',
           dispatchedAt:   num( m['dispatchedAt'], tick ),
         })
+
         continue
       }
-      if( e.type !== 'affordance' ) continue
+
+      if( e.type !== 'affordance') continue
+
       const a = readAffordance( id, e.metadata )
       if( a.available ) eligible.push( a )
     }
@@ -157,25 +164,38 @@ export class ActionSelector implements CognitiveEngine {
     let blocking = false
     let awaiting:  { id: string; activation: number; schema: string; target: string; dispatchedAt: number } | null = null
     let composite: { id: string; activation: number; schema: string } | null = null
+
     for( const it of intents ){
-      if( it.st === 'deliberating' ) blocking = true
-      else if( it.st === 'expanding' ) composite = { id: it.id, activation: it.activation, schema: it.schema }
-      else if( it.st === 'awaiting' ) awaiting = { id: it.id, activation: it.activation, schema: it.schema, target: it.target, dispatchedAt: it.dispatchedAt }
-      else if( it.st === 'selected' ){
+      if( it.st === 'deliberating') blocking = true
+      else if( it.st === 'expanding') composite = { id: it.id, activation: it.activation, schema: it.schema }
+      else if( it.st === 'awaiting') awaiting = { id: it.id, activation: it.activation, schema: it.schema, target: it.target, dispatchedAt: it.dispatchedAt }
+      else if( it.st === 'selected'){
         const activeMacroSub = it.parentIntentId !== undefined && expandingParents.has( it.parentIntentId )
         if( !activeMacroSub ) blocking = true   // standalone or orphan sub → finish it
       }
     }
 
-    const busy = ( n: number ): EngineResult => ({ commands: { metrics: [
-      [ 'agency.field.eligible', n ], [ 'agency.selection.busy', 1 ],
-    ] } })
+    const busy = ( n: number ): EngineResult => ({
+      commands: {
+        metrics: [
+          [ 'agency.field.eligible', n ],
+          [ 'agency.selection.busy', 1 ]
+        ]
+      }
+    })
 
     if( blocking ) return busy( eligible.length )
 
     // Nothing afforded → idle (if an action is in flight, keep waiting).
     if( eligible.length === 0 )
-      return { commands: { metrics: [ [ 'agency.field.eligible', 0 ], [ 'agency.selection.busy', ( awaiting || composite ) ? 1 : 0 ] ] } }
+      return {
+        commands: {
+          metrics: [
+            [ 'agency.field.eligible', 0 ],
+            [ 'agency.selection.busy',( awaiting || composite ) ? 1 : 0 ]
+          ]
+        }
+      }
 
     // ── Run the competition over the current field ────────────────
     const bias   = buildBias( state )
@@ -205,16 +225,37 @@ export class ActionSelector implements CognitiveEngine {
       const different  = winner.affordance.schema !== composite.schema
       const switchCost = effSwitchCost * ( 1 - stakes( winner.affordance, bias ) )
       if( different && winner.activation > composite.activation + switchCost ){
-        if( this._bus ) try {
-          this._bus.publish({ type: 'agency.action.preempted', version: 1, sourceEngine: this.name,
-            salience: 0.8, payload: { from: composite.schema, to: winner.affordance.schema, activation: winner.activation, tick } })
-        } catch( err ){ logger.warn( `[selector] preempt publish failed: ${ err instanceof Error ? err.message : String( err ) }` ) }
-        return { commands: { delete: [ composite.id ], metrics: [
-          [ 'agency.field.eligible',      eligible.length ],
-          [ 'agency.selection.busy',      1 ],
-          [ 'agency.selection.preempted', 1 ],
-        ] } }
+        if( this._bus )
+          try {
+            this._bus.publish({
+              type: 'agency.action.preempted',
+              version: 1,
+              sourceEngine: this.name,
+              salience: 0.8,
+              payload: {
+                from: composite.schema,
+                to: winner.affordance.schema,
+                activation: winner.activation,
+                tick
+              }
+            })
+          }
+          catch( err ){
+            logger.warn(`[selector] preempt publish failed: ${ err instanceof Error ? err.message : String( err ) }`)
+          }
+
+        return {
+          commands: {
+            delete: [ composite.id ],
+            metrics: [
+              [ 'agency.field.eligible', eligible.length ],
+              [ 'agency.selection.busy', 1 ],
+              [ 'agency.selection.preempted', 1 ]
+            ]
+          }
+        }
       }
+
       return busy( eligible.length )   // routine continues
     }
 
@@ -225,8 +266,7 @@ export class ActionSelector implements CognitiveEngine {
     let preemptDelete: string | undefined
     let preemptedFrom: string | undefined
     if( awaiting ){
-      const sameAction = winner.affordance.schema === awaiting.schema
-        && ( winner.affordance.targetEntityId ?? '' ) === awaiting.target
+      const sameAction = winner.affordance.schema === awaiting.schema && ( winner.affordance.targetEntityId ?? '') === awaiting.target
       if( sameAction ) return busy( eligible.length )   // field still favours what we await
 
       const staleness         = Math.min( 1, ( tick - awaiting.dispatchedAt ) / AWAIT_STALE_TICKS )
@@ -253,7 +293,7 @@ export class ActionSelector implements CognitiveEngine {
     // deliberativeness disposition (R1) shifts both gates the OTHER way for an analytical
     // Will — wider margin gate (contest sooner) and lower stakes gate (deliberate at lower
     // stakes). The two forces compose additively, each independent and bounded.
-    const deliberativeness = -( readPersonaPrior( state, 'engine-config-executive' )['deliberateThreshold'] ?? 0 )
+    const deliberativeness = -( readPersonaPrior( state, 'engine-config-executive')['deliberateThreshold'] ?? 0 )
     const marginGate = Math.max( 0, MARGIN_THRESHOLD - relief + deliberativeness * DELIB_MARGIN_SENS )
     const stakesGate = clamp01( BASE_STAKES_THRESHOLD + relief - deliberativeness * DELIB_STAKES_SENS )
     const deliberate = margin < marginGate || stk > stakesGate
@@ -318,6 +358,7 @@ export class ActionSelector implements CognitiveEngine {
           salience:     0.6,
           payload:      { schema: winner.affordance.schema, activation: winner.activation, entropy, tick },
         })
+
         if( deliberate )
           this._bus.publish({
             type:         'agency.selection.ambiguous',
@@ -329,6 +370,7 @@ export class ActionSelector implements CognitiveEngine {
               entropy, stakes: stk, tick,
             },
           })
+          
         if( preemptedFrom )
           this._bus.publish({
             type:         'agency.action.preempted',
@@ -339,7 +381,7 @@ export class ActionSelector implements CognitiveEngine {
           })
       }
       catch( err ){
-        logger.warn( `[selector] bus publish failed: ${ err instanceof Error ? err.message : String( err ) }` )
+        logger.warn(`[selector] bus publish failed: ${ err instanceof Error ? err.message : String( err ) }`)
       }
     }
 
@@ -356,6 +398,7 @@ export class ActionSelector implements CognitiveEngine {
         [ 'agency.selection.activation', winner.activation ],
       ],
     }
+
     return { commands }
   }
 }
@@ -373,7 +416,7 @@ export class ActionSelector implements CognitiveEngine {
  * TaskSwitcher uses internally. One disposition, two owners, native scales.
  */
 function effectiveSwitchCost( state: ReadonlySimulationState ): number {
-  const params     = readEffectiveParams( state, 'engine-config-action-selector' )
+  const params     = readEffectiveParams( state, 'engine-config-action-selector')
   const base       = num( params['switchCost'], BASE_SWITCH_COST )
   const focusTicks = metric( state, 'task_switch.current_focus_ticks', 0 )
   return base * ( 1 + focusTicks * FOCUS_GAIN )
@@ -386,7 +429,7 @@ function effectiveSwitchCost( state: ReadonlySimulationState ): number {
  * weights have no clean single-trait owner, so they stay fixed (see the TODO catalogue).
  */
 function effectiveWeights( state: ReadonlySimulationState ): ScoreWeights {
-  const p = readEffectiveParams( state, 'engine-config-action-selector' )
+  const p = readEffectiveParams( state, 'engine-config-action-selector')
   return {
     ...DEFAULT_WEIGHTS,
     risk:    Math.max( 0, num( p['riskWeight'],    DEFAULT_WEIGHTS.risk    ) ),
@@ -404,10 +447,10 @@ function buildBias( state: ReadonlySimulationState ): BiasContext {
   let   maxGoalPriority = 0
 
   for( const e of state.entities.values() ){
-    if( e.type !== 'goal' ) continue
+    if( e.type !== 'goal') continue
     const m      = e.metadata
     const status = str( m?.['status'] )
-    if( status !== 'active' && status !== 'in_progress' ) continue
+    if( status !== 'active' && status !== 'in_progress') continue
     maxGoalPriority = Math.max( maxGoalPriority, num( m?.['priority'], 0 ) )
   }
 
@@ -441,7 +484,7 @@ function readAffordance( id: string, m: ReadonlyMap<string, unknown> | Record<st
     cost:            num( meta['cost'],            0 ),
     habitStrength:   num( meta['habitStrength'],   0 ),
     available:       meta['available'] === true,
-    tags:            Array.isArray( meta['tags'] ) ? ( meta['tags'] as unknown[] ).filter( ( t ): t is string => typeof t === 'string' ) : [],
+    tags:            Array.isArray( meta['tags'] ) ? ( meta['tags'] as unknown[] ).filter( ( t ): t is string => typeof t === 'string') : [],
     planBias:        typeof meta['planBias'] === 'number' ? ( meta['planBias'] as number ) : undefined,
     planId:          str( meta['planId'] ),
     stepId:          str( meta['stepId'] ),

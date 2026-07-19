@@ -203,7 +203,7 @@ export class ProactiveCommunicator {
         content:     bubble,
         effectorName,
         replyToMessageId,
-      }, `-${ i }` ) )
+      }, `-${ i }`) )
     })
 
     // Write the intent record at push time so context-builder can see what we said.

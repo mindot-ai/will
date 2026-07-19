@@ -101,7 +101,7 @@ export class Interoception implements SimulationEngine, CognitiveEngine {
       case 'executive.prediction.formed': {
         const p = e.payload as { predictedDomains: string[]; confidence: number }
         if( p.predictedDomains.includes('interoception') )
-          this._model.setPrecision( 'interoception.intensity', 1.0 + p.confidence * 0.5 )
+          this._model.setPrecision('interoception.intensity', 1.0 + p.confidence * 0.5 )
         break
       }
     }
@@ -142,7 +142,7 @@ export class Interoception implements SimulationEngine, CognitiveEngine {
     // Blend of the direct circadian mood set-point and holistic homeostatic comfort.
     // Comfort dominates (0.65) because energy/sleep/stress drive moment-to-moment
     // mood more strongly than the slow-moving circadian baseline.
-    const moodBaseline = signals.find( s => s.metric === 'circadian.mood_baseline' )?.value ?? 0.5
+    const moodBaseline = signals.find( s => s.metric === 'circadian.mood_baseline')?.value ?? 0.5
     const interoMood   = moodBaseline * 0.35 + comfortLevel * 0.65
 
     // Percept entity — the unified "how I feel" snapshot
@@ -202,7 +202,7 @@ export class Interoception implements SimulationEngine, CognitiveEngine {
       _bus.publish({ type: 'interoception.state.updated', version: 1, sourceEngine: this.name, salience: Math.abs(comfortLevel - 0.5) * 0.8, payload: { comfort: comfortLevel, intensity: overallIntensity } })
     // Phase D + F: rich state-change event — gated by prediction error
     if( _bus ){
-      const predErr = this._model.observe( 'interoception.intensity', overallIntensity )
+      const predErr = this._model.observe('interoception.intensity', overallIntensity )
       if( !predErr.gated )
         _bus.publish({ type: 'interoception.state.changed', version: 1, sourceEngine: this.name, salience: predErr.salience, payload: { comfort: comfortLevel, intensity: overallIntensity } })
     }

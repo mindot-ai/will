@@ -409,10 +409,10 @@ export function _resolveVectorMemory(
   const mockMode = process.env.WILL_VECTOR_MEMORY === 'mock'
   const rawModel = embeddingModel
     ?? process.env.WILL_EMBEDDING_MODEL
-    ?? ( process.env.WILL_EMBEDDING_API_KEY ? 'text-embedding-3-small' : 'none' )
+    ?? ( process.env.WILL_EMBEDDING_API_KEY ? 'text-embedding-3-small' : 'none')
 
   // Explicitly disabled — the documented "none" sentinel or recall turned off.
-  if( !mockMode && ( rawModel === 'none' || process.env.WILL_SEMANTIC_RECALL === 'false' ) )
+  if( !mockMode && ( rawModel === 'none' || process.env.WILL_SEMANTIC_RECALL === 'false') )
     return { embedder: null, vectorMemory: null }
 
   // testMode promises a deterministic, zero-key, offline mind — but a dev .env
@@ -581,9 +581,9 @@ export function assembleMind( willId: string, config: WillConfig ): MindAssembly
     profileContext: profile?.context,
   })
   if( !idGuard.ok )
-    throw new Error( `Invalid Will identity for "${willId}": ${ idGuard.errors.join( '; ' ) }` )
+    throw new Error(`Invalid Will identity for "${willId}": ${ idGuard.errors.join('; ') }`)
   for( const w of idGuard.warnings )
-    logger.warn( `[identity-guard] ${willId}: ${w}` )
+    logger.warn(`[identity-guard] ${willId}: ${w}`)
   config = { ...config, identity: idGuard.sanitized.identity }
 
   // ── Construct ────────────────────────────────────────────
@@ -602,8 +602,8 @@ export function assembleMind( willId: string, config: WillConfig ): MindAssembly
   // sessionLogger/grants); tests/unit/assembly.order.test.ts pins that set per
   // tier, so a NEW unwired attachment fails loudly in CI, not here.
   for( const rec of auditAssemblyWiring( simulation.orchestrator.engines ) )
-    if( rec.status === 'unwired' )
-      logger.debug( `[assembly] ${willId}: ${rec.engine}.${rec.method} unwired at assembly (anatomy=${anatomy})` )
+    if( rec.status === 'unwired')
+      logger.debug(`[assembly] ${willId}: ${rec.engine}.${rec.method} unwired at assembly (anatomy=${anatomy})`)
 
   // ── Seed readable simulation state ───────────────────────
   // Identity, optional initial goals, and the engine-config mirror.
@@ -772,7 +772,7 @@ function _constructCognition(
   // ── Planning Engine ──────────────────────────────────────
   const planningEngine = new PlanningEngine()
   planningEngine.attachGoalManager( goalManager )
-  if( anatomy !== 'reflex' ) planningEngine.attachExecutiveEngine( executiveEngine )
+  if( anatomy !== 'reflex') planningEngine.attachExecutiveEngine( executiveEngine )
   executiveEngine.attachPlanningEngine( planningEngine )
 
   // ── Executive ────────────────────────────────────────────
@@ -791,7 +791,7 @@ function _constructCognition(
   autobiographicalNarrator.attachEpisodicConsolidator( episodicConsolidator )
   autobiographicalNarrator.attachSemanticIntegrator( semanticIntegrator )
   // Satellites harvest the executive's own output — attach wherever it runs.
-  if( anatomy !== 'reflex' ){
+  if( anatomy !== 'reflex'){
     autobiographicalNarrator.attachExecutiveEngine( executiveEngine )
     introspectionEngine.attachExecutiveEngine( executiveEngine )
   }
@@ -807,7 +807,7 @@ function _constructCognition(
   empathySimulator.attachTheoryOfMind( theoryOfMind )
 
   // ── Context compaction components (mind anatomy only) ──
-  if( anatomy !== 'reflex' ){
+  if( anatomy !== 'reflex'){
     const summarizer = new ExecutiveSummarizer({
       summaryInterval:   parseInt( process.env.WILL_SUMMARY_INTERVAL   ?? '10'),
       bufferSize:        parseInt( process.env.WILL_SUMMARY_BUFFER_SIZE ?? '12'),
@@ -845,7 +845,7 @@ function _constructCognition(
   const olfactionEngine       = new OlfactionEngine()
   const gustationEngine       = new GustationEngine()
 
-  if( anatomy !== 'reflex' )
+  if( anatomy !== 'reflex')
     auditionEngine.attachExecutiveEngine( executiveEngine )
 
   // §5.4 — cold-spawn digest hydration: on the first turn for an entity, seed an
@@ -906,7 +906,7 @@ function _constructCognition(
   // winner (graceful System-1 degradation).
   const deliberationEngine = new DeliberationEngine()
   deliberationEngine.setWillName( config.name )
-  if( anatomy !== 'reflex' )
+  if( anatomy !== 'reflex')
     deliberationEngine.attachExecutive( executiveEngine )
 
   // ── Build Cognition ──────────────────────────────────────
@@ -1108,7 +1108,7 @@ function _seedIdentity(
   // to infer its identity from context. config.name is the canonical source of truth.
   const nameAlreadyInPrompt = personaText.toLowerCase().includes( config.name.toLowerCase() )
   const namePrefix = nameAlreadyInPrompt ? '' : `I am ${config.name}.`
-  const fullPersonaText = [ namePrefix, personaText ].filter( Boolean ).join( ' ' )
+  const fullPersonaText = [ namePrefix, personaText ].filter( Boolean ).join(' ')
 
   const prompt = [
     WILL_CORE_PREAMBLE,

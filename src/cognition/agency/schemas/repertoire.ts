@@ -167,7 +167,7 @@ export class SchemaRepertoire {
     const out: EntityInput[] = []
     for( const id of this._learned ){
       const s = this._templates.get( id )
-      if( s && s.kind === 'composite' ) out.push( schemaEntity( s ) )
+      if( s && s.kind === 'composite') out.push( schemaEntity( s ) )
     }
     return out
   }
@@ -242,7 +242,7 @@ function readSchema( m: Record<string, unknown> | undefined ): MotorSchema | und
   const meta = m ?? {}
   const id   = typeof meta['id'] === 'string' ? meta['id'] as string : undefined
   const kind = meta['kind']
-  if( !id || ( kind !== 'composite' && kind !== 'primitive' ) ) return undefined
+  if( !id || ( kind !== 'composite' && kind !== 'primitive') ) return undefined
   return {
     id,
     kind,

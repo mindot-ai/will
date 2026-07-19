@@ -76,13 +76,13 @@ function seedMind( tick: number ) {
   sm.updateClock( tick, Date.now() )
   for( const e of SEED_ENTITIES ) sm.setEntity( e )
   // Volatile body-state metrics — these must NOT survive the restart.
-  sm.setMetric( 'energy.level', 0.31 )
-  sm.setMetric( 'affect.valence', -0.2 )
+  sm.setMetric('energy.level', 0.31 )
+  sm.setMetric('affect.valence', -0.2 )
   return sm
 }
 
-describe( 'MVP F2 — restart recovery via snapshot restore', () => {
-  it( 'restores goals, beliefs, memories, and narrative across a crash', async () => {
+describe('MVP F2 — restart recovery via snapshot restore', () => {
+  it('restores goals, beliefs, memories, and narrative across a crash', async () => {
     const storage = makeMemoryStorage()
 
     // ── Run + crash ───────────────────────────────────────────
@@ -102,27 +102,27 @@ describe( 'MVP F2 — restart recovery via snapshot restore', () => {
     after.restore( restored!, { entities: true, metrics: false } )
 
     // ── Cognitive state survived ──────────────────────────────
-    const goal = after.getEntity( 'goal-1' )
-    expect( goal?.type ).toBe( 'goal' )
-    expect( goal?.metadata?.description ).toBe( 'Build trust with Alice' )
+    const goal = after.getEntity('goal-1')
+    expect( goal?.type ).toBe('goal')
+    expect( goal?.metadata?.description ).toBe('Build trust with Alice')
     expect( goal?.metadata?.progress ).toBe( 0.4 )
 
-    const belief = after.getEntity( 'belief-1' )
-    expect( belief?.metadata?.statement ).toBe( 'Alice values directness' )
+    const belief = after.getEntity('belief-1')
+    expect( belief?.metadata?.statement ).toBe('Alice values directness')
     expect( belief?.metadata?.confidence ).toBe( 0.72 )
 
-    const memory = after.getEntity( 'episodic-1' )
-    expect( memory?.metadata?.content ).toBe( 'Alice thanked me for being honest' )
+    const memory = after.getEntity('episodic-1')
+    expect( memory?.metadata?.content ).toBe('Alice thanked me for being honest')
 
-    const narrative = after.getEntity( 'narrative-1' )
-    expect( narrative?.metadata?.story ).toBe( 'I am learning how to earn trust' )
+    const narrative = after.getEntity('narrative-1')
+    expect( narrative?.metadata?.story ).toBe('I am learning how to earn trust')
     expect( narrative?.metadata?.version ).toBe( 3 )
 
     // All four cognitive entities present and accounted for.
     expect( [ ...after.getAllEntities() ] ).toHaveLength( SEED_ENTITIES.length )
   })
 
-  it( 'does NOT carry volatile metrics across restart (they rebuild from tick 1)', async () => {
+  it('does NOT carry volatile metrics across restart (they rebuild from tick 1)', async () => {
     const storage = makeMemoryStorage()
 
     const before  = seedMind( CRASH_TICK )
@@ -136,11 +136,11 @@ describe( 'MVP F2 — restart recovery via snapshot restore', () => {
     after.restore( restored!, { entities: true, metrics: false } )
 
     // Metrics intentionally excluded — a freshly-woken Will rebuilds body state.
-    expect( after.getMetric( 'energy.level' ) ).toBeUndefined()
-    expect( after.getMetric( 'affect.valence' ) ).toBeUndefined()
+    expect( after.getMetric('energy.level') ).toBeUndefined()
+    expect( after.getMetric('affect.valence') ).toBeUndefined()
   })
 
-  it( 'starts fresh (no restore) when storage has no prior snapshot', async () => {
+  it('starts fresh (no restore) when storage has no prior snapshot', async () => {
     const storage = makeMemoryStorage()
     const snapMgr = new SnapshotManager({ storage, persistInterval: 1, persistPath: PERSIST_PATH })
 

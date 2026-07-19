@@ -20,7 +20,7 @@ import { createTestBus }       from '#cognition/bus'
 const goalStub = { getGoal: () => undefined, getActiveGoals: () => [] } as any
 const makeState = ( tick: number ) => ( { tick, metrics: new Map(), entities: new Map() } as any )
 
-const step = ( action = 'observe' ) =>
+const step = ( action = 'observe') =>
   ( { action, description: action, expectedOutcome: 'x', prerequisites: [], estimatedDuration: 3 } )
 
 const draftOp = ( goalId: string, expected: string, steps = [ step() ] ) =>
@@ -36,7 +36,7 @@ const outcome = ( planId: string, stepId: string, success = true ) => ( {
 
 // ── Engine: multiple plans per goal ───────────────────────────
 
-describe( 'PlanningEngine — multiple plans per goal (P4)', () => {
+describe('PlanningEngine — multiple plans per goal (P4)', () => {
   let bus:    ReturnType<typeof createTestBus>
   let engine: PlanningEngine
   let exec:   { isFresh: () => boolean; latestOutput: any }
@@ -54,69 +54,69 @@ describe( 'PlanningEngine — multiple plans per goal (P4)', () => {
     await engine.react( 0 as any, tick as any, makeState( tick ), {} as any )
   }
 
-  it( 'stacks distinct drafts into separate plans for the same goal', async () => {
-    await feed( [ draftOp( 'goal-1', 'Outcome A' ) ], 1 )
-    await feed( [ draftOp( 'goal-1', 'Outcome B' ) ], 2 )
+  it('stacks distinct drafts into separate plans for the same goal', async () => {
+    await feed( [ draftOp('goal-1', 'Outcome A') ], 1 )
+    await feed( [ draftOp('goal-1', 'Outcome B') ], 2 )
 
-    const plans = engine.getPlansForGoal( 'goal-1' )
+    const plans = engine.getPlansForGoal('goal-1')
     expect( plans ).toHaveLength( 2 )
     expect( plans.map( p => p.id ) ).toEqual( [ 'plan-1', 'plan-2' ] )
     expect( plans.map( p => p.expectedOutcome ) ).toEqual( [ 'Outcome A', 'Outcome B' ] )
   } )
 
-  it( 'dedupes a re-asserted draft (same expectedOutcome) instead of stacking', async () => {
-    await feed( [ draftOp( 'goal-1', 'Same outcome' ) ], 1 )
-    await feed( [ draftOp( 'goal-1', 'Same outcome' ) ], 2 )
+  it('dedupes a re-asserted draft (same expectedOutcome) instead of stacking', async () => {
+    await feed( [ draftOp('goal-1', 'Same outcome') ], 1 )
+    await feed( [ draftOp('goal-1', 'Same outcome') ], 2 )
 
-    expect( engine.getPlansForGoal( 'goal-1' ) ).toHaveLength( 1 )
+    expect( engine.getPlansForGoal('goal-1') ).toHaveLength( 1 )
   } )
 
-  it( 'execute with explicit planId targets that specific plan', async () => {
-    await feed( [ draftOp( 'goal-1', 'Outcome A' ) ], 1 )   // plan-1
-    await feed( [ draftOp( 'goal-1', 'Outcome B' ) ], 2 )   // plan-2
+  it('execute with explicit planId targets that specific plan', async () => {
+    await feed( [ draftOp('goal-1', 'Outcome A') ], 1 )   // plan-1
+    await feed( [ draftOp('goal-1', 'Outcome B') ], 2 )   // plan-2
 
     // Without a planId this would hit the active (most-recent) plan, plan-2.
-    await feed( [ executeOp( 'plan-1', 'goal-1', 'Outcome A' ) ], 3 )
+    await feed( [ executeOp('plan-1', 'goal-1', 'Outcome A') ], 3 )
 
-    const all = engine.getPlansForGoal( 'goal-1' )
-    expect( all.find( p => p.id === 'plan-1' )!.status ).toBe( 'executing' )
-    expect( all.find( p => p.id === 'plan-2' )!.status ).toBe( 'draft' )
+    const all = engine.getPlansForGoal('goal-1')
+    expect( all.find( p => p.id === 'plan-1')!.status ).toBe('executing')
+    expect( all.find( p => p.id === 'plan-2')!.status ).toBe('draft')
   } )
 
-  it( 'runs two plans for one goal in parallel and completes each independently', async () => {
-    await feed( [ draftOp( 'goal-1', 'A' ) ], 1 )   // plan-1
-    await feed( [ draftOp( 'goal-1', 'B' ) ], 2 )   // plan-2
-    await feed( [ executeOp( 'plan-1', 'goal-1', 'A' ), executeOp( 'plan-2', 'goal-1', 'B' ) ], 3 )
+  it('runs two plans for one goal in parallel and completes each independently', async () => {
+    await feed( [ draftOp('goal-1', 'A') ], 1 )   // plan-1
+    await feed( [ draftOp('goal-1', 'B') ], 2 )   // plan-2
+    await feed( [ executeOp('plan-1', 'goal-1', 'A'), executeOp('plan-2', 'goal-1', 'B') ], 3 )
 
-    const all = engine.getPlansForGoal( 'goal-1' )
-    expect( all.every( p => p.status === 'executing' ) ).toBe( true )
-    expect( all.every( p => p.steps[ 0 ]?.status === 'active' ) ).toBe( true )
+    const all = engine.getPlansForGoal('goal-1')
+    expect( all.every( p => p.status === 'executing') ).toBe( true )
+    expect( all.every( p => p.steps[ 0 ]?.status === 'active') ).toBe( true )
 
-    engine.onCognitiveEvent( outcome( 'plan-1', 'step-0' ) )
-    engine.onCognitiveEvent( outcome( 'plan-2', 'step-0' ) )
+    engine.onCognitiveEvent( outcome('plan-1', 'step-0') )
+    engine.onCognitiveEvent( outcome('plan-2', 'step-0') )
     await engine.react( 0 as any, 4 as any, makeState( 4 ), {} as any )
 
-    expect( engine.getPlansForGoal( 'goal-1' ).find( p => p.id === 'plan-1' )!.status ).toBe( 'completed' )
-    expect( engine.getPlansForGoal( 'goal-1' ).find( p => p.id === 'plan-2' )!.status ).toBe( 'completed' )
+    expect( engine.getPlansForGoal('goal-1').find( p => p.id === 'plan-1')!.status ).toBe('completed')
+    expect( engine.getPlansForGoal('goal-1').find( p => p.id === 'plan-2')!.status ).toBe('completed')
   } )
 
-  it( 'getPlan returns the active plan; falls back to most-recent when all terminal', async () => {
-    await feed( [ draftOp( 'goal-1', 'A' ) ], 1 )
-    await feed( [ draftOp( 'goal-1', 'B' ) ], 2 )
-    expect( engine.getPlan( 'goal-1' )!.id ).toBe( 'plan-2' )   // most-recent active
+  it('getPlan returns the active plan; falls back to most-recent when all terminal', async () => {
+    await feed( [ draftOp('goal-1', 'A') ], 1 )
+    await feed( [ draftOp('goal-1', 'B') ], 2 )
+    expect( engine.getPlan('goal-1')!.id ).toBe('plan-2')   // most-recent active
 
     // Cancel both → all terminal → getPlan falls back to the most-recent (plan-2).
     await feed( [ { action: 'cancel', planId: 'plan-1', goalId: 'goal-1', status: 'rejected', steps: [], estimatedCost: 0, feasibility: 0 },
                   { action: 'cancel', planId: 'plan-2', goalId: 'goal-1', status: 'rejected', steps: [], estimatedCost: 0, feasibility: 0 } ], 3 )
-    expect( engine.getPlan( 'goal-1' )!.id ).toBe( 'plan-2' )
-    expect( engine.getPlan( 'goal-1' )!.status ).toBe( 'rejected' )
+    expect( engine.getPlan('goal-1')!.id ).toBe('plan-2')
+    expect( engine.getPlan('goal-1')!.status ).toBe('rejected')
   } )
 } )
 
 // ── Executive context: execution awareness ────────────────────
 
-describe( 'buildExecutiveContext — plan awareness (P4)', () => {
-  it( 'surfaces persisted plan entities into context.plans', async () => {
+describe('buildExecutiveContext — plan awareness (P4)', () => {
+  it('surfaces persisted plan entities into context.plans', async () => {
     const planEntity = {
       id: 'plan-1', type: 'plan',
       metadata: {

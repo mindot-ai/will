@@ -67,7 +67,7 @@ export function reconcileInvocation(
       predictedReward:  predicted.reward,
       predictedValence: predicted.valence,
       surprise,
-      description:      result.description ?? ( result.success ? 'The world confirmed the action.' : 'The world rejected the action.' ),
+      description:      result.description ?? ( result.success ? 'The world confirmed the action.' : 'The world rejected the action.'),
       mode:             'external',
       tick,
       reconciled:       true,

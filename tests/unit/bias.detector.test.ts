@@ -16,7 +16,7 @@ import type {
 } from '#core/types'
 import type { EngineResult } from '#cognition/types'
 
-const ctx = createContext( 'sim', 'run', 1 )
+const ctx = createContext('sim', 'run', 1 )
 
 /** A state with 3 high-confidence / low-evidence self-beliefs → triggers
  *  confirmation_bias (and overgeneralization) detection. */
@@ -37,30 +37,30 @@ function confidenceOf( res: EngineResult, biasType: string ): number | undefined
 const reflection = ( ...biases: string[] ) =>
   ( { type: 'executive.self.reflection', salience: 0.5, payload: { identifiedBiases: biases } } as never )
 
-describe( 'BiasDetector — executive corroboration', () => {
-  it( 'boosts a detected bias the executive independently named (fuzzy match)', async () => {
+describe('BiasDetector — executive corroboration', () => {
+  it('boosts a detected bias the executive independently named (fuzzy match)', async () => {
     const base = confidenceOf(
       await new BiasDetector({ scanIntervalTicks: 0 } ).react( 0 as Duration, 1 as Tick, selfBeliefState(), ctx ),
       'confirmation_bias',
     )
 
     const b = new BiasDetector({ scanIntervalTicks: 0 } )
-    b.onCognitiveEvent( reflection( 'confirmation bias' ) )   // free-text vs code 'confirmation_bias'
-    const boosted = confidenceOf( await b.react( 0 as Duration, 1 as Tick, selfBeliefState(), ctx ), 'confirmation_bias' )
+    b.onCognitiveEvent( reflection('confirmation bias') )   // free-text vs code 'confirmation_bias'
+    const boosted = confidenceOf( await b.react( 0 as Duration, 1 as Tick, selfBeliefState(), ctx ), 'confirmation_bias')
 
     expect( base ).toBeGreaterThan( 0 )
     expect( boosted! ).toBeCloseTo( base! + 0.15, 5 )
   })
 
-  it( 'does not boost when the executive named an unrelated bias', async () => {
+  it('does not boost when the executive named an unrelated bias', async () => {
     const base = confidenceOf(
       await new BiasDetector({ scanIntervalTicks: 0 } ).react( 0 as Duration, 1 as Tick, selfBeliefState(), ctx ),
       'confirmation_bias',
     )
 
     const b = new BiasDetector({ scanIntervalTicks: 0 } )
-    b.onCognitiveEvent( reflection( 'anchoring' ) )
-    const same = confidenceOf( await b.react( 0 as Duration, 1 as Tick, selfBeliefState(), ctx ), 'confirmation_bias' )
+    b.onCognitiveEvent( reflection('anchoring') )
+    const same = confidenceOf( await b.react( 0 as Duration, 1 as Tick, selfBeliefState(), ctx ), 'confirmation_bias')
 
     expect( same ).toBeCloseTo( base!, 5 )
   })

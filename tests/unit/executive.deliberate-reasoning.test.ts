@@ -29,18 +29,18 @@ const run = ( resp: string | Error ) =>
     proposeTemperature: 0.9,
   } )
 
-describe( 'proposeCandidates — shared System 2 propose pass', () => {
-  it( 'parses the candidate set from a well-formed ideation response', async () => {
-    const out = await run( '```json\n{"candidates":[{"approach":"ask","description":"d","upside":"u","risk":"r"}]}\n```' )
+describe('proposeCandidates — shared System 2 propose pass', () => {
+  it('parses the candidate set from a well-formed ideation response', async () => {
+    const out = await run('```json\n{"candidates":[{"approach":"ask","description":"d","upside":"u","risk":"r"}]}\n```')
     expect( out ).toHaveLength( 1 )
-    expect( out![0]!.approach ).toBe( 'ask' )
+    expect( out![0]!.approach ).toBe('ask')
   } )
 
-  it( 'degrades to undefined when the response has no candidates (→ System 1)', async () => {
-    expect( await run( '{"actions":[]}' ) ).toBeUndefined()
+  it('degrades to undefined when the response has no candidates (→ System 1)', async () => {
+    expect( await run('{"actions":[]}') ).toBeUndefined()
   } )
 
-  it( 'degrades to undefined when the propose call throws (never breaks the tick)', async () => {
-    expect( await run( new Error( 'provider 500' ) ) ).toBeUndefined()
+  it('degrades to undefined when the propose call throws (never breaks the tick)', async () => {
+    expect( await run( new Error('provider 500') ) ).toBeUndefined()
   } )
 } )

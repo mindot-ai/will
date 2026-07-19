@@ -25,9 +25,9 @@ const retry = () =>
 const stateWith = ( t: number, base?: Record<string, number>, prior?: Record<string, number> ) => {
   const entities = new Map<string, any>()
   if( base )
-    entities.set( 'engine-config-planning', { id: 'engine-config-planning', type: 'engine-config', metadata: { params: base } } )
+    entities.set('engine-config-planning', { id: 'engine-config-planning', type: 'engine-config', metadata: { params: base } } )
   if( prior )
-    entities.set( 'persona-prior', {
+    entities.set('persona-prior', {
       id: 'persona-prior', type: 'persona.prior',
       metadata: { priors: { 'engine-config-planning': prior }, version: 1, updatedAtTick: t },
     } )
@@ -54,23 +54,23 @@ function setup() {
   return { engine, decide: () => decide! }
 }
 
-describe( 'PlanningEngine — Channel A dispositions read from the persona-prior mirror', () => {
-  it( 'a base maxStepRetries of 0 (from state) exhausts retries immediately', async () => {
+describe('PlanningEngine — Channel A dispositions read from the persona-prior mirror', () => {
+  it('a base maxStepRetries of 0 (from state) exhausts retries immediately', async () => {
     const { engine, decide } = setup()
     await engine.react( 0 as any, 1 as any, stateWith( 1, { maxStepRetries: 0 } ), {} as any )
-    engine.onCognitiveEvent( outcome( 'plan-1', 'step-0', false, 0.1 ) )
+    engine.onCognitiveEvent( outcome('plan-1', 'step-0', false, 0.1 ) )
     decide()( retry() )
-    expect( engine.getPlan( 'goal-1' )!.steps[ 0 ]?.status ).toBe( 'failed' )   // cap 0 → no re-dispatch
+    expect( engine.getPlan('goal-1')!.steps[ 0 ]?.status ).toBe('failed')   // cap 0 → no re-dispatch
   } )
 
-  it( 'a metacog-developed persona-prior delta lifts the cap so a stuck step is re-attempted', async () => {
+  it('a metacog-developed persona-prior delta lifts the cap so a stuck step is re-attempted', async () => {
     const { engine, decide } = setup()
     // base 0 ⊕ persona-prior +5 → effective 5 → conscientious follow-through retries.
     await engine.react( 0 as any, 1 as any, stateWith( 1, { maxStepRetries: 0 }, { maxStepRetries: 5 } ), {} as any )
-    engine.onCognitiveEvent( outcome( 'plan-1', 'step-0', false, 0.1 ) )
+    engine.onCognitiveEvent( outcome('plan-1', 'step-0', false, 0.1 ) )
     decide()( retry() )
-    const s = engine.getPlan( 'goal-1' )!.steps[ 0 ]
-    expect( s?.status ).toBe( 'active' )   // reset to pending → re-activated on the frontier
+    const s = engine.getPlan('goal-1')!.steps[ 0 ]
+    expect( s?.status ).toBe('active')   // reset to pending → re-activated on the frontier
     expect( s?.retries ).toBe( 1 )
   } )
 } )

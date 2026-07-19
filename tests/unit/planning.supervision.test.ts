@@ -40,43 +40,43 @@ function setup() {
   return { engine, bus, decide: () => decide! }
 }
 
-describe( 'PlanningEngine — replan is surfaced + measured (Phase 2 remainder)', () => {
-  it( 'a replan that rewrites steps raises plan.replanned for the master', async () => {
+describe('PlanningEngine — replan is surfaced + measured (Phase 2 remainder)', () => {
+  it('a replan that rewrites steps raises plan.replanned for the master', async () => {
     const { engine, bus, decide } = setup()
     const replans: Array<{ payload: any }> = []
-    bus.subscribe( 'collector', [ 'plan.replanned' ], e => { replans.push( { payload: e.payload } ) } )
+    bus.subscribe('collector', [ 'plan.replanned' ], e => { replans.push( { payload: e.payload } ) } )
 
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )
-    engine.onCognitiveEvent( outcome( 'plan-1', 'step-0' ) )
+    engine.onCognitiveEvent( outcome('plan-1', 'step-0') )
     decide()( replanWith( [ step(), step() ] ) )   // rewrite to 2 steps
 
     expect( replans ).toHaveLength( 1 )
-    expect( replans[ 0 ]?.payload.planId ).toBe( 'plan-1' )
+    expect( replans[ 0 ]?.payload.planId ).toBe('plan-1')
     expect( replans[ 0 ]?.payload.stepCount ).toBe( 2 )
-    expect( engine.getPlan( 'goal-1' )!.steps ).toHaveLength( 2 )
+    expect( engine.getPlan('goal-1')!.steps ).toHaveLength( 2 )
   } )
 
-  it( 'an empty replan (no steps) does not raise the signal', async () => {
+  it('an empty replan (no steps) does not raise the signal', async () => {
     const { engine, bus, decide } = setup()
     const replans: any[] = []
-    bus.subscribe( 'collector', [ 'plan.replanned' ], e => { replans.push( e ) } )
+    bus.subscribe('collector', [ 'plan.replanned' ], e => { replans.push( e ) } )
 
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )
-    engine.onCognitiveEvent( outcome( 'plan-1', 'step-0' ) )
+    engine.onCognitiveEvent( outcome('plan-1', 'step-0') )
     decide()( replanWith( [] ) )   // directive only, no revised steps
 
     expect( replans ).toHaveLength( 0 )
   } )
 
-  it( 'supervisory decisions are tallied into planning.supervision.* metrics', async () => {
+  it('supervisory decisions are tallied into planning.supervision.* metrics', async () => {
     const { engine, decide } = setup()
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )
-    engine.onCognitiveEvent( outcome( 'plan-1', 'step-0' ) )
+    engine.onCognitiveEvent( outcome('plan-1', 'step-0') )
     decide()( replanWith( [ step() ] ) )
 
     const r = await engine.react( 0 as any, 2 as any, makeState( 2 ), {} as any )
     const m = new Map( r.commands!.metrics as Array<[ string, number ]> )
-    expect( m.get( 'planning.supervision.replan' ) ).toBe( 1 )
-    expect( m.get( 'planning.supervision.abandon' ) ).toBe( 0 )
+    expect( m.get('planning.supervision.replan') ).toBe( 1 )
+    expect( m.get('planning.supervision.abandon') ).toBe( 0 )
   } )
 } )

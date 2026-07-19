@@ -293,15 +293,15 @@ export class PromptFactory {
       const stat  = identity.traitStats?.[ t.k ]
       if( stat ){
         const norm = normEmphasis( t.v, stat.mean )                      // B — vs my own norm
-        if( norm ) quals.push( `${norm} my norm` )
-        if( stat.shiftDir > 0 ) quals.push( 'rising lately' )            // C — recent shift
-        else if( stat.shiftDir < 0 ) quals.push( 'easing lately' )
+        if( norm ) quals.push(`${norm} my norm`)
+        if( stat.shiftDir > 0 ) quals.push('rising lately')            // C — recent shift
+        else if( stat.shiftDir < 0 ) quals.push('easing lately')
       }
-      return `${t.k} (${quals.join( ', ' )})`
+      return `${t.k} (${quals.join(', ')})`
     }
 
     const traitsLine = notableTraits.length > 0
-      ? `**Traits:** ${notableTraits.map( surfaceTrait ).join( ', ' )}`
+      ? `**Traits:** ${notableTraits.map( surfaceTrait ).join(', ')}`
       : ''
 
     const bd = context.behavioralDisposition
@@ -312,17 +312,17 @@ export class PromptFactory {
       : ''
 
     const selfTuningLine = context.selfTuning && context.selfTuning.length > 0
-      ? `**Self-tuning (how I've adapted my own mind):** ${context.selfTuning.join( '; ' )}. `
+      ? `**Self-tuning (how I've adapted my own mind):** ${context.selfTuning.join('; ')}. `
         + `These are involuntary adjustments my own faculties have made in response to patterns they noticed in me — not deliberate choices. I can reflect on why they happened.`
       : ''
 
     const identityBlock = [
-      `**Values:** ${identity.values.length > 0 ? identity.values.join( ', ' ) : 'No values defined yet.'}`,
+      `**Values:** ${identity.values.length > 0 ? identity.values.join(', ') : 'No values defined yet.'}`,
       traitsLine,
       behavioralLine,
       selfTuningLine,
       `**Communication style:** ${identity.style}`,
-    ].filter( Boolean ).join( '\n' )
+    ].filter( Boolean ).join('\n')
 
     // Mode-aware role description — master is the cognitive core;
     // a facet is a focused attentional instance with shared identity.
@@ -344,7 +344,7 @@ export class PromptFactory {
     const cleanIdentityPrompt = identity.prompt
       // Strip a forged/duplicated "## Who I Am" / "## Who You Are" *header* (PMA
       // templates include it) while keeping the persona content beneath it.
-      .replace( /^##\s*Who (?:I Am|You Are)[^\n]*\n?/m, '' )
+      .replace( /^##\s*Who (?:I Am|You Are)[^\n]*\n?/m, '')
       .trim()
 
     return `${cleanIdentityPrompt}
@@ -596,7 +596,7 @@ completionType guide:
       focusSection,
       focus.instructions ? `## Focus Instructions\n${focus.instructions.trim()}` : '',
       reportContent      ? `## Current Report\n${reportContent.trim()}`          : '',
-    ].filter( Boolean ).join( '\n\n' )
+    ].filter( Boolean ).join('\n\n')
 
     const outputFormatBlock = outputFormat
       ? `\n\n${outputFormat}`
@@ -607,8 +607,8 @@ completionType guide:
     const ideationBlock = ( ideationCandidates && ideationCandidates.length > 0 )
       ? `## Candidate Approaches (I generated these — weigh them, then commit)\n${
           ideationCandidates
-            .map( ( c, i ) => `${i + 1}. **${c.approach || c.description}** — ${c.description}\n   ↑ upside: ${c.upside}\n   ↓ risk: ${c.risk}` )
-            .join( '\n' )
+            .map( ( c, i ) => `${i + 1}. **${c.approach || c.description}** — ${c.description}\n   ↑ upside: ${c.upside}\n   ↓ risk: ${c.risk}`)
+            .join('\n')
         }\n\nChoose among (or improve on) these, then in "reasoning" say briefly why I rejected the others.`
       : ''
 
@@ -628,10 +628,10 @@ ${energyGuidance}${stressGuidance}${sleepGuidance}${energyBudget}`
 Dominant emotion: ${context.affect.dominantEmotion}
 Valence: ${context.affect.valence.toFixed( 2 )} (${context.affect.valence > 0 ? 'positive' : 'negative'})
 Arousal: ${context.affect.arousal.toFixed( 2 )} (${context.affect.arousal > 0.6 ? 'highly activated' : 'calm'})
-Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.length > 0 ? `\nBlended states: ${context.affect.blends.join( ', ' )}` : ''}`
+Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.length > 0 ? `\nBlended states: ${context.affect.blends.join(', ')}` : ''}`
 
     // ── Scope-gated cognitive sections (each '' when out of scope or empty) ──
-    const goalsBlock = has( 'goals' )
+    const goalsBlock = has('goals')
       ? `## Active Goals\n${context.goals.map( g => {
           const currentTick = state.tick as unknown as number
           const isOverdue   = g.deadline !== undefined && currentTick > g.deadline
@@ -640,22 +640,22 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
             ? ` [last action: ${g.lastActionType ?? 'action'} @ tick ${g.lastActionAttemptTick}]`
             : ''
           return `- [${g.id}]${overdueTag} ${g.description} (priority: ${( g.priority * 100 ).toFixed( 0 )}%, progress: ${( g.progress * 100 ).toFixed( 0 )}%, status: ${g.status}${actionHint})`
-        } ).join( '\n' ) || 'No active goals'}`
+        } ).join('\n') || 'No active goals'}`
       : ''
 
     // Master sees all plans; a facet's plans are scoped by requester (entityId)
     // and/or recall relevance (relevantPlanIds — recall-scoped awareness, Stage 2).
     const planRelevantIds = mode === 'master' ? undefined : context.relevantPlanIds
-    const plansBlock = has( 'plans' )
+    const plansBlock = has('plans')
       ? this._buildActivePlansSection( context.plans, focus.awarenessEntityId, planRelevantIds ).trim()
       : ''
 
-    const recentOutcomesBlock = has( 'recentActions' )
+    const recentOutcomesBlock = has('recentActions')
       ? this._buildRecentOutcomesSection( context.recentActions, state.tick ).trim()
       : ''
 
-    const perceptsBlock = has( 'percepts' )
-      ? `## Percepts (What I Notice)\n${context.percepts.slice( 0, 10 ).map( p => `- [${p.category}] ${p.summary} (salience: ${p.salience.toFixed( 2 )})` ).join( '\n' ) || 'Nothing notable'}`
+    const perceptsBlock = has('percepts')
+      ? `## Percepts (What I Notice)\n${context.percepts.slice( 0, 10 ).map( p => `- [${p.category}] ${p.summary} (salience: ${p.salience.toFixed( 2 )})`).join('\n') || 'Nothing notable'}`
       : ''
 
     // Host abilities afforded right now + what each is for. Framed as
@@ -664,19 +664,19 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
     const abilitiesBlock = ( context.abilities && context.abilities.length > 0 )
       ? `## Abilities Available Now\nThings I can do in this situation — name one as an action's "type" (with "args" for any specifics it needs) and my body enacts it:\n${context.abilities.map( a =>
           `- **${a.name}**${a.target ? ` (toward ${a.target})` : ''}${a.description ? ` — ${a.description}` : ''}`
-        ).join( '\n' )}`
+        ).join('\n')}`
       : ''
 
-    const ruminationsBlock = has( 'ruminations' )
-      ? `## Active Ruminations (retrieved memories & thoughts)\n${context.workingMemory.map( w => `- [${w.type}] ${w.summary} (activation: ${w.activation.toFixed( 2 )})` ).join( '\n' ) || 'Nothing actively held in mind'}`
+    const ruminationsBlock = has('ruminations')
+      ? `## Active Ruminations (retrieved memories & thoughts)\n${context.workingMemory.map( w => `- [${w.type}] ${w.summary} (activation: ${w.activation.toFixed( 2 )})`).join('\n') || 'Nothing actively held in mind'}`
       : ''
 
-    const memoriesBlock = has( 'memories' )
+    const memoriesBlock = has('memories')
       ? this._buildMemoriesSection( context.memories, state.tick )
       : ''
 
-    const beliefsBlock = has( 'beliefs' )
-      ? `## My Beliefs\n${context.beliefs.map( b => `- [${b.category}] ${b.statement} (confidence: ${( b.confidence * 100 ).toFixed( 0 )}%)` ).join( '\n' ) || 'No strong beliefs yet'}${context.beliefsOmitted > 0 ? `\n[+${context.beliefsOmitted} omitted — deduped or lower-ranked; full store intact]` : ''}`
+    const beliefsBlock = has('beliefs')
+      ? `## My Beliefs\n${context.beliefs.map( b => `- [${b.category}] ${b.statement} (confidence: ${( b.confidence * 100 ).toFixed( 0 )}%)`).join('\n') || 'No strong beliefs yet'}${context.beliefsOmitted > 0 ? `\n[+${context.beliefsOmitted} omitted — deduped or lower-ranked; full store intact]` : ''}`
       : ''
 
     // The Will's social models — its read on the people it knows (theory-of-mind, trust,
@@ -685,15 +685,15 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
     const socialBlock = ( context.knownEntities && context.knownEntities.length > 0 )
       ? `## People I Know\n${context.knownEntities.map( s => {
           const bits: string[] = []
-          if( s.intention ) bits.push( `seems to want: ${s.intention}` )
-          if( s.emotion )   bits.push( `seems to feel: ${s.emotion}` )
-          if( s.trust != null ) bits.push( `trust: ${( s.trust * 100 ).toFixed( 0 )}%` )
-          if( s.reliability != null && s.reliability !== 0.5 ) bits.push( `reliability: ${( s.reliability * 100 ).toFixed( 0 )}%` )
-          if( s.closeness != null && s.closeness > 0.1 ) bits.push( `closeness: ${( s.closeness * 100 ).toFixed( 0 )}%` )
+          if( s.intention ) bits.push(`seems to want: ${s.intention}`)
+          if( s.emotion )   bits.push(`seems to feel: ${s.emotion}`)
+          if( s.trust != null ) bits.push(`trust: ${( s.trust * 100 ).toFixed( 0 )}%`)
+          if( s.reliability != null && s.reliability !== 0.5 ) bits.push(`reliability: ${( s.reliability * 100 ).toFixed( 0 )}%`)
+          if( s.closeness != null && s.closeness > 0.1 ) bits.push(`closeness: ${( s.closeness * 100 ).toFixed( 0 )}%`)
           // The Will can know *someone* without their name yet — never leak the raw keid.
-          const who = s.name ?? ( s.kind === 'thing' ? 'something' : 'someone' )
-          return `- ${who}${bits.length ? ' — ' + bits.join( ', ' ) : ''}`
-        } ).join( '\n' )}`
+          const who = s.name ?? ( s.kind === 'thing' ? 'something' : 'someone')
+          return `- ${who}${bits.length ? ' — ' + bits.join(', ') : ''}`
+        } ).join('\n')}`
       : ''
 
     // Task focus — what the Will is committed to and the felt cost of switching away.
@@ -728,7 +728,7 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       identityNudge.trim(),
       ideationBlock,
       tailSections,
-    ].filter( Boolean ).join( '\n\n' )
+    ].filter( Boolean ).join('\n\n')
 
     return `${body}${outputFormatBlock}`
   }
@@ -742,7 +742,7 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
    * @param mode - 'facet' excludes REPLY from the available-tags list since
    *               facets never send messages.
    */
-  static buildOutputFormatInstruction( mode: 'master' | 'facet' = 'master' ): string {
+  static buildOutputFormatInstruction( mode: 'master' | 'facet' = 'master'): string {
     const availableTags = 'PLANS, BELIEFS, INTROSPECTION, NARRATIVE, IDENTITY, GOALS_NEW, GOALS_ABANDON, GOALS_REPRIORITIZE, SELF_OBS'
 
     return `\n\n## Response Format (REQUIRED)
@@ -801,10 +801,10 @@ Respond with a single JSON object (optionally wrapped in a \`\`\`json code block
    * Compute quality modulation from physiological state metrics.
    */
   static computeQualityModulation( state: ReadonlySimulationState ): number {
-    const sleepDegradation  = state.metrics.get( 'modulation.working_memory_degradation' ) ?? 1
-    const stressZone        = state.metrics.get( 'stress.zone' ) ?? 0
-    const cognitivePhase    = state.metrics.get( 'circadian.cognitive_phase' ) ?? 0.5
-    const energyDegradation = state.metrics.get( 'modulation.energy_degradation' ) ?? 1
+    const sleepDegradation  = state.metrics.get('modulation.working_memory_degradation') ?? 1
+    const stressZone        = state.metrics.get('stress.zone') ?? 0
+    const cognitivePhase    = state.metrics.get('circadian.cognitive_phase') ?? 0.5
+    const energyDegradation = state.metrics.get('modulation.energy_degradation') ?? 1
     const stressFactor      = stressZone <= 1 ? 1.0 : stressZone <= 2 ? 0.8 : 0.5
     return sleepDegradation * stressFactor * ( 0.8 + cognitivePhase * 0.4 ) * energyDegradation
   }
@@ -821,7 +821,7 @@ Respond with a single JSON object (optionally wrapped in a \`\`\`json code block
     const avgConf      = beliefCount > 0
       ? context.beliefs.reduce( ( s, b ) => s + b.confidence, 0 ) / beliefCount
       : 0
-    const episodicSize = state.metrics.get( 'memory.episodic_total' ) ?? 0
+    const episodicSize = state.metrics.get('memory.episodic_total') ?? 0
     const topSalience  = context.percepts[ 0 ]?.salience ?? 0
 
     const certainty = 0.30 * Math.min( beliefCount / 50, 1 ) +
@@ -902,13 +902,13 @@ Rest and sleep RESTORE energy. All other actions CONSUME energy. Do not let ener
     if( recentActionTypes.length === 0 ) return ''
 
     const recent       = recentActionTypes
-    const reflectCount = recent.filter( t => t === 'reflect' || t === 'observe' ).length
+    const reflectCount = recent.filter( t => t === 'reflect' || t === 'observe').length
     const warning      = reflectCount >= 3
-      ? `\n⚠️ **Action variety alert**: "${recent.filter( t => t === 'reflect' || t === 'observe' ).join( '", "' )}" dominated my last ${recent.length} cycles. Choose something DIFFERENT this cycle — e.g. learn, express_emotion, explore, communicate, set_goal, or rest.`
+      ? `\n⚠️ **Action variety alert**: "${recent.filter( t => t === 'reflect' || t === 'observe').join('", "')}" dominated my last ${recent.length} cycles. Choose something DIFFERENT this cycle — e.g. learn, express_emotion, explore, communicate, set_goal, or rest.`
       : ''
 
     return `## Recent Actions (last ${recent.length})
-${recent.map( ( t, i ) => `${i + 1}. ${t}` ).join( ' → ' )}${warning}
+${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
 
 `
   }
@@ -953,7 +953,7 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}` ).join( ' → ' )}${warning}
 
     const omitted = memories.length - lines.length
     const tail    = omitted > 0 ? `\n[+${omitted} omitted — over recall budget; full store intact]` : ''
-    return `## Relevant Memories\n${lines.join( '\n' )}${tail}`
+    return `## Relevant Memories\n${lines.join('\n')}${tail}`
   }
 
   private static _buildRecentOutcomesSection(
@@ -977,12 +977,12 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}` ).join( ' → ' )}${warning}
       return `- ${badge} **${a.type}** (tick ${a.tick}, ${age} ticks ago${planCtx})${outcome}`
     } )
 
-    const hasTimeout = recentActions.some( a => a.status === 'timed_out' )
+    const hasTimeout = recentActions.some( a => a.status === 'timed_out')
     const timeoutNote = hasTimeout
       ? '\n⚠️ **One or more actions timed out** — my body dispatched them but received no confirmation. Check if the external handler is working, or choose a different approach.'
       : ''
 
-    return `## Recent Action Outcomes\n${lines.join( '\n' )}${timeoutNote}\n\n`
+    return `## Recent Action Outcomes\n${lines.join('\n')}${timeoutNote}\n\n`
   }
 
   /**
@@ -1011,7 +1011,7 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}` ).join( ' → ' )}${warning}
 
     return `## Active Plans
 Set "planId" in a [PLANS] op to act on one of these; omit it to draft a new plan (I can run several per goal).
-${lines.join( '\n' )}
+${lines.join('\n')}
 
 `
   }
@@ -1020,7 +1020,7 @@ ${lines.join( '\n' )}
     let latest: { updatedAt: number; meta: Record<string, unknown> } | null = null
 
     for( const entity of state.entities.values() ){
-      if( entity.type !== 'introspection' ) continue
+      if( entity.type !== 'introspection') continue
 
       if( !latest || entity.updatedAt > latest.updatedAt )
         latest = { updatedAt: entity.updatedAt, meta: entity.metadata ?? {} }
@@ -1036,9 +1036,9 @@ ${lines.join( '\n' )}
     const recommendations = ( latest.meta[ 'recommendations' ]  as string[] ) ?? []
 
     let section = `## Recent Self-Reflection\n${explanation}`
-    if( biases.length > 0 )          section += `\nPatterns noticed: ${biases.join( '; ' )}`
-    if( lessons.length > 0 )         section += `\nLessons learned: ${lessons.join( '; ' )}`
-    if( recommendations.length > 0 ) section += `\nRecommendations: ${recommendations.join( '; ' )}`
+    if( biases.length > 0 )          section += `\nPatterns noticed: ${biases.join('; ')}`
+    if( lessons.length > 0 )         section += `\nLessons learned: ${lessons.join('; ')}`
+    if( recommendations.length > 0 ) section += `\nRecommendations: ${recommendations.join('; ')}`
 
     return section + '\n\n'
   }
@@ -1057,15 +1057,15 @@ ${lines.join( '\n' )}
 
     const GENERIC_STYLES = new Set([ 'natural and authentic', 'natural', 'authentic', '' ])
     const valuesEmpty    = identity.values.length === 0
-    const styleGeneric   = GENERIC_STYLES.has( ( identity.style ?? '' ).toLowerCase() )
+    const styleGeneric   = GENERIC_STYLES.has( ( identity.style ?? '').toLowerCase() )
 
     if( !valuesEmpty && !styleGeneric ) return ''
 
     const hints: string[] = []
-    if( valuesEmpty )   hints.push( 'My values list is empty — reflecting on what matters to me will help ground my decisions. Consider adding a `[IDENTITY_UPDATE]` block with `"values"` this cycle.' )
-    if( styleGeneric )  hints.push( 'My communication style is still generic — what truly characterises how I speak? A note in `[IDENTITY_UPDATE]` with `"style"` will make my voice more distinctly mine.' )
+    if( valuesEmpty )   hints.push('My values list is empty — reflecting on what matters to me will help ground my decisions. Consider adding a `[IDENTITY_UPDATE]` block with `"values"` this cycle.')
+    if( styleGeneric )  hints.push('My communication style is still generic — what truly characterises how I speak? A note in `[IDENTITY_UPDATE]` with `"style"` will make my voice more distinctly mine.')
 
-    return `\n\n## 💡 Identity Reflection (every ${NUDGE_INTERVAL} ticks)\n${hints.join( '\n' )}`
+    return `\n\n## 💡 Identity Reflection (every ${NUDGE_INTERVAL} ticks)\n${hints.join('\n')}`
   }
 }
 

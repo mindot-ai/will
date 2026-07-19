@@ -39,49 +39,49 @@ function setupDeliberate( config: Record<string, unknown> = {} ) {
   return { engine, bus, decide: () => decide!, destroyed: () => destroyed }
 }
 
-describe( 'PlanningEngine — extended decision vocabulary', () => {
-  it( 'retry re-attempts the failed step (and counts retries)', async () => {
+describe('PlanningEngine — extended decision vocabulary', () => {
+  it('retry re-attempts the failed step (and counts retries)', async () => {
     const { engine, decide } = setupDeliberate()
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )
-    expect( engine.getPlan( 'goal-1' )!.executionTier ).toBe( 'deliberate' )
+    expect( engine.getPlan('goal-1')!.executionTier ).toBe('deliberate')
 
-    engine.onCognitiveEvent( outcome( 'plan-1', 'step-0', false, 0.1 ) )
-    expect( engine.getPlan( 'goal-1' )!.steps[ 0 ]?.status ).toBe( 'failed' )
+    engine.onCognitiveEvent( outcome('plan-1', 'step-0', false, 0.1 ) )
+    expect( engine.getPlan('goal-1')!.steps[ 0 ]?.status ).toBe('failed')
 
-    decide()( decision( 'retry' ) )
-    const s = engine.getPlan( 'goal-1' )!.steps[ 0 ]
-    expect( s?.status ).toBe( 'active' )   // reset to pending → re-activated on the frontier
+    decide()( decision('retry') )
+    const s = engine.getPlan('goal-1')!.steps[ 0 ]
+    expect( s?.status ).toBe('active')   // reset to pending → re-activated on the frontier
     expect( s?.retries ).toBe( 1 )
   } )
 
-  it( 'retry is capped (maxStepRetries) — exhausted retries leave the step failed', async () => {
+  it('retry is capped (maxStepRetries) — exhausted retries leave the step failed', async () => {
     const { engine, decide } = setupDeliberate( { maxStepRetries: 0 } )
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )
 
-    engine.onCognitiveEvent( outcome( 'plan-1', 'step-0', false, 0.1 ) )
-    decide()( decision( 'retry' ) )   // cap 0 → exhausted immediately
-    expect( engine.getPlan( 'goal-1' )!.steps[ 0 ]?.status ).toBe( 'failed' )
+    engine.onCognitiveEvent( outcome('plan-1', 'step-0', false, 0.1 ) )
+    decide()( decision('retry') )   // cap 0 → exhausted immediately
+    expect( engine.getPlan('goal-1')!.steps[ 0 ]?.status ).toBe('failed')
   } )
 
-  it( 'pause holds the plan (status paused) and frees the facet', async () => {
+  it('pause holds the plan (status paused) and frees the facet', async () => {
     const { engine, decide, destroyed } = setupDeliberate()
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )
 
-    decide()( decision( 'pause' ) )
-    expect( engine.getPlan( 'goal-1' )!.status ).toBe( 'paused' )
+    decide()( decision('pause') )
+    expect( engine.getPlan('goal-1')!.status ).toBe('paused')
     expect( destroyed() ).toBe( 1 )   // facet torn down
   } )
 
-  it( 'escalate holds the plan and raises a plan.escalated signal for the master', async () => {
+  it('escalate holds the plan and raises a plan.escalated signal for the master', async () => {
     const { engine, bus, decide } = setupDeliberate()
     const escalations: Array<{ payload: any }> = []
-    bus.subscribe( 'collector', [ 'plan.escalated' ], e => { escalations.push( { payload: e.payload } ) } )
+    bus.subscribe('collector', [ 'plan.escalated' ], e => { escalations.push( { payload: e.payload } ) } )
 
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )
-    decide()( decision( 'escalate' ) )
+    decide()( decision('escalate') )
 
-    expect( engine.getPlan( 'goal-1' )!.status ).toBe( 'paused' )
+    expect( engine.getPlan('goal-1')!.status ).toBe('paused')
     expect( escalations ).toHaveLength( 1 )
-    expect( escalations[ 0 ]?.payload.planId ).toBe( 'plan-1' )
+    expect( escalations[ 0 ]?.payload.planId ).toBe('plan-1')
   } )
 } )

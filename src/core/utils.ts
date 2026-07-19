@@ -52,7 +52,7 @@ export function createPRNG( seed: number ): SeededPRNG {
  */
 export function deepFreeze<T>( value: T ): T {
   // Only objects/arrays/functions are freezable; primitives are immutable already.
-  if( value === null || typeof value !== 'object' ) return value
+  if( value === null || typeof value !== 'object') return value
   if( Object.isFrozen( value ) ) return value
 
   // Freeze the container first so a cyclic reference back to it hits the

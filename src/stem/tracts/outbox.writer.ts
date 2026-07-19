@@ -53,7 +53,7 @@ export class OutboxWriter {
     this._sessionLogger = logger
   }
 
-  private _genId( suffix = '' ): string {
+  private _genId( suffix = ''): string {
     return `outbox-${ this._willId }-${ ++this._seq }${ suffix }`
   }
 
@@ -61,7 +61,7 @@ export class OutboxWriter {
    * Push one canonical outbox row and return its generated id. The single point
    * where the row shape is materialized — all producers funnel through here.
    */
-  enqueue( row: OutboxRow, idSuffix = '' ): string {
+  enqueue( row: OutboxRow, idSuffix = ''): string {
     const id = this._genId( idSuffix )
     this._outbox.push({
       id,
@@ -105,7 +105,7 @@ export class OutboxWriter {
 
     const ids: string[] = []
     bubbles.forEach( ( bubble, i ) => {
-      if( !pushToOutbox ){ ids.push( this._genId( `-${ i }` ) ); return }
+      if( !pushToOutbox ){ ids.push( this._genId(`-${ i }`) ); return }
       logger.info(`[outbox-writer] reply → ${ entityId } bubble[${ i }] "${ bubble.slice( 0, 80 ) }"`)
       ids.push( this.enqueue({
         targetEntityId:   entityId,
@@ -113,7 +113,7 @@ export class OutboxWriter {
         content:          bubble,
         effectorName:      'text',
         threadId,
-      }, `-${ i }` ) )
+      }, `-${ i }`) )
     } )
 
     this._sessionLogger?.write({

@@ -22,24 +22,24 @@ function make(){
   return { writer, outbox }
 }
 
-describe( 'OutboxWriter.enqueueReply — pushToOutbox', () => {
-  it( 'pushes bubbles to the outbox by default', () => {
+describe('OutboxWriter.enqueueReply — pushToOutbox', () => {
+  it('pushes bubbles to the outbox by default', () => {
     const { writer, outbox } = make()
     const ids = writer.enqueueReply({ entityId: 'a', entityName: 'A', bubbles: ['hi', 'yo'] })
     expect( ids ).toHaveLength( 2 )
     expect( outbox ).toHaveLength( 2 )
     expect( outbox.map( m => m.content ) ).toEqual( ['hi', 'yo'] )
-    expect( outbox.every( m => m.effectorName === 'text' ) ).toBe( true )
+    expect( outbox.every( m => m.effectorName === 'text') ).toBe( true )
   } )
 
-  it( 'pushToOutbox=false returns ids but does NOT push to the outbox', () => {
+  it('pushToOutbox=false returns ids but does NOT push to the outbox', () => {
     const { writer, outbox } = make()
     const ids = writer.enqueueReply({ entityId: 'a', entityName: 'A', bubbles: ['hi'], pushToOutbox: false })
     expect( ids ).toHaveLength( 1 )      // ids still generated (for correlation)
     expect( outbox ).toHaveLength( 0 )   // but nothing queued — transport already delivered
   } )
 
-  it( 'returns an empty array when there are no bubbles', () => {
+  it('returns an empty array when there are no bubbles', () => {
     const { writer, outbox } = make()
     const ids = writer.enqueueReply({ entityId: 'a', entityName: 'A', bubbles: [] })
     expect( ids ).toEqual( [] )
@@ -47,20 +47,20 @@ describe( 'OutboxWriter.enqueueReply — pushToOutbox', () => {
   } )
 } )
 
-describe( 'OutboxWriter.enqueue — canonical row', () => {
-  it( 'stamps id + defaults and returns the generated id', () => {
+describe('OutboxWriter.enqueue — canonical row', () => {
+  it('stamps id + defaults and returns the generated id', () => {
     const { writer, outbox } = make()
     const id = writer.enqueue({ targetEntityId: 'bob', content: 'wave', effectorName: 'gesture', gestureType: 'wave' })
     expect( outbox ).toHaveLength( 1 )
     const row = outbox[0]!
     expect( row.id ).toBe( id )
-    expect( row.effectorName ).toBe( 'gesture' )
-    expect( row.gestureType ).toBe( 'wave' )
-    expect( row.deliveryStatus ).toBe( 'pending' )
+    expect( row.effectorName ).toBe('gesture')
+    expect( row.gestureType ).toBe('wave')
+    expect( row.deliveryStatus ).toBe('pending')
     expect( row.createdAtTick ).toBe( 0 )
   } )
 
-  it( 'omits optional fields that are not provided', () => {
+  it('omits optional fields that are not provided', () => {
     const { writer, outbox } = make()
     writer.enqueue({ targetEntityId: '*', content: 'all hands', effectorName: 'broadcast' })
     const row = outbox[0]!
@@ -70,8 +70,8 @@ describe( 'OutboxWriter.enqueue — canonical row', () => {
   } )
 } )
 
-describe( 'OutboxWriter — deterministic ids (replay fidelity)', () => {
-  it( 'mints monotonic per-Will ids, identical across two equal runs', () => {
+describe('OutboxWriter — deterministic ids (replay fidelity)', () => {
+  it('mints monotonic per-Will ids, identical across two equal runs', () => {
     const run = () => {
       const w = new OutboxWriter({ outbox: [], willId: 'w' })
       return [

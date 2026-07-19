@@ -80,7 +80,7 @@ interface Profile {
 }
 
 async function measureProfile(): Promise<Profile> {
-  const { simulation } = assembleMind( 'behavioral-profile', makeConfig() )
+  const { simulation } = assembleMind('behavioral-profile', makeConfig() )
   const sm = simulation.stateManager
 
   let executiveCycles = 0
@@ -102,24 +102,24 @@ async function measureProfile(): Promise<Profile> {
 
     await simulation.step( 1 )
     const s = sm.snapshot()
-    const stress = s.metrics.get( 'stress.load' ) ?? 0
+    const stress = s.metrics.get('stress.load') ?? 0
 
     // Quiet-phase signatures
     if( t <= QUIET_END ){
-      if( s.metrics.has( 'agency.selection.deliberate' ) ){
+      if( s.metrics.has('agency.selection.deliberate') ){
         selectionTicks++
-        if( ( s.metrics.get( 'agency.selection.deliberate' ) ?? 0 ) > 0 ) deliberateTicks++
+        if( ( s.metrics.get('agency.selection.deliberate') ?? 0 ) > 0 ) deliberateTicks++
       }
       // Track the committed intent's schema — a switch is a change between ticks.
       let schema: string | null = null
       for( const e of s.entities.values() )
-        if( e.type === 'agency.intent' ){ schema = String( e.metadata?.schema ?? e.id ); break }
+        if( e.type === 'agency.intent'){ schema = String( e.metadata?.schema ?? e.id ); break }
       if( schema !== null && lastIntentSchema !== null && schema !== lastIntentSchema ) intentSwitches++
       if( schema !== null ) lastIntentSchema = schema
 
       // Count executive cycles via executive.last_tick transitions (the mock
       // path writes no llm.total_calls — token metrics are live-call only).
-      const execTick = s.metrics.get( 'executive.last_tick' ) ?? -1
+      const execTick = s.metrics.get('executive.last_tick') ?? -1
       if( execTick !== lastExecutiveTick ){ if( lastExecutiveTick !== -1 || execTick >= 0 ) executiveCycles++; lastExecutiveTick = execTick }
 
       if( t > QUIET_END - 100 ) quietStressTail.push( stress )
@@ -149,11 +149,11 @@ async function measureProfile(): Promise<Profile> {
     threatStressPeak:         stressPeak,
     threatResponseTicks,
     stressRecoveryTicks,
-    habitualCountEnd:         final.metrics.get( 'agency.habitual.count' ) ?? 0,
+    habitualCountEnd:         final.metrics.get('agency.habitual.count') ?? 0,
   }
 }
 
-describe( 'behavioral profile — emergent-constant regression bands', () => {
+describe('behavioral profile — emergent-constant regression bands', () => {
   beforeAll( () => {
     setLogger( { debug: () => {}, info: () => {}, warn: () => {}, error: console.error } )
     for( const k of Object.keys( ENV_OVERRIDES ) ){
@@ -172,11 +172,11 @@ describe( 'behavioral profile — emergent-constant regression bands', () => {
     }
   })
 
-  it( 'the scripted life stays inside the healthy bands', async () => {
+  it('the scripted life stays inside the healthy bands', async () => {
     const p = await measureProfile()
 
     // Always print — tuning PRs read this to update bands consciously.
-    console.log( '─── behavioral profile:', JSON.stringify( p, null, 2 ) )
+    console.log('─── behavioral profile:', JSON.stringify( p, null, 2 ) )
 
     // ── Dual-process economy: System 1 must dominate a quiet life ──
     // (mock executive: interval 50 + salience charges ⇒ a handful per 100 ticks;
@@ -191,12 +191,12 @@ describe( 'behavioral profile — emergent-constant regression bands', () => {
     expect( p.intentSwitchesPer100Quiet ).toBeLessThan( 60 )
 
     // ── Threat responsiveness: stress rises promptly under a hostile threat ──
-    expect( p.threatResponseTicks, 'stress never responded to the threat' ).toBeGreaterThan( 0 )
+    expect( p.threatResponseTicks, 'stress never responded to the threat').toBeGreaterThan( 0 )
     expect( p.threatResponseTicks ).toBeLessThanOrEqual( 30 )
     expect( p.threatStressPeak ).toBeGreaterThan( p.quietStressBaseline + 0.1 )
 
     // ── Regulation: stress recovers after the threat deactivates ──
-    expect( p.stressRecoveryTicks, 'stress never recovered after threat removal' ).toBeGreaterThan( 0 )
+    expect( p.stressRecoveryTicks, 'stress never recovered after threat removal').toBeGreaterThan( 0 )
     expect( p.stressRecoveryTicks ).toBeLessThanOrEqual( 250 )
 
     // ── Growth engine: a lived life proceduralizes something ──

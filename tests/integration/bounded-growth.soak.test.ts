@@ -85,20 +85,20 @@ async function runSoak( id: string, totalTicks: number ): Promise<void> {
   // (warm-up populates beliefs/config/identity entities; steady state churns).
   const secondHalfGrowth = q4.entities - q2.entities
   expect( secondHalfGrowth,
-    `entities grew ${q2.entities}→${q4.entities} over the second half — per-tick leak?` )
+    `entities grew ${q2.entities}→${q4.entities} over the second half — per-tick leak?`)
     .toBeLessThan( Math.max( 60, q1.entities * 0.5 ) )
 
   // ── 2. No single type accretes in the second half ───────────
   for( const [ type, count ] of q4.byType ){
     const at2 = q2.byType.get( type ) ?? 0
     expect( count - at2,
-      `entity type "${type}" grew ${at2}→${count} in the second half — unbounded accretion` )
+      `entity type "${type}" grew ${at2}→${count} in the second half — unbounded accretion`)
       .toBeLessThan( Math.max( 40, at2 * 0.5 + 20 ) )
   }
 
   // ── 3. Metric vocabulary is fixed ────────────────────────────
   expect( q4.metricKeys - q2.metricKeys,
-    `metric keys grew ${q2.metricKeys}→${q4.metricKeys} — tick-stamped key leak?` )
+    `metric keys grew ${q2.metricKeys}→${q4.metricKeys} — tick-stamped key leak?`)
     .toBeLessThan( 20 )
 
   // ── 4. Tick latency does not degrade ─────────────────────────
@@ -107,10 +107,10 @@ async function runSoak( id: string, totalTicks: number ): Promise<void> {
   const latencies = ( simulation.orchestrator as unknown as { tickLatencies: readonly number[] } ).tickLatencies
   const recent = latencies.slice( -500 )
   const mean = recent.reduce( ( s, v ) => s + v, 0 ) / recent.length
-  expect( mean, `mean tick latency ${mean.toFixed( 2 )}ms after ${totalTicks} ticks` ).toBeLessThan( 10 )
+  expect( mean, `mean tick latency ${mean.toFixed( 2 )}ms after ${totalTicks} ticks`).toBeLessThan( 10 )
 }
 
-describe( 'bounded growth — the persistence soak', () => {
+describe('bounded growth — the persistence soak', () => {
   beforeAll( () => {
     // Quiet the engine for the long run — RESTORED in afterAll: setLogger is a
     // process-global sink, and leaving it installed pollutes later test files
@@ -132,11 +132,11 @@ describe( 'bounded growth — the persistence soak', () => {
     }
   })
 
-  it( 'a quiet mind stays bounded over 10K ticks', async () => {
-    await runSoak( 'soak-10k', 10_000 )
+  it('a quiet mind stays bounded over 10K ticks', async () => {
+    await runSoak('soak-10k', 10_000 )
   }, 120_000 )
 
-  it.skipIf( !process.env['WILL_SOAK'] )( 'a quiet mind stays bounded over 100K ticks (WILL_SOAK=1)', async () => {
-    await runSoak( 'soak-100k', 100_000 )
+  it.skipIf( !process.env['WILL_SOAK'] )('a quiet mind stays bounded over 100K ticks (WILL_SOAK=1)', async () => {
+    await runSoak('soak-100k', 100_000 )
   }, 900_000 )
 } )

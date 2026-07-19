@@ -36,67 +36,67 @@ function regulate( a: AttentionAllocator, effortTarget: number ): void {
 
 const tickReact = ( a: AttentionAllocator, tick: number ) => a.react( 1000, tick as any, freshState(), CTX )
 
-describe( 'AttentionAllocator — voluntary effort (Option C)', () => {
-  it( 'starts at the homeostatic baseline (0.7)', async () => {
+describe('AttentionAllocator — voluntary effort (Option C)', () => {
+  it('starts at the homeostatic baseline (0.7)', async () => {
     const a = new AttentionAllocator()
     const r = await tickReact( a, 1 )
-    expect( metricVal( r, 'attention.effort' ) ).toBeCloseTo( 0.7, 5 )
+    expect( metricVal( r, 'attention.effort') ).toBeCloseTo( 0.7, 5 )
   } )
 
-  it( 'a focus request snaps effort to 1.0 and raises capacity + free fraction', async () => {
+  it('a focus request snaps effort to 1.0 and raises capacity + free fraction', async () => {
     const a = new AttentionAllocator()
     const base = await tickReact( a, 1 )
 
     regulate( a, 1.0 )                  // "focus"
     const focused = await tickReact( a, 2 )
 
-    expect( metricVal( focused, 'attention.effort' ) ).toBe( 1.0 )
-    expect( metricVal( focused, 'attention.capacity' ) ).toBeGreaterThan( metricVal( base, 'attention.capacity' ) )
+    expect( metricVal( focused, 'attention.effort') ).toBe( 1.0 )
+    expect( metricVal( focused, 'attention.capacity') ).toBeGreaterThan( metricVal( base, 'attention.capacity') )
     // free fraction = effort under full vitals → drives the facet budget up.
-    expect( metricVal( focused, 'attention.free_fraction' ) ).toBeGreaterThan( metricVal( base, 'attention.free_fraction' ) )
-    expect( metricVal( focused, 'attention.free_fraction' ) ).toBeCloseTo( 1.0, 5 )
+    expect( metricVal( focused, 'attention.free_fraction') ).toBeGreaterThan( metricVal( base, 'attention.free_fraction') )
+    expect( metricVal( focused, 'attention.free_fraction') ).toBeCloseTo( 1.0, 5 )
   } )
 
-  it( 'a rest request stands effort down to 0.4 (smaller budget)', async () => {
+  it('a rest request stands effort down to 0.4 (smaller budget)', async () => {
     const a = new AttentionAllocator()
     regulate( a, 0.4 )                  // "rest"
     const rested = await tickReact( a, 1 )
 
-    expect( metricVal( rested, 'attention.effort' ) ).toBe( 0.4 )
-    expect( metricVal( rested, 'attention.free_fraction' ) ).toBeCloseTo( 0.4, 5 )
+    expect( metricVal( rested, 'attention.effort') ).toBe( 0.4 )
+    expect( metricVal( rested, 'attention.free_fraction') ).toBeCloseTo( 0.4, 5 )
   } )
 
-  it( 'decays back toward baseline when no request is renewed', async () => {
+  it('decays back toward baseline when no request is renewed', async () => {
     const a = new AttentionAllocator()
     regulate( a, 1.0 )
     await tickReact( a, 1 )             // effort = 1.0
     const next = await tickReact( a, 2 )   // no request → relaxes toward 0.7
 
-    const e = metricVal( next, 'attention.effort' )
+    const e = metricVal( next, 'attention.effort')
     expect( e ).toBeLessThan( 1.0 )
     expect( e ).toBeGreaterThan( 0.7 )
   } )
 
-  it( 'clamps an out-of-range request into [0.4, 1.0]', async () => {
+  it('clamps an out-of-range request into [0.4, 1.0]', async () => {
     const a = new AttentionAllocator()
     regulate( a, 5 )                    // absurd over-focus
-    expect( metricVal( await tickReact( a, 1 ), 'attention.effort' ) ).toBe( 1.0 )
+    expect( metricVal( await tickReact( a, 1 ), 'attention.effort') ).toBe( 1.0 )
 
     regulate( a, -3 )                   // absurd under-rest
-    expect( metricVal( await tickReact( a, 2 ), 'attention.effort' ) ).toBe( 0.4 )
+    expect( metricVal( await tickReact( a, 2 ), 'attention.effort') ).toBe( 0.4 )
   } )
 
-  it( 'vitals cap the result: low energy shrinks capacity even at full focus', async () => {
+  it('vitals cap the result: low energy shrinks capacity even at full focus', async () => {
     const a = new AttentionAllocator()
     // Drive energy critically low via the regulatory event the allocator consumes.
     a.onCognitiveEvent( { type: 'energy.state.changed', version: 1, sourceEngine: 'energy', salience: 0.5, payload: { level: 5 } } as any )
     regulate( a, 1.0 )                  // will to focus…
     const r = await tickReact( a, 1 )
 
-    expect( metricVal( r, 'attention.effort' ) ).toBe( 1.0 )       // chose full focus
+    expect( metricVal( r, 'attention.effort') ).toBe( 1.0 )       // chose full focus
     // …but the ceiling collapsed: even full focus yields less than the normal
     // resting capacity (baseline 0.7 effort at full vitals = 70). You cannot
     // focus past exhaustion.
-    expect( metricVal( r, 'attention.capacity' ) ).toBeLessThan( 70 )
+    expect( metricVal( r, 'attention.capacity') ).toBeLessThan( 70 )
   } )
 } )

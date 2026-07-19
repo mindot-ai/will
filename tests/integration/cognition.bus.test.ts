@@ -46,7 +46,7 @@ describe('Per-category inbox policy', () => {
     const bus       = new DefaultCognitiveBus( transport, registry )
 
     const received: string[] = []
-    transport.subscribe( 'engine-a', ['executive.*', 'stress.*'], ev => { received.push( ev.type ) } )
+    transport.subscribe('engine-a', ['executive.*', 'stress.*'], ev => { received.push( ev.type ) } )
 
     // Force metric queue overflow by filling it past the 500 cap
     // (we use the transport directly since DefaultCognitiveBus calls deliver)
@@ -58,7 +58,7 @@ describe('Per-category inbox policy', () => {
 
     transport.flush()
 
-    const criticalReceived = received.filter( t => t === 'executive.interpretation.formed' )
+    const criticalReceived = received.filter( t => t === 'executive.interpretation.formed')
     expect( criticalReceived ).toHaveLength( 1 )  // critical always delivered
   })
 
@@ -67,7 +67,7 @@ describe('Per-category inbox policy', () => {
 
     const received: number[] = []
     // Subscribe with a marker in payload to track order
-    transport.subscribe( 'engine-a', ['stress.*'], ev => {
+    transport.subscribe('engine-a', ['stress.*'], ev => {
       received.push( (ev.payload as Record<string,number>)['seq'] ?? -1 )
     })
 
@@ -111,7 +111,7 @@ describe('Per-subscriber version filtering', () => {
           : 'v2 requires value (number) and unit (string)'
       }
     })
-    registry.registerMigration( 'sensor.reading', 1, 2, payload => {
+    registry.registerMigration('sensor.reading', 1, 2, payload => {
       const p = payload as Record<string,unknown>
       return { ok: true, payload: { ...p, unit: 'raw' } }
     })
@@ -121,7 +121,7 @@ describe('Per-subscriber version filtering', () => {
     const bus = createTestBus( null, registry )
     const received: CognitiveEvent[] = []
 
-    bus.subscribe( 'engine-a', ['sensor.*'], ev => { received.push( ev ) },
+    bus.subscribe('engine-a', ['sensor.*'], ev => { received.push( ev ) },
       () => [1]   // accepts version 1 only
     )
 
@@ -140,7 +140,7 @@ describe('Per-subscriber version filtering', () => {
     const bus = createTestBus( null, registry )
     const received: CognitiveEvent[] = []
 
-    bus.subscribe( 'engine-a', ['sensor.*'], ev => { received.push( ev ) },
+    bus.subscribe('engine-a', ['sensor.*'], ev => { received.push( ev ) },
       () => [2]   // accepts version 2 only — engine is ahead of published v1
     )
 
@@ -152,14 +152,14 @@ describe('Per-subscriber version filtering', () => {
 
     expect( received ).toHaveLength( 1 )
     expect( received[0]?.version ).toBe( 2 )   // migrated
-    expect( (received[0]?.payload as Record<string,unknown>)['unit'] ).toBe( 'raw' )
+    expect( (received[0]?.payload as Record<string,unknown>)['unit'] ).toBe('raw')
   })
 
   it('silently drops event when version is incompatible and cannot migrate', () => {
     const bus = createTestBus( null, registry )
     const received: CognitiveEvent[] = []
 
-    bus.subscribe( 'engine-a', ['sensor.*'], ev => { received.push( ev ) },
+    bus.subscribe('engine-a', ['sensor.*'], ev => { received.push( ev ) },
       () => [99]  // accepts future version that doesn't exist
     )
 
@@ -176,7 +176,7 @@ describe('Per-subscriber version filtering', () => {
     const bus = createTestBus( null, registry )
     const received: CognitiveEvent[] = []
 
-    bus.subscribe( 'engine-a', ['sensor.*'], ev => { received.push( ev ) },
+    bus.subscribe('engine-a', ['sensor.*'], ev => { received.push( ev ) },
       () => []    // empty = accept any
     )
 
@@ -202,14 +202,14 @@ describe('GenerativeModel', () => {
     const model = new GenerativeModel()
     // Repaired contract: the first observation seeds the prediction and reports
     // zero surprise, instead of firing a max error against a zero-initialised prior.
-    const first = model.observe( 'stress.load', 50 )
+    const first = model.observe('stress.load', 50 )
     expect( first.error ).toBe( 0 )
     expect( first.normalized ).toBe( 0 )
     expect( first.gated ).toBe( true )
-    expect( model.predict( 'stress.load' ) ).toBe( 50 )
+    expect( model.predict('stress.load') ).toBe( 50 )
 
     // A later deviation from the adopted baseline is a genuine surprise.
-    const second = model.observe( 'stress.load', 80 )
+    const second = model.observe('stress.load', 80 )
     expect( second.error ).toBeCloseTo( 30 )
     expect( second.normalized ).toBeGreaterThan( 0 )
   })
@@ -219,22 +219,22 @@ describe('GenerativeModel', () => {
 
     // Feed a stable signal of 42 for many ticks
     for( let i = 0; i < 80; i++ )
-      model.observe( 'signal', 42 )
+      model.observe('signal', 42 )
 
-    const result = model.observe( 'signal', 42 )
+    const result = model.observe('signal', 42 )
     expect( result.normalized ).toBeLessThan( 0.05 )
     expect( result.gated ).toBe( true )
-    expect( model.isStable( 'signal' ) ).toBe( true )
+    expect( model.isStable('signal') ).toBe( true )
   })
 
   it('un-gates on sudden shift from stable baseline', () => {
     const model = new GenerativeModel( 0.3, 100 )
 
-    for( let i = 0; i < 80; i++ ) model.observe( 'signal', 42 )
-    expect( model.isStable( 'signal' ) ).toBe( true )
+    for( let i = 0; i < 80; i++ ) model.observe('signal', 42 )
+    expect( model.isStable('signal') ).toBe( true )
 
     // Sudden 30-point jump
-    const result = model.observe( 'signal', 72 )
+    const result = model.observe('signal', 72 )
     expect( result.gated ).toBe( false )
     expect( result.normalized ).toBeGreaterThan( 0.05 )
   })
@@ -243,13 +243,13 @@ describe('GenerativeModel', () => {
     const model = new GenerativeModel()
 
     // Start with no history — prediction at 0
-    expect( model.predict( 'energy' ) ).toBe( 0 )
+    expect( model.predict('energy') ).toBe( 0 )
 
     // Top-down anticipation: executive says energy will be ~80
-    model.anticipate( 'energy', 80, 0.9 )
+    model.anticipate('energy', 80, 0.9 )
 
     // Prediction should shift toward 80
-    const newPred = model.predict( 'energy' )
+    const newPred = model.predict('energy')
     expect( newPred ).toBeGreaterThan( 0 )
     expect( newPred ).toBeLessThan( 80 )
   })
@@ -258,35 +258,35 @@ describe('GenerativeModel', () => {
     const model = new GenerativeModel( 0.15, 100 )
 
     // Warm up: run 40 observations at 80 without anticipation
-    for( let i = 0; i < 40; i++ ) model.observe( 'energy', 80 )
+    for( let i = 0; i < 40; i++ ) model.observe('energy', 80 )
 
     // Now prediction is converged near 80; anticipate does little extra
-    model.anticipate( 'energy', 80, 1.0 )
-    model.observe( 'energy', 80 )  // consumes anticipation
+    model.anticipate('energy', 80, 1.0 )
+    model.observe('energy', 80 )  // consumes anticipation
 
     // After consuming anticipation, error should be small (EMA already at 80)
-    const result2 = model.observe( 'energy', 80 )
+    const result2 = model.observe('energy', 80 )
     expect( result2.normalized ).toBeLessThan( 0.05 )
     expect( result2.gated ).toBe( true )
   })
 
   it('configureStream() overrides per-stream parameters', () => {
     const model = new GenerativeModel()
-    model.configureStream( 'temp', { range: 40, gateThreshold: 0.01 } )
+    model.configureStream('temp', { range: 40, gateThreshold: 0.01 } )
 
     // Cold-start adopts the first value as the baseline; a fixed range then pins
     // the scale so a 0.5 deviation normalises to 0.5/40 (= 0.0125, above the 0.01
     // gate → not gated) regardless of the stream's own variance.
-    model.observe( 'temp', 10 )              // seed → prediction 10
-    const r = model.observe( 'temp', 10.5 )  // raw error 0.5, fixed range 40
+    model.observe('temp', 10 )              // seed → prediction 10
+    const r = model.observe('temp', 10.5 )  // raw error 0.5, fixed range 40
     expect( r.normalized ).toBeCloseTo( 0.5 / 40, 3 )
     expect( r.gated ).toBe( false )
   })
 
   it('snapshotAll() returns predictions for all observed streams', () => {
     const model = new GenerativeModel()
-    model.observe( 'a', 10 )
-    model.observe( 'b', 20 )
+    model.observe('a', 10 )
+    model.observe('b', 20 )
 
     const snap = model.snapshotAll()
     expect( Object.keys( snap ) ).toEqual( expect.arrayContaining(['a', 'b']) )
@@ -301,14 +301,14 @@ describe('GenerativeModel precision weights', () => {
     const s = new GenerativeModel()
 
     // Baseline on a fresh stream with some variance (not perfectly flat)
-    for( let i = 0; i < 5; i++ ) s.observe( 'stream.x', i % 2 === 0 ? 0.4 : 0.6 )
-    const baseline = s.observe( 'stream.x', 0.6 ).salience
+    for( let i = 0; i < 5; i++ ) s.observe('stream.x', i % 2 === 0 ? 0.4 : 0.6 )
+    const baseline = s.observe('stream.x', 0.6 ).salience
 
     // Reset and repeat with precision boost — same inputs
     const s2 = new GenerativeModel()
-    for( let i = 0; i < 5; i++ ) s2.observe( 'stream.x', i % 2 === 0 ? 0.4 : 0.6 )
-    s2.setPrecision( 'stream.x', 2.0 )
-    const boosted = s2.observe( 'stream.x', 0.6 ).salience
+    for( let i = 0; i < 5; i++ ) s2.observe('stream.x', i % 2 === 0 ? 0.4 : 0.6 )
+    s2.setPrecision('stream.x', 2.0 )
+    const boosted = s2.observe('stream.x', 0.6 ).salience
 
     // With 2× precision the salience score should be higher (capped at 1.0)
     expect( boosted ).toBeGreaterThanOrEqual( baseline )
@@ -316,23 +316,23 @@ describe('GenerativeModel precision weights', () => {
 
   it('precision decays toward 1.0 over successive observations', () => {
     const s = new GenerativeModel()
-    s.setPrecision( 'stream.y', 3.0 )
+    s.setPrecision('stream.y', 3.0 )
 
     // After many observations, precision should have decayed
-    let prev = s.getPrecision( 'stream.y' )
+    let prev = s.getPrecision('stream.y')
     for( let i = 0; i < 50; i++ ){
-      s.observe( 'stream.y', 0.5 )
-      const cur = s.getPrecision( 'stream.y' )
+      s.observe('stream.y', 0.5 )
+      const cur = s.getPrecision('stream.y')
       expect( cur ).toBeLessThanOrEqual( prev + 0.001 )
       prev = cur
     }
 
-    expect( s.getPrecision( 'stream.y' ) ).toBeLessThan( 2.0 )  // decayed significantly
+    expect( s.getPrecision('stream.y') ).toBeLessThan( 2.0 )  // decayed significantly
   })
 
   it('getPrecision() returns 1.0 for unseen streams', () => {
     const s = new GenerativeModel()
-    expect( s.getPrecision( 'never-seen' ) ).toBe( 1.0 )
+    expect( s.getPrecision('never-seen') ).toBe( 1.0 )
   })
 })
 
@@ -343,30 +343,30 @@ describe('Wildcard topic matching', () => {
     const bus = createTestBus()
     const received: string[] = []
 
-    bus.subscribe( 'global', ['*'], ev => { received.push( ev.type ) } )
+    bus.subscribe('global', ['*'], ev => { received.push( ev.type ) } )
 
     bus.publish({ type: 'foo.bar', version: 1, sourceEngine: 'a', salience: 0.5, payload: {} })
     bus.publish({ type: 'baz', version: 1, sourceEngine: 'a', salience: 0.5, payload: {} })
 
-    expect( received ).toContain( 'foo.bar' )
-    expect( received ).toContain( 'baz' )
+    expect( received ).toContain('foo.bar')
+    expect( received ).toContain('baz')
   })
 
   it("'stress.*' matches 'stress.load' and 'stress.zone.critical' but not 'prestress'", () => {
     const bus = createTestBus()
     const received: string[] = []
 
-    bus.subscribe( 'e', ['stress.*'], ev => { received.push( ev.type ) } )
+    bus.subscribe('e', ['stress.*'], ev => { received.push( ev.type ) } )
 
     bus.publish({ type: 'stress.load',          version: 1, sourceEngine: 'a', salience: 0.5, payload: {} })
     bus.publish({ type: 'stress.zone.critical', version: 1, sourceEngine: 'a', salience: 0.5, payload: {} })
     bus.publish({ type: 'prestress',            version: 1, sourceEngine: 'a', salience: 0.5, payload: {} })
     bus.publish({ type: 'stress',               version: 1, sourceEngine: 'a', salience: 0.5, payload: {} })
 
-    expect( received ).toContain( 'stress.load' )
-    expect( received ).toContain( 'stress.zone.critical' )
-    expect( received ).not.toContain( 'prestress' )
-    expect( received ).toContain( 'stress' )  // exact match of prefix with no trailing .
+    expect( received ).toContain('stress.load')
+    expect( received ).toContain('stress.zone.critical')
+    expect( received ).not.toContain('prestress')
+    expect( received ).toContain('stress')  // exact match of prefix with no trailing .
   })
 })
 
@@ -387,7 +387,7 @@ describe('Lamport clock ordering', () => {
     const bus = createTestBus()
     const received: number[] = []
 
-    bus.subscribe( 'e', ['*'], ev => { received.push( (ev.payload as Record<string,number>)['n'] ?? -1 ) } )
+    bus.subscribe('e', ['*'], ev => { received.push( (ev.payload as Record<string,number>)['n'] ?? -1 ) } )
 
     for( let n = 0; n < 10; n++ )
       bus.publish({ type: 'tick', version: 1, sourceEngine: 's', salience: 0, payload: { n } })

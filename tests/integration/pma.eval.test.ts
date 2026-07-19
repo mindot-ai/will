@@ -188,7 +188,7 @@ describe('PMA Reconstruction Fidelity', () => {
     expect( report.scores.overall           ).toBeGreaterThan( 0 )
 
     // Provenance
-    expect( report.willId       ).toBe( 'test-will-pma'     )
+    expect( report.willId       ).toBe('test-will-pma'     )
     expect( report.pmaVersion   ).toBe( PMA_SCHEMA_VERSION  )
     expect( report.behavioralProbesRan    ).toBe( false )
     expect( report.behavioralProbeResult  ).toBeNull()
@@ -225,7 +225,7 @@ describe('PMA Reconstruction Fidelity', () => {
 
   it('preserves enhanced identity fields (socialOrientation, trustPropensity, memoryPersistence)', async () => {
     const pma = makePMA()
-    const { simulation, cognition: _cog } = assembleMind( `identity-test-${Date.now()}`, {
+    const { simulation, cognition: _cog } = assembleMind(`identity-test-${Date.now()}`, {
       ...BASE_CONFIG as any,
       id: `identity-test-${Date.now()}`,
       persistentMemory: false,
@@ -234,16 +234,16 @@ describe('PMA Reconstruction Fidelity', () => {
     new PMALoader().load( pma, simulation, _cog )
     const state = simulation.stateManager.snapshot()
 
-    const identityEntity = [ ...state.entities.values() ].find( e => e.type === 'will.identity' )
+    const identityEntity = [ ...state.entities.values() ].find( e => e.type === 'will.identity')
     expect( identityEntity ).toBeDefined()
-    expect( identityEntity?.metadata?.['socialOrientation'] ).toBe( 'ambivert' )
+    expect( identityEntity?.metadata?.['socialOrientation'] ).toBe('ambivert')
     expect( identityEntity?.metadata?.['trustPropensity']   ).toBeCloseTo( 0.65, 2 )
     expect( identityEntity?.metadata?.['memoryPersistence'] ).toBeCloseTo( 0.70, 2 )
   })
 
   it('persists traitStats (graded-salience personal norm) across a distill→load round-trip', () => {
     const pma = makePMA()
-    const { simulation, cognition: _cog } = assembleMind( `traitstats-test-${Date.now()}`, {
+    const { simulation, cognition: _cog } = assembleMind(`traitstats-test-${Date.now()}`, {
       ...BASE_CONFIG as any,
       id: `traitstats-test-${Date.now()}`,
       persistentMemory: false,
@@ -252,17 +252,17 @@ describe('PMA Reconstruction Fidelity', () => {
     // load restores the Will's own norm onto identity-self …
     new PMALoader().load( pma, simulation, _cog )
     const state = simulation.stateManager.snapshot()
-    const identityEntity = [ ...state.entities.values() ].find( e => e.type === 'will.identity' )
+    const identityEntity = [ ...state.entities.values() ].find( e => e.type === 'will.identity')
     expect( identityEntity?.metadata?.['traitStats'] ).toEqual( pma.identity.traitStats )
 
     // … and distill reads it back out (extract + enhance spread) — a clean round-trip.
-    const redistilled = new PMADistiller().distill( pma.willId, pma.willName, state, 'session-roundtrip' )
+    const redistilled = new PMADistiller().distill( pma.willId, pma.willName, state, 'session-roundtrip')
     expect( redistilled.identity.traitStats ).toEqual( pma.identity.traitStats )
   })
 
   it('preserves enhanced emotional baseline fields (temperamentValence, reactivity)', async () => {
     const pma = makePMA()
-    const { simulation, cognition: _cog } = assembleMind( `emotional-test-${Date.now()}`, {
+    const { simulation, cognition: _cog } = assembleMind(`emotional-test-${Date.now()}`, {
       ...BASE_CONFIG as any,
       id: `emotional-test-${Date.now()}`,
       persistentMemory: false,
@@ -283,7 +283,7 @@ describe('PMA Reconstruction Fidelity', () => {
 
   it('preserves enhanced behavioral fields (riskTolerance, explorationRate, impulsivity)', async () => {
     const pma = makePMA()
-    const { simulation, cognition: _cog } = assembleMind( `behavioral-test-${Date.now()}`, {
+    const { simulation, cognition: _cog } = assembleMind(`behavioral-test-${Date.now()}`, {
       ...BASE_CONFIG as any,
       id: `behavioral-test-${Date.now()}`,
       persistentMemory: false,
@@ -305,7 +305,7 @@ describe('PMA Reconstruction Fidelity', () => {
 
   it('preserves memory persistence as forgetting curve configuration', async () => {
     const pma = makePMA()
-    const { simulation, cognition: _cog } = assembleMind( `memory-test-${Date.now()}`, {
+    const { simulation, cognition: _cog } = assembleMind(`memory-test-${Date.now()}`, {
       ...BASE_CONFIG as any,
       id: `memory-test-${Date.now()}`,
       persistentMemory: false,
@@ -357,7 +357,7 @@ describe('PMA Reconstruction Fidelity', () => {
 
   it('relationship stubs are seeded as state entities that engines can restore from', async () => {
     const pma = makePMA()
-    const { simulation, cognition: _cog } = assembleMind( `rel-test-${Date.now()}`, {
+    const { simulation, cognition: _cog } = assembleMind(`rel-test-${Date.now()}`, {
       ...BASE_CONFIG as any,
       id: `rel-test-${Date.now()}`,
       persistentMemory: false,
@@ -382,7 +382,7 @@ describe('PMA Reconstruction Fidelity', () => {
     expect( repEntity ).toBeDefined()
     expect( repEntity?.metadata?.['reliability']    ).toBeCloseTo( 0.72, 2 )
     expect( repEntity?.metadata?.['trustworthiness'] ).toBeCloseTo( 0.71, 2 )
-    expect( repEntity?.metadata?.['name']           ).toBe( 'Alice' )
+    expect( repEntity?.metadata?.['name']           ).toBe('Alice')
 
     // theory-of-mind gist should be re-seeded (Phase 0) so the Will can model alex's mind again
     const tomEntity = [ ...state.entities.values() ].find( e =>
@@ -390,14 +390,14 @@ describe('PMA Reconstruction Fidelity', () => {
     )
     expect( tomEntity ).toBeDefined()
     expect( tomEntity?.metadata?.['modelConfidence']   ).toBeCloseTo( 0.66, 2 )
-    expect( tomEntity?.metadata?.['dominantIntention'] ).toBe( 'collaborate' )
+    expect( tomEntity?.metadata?.['dominantIntention'] ).toBe('collaborate')
 
     // known-entity dossier should be re-seeded (Phase 2.3) so "I remember you" survives a restart
     const keEntity = [ ...state.entities.values() ].find( e =>
       e.type === 'known-entity' && e.metadata?.['keid'] === 'user-alice'
     )
     expect( keEntity ).toBeDefined()
-    expect( keEntity?.metadata?.['name'] ).toBe( 'Alice' )
+    expect( keEntity?.metadata?.['name'] ).toBe('Alice')
     expect( keEntity?.metadata?.['familiarity'] ).toBeCloseTo( 0.55, 2 )
     expect( keEntity?.metadata?.['reliability'] ).toBeCloseTo( 0.7, 2 )   // track-record carries (Phase 4)
     expect( keEntity?.metadata?.['lastSeenTick'] ).toBe( 0 )   // fresh embodiment
@@ -405,14 +405,14 @@ describe('PMA Reconstruction Fidelity', () => {
 
   it('round-trips the theory-of-mind gist + known-entity dossier through distill → load → distill', () => {
     const pma = makePMA()
-    const { simulation, cognition: _cog } = assembleMind( `tom-rt-${Date.now()}`, {
+    const { simulation, cognition: _cog } = assembleMind(`tom-rt-${Date.now()}`, {
       ...BASE_CONFIG as any, id: `tom-rt-${Date.now()}`, persistentMemory: false,
     })
     new PMALoader().load( pma, simulation, _cog )
     const state = simulation.stateManager.snapshot()
 
-    const redistilled = new PMADistiller().distill( pma.willId, pma.willName, state, 'session-tom-rt' )
-    const rel = redistilled.relationships.find( r => r.keid === 'user-alice' )
+    const redistilled = new PMADistiller().distill( pma.willId, pma.willName, state, 'session-tom-rt')
+    const rel = redistilled.relationships.find( r => r.keid === 'user-alice')
     expect( rel?.mentalModel ).toEqual( pma.relationships[0]!.mentalModel )
     // lastSeenTick is intentionally reset on load (not persisted), so compare the rest.
     expect( rel?.dossier ).toEqual( pma.relationships[0]!.dossier )
@@ -430,10 +430,10 @@ describe('PMA Reconstruction Fidelity', () => {
     new PMALoader().load( pma, simulation, _cog )
     const state = simulation.stateManager.snapshot()
 
-    const prior = state.entities.get( 'persona-prior' )
+    const prior = state.entities.get('persona-prior')
     expect( prior?.metadata?.['priors'] ).toEqual({ 'engine-config-self-model': { minIntervalTicks: -30 } })
 
-    const calib = state.entities.get( 'calibration-state' )
+    const calib = state.entities.get('calibration-state')
     expect( ( calib?.metadata?.['domainBias'] as Record<string, number> ).planning ).toBeCloseTo( 0.4, 5 )
   })
 
@@ -446,7 +446,7 @@ describe('PMA Reconstruction Fidelity', () => {
     sm.setEntity({ id: 'calibration-state', type: 'calibration.state', createdAt: 0, updatedAt: 0,
       metadata: { domainBias: { social: 0.2 }, updatedAtTick: 100 } } as any )
 
-    const pma = new PMADistiller().distill( id, 'TestWill', sm.snapshot(), 'sess', '/nonexistent-dir' )
+    const pma = new PMADistiller().distill( id, 'TestWill', sm.snapshot(), 'sess', '/nonexistent-dir')
     expect( pma.persona?.configPriors ).toEqual({ 'engine-config-narrator': { minIntervalTicks: -7.5 } })
     expect( pma.persona?.calibrationBias ).toEqual({ social: 0.2 })
   })
@@ -454,7 +454,7 @@ describe('PMA Reconstruction Fidelity', () => {
   it('omits persona when nothing has been learned', async () => {
     const id = `persona-empty-${Date.now()}`
     const { simulation } = assembleMind( id, { ...( BASE_CONFIG as any ), id, persistentMemory: false } )
-    const pma = new PMADistiller().distill( id, 'TestWill', simulation.stateManager.snapshot(), 'sess', '/nonexistent-dir' )
+    const pma = new PMADistiller().distill( id, 'TestWill', simulation.stateManager.snapshot(), 'sess', '/nonexistent-dir')
     expect( pma.persona ).toBeUndefined()
   })
 
@@ -473,10 +473,10 @@ describe('PMA Reconstruction Fidelity', () => {
 
   it('standard probe suite has all required probe IDs', () => {
     const ids = STANDARD_PROBES.map( p => p.id )
-    expect( ids ).toContain( 'low_energy_high_stress'   )
-    expect( ids ).toContain( 'high_energy_positive_mood' )
-    expect( ids ).toContain( 'goal_blocked'             )
-    expect( ids ).toContain( 'neutral_baseline'         )
+    expect( ids ).toContain('low_energy_high_stress'   )
+    expect( ids ).toContain('high_energy_positive_mood')
+    expect( ids ).toContain('goal_blocked'             )
+    expect( ids ).toContain('neutral_baseline'         )
   })
 
   // ── Enhanced field round-trip tests ─────────────────────────

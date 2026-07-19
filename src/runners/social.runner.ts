@@ -134,7 +134,7 @@ async function main(): Promise<void> {
 
     // Beliefs the Will formed ABOUT Dr. Chen (social cognition evidence)
     const chenBeliefs = ( ( pma as { beliefs?: Array<{ statement?: string; content?: string }> } ).beliefs ?? [] )
-      .map( b => b.statement ?? b.content ?? '' )
+      .map( b => b.statement ?? b.content ?? '')
       .filter( s => /chen|she|her|researcher|observ/i.test( s ) )
       .slice( 0, 6 )
     if( chenBeliefs.length ){

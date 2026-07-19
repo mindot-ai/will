@@ -98,17 +98,17 @@ export class TheoryOfMind implements SimulationEngine, CognitiveEngine {
 
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
-    if( e.type === 'executive.prediction.formed' ){
+    if( e.type === 'executive.prediction.formed'){
       const p = e.payload as { predictedDomains: string[]; confidence: number }
       if( p.predictedDomains.includes('social') )
-        this._model.setPrecision( 'tom.models', 1.0 + p.confidence * 0.5 )
+        this._model.setPrecision('tom.models', 1.0 + p.confidence * 0.5 )
     }
-    if( e.type === 'interaction.occurred' ){
+    if( e.type === 'interaction.occurred'){
       const p = e.payload as {
         keid: string; valence: number; intensity: number
         directedAtSelf: boolean; interactionType: string
       }
-      if( p.keid && p.keid !== 'agent-self' )
+      if( p.keid && p.keid !== 'agent-self')
         this._pendingInteractions.push( p )
     }
   }
@@ -191,7 +191,7 @@ export class TheoryOfMind implements SimulationEngine, CognitiveEngine {
     // Phase C + F: publish cognitive event — gated by prediction error
     const _bus = this._bus
     if( _bus && this._models.size > 0 ){
-      const predErr = this._model.observe( 'tom.models', this._models.size )
+      const predErr = this._model.observe('tom.models', this._models.size )
       if( !predErr.gated )
         _bus.publish({ type: 'theory_of_mind.model.updated', version: 1, sourceEngine: this.name, salience: Math.max( 0.2, predErr.salience ), payload: { modelsActive: this._models.size } })
     }
@@ -231,7 +231,7 @@ export class TheoryOfMind implements SimulationEngine, CognitiveEngine {
    */
   private _restoreFromState( state: ReadonlySimulationState ): void {
     for( const entity of state.entities.values() ){
-      if( entity.type !== 'theory_of_mind' ) continue
+      if( entity.type !== 'theory_of_mind') continue
       const m       = entity.metadata ?? {}
       const keid = m['keid'] as string | undefined
       if( !keid ) continue

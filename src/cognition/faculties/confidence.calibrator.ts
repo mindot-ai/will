@@ -97,7 +97,7 @@ export class ConfidenceCalibrator implements SimulationEngine, CognitiveEngine {
       case 'executive.prediction.formed': {
         const p = e.payload as { predictedDomains: string[]; confidence: number }
         if( p.predictedDomains.includes('metacognition') )
-          this._model.setPrecision( 'metacognition.bias', 1.0 + p.confidence * 0.5 )
+          this._model.setPrecision('metacognition.bias', 1.0 + p.confidence * 0.5 )
 
         break
       }
@@ -105,7 +105,7 @@ export class ConfidenceCalibrator implements SimulationEngine, CognitiveEngine {
         // Pair the decision's predicted confidence against the realised outcome
         // quality so per-domain over/under-confidence can be learned in react().
         const p = e.payload as { domain?: string; confidence?: number; outcomeQuality?: number; tick?: number }
-        if( typeof p.confidence === 'number' && typeof p.outcomeQuality === 'number' )
+        if( typeof p.confidence === 'number' && typeof p.outcomeQuality === 'number')
           this.recordOutcome( p.domain ?? 'general', p.confidence, p.outcomeQuality, ( ( p.tick ?? 0 ) as Tick ) )
 
         break
@@ -130,7 +130,7 @@ export class ConfidenceCalibrator implements SimulationEngine, CognitiveEngine {
   restore( snap: Record<string, unknown> ): void {
     if( !snap ) return
 
-    if( typeof snap.executiveFlaggedBiasCount === 'number' )
+    if( typeof snap.executiveFlaggedBiasCount === 'number')
       this._executiveFlaggedBiasCount = snap.executiveFlaggedBiasCount
 
     if( Array.isArray( snap.records ) )
@@ -154,7 +154,7 @@ export class ConfidenceCalibrator implements SimulationEngine, CognitiveEngine {
     if( !m ) return
 
     for( const [ domain, bias ] of Object.entries( m ) )
-      if( typeof bias === 'number' )
+      if( typeof bias === 'number')
         this._domainBias.set( domain, bias )
   }
 
@@ -195,7 +195,7 @@ export class ConfidenceCalibrator implements SimulationEngine, CognitiveEngine {
    * tunables and lets a future persona-prior modulate calibration aggressiveness.
    */
   private _readConfigFromState( state: ReadonlySimulationState ): void {
-    const p = readEffectiveParams( state, 'engine-config-confidence' )
+    const p = readEffectiveParams( state, 'engine-config-confidence')
 
     if( p.minSamplesPerDomain != null ) this._minSamplesPerDomain = p.minSamplesPerDomain
     if( p.calibrationRate     != null ) this._calibrationRate     = p.calibrationRate
@@ -286,13 +286,13 @@ export class ConfidenceCalibrator implements SimulationEngine, CognitiveEngine {
         type: 'confidence.calibrated',
         version: 1,
         sourceEngine: this.name,
-        salience: Math.max( 0.2, this._model.observe( 'calibration.event', overallBias ).salience ),
+        salience: Math.max( 0.2, this._model.observe('calibration.event', overallBias ).salience ),
         payload: { calibrationBias: overallBias }
       })
     
     // Phase D + F: rich state-change event — gated by prediction error
     if( _bus ){
-      const predErr = this._model.observe( 'metacognition.bias', overallBias )
+      const predErr = this._model.observe('metacognition.bias', overallBias )
       if( !predErr.gated )
         _bus.publish({
           type: 'metacognition.state.changed',

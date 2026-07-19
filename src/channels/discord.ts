@@ -84,8 +84,8 @@ export interface DiscordBridgeOptions {
  * itself is not stopped; it simply loses this surface.
  */
 export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): Promise<ChannelBridge> {
-  const log     = opts.log ?? ( ( m: string ) => console.error( `[will:discord] ${ m }` ) )
-  const roster  = new ChannelRoster( opts.rosterPath ?? `.will/${ will.id }.discord.json` )
+  const log     = opts.log ?? ( ( m: string ) => console.error(`[will:discord] ${ m }`) )
+  const roster  = new ChannelRoster( opts.rosterPath ?? `.will/${ will.id }.discord.json`)
   const allowed = opts.channels?.length ? new Set( opts.channels ) : null
 
   const client = opts.client ?? await createDiscordClient()
@@ -94,7 +94,7 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
   let lastActiveChannelId: string | null = opts.homeChannelId ?? null
 
   // ── inbound: platform message → stimulus ──────────────────────────────────
-  client.on( 'messageCreate', message => { void onMessage( message ) } )
+  client.on('messageCreate', message => { void onMessage( message ) } )
 
   async function onMessage( message: DiscordLikeMessage ): Promise<void> {
     const self = client.user
@@ -135,7 +135,7 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
   // ── outbound: projected utterance → the addressee ─────────────────────────
   // The facade has no off(); the bridge gates its handler on `closed` instead.
   let closed = false
-  will.on( 'message', ( m: WillMessage ) => { if( !closed ) void deliver( m ) } )
+  will.on('message', ( m: WillMessage ) => { if( !closed ) void deliver( m ) } )
 
   async function deliver( m: WillMessage ): Promise<void> {
     const peer = m.to ? roster.resolve( m.to ) : undefined
@@ -161,7 +161,7 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
       }
       catch { /* fall through */ }
     }
-    log( `no route for utterance to '${ m.to }' — dropped (${ m.content.length } chars)` )
+    log(`no route for utterance to '${ m.to }' — dropped (${ m.content.length } chars)`)
   }
 
   // ── lifecycle ──────────────────────────────────────────────────────────────
@@ -175,14 +175,14 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
         const ready = new Promise<void>( resolve => {
           let poll: ReturnType<typeof setInterval> | null = null
           const done = (): void => { if( poll ) clearInterval( poll ); resolve() }
-          client.once( 'clientReady', done )
+          client.once('clientReady', done )
           poll = setInterval( () => { if( client.isReady?.() ) done() }, 100 )
           poll.unref?.()
         } )
-        await client.login( opts.token ?? '' )
+        await client.login( opts.token ?? '')
         await ready
       }
-      log( `${ will.name } is present on Discord as user ${ client.user?.id }` )
+      log(`${ will.name } is present on Discord as user ${ client.user?.id }`)
     },
     async close(): Promise<void> {
       if( closed ) return
@@ -196,10 +196,10 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
 
 /** Build a real discord.js client (lazy import keeps it out of non-Discord hosts). */
 async function createDiscordClient(): Promise<DiscordLikeClient> {
-  let mod: typeof import( 'discord.js' )
-  try { mod = await import( 'discord.js' ) }
+  let mod: typeof import('discord.js')
+  try { mod = await import('discord.js') }
   catch {
-    throw new Error( 'discord.js is not installed (it is an optionalDependency) — run `bun add discord.js` / `npm i discord.js` and retry.' )
+    throw new Error('discord.js is not installed (it is an optionalDependency) — run `bun add discord.js` / `npm i discord.js` and retry.')
   }
   const { Client, GatewayIntentBits, Partials } = mod
   return new Client( {

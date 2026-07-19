@@ -25,37 +25,37 @@ function makeState( opts: {
 }
 
 const affordances = ( set: EntityInput[] | undefined ) =>
-  ( set ?? [] ).filter( e => e.type === 'affordance' )
+  ( set ?? [] ).filter( e => e.type === 'affordance')
 
 const bySchema = ( set: EntityInput[] | undefined, schema: string ) =>
   affordances( set ).find( e => e.metadata?.['schema'] === schema )
 
-describe( 'AffordanceSynthesizer — the field is never empty', () => {
-  it( 'emits the innate floor every tick with no perception present', async () => {
+describe('AffordanceSynthesizer — the field is never empty', () => {
+  it('emits the innate floor every tick with no perception present', async () => {
     const synth = new AffordanceSynthesizer()
     const res   = await synth.react( 0, 1, makeState({ metrics: { 'energy.level': 50 } }), CTX )
 
     const field = affordances( res.commands?.set )
     // floor: orient, attend, rest, withdraw, reflect, wait, express
     expect( field.length ).toBeGreaterThanOrEqual( 7 )
-    expect( bySchema( res.commands?.set, 'orient' ) ).toBeDefined()
-    expect( bySchema( res.commands?.set, 'rest' ) ).toBeDefined()
+    expect( bySchema( res.commands?.set, 'orient') ).toBeDefined()
+    expect( bySchema( res.commands?.set, 'rest') ).toBeDefined()
     expect( res.commands?.metrics ).toContainEqual( [ 'affordance.field_size', field.length ] )
   })
 })
 
-describe( 'AffordanceSynthesizer — body state gates availability', () => {
-  it( 'marks energy-hungry stances unavailable when depleted, rest still available', async () => {
+describe('AffordanceSynthesizer — body state gates availability', () => {
+  it('marks energy-hungry stances unavailable when depleted, rest still available', async () => {
     const synth = new AffordanceSynthesizer()
     const res   = await synth.react( 0, 1, makeState({ metrics: { 'energy.level': 5 } }), CTX )
 
-    expect( bySchema( res.commands?.set, 'attend' )?.metadata?.['available'] ).toBe( false )  // needs energy > 10
-    expect( bySchema( res.commands?.set, 'rest' )?.metadata?.['available'] ).toBe( true )      // needs energy < 95
+    expect( bySchema( res.commands?.set, 'attend')?.metadata?.['available'] ).toBe( false )  // needs energy > 10
+    expect( bySchema( res.commands?.set, 'rest')?.metadata?.['available'] ).toBe( true )      // needs energy < 95
   })
 })
 
-describe( 'AffordanceSynthesizer — attention gates the width of the field', () => {
-  it( 'caps non-innate affordances at attention.capacity, keeping the most salient', async () => {
+describe('AffordanceSynthesizer — attention gates the width of the field', () => {
+  it('caps non-innate affordances at attention.capacity, keeping the most salient', async () => {
     const percepts = Array.from( { length: 8 }, ( _, i ) => ({
       id:       `percept-${ i }`,
       type:     'percept',
@@ -68,15 +68,15 @@ describe( 'AffordanceSynthesizer — attention gates the width of the field', ()
       entities: percepts,
     }), CTX )
 
-    const perceptual = affordances( res.commands?.set ).filter( e => e.metadata?.['source'] === 'perceptual' )
+    const perceptual = affordances( res.commands?.set ).filter( e => e.metadata?.['source'] === 'perceptual')
     expect( perceptual ).toHaveLength( 3 )
     // innate floor is never capped — still fully present alongside the 3
-    expect( bySchema( res.commands?.set, 'orient' ) ).toBeDefined()
+    expect( bySchema( res.commands?.set, 'orient') ).toBeDefined()
   })
 })
 
-describe( 'AffordanceSynthesizer — perception evokes bound affordances', () => {
-  it( 'a known sentient entity affords reach-out, bound to its id', async () => {
+describe('AffordanceSynthesizer — perception evokes bound affordances', () => {
+  it('a known sentient entity affords reach-out, bound to its id', async () => {
     const synth = new AffordanceSynthesizer()
     const res   = await synth.react( 0, 1, makeState({
       metrics:  { 'energy.level': 60 },
@@ -87,20 +87,20 @@ describe( 'AffordanceSynthesizer — perception evokes bound affordances', () =>
       } ],
     }), CTX )
 
-    const reach = bySchema( res.commands?.set, 'reach-out' )
+    const reach = bySchema( res.commands?.set, 'reach-out')
     expect( reach ).toBeDefined()
-    expect( reach?.metadata?.['targetEntityId'] ).toBe( 'alice' )
-    expect( reach?.metadata?.['source'] ).toBe( 'social' )
+    expect( reach?.metadata?.['targetEntityId'] ).toBe('alice')
+    expect( reach?.metadata?.['source'] ).toBe('social')
   })
 })
 
-describe( 'AffordanceSynthesizer — a goal lifts outreach above the attention cap (B1)', () => {
+describe('AffordanceSynthesizer — a goal lifts outreach above the attention cap (B1)', () => {
   // Regression for the proactive-outreach gap: a freshly-met (low-familiarity)
   // interlocutor's reach-out has low intrinsic salience and is normally capped out
   // by a flood of higher-salience percepts (rumination). An ACTIVE GOAL targeting
   // that entity must lift its reach-out into the field so the competition can pick it
   // — goal-relevance has to count at the synthesis cap, not only at selection.
-  it( 'surfaces reach-out for a goal-targeted low-familiarity entity despite a capping flood', async () => {
+  it('surfaces reach-out for a goal-targeted low-familiarity entity despite a capping flood', async () => {
     const flood = Array.from( { length: 6 }, ( _, i ) => ({
       id:       `percept-${ i }`,
       type:     'percept',
@@ -120,12 +120,12 @@ describe( 'AffordanceSynthesizer — a goal lifts outreach above the attention c
       ],
     }), CTX )
 
-    const reach = bySchema( res.commands?.set, 'reach-out' )
+    const reach = bySchema( res.commands?.set, 'reach-out')
     expect( reach ).toBeDefined()                                  // must survive the cap…
-    expect( reach?.metadata?.['targetEntityId'] ).toBe( 'dr-chen' )
+    expect( reach?.metadata?.['targetEntityId'] ).toBe('dr-chen')
   })
 
-  it( 'does NOT lift outreach for an entity no active goal targets (stays capped)', async () => {
+  it('does NOT lift outreach for an entity no active goal targets (stays capped)', async () => {
     const flood = Array.from( { length: 6 }, ( _, i ) => ({
       id:       `percept-${ i }`,
       type:     'percept',
@@ -143,10 +143,10 @@ describe( 'AffordanceSynthesizer — a goal lifts outreach above the attention c
     }), CTX )
 
     // No goal → the low-familiarity reach-out is correctly out-competed by the flood.
-    expect( bySchema( res.commands?.set, 'reach-out' ) ).toBeUndefined()
+    expect( bySchema( res.commands?.set, 'reach-out') ).toBeUndefined()
   })
 
-  it( 'recognizes the keid: tag link (KnownEntityTracker curiosity goals), not just targetEntityId', async () => {
+  it('recognizes the keid: tag link (KnownEntityTracker curiosity goals), not just targetEntityId', async () => {
     const flood = Array.from( { length: 6 }, ( _, i ) => ({
       id:       `percept-${ i }`,
       type:     'percept',
@@ -168,15 +168,15 @@ describe( 'AffordanceSynthesizer — a goal lifts outreach above the attention c
       ],
     }), CTX )
 
-    expect( bySchema( res.commands?.set, 'reach-out' ) ).toBeDefined()
+    expect( bySchema( res.commands?.set, 'reach-out') ).toBeDefined()
   })
 })
 
-describe( 'AffordanceSynthesizer — ideomotor leg (executive-imagined actions) (Route A)', () => {
+describe('AffordanceSynthesizer — ideomotor leg (executive-imagined actions) (Route A)', () => {
   // The executive writes `ideomotor.intent` entities for actions it imagines. They
   // enter the field pre-activated (it willed them) but still compete — and carry
   // source:'ideomotor' so the selector/telemetry can tell them apart.
-  it( 'surfaces an ideomotor affordance from an ideomotor.intent (source=ideomotor) above a capping flood', async () => {
+  it('surfaces an ideomotor affordance from an ideomotor.intent (source=ideomotor) above a capping flood', async () => {
     const flood = Array.from( { length: 6 }, ( _, i ) => ({
       id:       `percept-${ i }`,
       type:     'percept',
@@ -194,48 +194,48 @@ describe( 'AffordanceSynthesizer — ideomotor leg (executive-imagined actions) 
       ],
     }), CTX )
 
-    const reach = bySchema( res.commands?.set, 'reach-out' )
+    const reach = bySchema( res.commands?.set, 'reach-out')
     expect( reach ).toBeDefined()
-    expect( reach?.metadata?.['source'] ).toBe( 'ideomotor' )
-    expect( reach?.metadata?.['targetEntityId'] ).toBe( 'dr-chen' )
+    expect( reach?.metadata?.['source'] ).toBe('ideomotor')
+    expect( reach?.metadata?.['targetEntityId'] ).toBe('dr-chen')
   })
 
-  it( 'ignores an ideomotor.intent whose schema is unknown (no crash, no affordance)', async () => {
+  it('ignores an ideomotor.intent whose schema is unknown (no crash, no affordance)', async () => {
     const synth = new AffordanceSynthesizer()
     const res   = await synth.react( 0, 1, makeState({
       metrics:  { 'energy.level': 80 },
       entities: [ { id: 'ideo-x', type: 'ideomotor.intent', metadata: { schema: 'no-such-schema', priority: 0.9 } } ],
     }), CTX )
-    expect( bySchema( res.commands?.set, 'no-such-schema' ) ).toBeUndefined()
+    expect( bySchema( res.commands?.set, 'no-such-schema') ).toBeUndefined()
   })
 })
 
-describe( 'AffordanceSynthesizer — deterministic & transient', () => {
-  it( 'produces identical ids for identical (tick, state) — replay-safe', async () => {
+describe('AffordanceSynthesizer — deterministic & transient', () => {
+  it('produces identical ids for identical (tick, state) — replay-safe', async () => {
     const synth = new AffordanceSynthesizer()
     const state = makeState({ metrics: { 'energy.level': 50 } })
 
     const a = affordances( ( await synth.react( 0, 7, state, CTX ) ).commands?.set ).map( e => e.id ).sort()
     const b = affordances( ( await synth.react( 0, 7, state, CTX ) ).commands?.set ).map( e => e.id ).sort()
     expect( a ).toEqual( b )
-    expect( a.every( id => id.startsWith( 'affordance-7-' ) ) ).toBe( true )
+    expect( a.every( id => id.startsWith('affordance-7-') ) ).toBe( true )
   })
 
-  it( 'clears the previous tick\'s field (affordances are transient)', async () => {
+  it('clears the previous tick\'s field (affordances are transient)', async () => {
     const synth = new AffordanceSynthesizer()
     const res   = await synth.react( 0, 2, makeState({
       metrics:  { 'energy.level': 50 },
       entities: [ { id: 'affordance-1-orient-orient', type: 'affordance' } ],
     }), CTX )
 
-    expect( res.commands?.delete ).toContain( 'affordance-1-orient-orient' )
+    expect( res.commands?.delete ).toContain('affordance-1-orient-orient')
   })
 })
 
-describe( 'AffordanceSynthesizer — ideomotor parameters passthrough (executive args)', () => {
-  it( 'carries an ideomotor.intent\'s parameters onto the surfaced affordance', async () => {
-    const { externalSchemas } = await import( '#agency/schemas/external' )
-    const { INNATE_SCHEMAS }  = await import( '#agency/schemas/innate' )
+describe('AffordanceSynthesizer — ideomotor parameters passthrough (executive args)', () => {
+  it('carries an ideomotor.intent\'s parameters onto the surfaced affordance', async () => {
+    const { externalSchemas } = await import('#agency/schemas/external')
+    const { INNATE_SCHEMAS }  = await import('#agency/schemas/innate')
     const synth = new AffordanceSynthesizer( [ ...INNATE_SCHEMAS, ...externalSchemas( [ 'search_docs' ] ) ] )
     const res   = await synth.react( 0, 1, makeState({
       metrics:  { 'energy.level': 80 },
@@ -246,7 +246,7 @@ describe( 'AffordanceSynthesizer — ideomotor parameters passthrough (executive
     }), CTX )
 
     const aff = ( res.commands?.set ?? [] ).find( ( e: EntityInput ) =>
-      e.type === 'affordance' && e.metadata?.['schema'] === 'search_docs' && e.metadata?.['source'] === 'ideomotor' )
+      e.type === 'affordance' && e.metadata?.['schema'] === 'search_docs' && e.metadata?.['source'] === 'ideomotor')
     expect( aff ).toBeDefined()
     expect( aff?.metadata?.['parameters'] ).toEqual( { query: 'tick loop design' } )
   })

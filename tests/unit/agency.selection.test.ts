@@ -60,27 +60,27 @@ const NEUTRAL_BIAS: BiasContext = {
 }
 
 const intentOf = ( set: EntityInput[] | undefined ) =>
-  ( set ?? [] ).find( e => e.type === 'agency.intent' )
+  ( set ?? [] ).find( e => e.type === 'agency.intent')
 const metricVal = ( res: { commands?: { metrics?: Array<[ string, number ]> } }, key: string ) =>
   ( res.commands?.metrics ?? [] ).find( m => m[0] === key )?.[1]
 
 // ── pure scoring ────────────────────────────────────────────────────────────
 
-describe( 'scoring — the activation arithmetic', () => {
-  it( 'reward and goal-target match raise activation; cost lowers it', () => {
+describe('scoring — the activation arithmetic', () => {
+  it('reward and goal-target match raise activation; cost lowers it', () => {
     const base = aff({ id: 'a', schema: 's', expectedReward: 0.2, cost: 0.5 }).metadata as unknown as Affordance
     const rich = { ...base, expectedReward: 0.9, cost: 0.0 }
     expect( scoreAffordance( rich, NEUTRAL_BIAS ) ).toBeGreaterThan( scoreAffordance( base, NEUTRAL_BIAS ) )
   })
 
-  it( 'goalRelevance is structural — returns goal priority only on target match', () => {
+  it('goalRelevance is structural — returns goal priority only on target match', () => {
     const a = { targetEntityId: 'alice' } as unknown as Affordance
     const bias = { ...NEUTRAL_BIAS, goalTargets: new Set([ 'alice' ]), maxGoalPriority: 0.8 }
     expect( goalRelevance( a, bias ) ).toBe( 0.8 )
     expect( goalRelevance( { targetEntityId: 'bob' } as unknown as Affordance, bias ) ).toBe( 0 )
   })
 
-  it( 'driveUrgency routes homeostatic pressure by schema tags', () => {
+  it('driveUrgency routes homeostatic pressure by schema tags', () => {
     const restful = { tags: [ 'regulatory' ] } as unknown as Affordance
     const social  = { tags: [ 'social' ] } as unknown as Affordance
     const bias = { ...NEUTRAL_BIAS, drives: { energy: 0.9, sleep: 0.2, stress: 0, social: 0.4 } }
@@ -88,7 +88,7 @@ describe( 'scoring — the activation arithmetic', () => {
     expect( driveUrgency( social,  bias ) ).toBe( 0.4 )
   })
 
-  it( 'entropy is ~0 for a dominant winner and ~1 for a flat field', () => {
+  it('entropy is ~0 for a dominant winner and ~1 for a flat field', () => {
     expect( competitionEntropy([ 1.0, 0.1, 0.05 ]) ).toBeLessThan( 0.4 )
     expect( competitionEntropy([ 0.5, 0.5, 0.5, 0.5 ]) ).toBeCloseTo( 1, 5 )
   })
@@ -96,8 +96,8 @@ describe( 'scoring — the activation arithmetic', () => {
 
 // ── the selector engine ─────────────────────────────────────────────────────
 
-describe( 'ActionSelector — System 1 default', () => {
-  it( 'commits the dominant affordance as an intent without deliberating', async () => {
+describe('ActionSelector — System 1 default', () => {
+  it('commits the dominant affordance as an intent without deliberating', async () => {
     const sel = new ActionSelector()
     const res = await sel.react( 0, 1, makeState({
       metrics:  {},
@@ -111,12 +111,12 @@ describe( 'ActionSelector — System 1 default', () => {
     }), CTX )
 
     const intent = intentOf( res.commands?.set )
-    expect( intent?.metadata?.['schema'] ).toBe( 'reach-out' )
+    expect( intent?.metadata?.['schema'] ).toBe('reach-out')
     expect( intent?.metadata?.['deliberate'] ).toBe( false )
-    expect( metricVal( res, 'agency.selection.deliberate' ) ).toBe( 0 )
+    expect( metricVal( res, 'agency.selection.deliberate') ).toBe( 0 )
   })
 
-  it( 'excludes unavailable affordances from the competition', async () => {
+  it('excludes unavailable affordances from the competition', async () => {
     const sel = new ActionSelector()
     const res = await sel.react( 0, 1, makeState({
       entities: [
@@ -124,10 +124,10 @@ describe( 'ActionSelector — System 1 default', () => {
         aff({ id: 'a2', schema: 'rest', expectedReward: 0.3, available: true }),
       ],
     }), CTX )
-    expect( intentOf( res.commands?.set )?.metadata?.['schema'] ).toBe( 'rest' )
+    expect( intentOf( res.commands?.set )?.metadata?.['schema'] ).toBe('rest')
   })
 
-  it( 'defers (acts serially) while a committed/composite action is in flight', async () => {
+  it('defers (acts serially) while a committed/composite action is in flight', async () => {
     const sel = new ActionSelector()
     const res = await sel.react( 0, 2, makeState({
       entities: [
@@ -136,31 +136,31 @@ describe( 'ActionSelector — System 1 default', () => {
       ],
     }), CTX )
     // 'selected' (one-tick) and 'expanding' (composite) are left to finish — busy.
-    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent' ) ).toBeUndefined()
-    expect( metricVal( res, 'agency.selection.busy' ) ).toBe( 1 )
+    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent') ).toBeUndefined()
+    expect( metricVal( res, 'agency.selection.busy') ).toBe( 1 )
   })
 })
 
-describe( 'ActionSelector — preemption (the smarter serializer)', () => {
+describe('ActionSelector — preemption (the smarter serializer)', () => {
   // A weak incumbent the Will is awaiting a host on.
-  const awaitingIntent = ( activation: number, schema = 'reach-out', target = 'alice' ) => ({
+  const awaitingIntent = ( activation: number, schema = 'reach-out', target = 'alice') => ({
     id: 'agency-intent-1', type: 'agency.intent',
     metadata: { status: 'awaiting', activation, schema, targetEntityId: target, dispatchedAt: 1 },
   })
 
-  it( 'keeps waiting when no challenger beats the awaiting incumbent by the switch cost', async () => {
+  it('keeps waiting when no challenger beats the awaiting incumbent by the switch cost', async () => {
     const res = await new ActionSelector().react( 0, 2, makeState({
       entities: [
         awaitingIntent( 0.5 ),                                   // strong incumbent
         aff({ id: 'a1', schema: 'wait', expectedReward: 0.2, cost: 0.05 } ),  // weak challenger
       ],
     }), CTX )
-    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent' ) ).toBeUndefined()
-    expect( res.commands?.delete ?? [] ).not.toContain( 'agency-intent-1' )
-    expect( metricVal( res, 'agency.selection.preempted' ) ?? 0 ).toBe( 0 )
+    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent') ).toBeUndefined()
+    expect( res.commands?.delete ?? [] ).not.toContain('agency-intent-1')
+    expect( metricVal( res, 'agency.selection.preempted') ?? 0 ).toBe( 0 )
   })
 
-  it( 'preempts when a clearly stronger challenger appears (commits it, cancels the await)', async () => {
+  it('preempts when a clearly stronger challenger appears (commits it, cancels the await)', async () => {
     const res = await new ActionSelector().react( 0, 2, makeState({
       metrics:  {},
       entities: [
@@ -170,12 +170,12 @@ describe( 'ActionSelector — preemption (the smarter serializer)', () => {
       ],
     }), CTX )
     const intent = intentOf( res.commands?.set )
-    expect( intent?.metadata?.['schema'] ).toBe( 'rest' )       // challenger committed
-    expect( res.commands?.delete ).toContain( 'agency-intent-1' ) // await cancelled
-    expect( metricVal( res, 'agency.selection.preempted' ) ).toBe( 1 )
+    expect( intent?.metadata?.['schema'] ).toBe('rest')       // challenger committed
+    expect( res.commands?.delete ).toContain('agency-intent-1') // await cancelled
+    expect( metricVal( res, 'agency.selection.preempted') ).toBe( 1 )
   })
 
-  it( 'a high-stakes challenger overrides almost immediately (switch cost ≈ 0)', async () => {
+  it('a high-stakes challenger overrides almost immediately (switch cost ≈ 0)', async () => {
     // A threat-driven withdraw outscores the incumbent only slightly — it would NOT
     // beat it under the full switch cost, but its high stakes collapse the cost so it
     // preempts anyway. (Threat also raises the challenger's own risk, so the margin is thin.)
@@ -187,68 +187,68 @@ describe( 'ActionSelector — preemption (the smarter serializer)', () => {
               tags: [ 'self-protection' ], expectedValence: -0.4, targetEntityId: undefined } ),
       ],
     }), CTX )
-    expect( intentOf( res.commands?.set )?.metadata?.['schema'] ).toBe( 'withdraw' )
-    expect( metricVal( res, 'agency.selection.preempted' ) ).toBe( 1 )
+    expect( intentOf( res.commands?.set )?.metadata?.['schema'] ).toBe('withdraw')
+    expect( metricVal( res, 'agency.selection.preempted') ).toBe( 1 )
   })
 
   // ── composite preemption (cancel-only) ──────────────────────
-  const macro = ( activation: number, schema = 'settle-self' ) => ([
+  const macro = ( activation: number, schema = 'settle-self') => ([
     { id: 'macro', type: 'agency.intent', metadata: { status: 'expanding', activation, schema } },
     { id: 'macro-sub-0', type: 'agency.intent', metadata: { status: 'selected', parentIntentId: 'macro', schema: 'withdraw' } },
   ])
 
-  it( 'cancels a mid-composite routine for a strong challenger (cancel-only, no immediate commit)', async () => {
+  it('cancels a mid-composite routine for a strong challenger (cancel-only, no immediate commit)', async () => {
     const res = await new ActionSelector().react( 0, 2, makeState({
       entities: [
         ...macro( 0.2 ),
         aff({ id: 'a1', schema: 'rest', expectedReward: 0.9, cost: 0.0, tags: [ 'regulatory' ] }),
       ],
     }), CTX )
-    expect( res.commands?.delete ).toContain( 'macro' )                              // routine cancelled
-    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent' ) ).toBeUndefined() // no challenger this tick
-    expect( metricVal( res, 'agency.selection.preempted' ) ).toBe( 1 )
+    expect( res.commands?.delete ).toContain('macro')                              // routine cancelled
+    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent') ).toBeUndefined() // no challenger this tick
+    expect( metricVal( res, 'agency.selection.preempted') ).toBe( 1 )
   })
 
-  it( 'lets a mid-composite routine continue against a weak challenger', async () => {
+  it('lets a mid-composite routine continue against a weak challenger', async () => {
     const res = await new ActionSelector().react( 0, 2, makeState({
       entities: [
         ...macro( 0.5 ),
         aff({ id: 'a1', schema: 'wait', expectedReward: 0.2, cost: 0.05 }),
       ],
     }), CTX )
-    expect( res.commands?.delete ?? [] ).not.toContain( 'macro' )
-    expect( metricVal( res, 'agency.selection.preempted' ) ?? 0 ).toBe( 0 )
-    expect( metricVal( res, 'agency.selection.busy' ) ).toBe( 1 )
+    expect( res.commands?.delete ?? [] ).not.toContain('macro')
+    expect( metricVal( res, 'agency.selection.preempted') ?? 0 ).toBe( 0 )
+    expect( metricVal( res, 'agency.selection.busy') ).toBe( 1 )
   })
 
-  it( 'an orphan macro sub (parent already cancelled) blocks until it drains', async () => {
+  it('an orphan macro sub (parent already cancelled) blocks until it drains', async () => {
     const res = await new ActionSelector().react( 0, 2, makeState({
       entities: [
         { id: 'macro-sub-0', type: 'agency.intent', metadata: { status: 'selected', parentIntentId: 'gone', schema: 'rest' } },
         aff({ id: 'a1', schema: 'reach-out', expectedReward: 0.9 }),
       ],
     }), CTX )
-    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent' ) ).toBeUndefined()
-    expect( metricVal( res, 'agency.selection.busy' ) ).toBe( 1 )
+    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent') ).toBeUndefined()
+    expect( metricVal( res, 'agency.selection.busy') ).toBe( 1 )
   })
 
-  it( 'does not churn when the field still favours the action being awaited', async () => {
+  it('does not churn when the field still favours the action being awaited', async () => {
     const res = await new ActionSelector().react( 0, 2, makeState({
       metrics:  { 'drive.social': 0.9 },
       entities: [
-        awaitingIntent( 0.3, 'reach-out', 'alice' ),
+        awaitingIntent( 0.3, 'reach-out', 'alice'),
         aff({ id: 'a1', schema: 'reach-out', source: 'social', targetEntityId: 'alice',
               expectedReward: 0.9, tags: [ 'social' ] } ),                 // same action, top of field
       ],
     }), CTX )
     // winner == incumbent → keep waiting, no preemption, no churn
-    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent' ) ).toBeUndefined()
-    expect( metricVal( res, 'agency.selection.preempted' ) ?? 0 ).toBe( 0 )
-    expect( metricVal( res, 'agency.selection.busy' ) ).toBe( 1 )
+    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent') ).toBeUndefined()
+    expect( metricVal( res, 'agency.selection.preempted') ?? 0 ).toBe( 0 )
+    expect( metricVal( res, 'agency.selection.busy') ).toBe( 1 )
   })
 })
 
-describe( 'ActionSelector — switch resistance develops (R2 Channel A)', () => {
+describe('ActionSelector — switch resistance develops (R2 Channel A)', () => {
   // A weak action the Will is awaiting a host on (incumbentStrength ≈ 0.193 at tick 2),
   // and a marginal challenger: a fully-habitual `wait` (habit 1 ⇒ novelty 0 ⇒ stakes 0,
   // so the switch cost applies undiscounted) with reward 1.0 / cost 0 ⇒ activation 0.45.
@@ -261,26 +261,26 @@ describe( 'ActionSelector — switch resistance develops (R2 Channel A)', () => 
   const challenger = aff({ id: 'a1', schema: 'wait', expectedReward: 1.0, cost: 0.0,
                            habitStrength: 1, expectedValence: 0 })
 
-  it( 'preempts at the base switch cost (no focus, no developed prior)', async () => {
+  it('preempts at the base switch cost (no focus, no developed prior)', async () => {
     const res = await new ActionSelector().react( 0, 2, makeState({
       entities: [ awaiting, challenger ],
     }), CTX )
-    expect( intentOf( res.commands?.set )?.metadata?.['schema'] ).toBe( 'wait' )
-    expect( res.commands?.delete ).toContain( 'agency-intent-1' )
-    expect( metricVal( res, 'agency.selection.preempted' ) ).toBe( 1 )
+    expect( intentOf( res.commands?.set )?.metadata?.['schema'] ).toBe('wait')
+    expect( res.commands?.delete ).toContain('agency-intent-1')
+    expect( metricVal( res, 'agency.selection.preempted') ).toBe( 1 )
   })
 
-  it( 'long focus hardens the switch cost so the same challenger no longer preempts', async () => {
+  it('long focus hardens the switch cost so the same challenger no longer preempts', async () => {
     const res = await new ActionSelector().react( 0, 2, makeState({
       metrics:  { 'task_switch.current_focus_ticks': 200 },   // 0.15·(1+200·0.01) = 0.45
       entities: [ awaiting, challenger ],
     }), CTX )
-    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent' ) ).toBeUndefined()
-    expect( res.commands?.delete ?? [] ).not.toContain( 'agency-intent-1' )
-    expect( metricVal( res, 'agency.selection.preempted' ) ?? 0 ).toBe( 0 )
+    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent') ).toBeUndefined()
+    expect( res.commands?.delete ?? [] ).not.toContain('agency-intent-1')
+    expect( metricVal( res, 'agency.selection.preempted') ?? 0 ).toBe( 0 )
   })
 
-  it( 'a developed persona-prior (a conscientious Will) hardens it the same way', async () => {
+  it('a developed persona-prior (a conscientious Will) hardens it the same way', async () => {
     const res = await new ActionSelector().react( 0, 2, makeState({
       entities: [
         awaiting, challenger,
@@ -289,12 +289,12 @@ describe( 'ActionSelector — switch resistance develops (R2 Channel A)', () => 
           metadata: { priors: { 'engine-config-action-selector': { switchCost: 0.30 } }, version: 1, updatedAtTick: 0 } },
       ],
     }), CTX )
-    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent' ) ).toBeUndefined()
-    expect( metricVal( res, 'agency.selection.preempted' ) ?? 0 ).toBe( 0 )
+    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent') ).toBeUndefined()
+    expect( metricVal( res, 'agency.selection.preempted') ?? 0 ).toBe( 0 )
   })
 })
 
-describe( 'ActionSelector — shared deliberativeness (R1 Channel A)', () => {
+describe('ActionSelector — shared deliberativeness (R1 Channel A)', () => {
   // The selector and the executive EffortGate are the two consumers of ONE deliberativeness
   // disposition: the persona-prior on engine-config-executive.deliberateThreshold. A lowered
   // threshold (analytical Will) ⇒ deliberate more; a raised one (decisive Will) ⇒ less.
@@ -312,28 +312,28 @@ describe( 'ActionSelector — shared deliberativeness (R1 Channel A)', () => {
     ],
   })
 
-  it( 'an analytical Will (developed lower threshold) deliberates where a neutral Will commits', async () => {
+  it('an analytical Will (developed lower threshold) deliberates where a neutral Will commits', async () => {
     const neutral    = await new ActionSelector().react( 0, 1, field( -0.55 ),        CTX )  // stakes 0.55 < 0.60
     const analytical = await new ActionSelector().react( 0, 1, field( -0.55, -0.25 ), CTX )  // gate lowered to 0.50
-    expect( metricVal( neutral,    'agency.selection.deliberate' ) ).toBe( 0 )
-    expect( metricVal( analytical, 'agency.selection.deliberate' ) ).toBe( 1 )
+    expect( metricVal( neutral,    'agency.selection.deliberate') ).toBe( 0 )
+    expect( metricVal( analytical, 'agency.selection.deliberate') ).toBe( 1 )
   })
 
-  it( 'a decisive Will (developed higher threshold) commits where a neutral Will deliberates', async () => {
+  it('a decisive Will (developed higher threshold) commits where a neutral Will deliberates', async () => {
     const neutral  = await new ActionSelector().react( 0, 1, field( -0.65 ),       CTX )  // stakes 0.65 > 0.60
     const decisive = await new ActionSelector().react( 0, 1, field( -0.65, 0.25 ), CTX )  // gate raised to 0.70
-    expect( metricVal( neutral,  'agency.selection.deliberate' ) ).toBe( 1 )
-    expect( metricVal( decisive, 'agency.selection.deliberate' ) ).toBe( 0 )
+    expect( metricVal( neutral,  'agency.selection.deliberate') ).toBe( 1 )
+    expect( metricVal( decisive, 'agency.selection.deliberate') ).toBe( 0 )
   })
 
-  it( 'no prior ⇒ base gates unchanged (a newborn Will behaves exactly as before)', async () => {
+  it('no prior ⇒ base gates unchanged (a newborn Will behaves exactly as before)', async () => {
     const res = await new ActionSelector().react( 0, 1, field( -0.55 ), CTX )
-    expect( intentOf( res.commands?.set )?.metadata?.['schema'] ).toBe( 'withdraw' )
-    expect( metricVal( res, 'agency.selection.deliberate' ) ).toBe( 0 )
+    expect( intentOf( res.commands?.set )?.metadata?.['schema'] ).toBe('withdraw')
+    expect( metricVal( res, 'agency.selection.deliberate') ).toBe( 0 )
   })
 })
 
-describe( 'ActionSelector — competition weights develop (Channel A scoring)', () => {
+describe('ActionSelector — competition weights develop (Channel A scoring)', () => {
   const selectorConfig = {
     id: 'engine-config-action-selector', type: 'engine-config',
     metadata: { params: { riskWeight: 0.20, noveltyWeight: 0.10 } },
@@ -343,7 +343,7 @@ describe( 'ActionSelector — competition weights develop (Channel A scoring)', 
     metadata: { priors: { 'engine-config-action-selector': params }, version: 1, updatedAtTick: 0 },
   })
 
-  it( 'an open Will (raised novelty weight) picks the untried option a neutral Will skips', async () => {
+  it('an open Will (raised novelty weight) picks the untried option a neutral Will skips', async () => {
     // habit-act outscores novel-act at the base novelty weight (0.10); a developed weight
     // (0.50) flips the winner toward the unpracticed.
     const field = ( prior?: { id: string; type: string; metadata?: Record<string, unknown> } ) => makeState({ entities: [
@@ -353,11 +353,11 @@ describe( 'ActionSelector — competition weights develop (Channel A scoring)', 
     ] })
     const neutral = await new ActionSelector().react( 0, 1, field(), CTX )
     const open    = await new ActionSelector().react( 0, 1, field( selectorPrior({ noveltyWeight: 0.40 }) ), CTX )
-    expect( intentOf( neutral.commands?.set )?.metadata?.['schema'] ).toBe( 'habit-act' )
-    expect( intentOf( open.commands?.set    )?.metadata?.['schema'] ).toBe( 'novel-act' )
+    expect( intentOf( neutral.commands?.set )?.metadata?.['schema'] ).toBe('habit-act')
+    expect( intentOf( open.commands?.set    )?.metadata?.['schema'] ).toBe('novel-act')
   })
 
-  it( 'a steadier Will (lowered risk weight) dares the risky-but-rewarding option', async () => {
+  it('a steadier Will (lowered risk weight) dares the risky-but-rewarding option', async () => {
     // safe-act outscores risky-act at the base risk weight (0.20); a lowered weight (→0)
     // stops the anticipated downside from suppressing the bolder option.
     const field = ( prior?: { id: string; type: string; metadata?: Record<string, unknown> } ) => makeState({ entities: [
@@ -367,13 +367,13 @@ describe( 'ActionSelector — competition weights develop (Channel A scoring)', 
     ] })
     const neutral = await new ActionSelector().react( 0, 1, field(), CTX )
     const steady  = await new ActionSelector().react( 0, 1, field( selectorPrior({ riskWeight: -0.20 }) ), CTX )
-    expect( intentOf( neutral.commands?.set )?.metadata?.['schema'] ).toBe( 'safe-act' )
-    expect( intentOf( steady.commands?.set  )?.metadata?.['schema'] ).toBe( 'risky-act' )
+    expect( intentOf( neutral.commands?.set )?.metadata?.['schema'] ).toBe('safe-act')
+    expect( intentOf( steady.commands?.set  )?.metadata?.['schema'] ).toBe('risky-act')
   })
 })
 
-describe( 'ActionSelector — System 2 recruitment', () => {
-  it( 'flags deliberation when the field is flat (high entropy)', async () => {
+describe('ActionSelector — System 2 recruitment', () => {
+  it('flags deliberation when the field is flat (high entropy)', async () => {
     const sel = new ActionSelector()
     const res = await sel.react( 0, 1, makeState({
       entities: [
@@ -383,10 +383,10 @@ describe( 'ActionSelector — System 2 recruitment', () => {
         aff({ id: 'a4', schema: 'wait',    expectedReward: 0.3, cost: 0.05 }),
       ],
     }), CTX )
-    expect( metricVal( res, 'agency.selection.deliberate' ) ).toBe( 1 )
+    expect( metricVal( res, 'agency.selection.deliberate') ).toBe( 1 )
   })
 
-  it( 'routes an ambiguous winner to the Deliberator (status deliberating + candidates)', async () => {
+  it('routes an ambiguous winner to the Deliberator (status deliberating + candidates)', async () => {
     const sel = new ActionSelector()
     const res = await sel.react( 0, 1, makeState({
       entities: [
@@ -396,12 +396,12 @@ describe( 'ActionSelector — System 2 recruitment', () => {
       ],
     }), CTX )
     const intent = intentOf( res.commands?.set )
-    expect( intent?.metadata?.['status'] ).toBe( 'deliberating' )   // not 'selected' — handed to System 2
+    expect( intent?.metadata?.['status'] ).toBe('deliberating')   // not 'selected' — handed to System 2
     expect( Array.isArray( intent?.metadata?.['candidates'] ) ).toBe( true )
     expect( ( intent?.metadata?.['candidates'] as unknown[] ).length ).toBeGreaterThan( 1 )
   })
 
-  it( 'flags deliberation under high stakes even with a clear winner', async () => {
+  it('flags deliberation under high stakes even with a clear winner', async () => {
     const sel = new ActionSelector()
     const res = await sel.react( 0, 1, makeState({
       metrics:  { 'threat.level': 0.8 },
@@ -411,11 +411,11 @@ describe( 'ActionSelector — System 2 recruitment', () => {
       ],
     }), CTX )
     const intent = intentOf( res.commands?.set )
-    expect( intent?.metadata?.['schema'] ).toBe( 'withdraw' )
+    expect( intent?.metadata?.['schema'] ).toBe('withdraw')
     expect( intent?.metadata?.['deliberate'] ).toBe( true )
   })
 
-  it( 'an overlearned habit raises its own deliberation threshold (the gradient)', async () => {
+  it('an overlearned habit raises its own deliberation threshold (the gradient)', async () => {
     const field = ( habit: number ) => makeState({
       metrics:  { 'threat.level': 0.7 },  // stakes = 0.7, base threshold = 0.6 → deliberate unless relieved
       entities: [
@@ -427,8 +427,8 @@ describe( 'ActionSelector — System 2 recruitment', () => {
     const novice = intentOf( ( await new ActionSelector().react( 0, 1, field( 0.0 ), CTX ) ).commands?.set )
     const expert = intentOf( ( await new ActionSelector().react( 0, 1, field( 0.6 ), CTX ) ).commands?.set )
 
-    expect( novice?.metadata?.['schema'] ).toBe( 'rest' )
-    expect( expert?.metadata?.['schema'] ).toBe( 'rest' )
+    expect( novice?.metadata?.['schema'] ).toBe('rest')
+    expect( expert?.metadata?.['schema'] ).toBe('rest')
     expect( novice?.metadata?.['deliberate'] ).toBe( true )   // 0.7 > 0.60
     expect( expert?.metadata?.['deliberate'] ).toBe( false )  // 0.7 < 0.60 + 0.6·0.25 = 0.75
   })
@@ -436,8 +436,8 @@ describe( 'ActionSelector — System 2 recruitment', () => {
 
 // ── stage 0 → stage 1 integration ───────────────────────────────────────────
 
-describe( 'synthesizer → selector', () => {
-  it( 'a salient known mind flows from field to a committed reach-out intent', async () => {
+describe('synthesizer → selector', () => {
+  it('a salient known mind flows from field to a committed reach-out intent', async () => {
     const synth = new AffordanceSynthesizer()
     const world = makeState({
       metrics:  { 'energy.level': 70 },
@@ -462,7 +462,7 @@ describe( 'synthesizer → selector', () => {
     // Stage 1: select.
     const intent = intentOf( ( await new ActionSelector().react( 0, 1, fieldState, CTX ) ).commands?.set )
     expect( intent ).toBeDefined()
-    expect( intent?.metadata?.['schema'] ).toBe( 'reach-out' )
-    expect( intent?.metadata?.['targetEntityId'] ).toBe( 'alice' )
+    expect( intent?.metadata?.['schema'] ).toBe('reach-out')
+    expect( intent?.metadata?.['targetEntityId'] ).toBe('alice')
   })
 })

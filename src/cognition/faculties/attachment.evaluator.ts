@@ -128,12 +128,12 @@ export class AttachmentEvaluator implements SimulationEngine, CognitiveEngine {
 
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
-    if( e.type === 'executive.prediction.formed' ){
+    if( e.type === 'executive.prediction.formed'){
       const p = e.payload as { predictedDomains: string[]; confidence: number }
       if( p.predictedDomains.includes('social') )
-        this._model.setPrecision( 'emotion.love', 1.0 + p.confidence * 0.5 )
+        this._model.setPrecision('emotion.love', 1.0 + p.confidence * 0.5 )
     }
-    if( e.type === 'interaction.occurred' ){
+    if( e.type === 'interaction.occurred'){
       const p = e.payload as {
         keid: string; valence: number; intensity: number
         directedAtSelf: boolean; interactionType: string
@@ -146,7 +146,7 @@ export class AttachmentEvaluator implements SimulationEngine, CognitiveEngine {
         sharedExperience: false,
       })
     }
-    if( e.type === 'social.agents.present' ){
+    if( e.type === 'social.agents.present'){
       const p = e.payload as { activeAgents: number }
       this._cachedActiveAgents = p.activeAgents
     }
@@ -167,7 +167,7 @@ export class AttachmentEvaluator implements SimulationEngine, CognitiveEngine {
     // Channel A (agreeableness → attachment): how fast bonds form is refreshed each tick as
     // base ⊕ persona-prior. An agreeable Will develops a higher growth rate and bonds more
     // readily. (Seed existed but was ignored.)
-    this._growthRate = readEffectiveParams( state, 'engine-config-attachment' ).attachmentGrowthRate ?? this._growthRate
+    this._growthRate = readEffectiveParams( state, 'engine-config-attachment').attachmentGrowthRate ?? this._growthRate
 
     // On the very first tick after construction (including snapshot restores),
     // rehydrate _bonds from attachment.bond entities written by _persistBonds().
@@ -230,7 +230,7 @@ export class AttachmentEvaluator implements SimulationEngine, CognitiveEngine {
     // Phase C: publish cognitive event
     const _bus = this._bus
     if( _bus && love > 0.5 ){
-      const predErr = this._model.observe( 'emotion.love', love )
+      const predErr = this._model.observe('emotion.love', love )
       if( !predErr.gated )
         _bus.publish({ type: 'emotion.love.significant', version: 1, sourceEngine: this.name, salience: Math.min(1, love), payload: { love } })
     }

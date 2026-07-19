@@ -93,10 +93,10 @@ export class EnergyRegulator implements SimulationEngine, CognitiveEngine {
 
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
-    if( e.type === 'executive.prediction.formed' ){
+    if( e.type === 'executive.prediction.formed'){
       const p = e.payload as { predictedDomains: string[]; confidence: number }
       if( p.predictedDomains.includes('energy') )
-        this._model.setPrecision( 'energy.level', 1.0 + p.confidence * 0.5 )
+        this._model.setPrecision('energy.level', 1.0 + p.confidence * 0.5 )
     }
   }
 
@@ -290,11 +290,11 @@ export class EnergyRegulator implements SimulationEngine, CognitiveEngine {
     // Phase C: publish cognitive event
     const _bus = this._bus
     if( _bus && newEnergy < 20 )
-      _bus.publish({ type: 'energy.level.critical', version: 1, sourceEngine: this.name, salience: Math.max( 0.8, this._model.observe( 'energy.critical', 1 - newEnergy / 100 ).salience ), payload: { level: newEnergy } })
+      _bus.publish({ type: 'energy.level.critical', version: 1, sourceEngine: this.name, salience: Math.max( 0.8, this._model.observe('energy.critical', 1 - newEnergy / 100 ).salience ), payload: { level: newEnergy } })
     // Phase D + F: rich state-change event — gated by prediction error
     if( _bus ){
       const zoneCode = newEnergy < this._criticalThreshold ? 0 : newEnergy < this._lowThreshold ? 1 : 2
-      const predErr  = this._model.observe( 'energy.level', newEnergy )
+      const predErr  = this._model.observe('energy.level', newEnergy )
       if( !predErr.gated )
         _bus.publish({ type: 'energy.state.changed', version: 1, sourceEngine: this.name, salience: predErr.salience, payload: { level: newEnergy, zoneCode, stressLoad: state.metrics.get('stress.load') ?? 0, interoceptionComfort: state.metrics.get('interoception.comfort') ?? 0.5 } })
     }

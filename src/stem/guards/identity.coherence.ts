@@ -81,12 +81,12 @@ An empty "issues" array means the persona is fine.`
 export function buildCoherenceUserMessage( input: CoherenceInput ): string {
   const id = input.identity
   const parts = [
-    `PERSONA PROMPT:\n${( id.prompt ?? '' ).trim() || '(empty)'}`,
-    `VALUES: ${( id.values ?? [] ).join( ', ' ) || '(none)'}`,
-    `STYLE: ${( id.style ?? '' ).trim() || '(none)'}`,
+    `PERSONA PROMPT:\n${( id.prompt ?? '').trim() || '(empty)'}`,
+    `VALUES: ${( id.values ?? [] ).join(', ') || '(none)'}`,
+    `STYLE: ${( id.style ?? '').trim() || '(none)'}`,
   ]
-  if( input.profileContext ) parts.push( `PROFILE CONTEXT:\n${input.profileContext.trim()}` )
-  return parts.join( '\n\n' )
+  if( input.profileContext ) parts.push(`PROFILE CONTEXT:\n${input.profileContext.trim()}`)
+  return parts.join('\n\n')
 }
 
 export async function checkIdentityCoherence(
@@ -104,7 +104,7 @@ export async function checkIdentityCoherence(
   }
 
   const issues = parseIssues( text )
-  return { ok: !issues.some( i => i.severity === 'error' ), ran: true, issues, raw: text }
+  return { ok: !issues.some( i => i.severity === 'error'), ran: true, issues, raw: text }
 }
 
 /** Convenience: build a provider client from env and run the review. */
@@ -112,7 +112,7 @@ export async function reviewIdentityCoherence(
   input: CoherenceInput,
   opts:  { willId?: string; tokenTracker?: TokenTracker | null } = {},
 ): Promise<CoherenceResult> {
-  const provider = ( process.env.WILL_LLM_PROVIDER ?? 'anthropic' ) as LLMProvider
+  const provider = ( process.env.WILL_LLM_PROVIDER ?? 'anthropic') as LLMProvider
   const director = new LLMDirector({
     willId:          opts.willId ?? 'identity-coherence',
     model:           process.env.WILL_LLM_MODEL ?? defaultModelFor( provider ),
@@ -131,8 +131,8 @@ export async function reviewIdentityCoherence(
 // ── parsing ────────────────────────────────────────────────────
 
 function parseIssues( text: string ): CoherenceIssue[] {
-  const start = text.indexOf( '{' )
-  const end   = text.lastIndexOf( '}' )
+  const start = text.indexOf('{')
+  const end   = text.lastIndexOf('}')
   if( start < 0 || end <= start ) return []
 
   let obj: { issues?: unknown }
@@ -143,7 +143,7 @@ function parseIssues( text: string ): CoherenceIssue[] {
 
   const out: CoherenceIssue[] = []
   for( const raw of obj.issues ){
-    if( !raw || typeof raw !== 'object' ) continue
+    if( !raw || typeof raw !== 'object') continue
     const r      = raw as Record<string, unknown>
     const detail = typeof r['detail'] === 'string' ? r['detail'] : ''
     if( !detail ) continue

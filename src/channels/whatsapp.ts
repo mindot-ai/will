@@ -82,10 +82,10 @@ export interface WhatsAppBridgeOptions {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const isGroupJid = ( jid: string ): boolean => jid.endsWith( '@g.us' )
+const isGroupJid = ( jid: string ): boolean => jid.endsWith('@g.us')
 
 /** '4915123:7@s.whatsapp.net' → '4915123' (device + server stripped). */
-const bareId = ( jid: string ): string => jid.split( '@' )[0]!.split( ':' )[0]!
+const bareId = ( jid: string ): string => jid.split('@')[0]!.split(':')[0]!
 
 /** A DM jid is derivable from the bare number — WhatsApp's gift to proactivity. */
 const dmJidFor = ( userId: string ): string => `${ userId }@s.whatsapp.net`
@@ -108,8 +108,8 @@ function textOf( m: WaLikeMessage ): string {
  * `ChannelBridge.close()` — the Will keeps ticking; it only loses this surface.
  */
 export async function connectWhatsApp( will: Will, opts: WhatsAppBridgeOptions = {} ): Promise<ChannelBridge> {
-  const log     = opts.log ?? ( ( m: string ) => console.error( `[will:whatsapp] ${ m }` ) )
-  const roster  = new ChannelRoster( opts.rosterPath ?? `.will/${ will.id }.whatsapp.json` )
+  const log     = opts.log ?? ( ( m: string ) => console.error(`[will:whatsapp] ${ m }`) )
+  const roster  = new ChannelRoster( opts.rosterPath ?? `.will/${ will.id }.whatsapp.json`)
   const allowed = opts.chats?.length ? new Set( opts.chats ) : null
 
   let closed = false
@@ -123,15 +123,15 @@ export async function connectWhatsApp( will: Will, opts: WhatsAppBridgeOptions =
   let lastActiveChatId: string | null = opts.homeChatId ?? null
 
   // ── inbound: platform message → stimulus ──────────────────────────────────
-  socket.ev.on( 'messages.upsert', ( { messages, type } ) => {
-    if( type && type !== 'notify' ) return   // history sync/corrections are not new percepts
+  socket.ev.on('messages.upsert', ( { messages, type } ) => {
+    if( type && type !== 'notify') return   // history sync/corrections are not new percepts
     for( const m of messages ) void onMessage( m )
   } )
 
   async function onMessage( m: WaLikeMessage ): Promise<void> {
     const jid = m.key.remoteJid
     if( !jid || m.key.fromMe || !m.message || m.messageStubType ) return
-    if( jid.endsWith( '@broadcast' ) || jid.endsWith( '@newsletter' ) ) return   // stories/broadcasts aren't a room the Will is in
+    if( jid.endsWith('@broadcast') || jid.endsWith('@newsletter') ) return   // stories/broadcasts aren't a room the Will is in
     if( allowed && !allowed.has( jid ) ) return
 
     const isGroup   = isGroupJid( jid )
@@ -157,7 +157,7 @@ export async function connectWhatsApp( will: Will, opts: WhatsAppBridgeOptions =
 
     // Same rule as Discord: a presence cue only when addressed — the mind may
     // still choose silence, and 'composing' expires on its own.
-    if( addressed ) await socket.sendPresenceUpdate?.( 'composing', jid ).catch( () => {} )
+    if( addressed ) await socket.sendPresenceUpdate?.('composing', jid ).catch( () => {} )
 
     const text = textOf( m )
     if( !text.trim() ) return
@@ -171,7 +171,7 @@ export async function connectWhatsApp( will: Will, opts: WhatsAppBridgeOptions =
   }
 
   // ── outbound: projected utterance → the addressee ─────────────────────────
-  will.on( 'message', ( m: WillMessage ) => { if( !closed ) void deliver( m ) } )
+  will.on('message', ( m: WillMessage ) => { if( !closed ) void deliver( m ) } )
 
   async function deliver( m: WillMessage ): Promise<void> {
     const peer   = m.to ? roster.resolve( m.to ) : undefined
@@ -180,7 +180,7 @@ export async function connectWhatsApp( will: Will, opts: WhatsAppBridgeOptions =
     // Last shared group → known DM → DM derived from the entity id itself →
     // home chat → last active chat. Unlike Discord, an unmet-but-addressed
     // entity is still reachable: `whatsapp:<number>` implies its DM jid.
-    const derivedDm = m.to?.startsWith( 'whatsapp:' ) ? dmJidFor( m.to.slice( 'whatsapp:'.length ) ) : undefined
+    const derivedDm = m.to?.startsWith('whatsapp:') ? dmJidFor( m.to.slice('whatsapp:'.length ) ) : undefined
     const targets = [ peer?.lastChannelId, peer?.dmChannelId, derivedDm, opts.homeChatId ?? undefined, lastActiveChatId ?? undefined ]
     for( const jid of targets ){
       if( !jid ) continue
@@ -190,7 +190,7 @@ export async function connectWhatsApp( will: Will, opts: WhatsAppBridgeOptions =
       }
       catch { /* try the next route */ }
     }
-    log( `no route for utterance to '${ m.to }' — dropped (${ m.content.length } chars)` )
+    log(`no route for utterance to '${ m.to }' — dropped (${ m.content.length } chars)`)
   }
 
   // ── lifecycle ──────────────────────────────────────────────────────────────
@@ -199,7 +199,7 @@ export async function connectWhatsApp( will: Will, opts: WhatsAppBridgeOptions =
     async start(): Promise<void> {
       // createWhatsAppSocket resolves already-open; an injected socket is the
       // caller's to have readied.
-      log( `${ will.name } is present on WhatsApp${ socket.user ? ` as ${ bareId( socket.user.id ) }` : '' }` )
+      log(`${ will.name } is present on WhatsApp${ socket.user ? ` as ${ bareId( socket.user.id ) }` : '' }`)
     },
     async close(): Promise<void> {
       if( closed ) return
@@ -226,10 +226,10 @@ interface SocketFactoryOpts {
  * Resolves once the first connection is open (after QR pairing on first run).
  */
 async function createWhatsAppSocket( o: SocketFactoryOpts ): Promise<WaLikeSocket> {
-  let baileys: typeof import( 'baileys' )
-  try { baileys = await import( 'baileys' ) }
+  let baileys: typeof import('baileys')
+  try { baileys = await import('baileys') }
   catch {
-    throw new Error( 'baileys is not installed (it is an optionalDependency) — run `bun add baileys` / `npm i baileys` and retry.' )
+    throw new Error('baileys is not installed (it is an optionalDependency) — run `bun add baileys` / `npm i baileys` and retry.')
   }
   const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = baileys
 
@@ -252,7 +252,7 @@ async function createWhatsAppSocket( o: SocketFactoryOpts ): Promise<WaLikeSocke
     get user(){ return inner?.user ? { id: inner.user.id, name: inner.user.name ?? undefined } : null },
     ev: { on: ( _e, fn ) => { subscribers.push( fn ) } },
     sendMessage: ( jid, content ) => {
-      if( !inner ) return Promise.reject( new Error( 'whatsapp socket not connected' ) )
+      if( !inner ) return Promise.reject( new Error('whatsapp socket not connected') )
       return inner.sendMessage( jid, content )
     },
     sendPresenceUpdate: ( state, jid ) => inner?.sendPresenceUpdate( state, jid ) ?? Promise.resolve(),
@@ -268,10 +268,10 @@ async function createWhatsAppSocket( o: SocketFactoryOpts ): Promise<WaLikeSocke
       const sock = makeWASocket( { auth: state, logger: logger as never } )
       inner = sock
 
-      sock.ev.on( 'creds.update', saveCreds )
-      sock.ev.on( 'messages.upsert', u => { for( const fn of subscribers ) fn( u as never ) } )
+      sock.ev.on('creds.update', saveCreds )
+      sock.ev.on('messages.upsert', u => { for( const fn of subscribers ) fn( u as never ) } )
 
-      sock.ev.on( 'connection.update', update => {
+      sock.ev.on('connection.update', update => {
         const { connection, lastDisconnect, qr } = update as {
           connection?: string; lastDisconnect?: { error?: unknown }; qr?: string
         }
@@ -282,16 +282,16 @@ async function createWhatsAppSocket( o: SocketFactoryOpts ): Promise<WaLikeSocke
           opened = true
           resolveOpen()
         }
-        if( connection === 'close' ){
+        if( connection === 'close'){
           const code = ( lastDisconnect?.error as { output?: { statusCode?: number } } | undefined )?.output?.statusCode
           if( code === DisconnectReason.loggedOut ){
-            const err = new Error( 'WhatsApp unlinked this device (logged out) — delete the auth dir and pair again.' )
+            const err = new Error('WhatsApp unlinked this device (logged out) — delete the auth dir and pair again.')
             o.log( err.message )
             if( !opened ) rejectOpen( err )
             return
           }
           if( o.stillOpen() ){
-            o.log( `connection closed (status ${ code ?? '?' }) — reconnecting…` )
+            o.log(`connection closed (status ${ code ?? '?' }) — reconnecting…`)
             setTimeout( connect, 3_000 )
           }
         }
@@ -306,13 +306,13 @@ async function createWhatsAppSocket( o: SocketFactoryOpts ): Promise<WaLikeSocke
 
 /** QR to the terminal; falls back to the raw pairing string if the tiny renderer is absent. */
 async function printQr( qr: string, log: ( m: string ) => void ): Promise<void> {
-  log( 'pair this device: WhatsApp → Settings → Linked devices → Link a device' )
+  log('pair this device: WhatsApp → Settings → Linked devices → Link a device')
   try {
     type QrModule = { generate( s: string, o: { small: boolean } ): void }
-    const qrt = ( await import( 'qrcode-terminal' as string ) ) as QrModule & { default?: QrModule }
+    const qrt = ( await import('qrcode-terminal' as string ) ) as QrModule & { default?: QrModule }
     ;( qrt.default ?? qrt ).generate( qr, { small: true } )
   }
   catch {
-    log( `qrcode-terminal not installed — raw pairing code:\n${ qr }` )
+    log(`qrcode-terminal not installed — raw pairing code:\n${ qr }`)
   }
 }

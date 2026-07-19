@@ -105,7 +105,7 @@ const ENV_OVERRIDES: Record<string, string | undefined> = {
 }
 const _savedEnv: Record<string, string | undefined> = {}
 
-describe( 'Replay equivalence — scripted conversation (audition path)', () => {
+describe('Replay equivalence — scripted conversation (audition path)', () => {
   beforeAll( () => {
     for( const key of Object.keys( ENV_OVERRIDES ) ){
       _savedEnv[ key ] = process.env[ key ]
@@ -166,7 +166,7 @@ describe( 'Replay equivalence — scripted conversation (audition path)', () => 
     return { snap: simulation.stateManager.snapshot(), outbox, turn }
   }
 
-  it( 'replays a conversation byte-identically — reply content, reply tick, full state', async () => {
+  it('replays a conversation byte-identically — reply content, reply tick, full state', async () => {
     // ── Run A: record ──────────────────────────────────────────
     const recordsA: LLMCompletionRecord[] = []
     setCompletionRecorder( WILL_ID, { recordCompletion: r => recordsA.push({ ...r }) } )
@@ -197,7 +197,7 @@ describe( 'Replay equivalence — scripted conversation (audition path)', () => 
     // ── Full metric equivalence ────────────────────────────────
     const metricKeys = new Set([ ...a.snap.metrics.keys(), ...b.snap.metrics.keys() ])
     for( const key of metricKeys )
-      expect( b.snap.metrics.get( key ), `metric "${key}" diverged on replay` )
+      expect( b.snap.metrics.get( key ), `metric "${key}" diverged on replay`)
         .toBe( a.snap.metrics.get( key ) )
 
     // ── Full entity equivalence ────────────────────────────────
@@ -206,9 +206,9 @@ describe( 'Replay equivalence — scripted conversation (audition path)', () => 
     for( const id of entityIds ){
       const ea = a.snap.entities.get( id )
       const eb = b.snap.entities.get( id )
-      expect( eb, `entity "${id}" missing on replay` ).toBeDefined()
-      expect( ea, `entity "${id}" absent from run A` ).toBeDefined()
-      expect( comparable( eb! ), `entity "${id}" diverged on replay` ).toEqual( comparable( ea! ) )
+      expect( eb, `entity "${id}" missing on replay`).toBeDefined()
+      expect( ea, `entity "${id}" absent from run A`).toBeDefined()
+      expect( comparable( eb! ), `entity "${id}" diverged on replay`).toEqual( comparable( ea! ) )
     }
   }, 180_000 )
 })

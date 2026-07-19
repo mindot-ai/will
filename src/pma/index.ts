@@ -345,7 +345,7 @@ export class PMADistiller {
    */
   private _extractPersona( state: SimulationState ): PMASnapshot['persona'] {
     const priorMeta = state.entities.get( PERSONA_PRIOR_ID )?.metadata as { priors?: Record<string, Record<string, number>> } | undefined
-    const calibMeta = state.entities.get( 'calibration-state' )?.metadata as { domainBias?: Record<string, number> } | undefined
+    const calibMeta = state.entities.get('calibration-state')?.metadata as { domainBias?: Record<string, number> } | undefined
 
     const configPriors    = priorMeta?.priors    ?? {}
     const calibrationBias = calibMeta?.domainBias ?? {}
@@ -358,7 +358,7 @@ export class PMADistiller {
 
   private _extractIdentity( state: SimulationState ): PMAIdentity {
     for( const entity of state.entities.values() ){
-      if( entity.type === 'will.identity' ){
+      if( entity.type === 'will.identity'){
         const m = entity.metadata ?? {}
         return {
           prompt:  ( m['prompt']  as string )                     ?? '',
@@ -390,9 +390,9 @@ export class PMADistiller {
     // If socialOrientation not explicitly set, infer from top actions
     if( !enhanced.socialOrientation && behavioral.fingerprint.topActions.length > 0 ){
       const topAction = behavioral.fingerprint.topActions[0] ?? ''
-      if( topAction.includes( 'social' ) || topAction.includes( 'talk' ) || topAction.includes( 'text' ) ){
+      if( topAction.includes('social') || topAction.includes('talk') || topAction.includes('text') ){
         enhanced.socialOrientation = 'gregarious'
-      } else if( topAction.includes( 'reflect' ) || topAction.includes( 'meditate' ) ){
+      } else if( topAction.includes('reflect') || topAction.includes('meditate') ){
         enhanced.socialOrientation = 'reserved'
       } else {
         enhanced.socialOrientation = 'ambivert'
@@ -418,7 +418,7 @@ export class PMADistiller {
     const raw: PMABelief[] = []
 
     for( const entity of state.entities.values() ){
-      if( entity.type !== 'belief' ) continue
+      if( entity.type !== 'belief') continue
 
       const m = entity.metadata ?? {}
       raw.push({
@@ -446,11 +446,11 @@ export class PMADistiller {
     const goals: PMAGoal[] = []
 
     for( const entity of state.entities.values() ){
-      if( entity.type !== 'goal' ) continue
+      if( entity.type !== 'goal') continue
 
       const m      = entity.metadata ?? {}
       const status = ( m['status'] as string ) ?? 'active'
-      if( status !== 'active' && status !== 'in_progress' ) continue
+      if( status !== 'active' && status !== 'in_progress') continue
 
       goals.push({
         id:                  entity.id,
@@ -459,7 +459,7 @@ export class PMADistiller {
         progress:            ( m['progress']            as number   ) ?? 0,
         status,
         tags:                ( m['tags']                as string[] ) ?? [],
-        completionType:      ( m['completionType']      as 'metric' | 'action' | 'epistemic' ) ?? 'epistemic',
+        completionType:      ( m['completionType']      as 'metric' | 'action' | 'epistemic') ?? 'epistemic',
         completionCondition: ( m['completionCondition'] as string   ) ?? undefined,
       })
     }
@@ -475,7 +475,7 @@ export class PMADistiller {
     const digestTick = new Map<string, number>()
 
     for( const entity of state.entities.values() ){
-      if( entity.type === 'attachment.bond' ){
+      if( entity.type === 'attachment.bond'){
         const m       = entity.metadata ?? {}
         const keid = m['keid'] as string | undefined
         if( !keid ) continue
@@ -492,7 +492,7 @@ export class PMADistiller {
         stubs.set( keid, stub )
       }
 
-      else if( entity.type === 'reputation' ){
+      else if( entity.type === 'reputation'){
         const m       = entity.metadata ?? {}
         const keid = m['keid'] as string | undefined
         if( !keid ) continue
@@ -512,7 +512,7 @@ export class PMADistiller {
         stubs.set( keid, stub )
       }
 
-      else if( entity.type === 'theory_of_mind' ){
+      else if( entity.type === 'theory_of_mind'){
         const m       = entity.metadata ?? {}
         const keid = m['keid'] as string | undefined
         if( !keid ) continue
@@ -526,15 +526,15 @@ export class PMADistiller {
         stubs.set( keid, stub )
       }
 
-      else if( entity.type === 'known-entity' ){
+      else if( entity.type === 'known-entity'){
         const m    = entity.metadata ?? {}
         const keid = m['keid'] as string | undefined
         if( !keid ) continue
 
         const stub = stubs.get( keid ) ?? { keid }
-        if( !stub.agentName && typeof m['name'] === 'string' ) stub.agentName = m['name'] as string
+        if( !stub.agentName && typeof m['name'] === 'string') stub.agentName = m['name'] as string
         stub.dossier = {
-          kind:                 ( m['kind']                 as 'sentient' | 'thing' ) ?? 'sentient',
+          kind:                 ( m['kind']                 as 'sentient' | 'thing') ?? 'sentient',
           name:                 ( m['name']                 as string | undefined ),
           familiarity:          ( m['familiarity']          as number ) ?? 0,
           valence:              ( m['valence']              as number ) ?? 0,
@@ -550,7 +550,7 @@ export class PMADistiller {
       // AuditionEngine memory sink + ProactiveCommunicator). The most recent
       // exchange summary wins.
       else if( entity.type === 'episodic_memory'
-            && entity.metadata?.['sourceType'] === 'conversation.exchange' ){
+            && entity.metadata?.['sourceType'] === 'conversation.exchange'){
         const content = ( entity.metadata['content'] as Record<string, unknown> | undefined ) ?? {}
         const keid = content['entityId'] as string | undefined
         if( !keid ) continue
@@ -599,7 +599,7 @@ export class PMADistiller {
       reactivity:          0.5,
     }
 
-    const filePath = join( dataDir, 'wills', willId, 'profiles', 'emotional_biography.jsonl' )
+    const filePath = join( dataDir, 'wills', willId, 'profiles', 'emotional_biography.jsonl')
     if( !existsSync( filePath ) ) return { baseline: defaultBaseline, sessionsRead: 0 }
 
     const summaries = _readLastNSummaries( filePath, 'session_summary', 5 )
@@ -673,7 +673,7 @@ export class PMADistiller {
       impulsivity:      0.3,
     }
 
-    const filePath = join( dataDir, 'wills', willId, 'profiles', 'behavioral.jsonl' )
+    const filePath = join( dataDir, 'wills', willId, 'profiles', 'behavioral.jsonl')
     if( !existsSync( filePath ) ) return { fingerprint: defaultFingerprint, sessionsRead: 0 }
 
     const summaries = _readLastNSummaries( filePath, 'session_summary', 5 )
@@ -860,7 +860,7 @@ export class PMALoader {
 
     // ── 3. Goals ──────────────────────────────────────────────
     for( const g of pma.goals ){
-      if( g.status !== 'active' && g.status !== 'in_progress' ) continue
+      if( g.status !== 'active' && g.status !== 'in_progress') continue
 
       cognition.goalManager.addGoal(
         g.description,
@@ -882,8 +882,8 @@ export class PMALoader {
       pma.emotionalBaseline.arousalProfile === 'calm'        ? 0.30 :
       0.45
 
-    sm.setMetric( 'affect.valence', valence )
-    sm.setMetric( 'affect.arousal', arousal )
+    sm.setMetric('affect.valence', valence )
+    sm.setMetric('affect.arousal', arousal )
 
     // ── 5. Temperament (influences emotional set-point) ───────
     const temperamentValence = pma.emotionalBaseline.temperamentValence
@@ -1068,7 +1068,7 @@ function _readLastNSummaries(
   n:        number
 ): Array<Record<string, unknown>> {
   try {
-    return readFileSync( filePath, 'utf8' )
+    return readFileSync( filePath, 'utf8')
       .split('\n')
       .filter( l => l.trim().length > 0 )
       .map( l => { try { return JSON.parse(l) as Record<string, unknown> } catch { return null } })

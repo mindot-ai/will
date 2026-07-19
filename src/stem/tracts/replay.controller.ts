@@ -44,7 +44,7 @@ export class ReplayController {
     // Pre-create the replay dir so flush() can persist segments incrementally
     // (stop() saves the consolidated file into the same dir).
     const dataDir = process.env[ 'WILL_DATA_DIR' ] ?? './data'
-    const dir     = join( dataDir, 'wills', id, 'replays' )
+    const dir     = join( dataDir, 'wills', id, 'replays')
     mkdirSync( dir, { recursive: true } )
 
     const recorder = this._replayManager.createRecorder( id, runId, undefined, {
@@ -74,10 +74,10 @@ export class ReplayController {
     this._activeRecorders.delete( id )
 
     const dataDir = process.env[ 'WILL_DATA_DIR' ] ?? './data'
-    const dir     = join( dataDir, 'wills', id, 'replays' )
+    const dir     = join( dataDir, 'wills', id, 'replays')
     mkdirSync( dir, { recursive: true } )
 
-    const path = join( dir, `${active.runId}.json` )
+    const path = join( dir, `${active.runId}.json`)
     await active.recorder.save( path )
 
     const meta = active.recorder.getMetadata()
@@ -97,11 +97,11 @@ export class ReplayController {
     if( cached ) return cached
 
     const dataDir = process.env[ 'WILL_DATA_DIR' ] ?? './data'
-    const path    = join( dataDir, 'wills', id, 'replays', `${runId}.json` )
+    const path    = join( dataDir, 'wills', id, 'replays', `${runId}.json`)
     if( !existsSync( path ) ) return null
 
     try {
-      const meta = ( JSON.parse( readFileSync( path, 'utf8' ) ) as { metadata: ReplayMetadata } ).metadata
+      const meta = ( JSON.parse( readFileSync( path, 'utf8') ) as { metadata: ReplayMetadata } ).metadata
       this._completedReplays.set( key, meta )
       this._replayPaths.set( key, path )
       return meta
@@ -121,7 +121,7 @@ export class ReplayController {
       if( key.startsWith( prefix ) ) results.push( meta )
 
     const dataDir = process.env[ 'WILL_DATA_DIR' ] ?? './data'
-    const dir     = join( dataDir, 'wills', id, 'replays' )
+    const dir     = join( dataDir, 'wills', id, 'replays')
 
     if( existsSync( dir ) ){
       const inMem = new Set(
@@ -137,7 +137,7 @@ export class ReplayController {
         if( inMem.has( runId ) ) continue
         try {
           const path   = join( dir, file )
-          const meta   = ( JSON.parse( readFileSync( path, 'utf8' ) ) as { metadata: ReplayMetadata } ).metadata
+          const meta   = ( JSON.parse( readFileSync( path, 'utf8') ) as { metadata: ReplayMetadata } ).metadata
           const key    = `${id}:${runId}`
           this._completedReplays.set( key, meta )
           this._replayPaths.set( key, path )
@@ -164,14 +164,14 @@ export class ReplayController {
    * process (e.g. after a server restart).
    */
   private _resolvePath( id: string, runId: string ): string | undefined {
-    const cached = this._replayPaths.get( `${id}:${runId}` )
+    const cached = this._replayPaths.get(`${id}:${runId}`)
     if( cached ) return cached
 
     const dataDir = process.env[ 'WILL_DATA_DIR' ] ?? './data'
-    const path    = join( dataDir, 'wills', id, 'replays', `${runId}.json` )
+    const path    = join( dataDir, 'wills', id, 'replays', `${runId}.json`)
     if( !existsSync( path ) ) return undefined
 
-    this._replayPaths.set( `${id}:${runId}`, path )
+    this._replayPaths.set(`${id}:${runId}`, path )
     return path
   }
 }

@@ -36,7 +36,7 @@ export const REPLY_TEXT_CLOSE = `[/${REPLY_TEXT_TAG}]`
 
 /** Wrap a reply body in the block markers (the mock's emission shape). */
 export function wrapReplyText( body: string ): string {
-  return [ REPLY_TEXT_OPEN, body, REPLY_TEXT_CLOSE ].join( '\n' )
+  return [ REPLY_TEXT_OPEN, body, REPLY_TEXT_CLOSE ].join('\n')
 }
 
 // ── Conversation-facet focus — render ↔ match pair ────────────

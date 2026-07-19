@@ -33,7 +33,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
-const REPO_ROOT = join( dirname( fileURLToPath( import.meta.url ) ), '..', '..' )
+const REPO_ROOT = join( dirname( fileURLToPath( import.meta.url ) ), '..', '..')
 const SCAN_DIRS = [ 'src/core', 'src/cognition' ]   // src/cognition recurses into agency
 const ALLOW_MARKER = 'determinism-ok'
 
@@ -78,7 +78,7 @@ function collectTsFiles( absDir: string ): string[] {
   for( const entry of readdirSync( absDir, { withFileTypes: true } ) ){
     const full = join( absDir, entry.name )
     if( entry.isDirectory() ) out.push( ...collectTsFiles( full ) )
-    else if( entry.name.endsWith( '.ts' ) && !entry.name.endsWith( '.test.ts' ) )
+    else if( entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts') )
       out.push( full )
   }
   return out
@@ -93,17 +93,17 @@ function collectTsFiles( absDir: string ): string[] {
 function stripComments( src: string ): string[] {
   const out: string[] = []
   let inBlock = false
-  for( const line of src.split( '\n' ) ){
+  for( const line of src.split('\n') ){
     let result = ''
     let i = 0
     while( i < line.length ){
       if( inBlock ){
-        const end = line.indexOf( '*/', i )
+        const end = line.indexOf('*/', i )
         if( end === -1 ){ i = line.length }
         else { inBlock = false; i = end + 2 }
       } else {
-        const blockStart = line.indexOf( '/*', i )
-        const lineStart  = line.indexOf( '//', i )
+        const blockStart = line.indexOf('/*', i )
+        const lineStart  = line.indexOf('//', i )
         if( lineStart !== -1 && ( blockStart === -1 || lineStart < blockStart ) ){
           result += line.slice( i, lineStart )
           i = line.length
@@ -130,8 +130,8 @@ function scan(): Violation[] {
     // Apply only the patterns scoped to this dir (or unscoped patterns).
     const active = BANNED.filter( p => !p.dirs || p.dirs.includes( dir ) )
     for( const file of collectTsFiles( join( REPO_ROOT, dir ) ) ){
-      const raw     = readFileSync( file, 'utf8' )
-      const rawLines = raw.split( '\n' )
+      const raw     = readFileSync( file, 'utf8')
+      const rawLines = raw.split('\n')
       const code    = stripComments( raw )
       code.forEach( ( codeLine, idx ) => {
         const original = rawLines[ idx ] ?? ''
@@ -150,66 +150,66 @@ function scan(): Violation[] {
   return violations
 }
 
-describe( 'determinism guard — banned non-deterministic APIs (R2)', () => {
-  it( 'finds source files to scan (sanity)', () => {
+describe('determinism guard — banned non-deterministic APIs (R2)', () => {
+  it('finds source files to scan (sanity)', () => {
     const count = SCAN_DIRS.reduce(
       ( n, d ) => n + collectTsFiles( join( REPO_ROOT, d ) ).length, 0,
     )
     expect( count ).toBeGreaterThan( 0 )
   })
 
-  it( 'has no banned non-deterministic calls in src/core or src/cognition (incl. agency)', () => {
+  it('has no banned non-deterministic calls in src/core or src/cognition (incl. agency)', () => {
     const violations = scan()
     const report = violations
-      .map( v => `  ${v.file}:${v.line} — ${v.pattern}\n      ${v.text}` )
-      .join( '\n' )
+      .map( v => `  ${v.file}:${v.line} — ${v.pattern}\n      ${v.text}`)
+      .join('\n')
     expect(
       violations,
       violations.length === 0 ? '' :
         `Found ${violations.length} banned non-deterministic call(s):\n${report}\n\n`
-        + `Fix: ${BANNED.map( b => `${b.name} → ${b.hint}` ).join( '; ' )}.\n`
+        + `Fix: ${BANNED.map( b => `${b.name} → ${b.hint}`).join('; ')}.\n`
         + `If a site is genuinely non-replay-affecting, add a "${ALLOW_MARKER}" comment.`,
     ).toHaveLength( 0 )
   })
 
-  it( 'comment-only mentions of a banned API do not trigger a violation', () => {
+  it('comment-only mentions of a banned API do not trigger a violation', () => {
     // The scanner strips comments; e.g. types.ts JSDoc says "Math.random()" in prose.
-    const stripped = stripComments( '/** use Math.random() sparingly */\nconst x = 1 // Math.random()' )
+    const stripped = stripComments('/** use Math.random() sparingly */\nconst x = 1 // Math.random()')
     expect( stripped.some( l => /Math\s*\.\s*random\s*\(/.test( l ) ) ).toBe( false )
   })
 
-  it( 'the allow-marker escape hatch suppresses a flagged line', () => {
+  it('the allow-marker escape hatch suppresses a flagged line', () => {
     // Sanity-check the marker logic against a synthetic offending line.
     const line = 'const k = Math.random() // determinism-ok: transient, not in state'
     const flagged = !line.includes( ALLOW_MARKER ) && /Math\s*\.\s*random\s*\(/.test( line )
     expect( flagged ).toBe( false )
   })
 
-  it( 'the wall-clock patterns match Date.now() and new Date forms', () => {
-    const dateNow = BANNED.find( b => b.name === 'Date.now()' )!.re
-    const newDate = BANNED.find( b => b.name === 'new Date' )!.re
+  it('the wall-clock patterns match Date.now() and new Date forms', () => {
+    const dateNow = BANNED.find( b => b.name === 'Date.now()')!.re
+    const newDate = BANNED.find( b => b.name === 'new Date')!.re
 
-    expect( dateNow.test( 'const t = Date.now()' ) ).toBe( true )
-    expect( dateNow.test( 'const t = Date . now ()' ) ).toBe( true )
-    expect( newDate.test( 'const d = new Date( x )' ) ).toBe( true )
-    expect( newDate.test( 'const d = new Date()' ) ).toBe( true )
+    expect( dateNow.test('const t = Date.now()') ).toBe( true )
+    expect( dateNow.test('const t = Date . now ()') ).toBe( true )
+    expect( newDate.test('const d = new Date( x )') ).toBe( true )
+    expect( newDate.test('const d = new Date()') ).toBe( true )
     // Must not flag unrelated identifiers that merely start with "Date".
-    expect( newDate.test( 'const r = new DateRange()' ) ).toBe( false )
+    expect( newDate.test('const r = new DateRange()') ).toBe( false )
   })
 
-  it( 'the randomUUID pattern matches both bare and crypto-qualified forms (R2-c)', () => {
-    const re = BANNED.find( b => b.name === 'randomUUID()' )!.re
-    expect( re.test( 'id: randomUUID()' ) ).toBe( true )
-    expect( re.test( 'id: crypto.randomUUID()' ) ).toBe( true )
-    expect( re.test( 'const id = randomUUID ()' ) ).toBe( true )
+  it('the randomUUID pattern matches both bare and crypto-qualified forms (R2-c)', () => {
+    const re = BANNED.find( b => b.name === 'randomUUID()')!.re
+    expect( re.test('id: randomUUID()') ).toBe( true )
+    expect( re.test('id: crypto.randomUUID()') ).toBe( true )
+    expect( re.test('const id = randomUUID ()') ).toBe( true )
     // The determinism-ok marker still suppresses a flagged line (handled by scan()).
     const marked = 'id: crypto.randomUUID(), // determinism-ok: run identity'
     expect( !marked.includes( ALLOW_MARKER ) && re.test( marked ) ).toBe( false )
     // Must not flag unrelated identifiers.
-    expect( re.test( 'const u = makeUUID()' ) ).toBe( false )
+    expect( re.test('const u = makeUUID()') ).toBe( false )
   })
 
-  it( 'applies the wall-clock ban to every scan dir (R2-b2 dropped the src/core scoping)', () => {
+  it('applies the wall-clock ban to every scan dir (R2-b2 dropped the src/core scoping)', () => {
     for( const name of [ 'Date.now()', 'new Date' ] )
       expect( BANNED.find( b => b.name === name )!.dirs ).toBeUndefined()
   })

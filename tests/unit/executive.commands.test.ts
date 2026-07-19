@@ -84,8 +84,8 @@ function richOutput(): ExecutiveOutputFull {
   } as ExecutiveOutputFull
 }
 
-describe( 'buildStateCommands — purity (FN11)', () => {
-  it( 'performs NO manager writes during the build, only collects them as effects', () => {
+describe('buildStateCommands — purity (FN11)', () => {
+  it('performs NO manager writes during the build, only collects them as effects', () => {
     const log = freshLog()
     const summarizer = new ExecutiveSummarizer()
     const before = summarizer.snapshot()
@@ -107,7 +107,7 @@ describe( 'buildStateCommands — purity (FN11)', () => {
     expect( effects.length ).toBeGreaterThan( 0 )
   })
 
-  it( 'running the effects applies every manager write exactly once', () => {
+  it('running the effects applies every manager write exactly once', () => {
     const log = freshLog()
     const summarizer = new ExecutiveSummarizer()
     const ring: string[] = []
@@ -123,12 +123,12 @@ describe( 'buildStateCommands — purity (FN11)', () => {
     expect( ring ).toEqual( [ 'observe' ] )
     // Summarizer recorded the reasoning.
     expect( summarizer.snapshot().callCount ).toBe( 1 )
-    expect( summarizer.snapshot().buffer ).toContain( 'thinking hard' )
+    expect( summarizer.snapshot().buffer ).toContain('thinking hard')
   })
 })
 
-describe( 'buildStateCommands — abort safety + dual-write consistency (FN11)', () => {
-  it( 'an aborted tick (effects never run) leaves managers pristine — no drift', () => {
+describe('buildStateCommands — abort safety + dual-write consistency (FN11)', () => {
+  it('an aborted tick (effects never run) leaves managers pristine — no drift', () => {
     const log = freshLog()
     const summarizer = new ExecutiveSummarizer()
     const ring: string[] = []
@@ -145,14 +145,14 @@ describe( 'buildStateCommands — abort safety + dual-write consistency (FN11)',
     expect( ring ).toEqual( [] )
   })
 
-  it( 'the persisted summary entity matches the summarizer state the deferred record() produces', () => {
+  it('the persisted summary entity matches the summarizer state the deferred record() produces', () => {
     const log = freshLog()
     const summarizer = new ExecutiveSummarizer()
     const ring: string[] = []
 
     const { commands, effects } = buildStateCommands( richOutput(), footprintAt( 7 ), emptyState(), makeDeps( log, summarizer ), ring )
 
-    const summaryEntity = commands.set!.find( e => e.id === 'executive-rolling-summary' )!
+    const summaryEntity = commands.set!.find( e => e.id === 'executive-rolling-summary')!
     expect( summaryEntity ).toBeDefined()
 
     // Commit the tick: run the effects (record() lands).
@@ -164,7 +164,7 @@ describe( 'buildStateCommands — abort safety + dual-write consistency (FN11)',
   })
 })
 
-describe( 'buildStateCommands — deterministic belief IDs (FN12)', () => {
+describe('buildStateCommands — deterministic belief IDs (FN12)', () => {
   // Two beliefs in one cycle so the per-batch index disambiguator is exercised.
   function twoBeliefOutput(): ExecutiveOutputFull {
     return {
@@ -181,24 +181,24 @@ describe( 'buildStateCommands — deterministic belief IDs (FN12)', () => {
   function beliefIds( tick: number ): string[] {
     const log = freshLog()
     const { commands } = buildStateCommands( twoBeliefOutput(), footprintAt( tick ), emptyState(), makeDeps( log, new ExecutiveSummarizer() ), [] )
-    return commands.set!.filter( e => e.type === 'belief' ).map( e => e.id )
+    return commands.set!.filter( e => e.type === 'belief').map( e => e.id )
   }
 
-  it( 'derives belief ids from the sim tick + batch index (no Date.now/Math.random)', () => {
+  it('derives belief ids from the sim tick + batch index (no Date.now/Math.random)', () => {
     expect( beliefIds( 7 ) ).toEqual( [ 'belief-executive-7-0', 'belief-executive-7-1' ] )
   })
 
-  it( 'is replay-stable: identical inputs at the same tick yield identical ids', () => {
+  it('is replay-stable: identical inputs at the same tick yield identical ids', () => {
     expect( beliefIds( 7 ) ).toEqual( beliefIds( 7 ) )
   })
 
-  it( 'distinct ticks yield distinct ids (no cross-cycle collisions)', () => {
+  it('distinct ticks yield distinct ids (no cross-cycle collisions)', () => {
     const a = beliefIds( 7 )
     const b = beliefIds( 8 )
     expect( a.some( id => b.includes( id ) ) ).toBe( false )
   })
 
-  it( 'the deferred integrate() belief id matches the persisted command id', () => {
+  it('the deferred integrate() belief id matches the persisted command id', () => {
     const log = freshLog()
     const integrated: string[] = []
     const deps = makeDeps( log, new ExecutiveSummarizer() )
@@ -208,36 +208,36 @@ describe( 'buildStateCommands — deterministic belief IDs (FN12)', () => {
     const { commands, effects } = buildStateCommands( twoBeliefOutput(), footprintAt( 9 ), emptyState(), deps, [] )
     for( const fx of effects ) fx()
 
-    const commandIds = commands.set!.filter( e => e.type === 'belief' ).map( e => e.id )
+    const commandIds = commands.set!.filter( e => e.type === 'belief').map( e => e.id )
     expect( integrated ).toEqual( commandIds )
   })
 })
 
-describe( 'buildStateCommands — known-entity updates (Phase 2.2)', () => {
+describe('buildStateCommands — known-entity updates (Phase 2.2)', () => {
   const keOutput = (): ExecutiveOutputFull => ( {
     actions: [], reasoning: 'r', confidence: 0.6,
     knownEntityUpdates: [ { keid: 'web:42', name: 'Mara', learned: [ 'studies coral reefs' ], feeling: 0.3 } ],
   } as ExecutiveOutputFull )
 
-  it( 'turns learned facts into keid-tagged social beliefs (pure; effect → integrator)', () => {
+  it('turns learned facts into keid-tagged social beliefs (pure; effect → integrator)', () => {
     const log = freshLog(); const summarizer = new ExecutiveSummarizer()
     const { commands, effects } = buildStateCommands( keOutput(), footprintAt( 7 ), emptyState(), makeDeps( log, summarizer ), [] )
 
-    const belief = commands.set!.find( e => e.type === 'belief' && ( e.metadata?.tags as string[] | undefined )?.includes( 'keid:web:42' ) )
+    const belief = commands.set!.find( e => e.type === 'belief' && ( e.metadata?.tags as string[] | undefined )?.includes('keid:web:42') )
     expect( belief ).toBeDefined()
-    expect( belief!.metadata!.category ).toBe( 'social_belief' )
+    expect( belief!.metadata!.category ).toBe('social_belief')
     expect( log.beliefs ).toEqual( [] )            // pure — not applied during the build
     effects.forEach( fn => fn() )
-    expect( log.beliefs ).toContain( 'studies coral reefs' )
+    expect( log.beliefs ).toContain('studies coral reefs')
   })
 
-  it( 'routes name/feeling to the tracker via a known.entity.learned event', () => {
+  it('routes name/feeling to the tracker via a known.entity.learned event', () => {
     const log = freshLog(); const summarizer = new ExecutiveSummarizer()
     const published: any[] = []
     const deps = { ...makeDeps( log, summarizer ), bus: { publish: ( e: any ) => published.push( e ) } as any }
     const { effects } = buildStateCommands( keOutput(), footprintAt( 7 ), emptyState(), deps, [] )
     effects.forEach( fn => fn() )
-    const ev = published.find( e => e.type === 'known.entity.learned' )
+    const ev = published.find( e => e.type === 'known.entity.learned')
     expect( ev?.payload ).toMatchObject( { keid: 'web:42', name: 'Mara', feeling: 0.3 } )
   })
 })
@@ -250,7 +250,7 @@ describe( 'buildStateCommands — known-entity updates (Phase 2.2)', () => {
 
 function stateWithExternalAffordance( schema: string, extra: Array<{ id: string; type: string; metadata?: Record<string, unknown> }> = [] ): ReadonlySimulationState {
   const entities = new Map<string, unknown>()
-  entities.set( `aff-${ schema }`, { id: `aff-${ schema }`, type: 'affordance', createdAt: 0, updatedAt: 0,
+  entities.set(`aff-${ schema }`, { id: `aff-${ schema }`, type: 'affordance', createdAt: 0, updatedAt: 0,
     metadata: { schema, source: 'external', available: true } } )
   for( const e of extra )
     entities.set( e.id, { ...e, createdAt: 0, updatedAt: 0 } )
@@ -264,48 +264,48 @@ function outputWithAction( action: Record<string, unknown> ): ExecutiveOutputFul
 const ideomotorOf = ( commands: { set?: Array<{ id: string; type: string; metadata?: Record<string, unknown> }> }, schema: string ) =>
   ( commands.set ?? [] ).find( e => e.type === 'ideomotor.intent' && e.metadata?.['schema'] === schema )
 
-describe( 'buildStateCommands — ideomotor ability leg (executive args)', () => {
+describe('buildStateCommands — ideomotor ability leg (executive args)', () => {
   const run = ( output: ExecutiveOutputFull, state: ReadonlySimulationState ) => {
     const log = freshLog()
     return buildStateCommands( output, footprintAt( 1 ), state, makeDeps( log, new ExecutiveSummarizer() ), [] ).commands
   }
 
-  it( 'pre-activates an afforded ability with the executive\'s conscious args', () => {
+  it('pre-activates an afforded ability with the executive\'s conscious args', () => {
     const commands = run(
       outputWithAction( { type: 'search_docs', reasoning: 'need the design', expectedOutcome: 'found', args: { query: 'tick loop design' } } ),
-      stateWithExternalAffordance( 'search_docs' ),
+      stateWithExternalAffordance('search_docs'),
     )
-    const intent = ideomotorOf( commands, 'search_docs' )
+    const intent = ideomotorOf( commands, 'search_docs')
     expect( intent ).toBeDefined()
     expect( intent?.metadata?.['parameters'] ).toEqual( { query: 'tick loop design' } )
-    expect( intent?.metadata?.['origin'] ).toBe( 'executive' )
+    expect( intent?.metadata?.['origin'] ).toBe('executive')
   } )
 
-  it( 'ignores an action naming an ability the field does not currently afford', () => {
+  it('ignores an action naming an ability the field does not currently afford', () => {
     const commands = run(
       outputWithAction( { type: 'search_docs', reasoning: 'r', expectedOutcome: 'o', args: { query: 'x' } } ),
       { tick: 1, time: 0, entities: new Map(), metrics: new Map() } as unknown as ReadonlySimulationState,
     )
-    expect( ideomotorOf( commands, 'search_docs' ) ).toBeUndefined()
+    expect( ideomotorOf( commands, 'search_docs') ).toBeUndefined()
   } )
 
-  it( 'resolves the action target to a known-entity keid for a targeted ability', () => {
+  it('resolves the action target to a known-entity keid for a targeted ability', () => {
     const commands = run(
       outputWithAction( { type: 'give', reasoning: 'r', expectedOutcome: 'o', target: 'Ada' } ),
-      stateWithExternalAffordance( 'give', [
+      stateWithExternalAffordance('give', [
         { id: 'ke-ada', type: 'known-entity', metadata: { keid: 'ada', kind: 'sentient', name: 'Ada' } },
       ] ),
     )
-    expect( ideomotorOf( commands, 'give' )?.metadata?.['targetEntityId'] ).toBe( 'ada' )
+    expect( ideomotorOf( commands, 'give')?.metadata?.['targetEntityId'] ).toBe('ada')
   } )
 
-  it( 'leaves the communicate leg untouched (reach-out still forms from a communicate action)', () => {
+  it('leaves the communicate leg untouched (reach-out still forms from a communicate action)', () => {
     const commands = run(
       outputWithAction( { type: 'communicate', reasoning: 'r', expectedOutcome: 'o', target: 'Ada' } ),
-      stateWithExternalAffordance( 'unrelated', [
+      stateWithExternalAffordance('unrelated', [
         { id: 'ke-ada', type: 'known-entity', metadata: { keid: 'ada', kind: 'sentient', name: 'Ada' } },
       ] ),
     )
-    expect( ideomotorOf( commands, 'reach-out' )?.metadata?.['targetEntityId'] ).toBe( 'ada' )
+    expect( ideomotorOf( commands, 'reach-out')?.metadata?.['targetEntityId'] ).toBe('ada')
   } )
 } )

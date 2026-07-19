@@ -25,8 +25,8 @@ const belief = ( over: Partial<Belief> = {} ): Belief => ( {
   ...over,
 } )
 
-describe( 'SemanticIntegrator — restoreBeliefs is verbatim (PMA reconstruction)', () => {
-  it( 'preserves every id and confidence for beliefs that would otherwise merge', () => {
+describe('SemanticIntegrator — restoreBeliefs is verbatim (PMA reconstruction)', () => {
+  it('preserves every id and confidence for beliefs that would otherwise merge', () => {
     const integ = new SemanticIntegrator()
 
     // Same category + shared tag ⇒ _shouldMerge() would absorb these into one
@@ -38,19 +38,19 @@ describe( 'SemanticIntegrator — restoreBeliefs is verbatim (PMA reconstruction
 
     const byId = new Map( integ.getBeliefs().map( x => [ x.id, x.confidence ] ) )
     expect( integ.getBeliefs().length ).toBe( 2 )
-    expect( byId.get( 'a' ) ).toBe( 0.9 )   // exact — not averaged to 0.6
-    expect( byId.get( 'b' ) ).toBe( 0.3 )
+    expect( byId.get('a') ).toBe( 0.9 )   // exact — not averaged to 0.6
+    expect( byId.get('b') ).toBe( 0.3 )
   } )
 
-  it( 'does not re-cap confidence by evidence count', () => {
+  it('does not re-cap confidence by evidence count', () => {
     const integ = new SemanticIntegrator()
     // High confidence, thin episodic support — integrateExecutiveBelief would cap
     // this down; a verbatim restore must keep the stored value.
     integ.restoreBeliefs( [ belief( { id: 'hi', confidence: 0.95, supportingEpisodes: 0 } ) ] )
-    expect( integ.getBeliefs().find( x => x.id === 'hi' )?.confidence ).toBe( 0.95 )
+    expect( integ.getBeliefs().find( x => x.id === 'hi')?.confidence ).toBe( 0.95 )
   } )
 
-  it( 'seeds a history entry when none is provided and keeps an existing one', () => {
+  it('seeds a history entry when none is provided and keeps an existing one', () => {
     const integ = new SemanticIntegrator()
     integ.restoreBeliefs( [
       belief( { id: 'no-hist',   history: [] } ),
@@ -58,6 +58,6 @@ describe( 'SemanticIntegrator — restoreBeliefs is verbatim (PMA reconstruction
     ] )
     const loaded = integ.getBeliefs()
     expect( loaded.find( x => x.id === 'no-hist'   )?.history?.length ).toBe( 1 )
-    expect( loaded.find( x => x.id === 'with-hist' )?.history?.length ).toBe( 1 )
+    expect( loaded.find( x => x.id === 'with-hist')?.history?.length ).toBe( 1 )
   } )
 } )

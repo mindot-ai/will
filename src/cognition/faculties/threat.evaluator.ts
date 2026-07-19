@@ -180,12 +180,12 @@ export class ThreatEvaluator implements SimulationEngine, CognitiveEngine {
     // event is refreshed each tick as base ⊕ persona-prior, so a steadier Will develops a
     // HIGHER threshold and is less easily alarmed. _computeAndEmit (no `state`) reads the
     // cached field. (The seed entity existed but was ignored before.)
-    this._fearEventThreshold = readEffectiveParams( state, 'engine-config-threat' ).fearEventThreshold ?? this._fearEventThreshold
+    this._fearEventThreshold = readEffectiveParams( state, 'engine-config-threat').fearEventThreshold ?? this._fearEventThreshold
 
     // Recompute hostile threat from state entities every tick
     let maxHostile = 0
     for( const entity of state.entities.values() ){
-      if( entity.type !== 'threat' ) continue
+      if( entity.type !== 'threat') continue
       if( entity.metadata?.active === false )  continue
       if( !entity.metadata?.hostile )          continue
       const intensity = typeof entity.metadata?.intensity === 'number'
@@ -288,7 +288,7 @@ export class ThreatEvaluator implements SimulationEngine, CognitiveEngine {
       // worldState.threatLevel). observe() runs every tick so the baseline tracks
       // and the executive's top-down precision (set on 'threat.level') applies;
       // the one value is reused across the tiered events.
-      const threatSalience = this._model.observe( 'threat.level', threatLevel ).salience
+      const threatSalience = this._model.observe('threat.level', threatLevel ).salience
 
       if( fear > 0.4 )
         _bus.publish({ type: 'emotion.fear.elevated', version: 1, sourceEngine: this.name, salience: threatSalience, payload: { fear } })

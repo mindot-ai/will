@@ -362,7 +362,7 @@ export class Will {
 
   /** Split an effectors-map entry into a handler + an EffectorDeclaration. */
   private _register( name: string, entry: EffectorEntry ): void {
-    if( typeof entry === 'function' ){
+    if( typeof entry === 'function'){
       this._effectors.set( name, entry )
       this._effectorDecls.set( name, name )          // bare name — uniform prior
       return
@@ -395,8 +395,8 @@ export class Will {
     return {
       tick: s.tick,
       metrics: {
-        energy:  m( 'energy.level', 100 ), stress: m( 'stress.load' ), sleep: m( 'sleep.pressure' ),
-        valence: m( 'affect.valence' ),    arousal: m( 'affect.arousal' ),
+        energy:  m('energy.level', 100 ), stress: m('stress.load'), sleep: m('sleep.pressure'),
+        valence: m('affect.valence'),    arousal: m('affect.arousal'),
       },
       goals:   c.goalManager.getActiveGoals().map( g => ( { description: g.description, priority: g.priority } ) ),
       beliefs: c.semanticIntegrator.getBeliefs().map( b => ( { statement: b.statement, confidence: b.confidence } ) ),
@@ -463,7 +463,7 @@ export class Will {
   private _buildConfig( id: string, opts: CreateWillOptions ): WillConfig {
     // Auto-detect from whichever provider key is present; explicit `llm` wins.
     const mode = opts.llm
-      ?? ( process.env.ANTHROPIC_API_KEY ? 'anthropic' : process.env.ZAI_API_KEY ? 'glm' : 'mock' )
+      ?? ( process.env.ANTHROPIC_API_KEY ? 'anthropic' : process.env.ZAI_API_KEY ? 'glm' : 'mock')
     const useMock = mode === 'mock'
     // `llm: 'glm'` selects the provider; an explicit llmConfig still overrides it.
     const llmConfig = mode === 'glm'
@@ -581,5 +581,5 @@ export class Will {
 const COMMUNICATION = [ 'listen', 'talk', 'text' ] as const
 
 function slug( s: string ): string {
-  return s.toLowerCase().replace( /[^a-z0-9]+/g, '-' ).replace( /^-+|-+$/g, '' ) || 'will'
+  return s.toLowerCase().replace( /[^a-z0-9]+/g, '-').replace( /^-+|-+$/g, '') || 'will'
 }

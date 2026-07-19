@@ -33,13 +33,13 @@ function stateWith( metadata: Record<string, unknown>, components: Record<string
   } as unknown as SimulationState
 }
 
-describe( 'DefaultSerializer — lossless special values in metadata/components (FN15)', () => {
+describe('DefaultSerializer — lossless special values in metadata/components (FN15)', () => {
   const ser = new DefaultSerializer({ includeChecksum: true, prettyPrint: false })
 
-  it( 'round-trips Map / Set / Date / undefined that plain JSON would drop', () => {
+  it('round-trips Map / Set / Date / undefined that plain JSON would drop', () => {
     const map = new Map<string, number>( [ [ 'a', 1 ], [ 'b', 2 ] ] )
     const set = new Set<string>( [ 'x', 'y' ] )
-    const date = new Date( '2026-05-29T00:00:00.000Z' )
+    const date = new Date('2026-05-29T00:00:00.000Z')
 
     const state = stateWith({
       tags: set,
@@ -49,64 +49,64 @@ describe( 'DefaultSerializer — lossless special values in metadata/components 
       plain: { nested: [ 1, 'two', true ] },
     })
 
-    const restored = ser.deserialize( ser.serialize( state, 'json' ) as string )
-    const meta = restored.entities.get( 'e1' )!.metadata!
+    const restored = ser.deserialize( ser.serialize( state, 'json') as string )
+    const meta = restored.entities.get('e1')!.metadata!
 
     expect( meta.tags ).toBeInstanceOf( Set )
     expect( [ ...( meta.tags as Set<string> ) ] ).toEqual( [ 'x', 'y' ] )
 
     expect( meta.lastSeen ).toBeInstanceOf( Date )
-    expect( ( meta.lastSeen as Date ).toISOString() ).toBe( '2026-05-29T00:00:00.000Z' )
+    expect( ( meta.lastSeen as Date ).toISOString() ).toBe('2026-05-29T00:00:00.000Z')
 
     expect( meta.counts ).toBeInstanceOf( Map )
     expect( [ ...( meta.counts as Map<string, number> ) ] ).toEqual( [ [ 'a', 1 ], [ 'b', 2 ] ] )
 
     // The `undefined` key survives (present with an undefined value), where
     // plain JSON would have dropped the key entirely.
-    expect( 'missing' in meta ).toBe( true )
+    expect('missing' in meta ).toBe( true )
     expect( meta.missing ).toBeUndefined()
 
     // Plain JSON values are untouched.
     expect( meta.plain ).toEqual( { nested: [ 1, 'two', true ] } )
   })
 
-  it( 'round-trips special values nested inside components and inside containers', () => {
+  it('round-trips special values nested inside components and inside containers', () => {
     const state = stateWith(
       {},
       {
         // Map whose values are themselves Sets/Dates, plus an array of Maps.
         index: new Map<string, Set<number>>( [ [ 'g', new Set( [ 1, 2 ] ) ] ] ),
-        history: [ new Date( '2020-01-01T00:00:00.000Z' ), { when: new Date( '2021-01-01T00:00:00.000Z' ) } ],
+        history: [ new Date('2020-01-01T00:00:00.000Z'), { when: new Date('2021-01-01T00:00:00.000Z') } ],
       },
     )
 
-    const restored = ser.deserialize( ser.serialize( state, 'json' ) as string )
-    const comp = restored.entities.get( 'e1' )!.metadata!.components as Record<string, unknown>
+    const restored = ser.deserialize( ser.serialize( state, 'json') as string )
+    const comp = restored.entities.get('e1')!.metadata!.components as Record<string, unknown>
 
     const index = comp.index as Map<string, Set<number>>
     expect( index ).toBeInstanceOf( Map )
-    expect( index.get( 'g' ) ).toBeInstanceOf( Set )
-    expect( [ ...index.get( 'g' )! ] ).toEqual( [ 1, 2 ] )
+    expect( index.get('g') ).toBeInstanceOf( Set )
+    expect( [ ...index.get('g')! ] ).toEqual( [ 1, 2 ] )
 
     const history = comp.history as unknown[]
     expect( history[0] ).toBeInstanceOf( Date )
     expect( ( ( history[1] as Record<string, unknown> ).when ) ).toBeInstanceOf( Date )
   })
 
-  it( 'plain-JSON-only metadata still round-trips unchanged (no regression)', () => {
+  it('plain-JSON-only metadata still round-trips unchanged (no regression)', () => {
     const state = stateWith({ score: 0.5, label: 'ok', flags: [ true, false ], obj: { a: 1 } })
-    const restored = ser.deserialize( ser.serialize( state, 'json' ) as string )
-    const meta = restored.entities.get( 'e1' )!.metadata!
+    const restored = ser.deserialize( ser.serialize( state, 'json') as string )
+    const meta = restored.entities.get('e1')!.metadata!
 
     expect( meta.score ).toBe( 0.5 )
-    expect( meta.label ).toBe( 'ok' )
+    expect( meta.label ).toBe('ok')
     expect( meta.flags ).toEqual( [ true, false ] )
     expect( meta.obj ).toEqual( { a: 1 } )
   })
 
-  it( 'the checksum now covers metadata — tampering is detected (FN15)', () => {
+  it('the checksum now covers metadata — tampering is detected (FN15)', () => {
     const state = stateWith({ secret: 'original' })
-    const serialized = ser.serialize( state, 'json' ) as string
+    const serialized = ser.serialize( state, 'json') as string
 
     // Tamper with metadata only, leaving id/type/updatedAt and the stored
     // checksum untouched — exactly the case the old (metadata-excluded)
@@ -117,10 +117,10 @@ describe( 'DefaultSerializer — lossless special values in metadata/components 
     expect( () => ser.deserialize( JSON.stringify( parsed ) ) ).toThrow( /Checksum mismatch/ )
   })
 
-  it( 'an untampered round-trip passes the checksum even with special values present', () => {
-    const state = stateWith({ when: new Date( '2026-05-29T00:00:00.000Z' ), set: new Set( [ 1 ] ) })
+  it('an untampered round-trip passes the checksum even with special values present', () => {
+    const state = stateWith({ when: new Date('2026-05-29T00:00:00.000Z'), set: new Set( [ 1 ] ) })
     // Should not throw — the checksum is computed over the encoded form and
     // verified against that same encoded form before decoding.
-    expect( () => ser.deserialize( ser.serialize( state, 'json' ) as string ) ).not.toThrow()
+    expect( () => ser.deserialize( ser.serialize( state, 'json') as string ) ).not.toThrow()
   })
 })

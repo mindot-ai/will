@@ -100,7 +100,7 @@ export class BiasDetector implements SimulationEngine, CognitiveEngine {
       case 'executive.prediction.formed': {
         const p = e.payload as { predictedDomains: string[]; confidence: number }
         if( p.predictedDomains.includes('metacognition') )
-          this._model.setPrecision( 'bias.novelty', 1.0 + p.confidence * 0.5 )
+          this._model.setPrecision('bias.novelty', 1.0 + p.confidence * 0.5 )
 
         break
       }
@@ -168,7 +168,7 @@ export class BiasDetector implements SimulationEngine, CognitiveEngine {
       // Surprise is driven by how many biases *this scan* surfaced, not the
       // cumulative count (which only grows, then saturates against the prune
       // cap — a near-constant the gate could never read as surprising).
-      const predErr = this._model.observe( 'bias.novelty', newBiases.length )
+      const predErr = this._model.observe('bias.novelty', newBiases.length )
       if( !predErr.gated )
         _bus.publish({
           type: 'bias.detected',
@@ -193,7 +193,7 @@ export class BiasDetector implements SimulationEngine, CognitiveEngine {
    * mirror) and stays constructor-only to avoid a lossy numeric coercion.
    */
   private _readConfigFromState( state: ReadonlySimulationState ): void {
-    const p = readEffectiveParams( state, 'engine-config-bias-detector' )
+    const p = readEffectiveParams( state, 'engine-config-bias-detector')
 
     if( p.minDecisions      != null ) this._minDecisions      = p.minDecisions
     if( p.scanIntervalTicks != null ) this._scanIntervalTicks = p.scanIntervalTicks
@@ -209,7 +209,7 @@ export class BiasDetector implements SimulationEngine, CognitiveEngine {
     // 1. Overgeneralization: high-confidence beliefs from few episodes
     {
       const
-      beliefs = [ ...state.entities.values() ].filter( e => e.type === 'belief' )
+      beliefs = [ ...state.entities.values() ].filter( e => e.type === 'belief')
                                               .map( e => ({
                                                 confidence: ( e.metadata?.['confidence'] as number ) ?? 0,
                                                 supportingEpisodes: ( e.metadata?.['supportingEpisodes'] as number ) ?? 0,
@@ -230,7 +230,7 @@ export class BiasDetector implements SimulationEngine, CognitiveEngine {
     // 2. Recency bias: check if decisions heavily weight recent memories
     {
       const allEpisodes = [ ...state.entities.values() ]
-        .filter( e => e.type === 'episodic_memory' )
+        .filter( e => e.type === 'episodic_memory')
         .map( e => ({ timestamp: ( e.metadata?.['tick'] as number ) ?? 0 }))
       if( allEpisodes.length > 20 ){
         // `e.timestamp` is an episode tick, so the recency window is 50 ticks.
@@ -281,7 +281,7 @@ export class BiasDetector implements SimulationEngine, CognitiveEngine {
     //    bias-detection has a single home (introspection used to detect these too).
     {
       const decisions = [ ...state.entities.values() ]
-        .filter( e => e.type === 'decision.record' )
+        .filter( e => e.type === 'decision.record')
         .map( e => ({
           actionType: ( e.metadata?.['actionType'] as string ) ?? 'unknown',
           confidence: ( e.metadata?.['confidence'] as number ) ?? 0.5,
@@ -328,7 +328,7 @@ export class BiasDetector implements SimulationEngine, CognitiveEngine {
    */
   private _executiveCorroborates( type: string ): boolean {
     if( this._executiveNamedBiases.size === 0 ) return false
-    const norm = ( s: string ): string => s.toLowerCase().replace( /[^a-z]/g, '' )
+    const norm = ( s: string ): string => s.toLowerCase().replace( /[^a-z]/g, '')
     const t = norm( type )
     for( const named of this._executiveNamedBiases ){
       const n = norm( named )

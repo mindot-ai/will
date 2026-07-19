@@ -37,31 +37,31 @@ function armNetworkEmbedderEnv(): void {
   delete process.env.WILL_EMBEDDING_API_KEY
 }
 
-describe( '_resolveVectorMemory — testMode network-embedder guard', () => {
+describe('_resolveVectorMemory — testMode network-embedder guard', () => {
   beforeEach( armNetworkEmbedderEnv )
 
-  it( 'testMode refuses the env-driven network embedder (returns no vector memory)', () => {
-    const r = _resolveVectorMemory( 'w1', 1, undefined, undefined, null, true )
+  it('testMode refuses the env-driven network embedder (returns no vector memory)', () => {
+    const r = _resolveVectorMemory('w1', 1, undefined, undefined, null, true )
     expect( r.embedder ).toBeNull()
     expect( r.vectorMemory ).toBeNull()
   } )
 
-  it( 'live mode (testMode off) still builds the env-driven embedder', () => {
-    const r = _resolveVectorMemory( 'w2', 1, undefined, undefined, null, false )
+  it('live mode (testMode off) still builds the env-driven embedder', () => {
+    const r = _resolveVectorMemory('w2', 1, undefined, undefined, null, false )
     expect( r.embedder ).not.toBeNull()
     expect( r.vectorMemory ).not.toBeNull()
   } )
 
-  it( 'testMode + WILL_VECTOR_MEMORY=mock keeps the deterministic mock embedder', () => {
+  it('testMode + WILL_VECTOR_MEMORY=mock keeps the deterministic mock embedder', () => {
     process.env.WILL_VECTOR_MEMORY = 'mock'
-    const r = _resolveVectorMemory( 'w3', 1, undefined, undefined, null, true )
+    const r = _resolveVectorMemory('w3', 1, undefined, undefined, null, true )
     expect( r.embedder ).not.toBeNull()
     expect( r.vectorMemory ).not.toBeNull()
   } )
 
-  it( 'testMode + an explicit adapter is honored (caller owns determinism)', () => {
+  it('testMode + an explicit adapter is honored (caller owns determinism)', () => {
     const adapter = { store: async () => {}, query: async () => [] } as never
-    const r = _resolveVectorMemory( 'w4', 1, adapter, undefined, null, true )
+    const r = _resolveVectorMemory('w4', 1, adapter, undefined, null, true )
     expect( r.vectorMemory ).toBe( adapter )
   } )
 } )

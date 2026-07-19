@@ -21,8 +21,8 @@ function grow( rep: SchemaRepertoire, schema: string, n: number ): void {
     rep.recordOutcome({ schema, success: true, outcomeQuality: 0.9, predictedReward: 0.9, tick: i })
 }
 
-describe( 'competence codec — distill', () => {
-  it( 'carries strong skills and their composite templates, drops fleeting ones', () => {
+describe('competence codec — distill', () => {
+  it('carries strong skills and their composite templates, drops fleeting ones', () => {
     const rep = new SchemaRepertoire()
     rep.registerComposite( COMPOSITE )
     grow( rep, 'rest', 12 )          // strong innate habit
@@ -33,15 +33,15 @@ describe( 'competence codec — distill', () => {
 
     expect( snap.schemaVersion ).toBe( COMPETENCE_SCHEMA_VERSION )
     const carried = new Set( snap.skills.map( s => s.schema ) )
-    expect( carried.has( 'rest' ) ).toBe( true )
-    expect( carried.has( 'settle-self' ) ).toBe( true )
-    expect( carried.has( 'wait' ) ).toBe( false )                       // fleeting → faded
-    expect( snap.composites.map( c => c.id ) ).toContain( 'settle-self' ) // template rides along
+    expect( carried.has('rest') ).toBe( true )
+    expect( carried.has('settle-self') ).toBe( true )
+    expect( carried.has('wait') ).toBe( false )                       // fleeting → faded
+    expect( snap.composites.map( c => c.id ) ).toContain('settle-self') // template rides along
   })
 })
 
-describe( 'competence codec — round-trip across re-embodiment', () => {
-  it( 'a fresh repertoire reloads the learned habits and composite, ready to run', () => {
+describe('competence codec — round-trip across re-embodiment', () => {
+  it('a fresh repertoire reloads the learned habits and composite, ready to run', () => {
     const lived = new SchemaRepertoire()
     lived.registerComposite( COMPOSITE )
     grow( lived, 'rest', 12 )
@@ -51,19 +51,19 @@ describe( 'competence codec — round-trip across re-embodiment', () => {
 
     // New embodiment: a fresh repertoire knows nothing yet.
     const reborn = new SchemaRepertoire()
-    expect( reborn.getSkill( 'rest' ) ).toBeUndefined()
-    expect( reborn.getSchema( 'settle-self' ) ).toBeUndefined()
+    expect( reborn.getSkill('rest') ).toBeUndefined()
+    expect( reborn.getSchema('settle-self') ).toBeUndefined()
 
     loadCompetence( snap, reborn )
 
     // …and now it acts like itself.
-    expect( reborn.getSkill( 'rest' )!.habitStrength ).toBeGreaterThanOrEqual( 0.6 )
-    expect( reborn.getSchema( 'settle-self' ) ).toBeDefined()           // composite runnable again
-    const composite = reborn.getSkill( 'settle-self' )!
-    expect( composite.habitStrength ).toBeCloseTo( lived.getSkill( 'settle-self' )!.habitStrength, 5 )
+    expect( reborn.getSkill('rest')!.habitStrength ).toBeGreaterThanOrEqual( 0.6 )
+    expect( reborn.getSchema('settle-self') ).toBeDefined()           // composite runnable again
+    const composite = reborn.getSkill('settle-self')!
+    expect( composite.habitStrength ).toBeCloseTo( lived.getSkill('settle-self')!.habitStrength, 5 )
   })
 
-  it( 'ignores a snapshot from an incompatible schema version', () => {
+  it('ignores a snapshot from an incompatible schema version', () => {
     const rep = new SchemaRepertoire()
     loadCompetence( { schemaVersion: 999, composites: [], skills: [] }, rep )
     expect( rep.skills().size ).toBe( 0 )

@@ -55,7 +55,7 @@ async function captureExchangeEntity( inbound: string, reply: string ): Promise<
   await engine.ingest( msg )
 
   expect( captured ).toHaveLength( 1 )
-  expect( captured[0].metadata.wmType ).toBe( 'conversation.exchange' )
+  expect( captured[0].metadata.wmType ).toBe('conversation.exchange')
   return captured[0]
 }
 
@@ -78,13 +78,13 @@ function makeAdapter(){
   )
 }
 
-describe( 'conversation → episodic + embedded (§7.2)', () => {
-  it( 'consolidates a conversation.exchange WM item into an embedded, recallable episode', async () => {
+describe('conversation → episodic + embedded (§7.2)', () => {
+  it('consolidates a conversation.exchange WM item into an embedded, recallable episode', async () => {
     const adapter = makeAdapter()
     const consolidator = new EpisodicConsolidator( { vectorMemory: adapter, embedder: new MockEmbedder( 42 ) } )
 
     // 1. AuditionEngine produces the exchange WM item …
-    const entity = await captureExchangeEntity( 'hello there', 'Mock reply' )
+    const entity = await captureExchangeEntity('hello there', 'Mock reply')
 
     // 2. … which the consolidator scans on its tick (state carries the WM item).
     const entities = new Map<string, any>( [ [ entity.id, entity ] ] )
@@ -93,8 +93,8 @@ describe( 'conversation → episodic + embedded (§7.2)', () => {
     // 3. Episode landed in the store, tagged as a confirmed conversation exchange.
     const episodes = consolidator.getAllEpisodes()
     expect( episodes ).toHaveLength( 1 )
-    expect( episodes[0]!.sourceType ).toBe( 'conversation.exchange' )
-    expect( episodes[0]!.outcomeStatus ).toBe( 'confirmed' )
+    expect( episodes[0]!.sourceType ).toBe('conversation.exchange')
+    expect( episodes[0]!.outcomeStatus ).toBe('confirmed')
 
     // 4. Episode was embedded into the vector index (the "embedded" leg).
     expect( adapter.size ).toBe( 1 )
@@ -102,19 +102,19 @@ describe( 'conversation → episodic + embedded (§7.2)', () => {
     // 5. Recallable via the vector path. minSimilarity:-1 isolates the test from
     //    the MockEmbedder's similarity geometry — we assert reachability + payload,
     //    not the hash embedder's semantic quality.
-    const recalled = await consolidator.semanticQuery( 'hello there', { minSimilarity: -1, limit: 5 } )
+    const recalled = await consolidator.semanticQuery('hello there', { minSimilarity: -1, limit: 5 } )
     expect( recalled.length ).toBeGreaterThanOrEqual( 1 )
 
     const summary = ( recalled[0]!.content as any ).summary as string
-    expect( summary ).toContain( 'hello there' )   // inbound preserved through the pipeline
-    expect( summary ).toContain( 'Mock reply' )    // reply preserved through the pipeline
+    expect( summary ).toContain('hello there')   // inbound preserved through the pipeline
+    expect( summary ).toContain('Mock reply')    // reply preserved through the pipeline
   } )
 
-  it( 'does not consolidate a duplicate of an already-stored exchange (dedup)', async () => {
+  it('does not consolidate a duplicate of an already-stored exchange (dedup)', async () => {
     const adapter = makeAdapter()
     const consolidator = new EpisodicConsolidator( { vectorMemory: adapter, embedder: new MockEmbedder( 42 ) } )
 
-    const entity = await captureExchangeEntity( 'hello there', 'Mock reply' )
+    const entity = await captureExchangeEntity('hello there', 'Mock reply')
     const entities = new Map<string, any>( [ [ entity.id, entity ] ] )
 
     // Same entity present across two ticks — the consolidator's content-hash dedup

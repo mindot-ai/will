@@ -27,16 +27,16 @@ const calls: Array<Record<string, unknown>> = []
 beforeAll( async () => {
   // A real MCP tool server: one tool with a required arg, one objectless.
   const server = new McpServer( { name: 'fixture', version: '0' } )
-  server.registerTool( 'search_docs', {
+  server.registerTool('search_docs', {
     description: 'Search the project documentation',
-    inputSchema: { query: z.string().describe( 'the search text' ), limit: z.number().optional() },
+    inputSchema: { query: z.string().describe('the search text'), limit: z.number().optional() },
   }, async ( { query } ) => {
     calls.push( { tool: 'search_docs', query } )
     return { content: [ { type: 'text', text: `3 results for "${ query }"` } ] }
   } )
-  server.registerTool( 'ping', { description: 'Check the service is alive' },
+  server.registerTool('ping', { description: 'Check the service is alive' },
     async () => ( { content: [ { type: 'text', text: 'pong' } ] } ) )
-  server.registerTool( 'always_fails', { description: 'Always errors' },
+  server.registerTool('always_fails', { description: 'Always errors' },
     async () => ( { content: [ { type: 'text', text: 'boom' } ], isError: true } ) )
 
   client = new Client( { name: 'test', version: '0' } )
@@ -46,8 +46,8 @@ beforeAll( async () => {
 
 afterAll( async () => { await client.close(); resetLogger() } )
 
-describe( 'describeMcpTool — the ability\'s meaning', () => {
-  it( 'composes description + args hint (required vs optional marked)', () => {
+describe('describeMcpTool — the ability\'s meaning', () => {
+  it('composes description + args hint (required vs optional marked)', () => {
     const tool: McpToolInfo = {
       name: 'search_docs', description: 'Search the project documentation',
       inputSchema: { type: 'object',
@@ -55,24 +55,24 @@ describe( 'describeMcpTool — the ability\'s meaning', () => {
         required: [ 'query' ] },
     }
     const meaning = describeMcpTool( tool )
-    expect( meaning ).toContain( 'Search the project documentation' )
-    expect( meaning ).toContain( 'query: the search text' )
-    expect( meaning ).toContain( 'limit?' )
+    expect( meaning ).toContain('Search the project documentation')
+    expect( meaning ).toContain('query: the search text')
+    expect( meaning ).toContain('limit?')
   } )
 
-  it( 'stays bounded for prompt rendering', () => {
+  it('stays bounded for prompt rendering', () => {
     const meaning = describeMcpTool( { name: 'x', description: 'y'.repeat( 1000 ) } )
     expect( meaning.length ).toBeLessThanOrEqual( 300 )
   } )
 } )
 
-describe( 'buildMcpHandler — enaction → tool → reafference', () => {
+describe('buildMcpHandler — enaction → tool → reafference', () => {
   const searchTool: McpToolInfo = {
     name: 'search_docs',
     inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number' } }, required: [ 'query' ] },
   }
 
-  it( 'calls the tool with schema-filtered args and returns its outcome', async () => {
+  it('calls the tool with schema-filtered args and returns its outcome', async () => {
     const handler = buildMcpHandler( client, searchTool )
     // Invocation params carry situation extras the tool never declared — filtered out.
     const res = await handler( { query: 'tick loop', targetEntityName: 'Ada' }, { reasoning: '' } )
@@ -80,24 +80,24 @@ describe( 'buildMcpHandler — enaction → tool → reafference', () => {
     expect( calls.at( -1 ) ).toEqual( { tool: 'search_docs', query: 'tick loop' } )
   } )
 
-  it( 'fails informatively when required args are missing (habitual enaction)', async () => {
+  it('fails informatively when required args are missing (habitual enaction)', async () => {
     const handler = buildMcpHandler( client, searchTool )
     const res = await handler( {}, { reasoning: '' } ) as { success: boolean; description: string }
     expect( res.success ).toBe( false )
-    expect( res.description ).toContain( 'needs query' )
-    expect( res.description ).toContain( 'args' )        // teaches deliberate articulation
+    expect( res.description ).toContain('needs query')
+    expect( res.description ).toContain('args')        // teaches deliberate articulation
   } )
 
-  it( 'maps a tool error onto a failed outcome (not a throw)', async () => {
+  it('maps a tool error onto a failed outcome (not a throw)', async () => {
     const handler = buildMcpHandler( client, { name: 'always_fails' } )
     const res = await handler( {}, { reasoning: '' } ) as { success: boolean; description: string }
     expect( res.success ).toBe( false )
-    expect( res.description ).toContain( 'boom' )
+    expect( res.description ).toContain('boom')
   } )
 } )
 
-describe( 'connectMcpEffectors — tools become the Will\'s abilities', () => {
-  it( 'registers each tool as a learnable affordance with its meaning', async () => {
+describe('connectMcpEffectors — tools become the Will\'s abilities', () => {
+  it('registers each tool as a learnable affordance with its meaning', async () => {
     const will = await Will.create( { name: 'Toolsmith', identity: { prompt: 'I use tools.' },
       llm: 'mock', anatomy: 'mind', tickMs: 10, seed: 5 } )
     try {
@@ -106,11 +106,11 @@ describe( 'connectMcpEffectors — tools become the Will\'s abilities', () => {
 
       const repertoire = ( will.stem.getWillCognition( will.id ) as unknown as
         { schemaRepertoire: { getSchema( id: string ): { description?: string; cost: number; tags?: string[] } | undefined } } ).schemaRepertoire
-      const search = repertoire.getSchema( 'search_docs' )
-      expect( search?.description ).toContain( 'Search the project documentation' )
-      expect( search?.description ).toContain( 'query' )   // the executive sees what to supply
+      const search = repertoire.getSchema('search_docs')
+      expect( search?.description ).toContain('Search the project documentation')
+      expect( search?.description ).toContain('query')   // the executive sees what to supply
       expect( search?.cost ).toBe( 0.3 )
-      expect( search?.tags ).toContain( 'mcp' )
+      expect( search?.tags ).toContain('mcp')
 
       await close()                                        // client from source is left open
       expect( ( await client.listTools() ).tools.length ).toBeGreaterThan( 0 )

@@ -19,7 +19,7 @@ import {
   type LLMCompletionRecord,
 } from '#core/completion.recorder'
 
-describe( 'LLMDirector — completion recording (FN3)', () => {
+describe('LLMDirector — completion recording (FN3)', () => {
   const willId = 'will-fn3-test'
   let captured: LLMCompletionRecord[]
 
@@ -41,43 +41,43 @@ describe( 'LLMDirector — completion recording (FN3)', () => {
     })
   }
 
-  it( 'records a completion on call() with full input/output/params', async () => {
-    const result = await makeDirector().call( 'SYSTEM', 'hello there', 7 )
+  it('records a completion on call() with full input/output/params', async () => {
+    const result = await makeDirector().call('SYSTEM', 'hello there', 7 )
 
     expect( captured ).toHaveLength( 1 )
     const rec = captured[0]!
     expect( rec.willId ).toBe( willId )
     expect( rec.tick ).toBe( 7 )
-    expect( rec.provider ).toBe( 'anthropic' )
-    expect( rec.model ).toBe( 'test-model' )
+    expect( rec.provider ).toBe('anthropic')
+    expect( rec.model ).toBe('test-model')
     expect( rec.maxOutputTokens ).toBe( 100 )
-    expect( rec.systemPrompt ).toBe( 'SYSTEM' )
-    expect( rec.userMessage ).toBe( 'hello there' )
+    expect( rec.systemPrompt ).toBe('SYSTEM')
+    expect( rec.userMessage ).toBe('hello there')
     expect( rec.mock ).toBe( true )
     expect( rec.text ).toBe( result.text )
-    expect( typeof rec.latencyMs ).toBe( 'number' )
+    expect( typeof rec.latencyMs ).toBe('number')
   })
 
-  it( 'records a completion on callStream()', async () => {
-    await makeDirector().callStream( 'SYSTEM', 'hi', 3, () => {} )
+  it('records a completion on callStream()', async () => {
+    await makeDirector().callStream('SYSTEM', 'hi', 3, () => {} )
     expect( captured ).toHaveLength( 1 )
     expect( captured[0]!.tick ).toBe( 3 )
   })
 
-  it( 'does not record when no recorder is registered for the Will', async () => {
+  it('does not record when no recorder is registered for the Will', async () => {
     clearCompletionRecorder( willId )
-    await makeDirector().call( 'SYSTEM', 'hello', 1 )
+    await makeDirector().call('SYSTEM', 'hello', 1 )
     expect( captured ).toHaveLength( 0 )
   })
 
-  it( 'routes completions only to the matching willId', async () => {
+  it('routes completions only to the matching willId', async () => {
     const other: LLMCompletionRecord[] = []
-    setCompletionRecorder( 'someone-else', { recordCompletion: r => other.push( r ) } )
+    setCompletionRecorder('someone-else', { recordCompletion: r => other.push( r ) } )
 
-    await makeDirector().call( 'SYSTEM', 'hello', 2 )
+    await makeDirector().call('SYSTEM', 'hello', 2 )
 
     expect( captured ).toHaveLength( 1 )
     expect( other ).toHaveLength( 0 )
-    clearCompletionRecorder( 'someone-else' )
+    clearCompletionRecorder('someone-else')
   })
 })

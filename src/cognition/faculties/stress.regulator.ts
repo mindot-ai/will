@@ -261,12 +261,12 @@ export class StressRegulator implements SimulationEngine, CognitiveEngine {
 
     // Phase C: publish cognitive event
     const _bus = this._bus
-    if( _bus && ( zone === 'distress' || zone === 'overload' ) )
+    if( _bus && ( zone === 'distress' || zone === 'overload') )
       _bus.publish({ type: 'stress.zone.transition', version: 1, sourceEngine: this.name, salience: Math.min(1, newLoad / 100), payload: { zone, load: newLoad } })
     // Phase D + F: rich state-change event — gated by prediction error
     if( _bus ){
       const zoneCode = zone === 'low' ? 0 : zone === 'optimal' ? 1 : zone === 'distress' ? 2 : 3
-      const predErr  = this._model.observe( 'stress.load', newLoad )
+      const predErr  = this._model.observe('stress.load', newLoad )
       if( !predErr.gated || zone !== previousZone ){
         _bus.publish({ type: 'stress.state.changed', version: 1, sourceEngine: this.name, salience: predErr.salience, payload: { load: newLoad, zoneCode, deadlineUrgency: state.metrics.get('deadline.urgency') ?? 0, cognitiveLoad: state.metrics.get('cognitive.load') ?? state.metrics.get('attention.usage') ?? 0 } })
       }
@@ -279,7 +279,7 @@ export class StressRegulator implements SimulationEngine, CognitiveEngine {
   private _readConfigFromState( state: ReadonlySimulationState ): void {
     // Effective config = base engine-config-stress ⊕ persona-prior. Channel A: a steadier
     // (emotionally-stable) Will develops a higher baseDecayRate and so sheds stress faster.
-    const p = readEffectiveParams( state, 'engine-config-stress' )
+    const p = readEffectiveParams( state, 'engine-config-stress')
     if( p.baseDecayRate       != null ) this._baseDecayRate     = p.baseDecayRate
     if( p.optimalThreshold    != null ) this._optimalThreshold  = p.optimalThreshold
     if( p.distressThreshold   != null ) this._distressThreshold = p.distressThreshold

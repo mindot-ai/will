@@ -65,38 +65,38 @@ function gatingState( over: Partial<GatingState> ): GatingState {
   }
 }
 
-describe( 'evaluateGating — salience competition vs. prediction-gating', () => {
-  it( 'ignites a charged workspace at the interval boundary even when every signal is prediction-gated', () => {
+describe('evaluateGating — salience competition vs. prediction-gating', () => {
+  it('ignites a charged workspace at the interval boundary even when every signal is prediction-gated', () => {
     // tick 16 ≥ interval 15 (boundary), not overdue (< 22.5); buffer summed salience 3.0 ≥ 2.5.
     const gs = gatingState( { salienceBuffer: buffer( 3.0, 16 ) } )
     const r  = evaluateGating( calmState( 16 ), 16 as Tick, deps( allGatedModel ), gs )
 
     expect( r.shouldActivate ).toBe( true )
-    expect( r.reason ).toBe( 'salience_charged' )
+    expect( r.reason ).toBe('salience_charged')
   } )
 
-  it( 'still suppresses an uncharged workspace at the boundary when all signals are predicted', () => {
+  it('still suppresses an uncharged workspace at the boundary when all signals are predicted', () => {
     const gs = gatingState( { salienceBuffer: buffer( 1.0, 16 ) } )
     const r  = evaluateGating( calmState( 16 ), 16 as Tick, deps( allGatedModel ), gs )
 
     expect( r.shouldActivate ).toBe( false )
-    expect( r.reason ).toBe( 'prediction_gated' )
+    expect( r.reason ).toBe('prediction_gated')
   } )
 
-  it( 'fires the scheduled cycle at the boundary when a signal is surprising (not charged)', () => {
+  it('fires the scheduled cycle at the boundary when a signal is surprising (not charged)', () => {
     const gs = gatingState( { salienceBuffer: buffer( 1.0, 16 ) } )
     const r  = evaluateGating( calmState( 16 ), 16 as Tick, deps( surpriseModel ), gs )
 
     expect( r.shouldActivate ).toBe( true )
-    expect( r.reason ).toBe( 'interval_elapsed' )
+    expect( r.reason ).toBe('interval_elapsed')
   } )
 
-  it( 'triggers early — before the interval elapses — once the workspace is charged', () => {
+  it('triggers early — before the interval elapses — once the workspace is charged', () => {
     // tick 10 < interval 15, but past cooldown (10 ≥ 5): the pre-interval early trigger path.
     const gs = gatingState( { salienceBuffer: buffer( 3.0, 10 ) } )
     const r  = evaluateGating( calmState( 10 ), 10 as Tick, deps( allGatedModel ), gs )
 
     expect( r.shouldActivate ).toBe( true )
-    expect( r.reason ).toBe( 'salience_charged' )
+    expect( r.reason ).toBe('salience_charged')
   } )
 } )

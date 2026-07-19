@@ -29,7 +29,7 @@ import type {
   SimulationContext,
 } from '#core/types'
 
-const ctx = createContext( 'sim', 'snap', 1 ) as unknown as SimulationContext
+const ctx = createContext('sim', 'snap', 1 ) as unknown as SimulationContext
 
 /** In-memory StorageAdapter — keeps persistence deterministic and off-disk. */
 class MemoryStorage implements StorageAdapter {
@@ -39,7 +39,7 @@ class MemoryStorage implements StorageAdapter {
   }
   async read( path: string ): Promise<string> {
     const v = this.files.get( path )
-    if( v === undefined ) throw new Error( `not found: ${path}` )
+    if( v === undefined ) throw new Error(`not found: ${path}`)
     return v
   }
   async readBytes( path: string ): Promise<Uint8Array> {
@@ -69,8 +69,8 @@ function stateAt(
 
 // ── 1. snapshotInterval gating ────────────────────────────────
 
-describe( 'SnapshotManager — snapshotInterval gating (R7)', () => {
-  it( 'takes a snapshot only once every `snapshotInterval` ticks', () => {
+describe('SnapshotManager — snapshotInterval gating (R7)', () => {
+  it('takes a snapshot only once every `snapshotInterval` ticks', () => {
     const mgr = new SnapshotManager({
       snapshotInterval: 2, persistInterval: 0, computeDeltas: false, storage: new MemoryStorage(),
     } )
@@ -84,14 +84,14 @@ describe( 'SnapshotManager — snapshotInterval gating (R7)', () => {
 
 // ── 2. Query API ──────────────────────────────────────────────
 
-describe( 'SnapshotManager — query API (R7)', () => {
-  it( 'exposes snapshots by tick, the latest entry, and a count', () => {
+describe('SnapshotManager — query API (R7)', () => {
+  it('exposes snapshots by tick, the latest entry, and a count', () => {
     const mgr = new SnapshotManager({
       snapshotInterval: 1, persistInterval: 0, storage: new MemoryStorage(),
     } )
 
-    mgr.onTick( 1, stateAt( 1, [ [ 'e1', entity( 'e1', 1 ) ] ] ), ctx )
-    mgr.onTick( 2, stateAt( 2, [ [ 'e1', entity( 'e1', 2 ) ] ] ), ctx )
+    mgr.onTick( 1, stateAt( 1, [ [ 'e1', entity('e1', 1 ) ] ] ), ctx )
+    mgr.onTick( 2, stateAt( 2, [ [ 'e1', entity('e1', 2 ) ] ] ), ctx )
 
     expect( mgr.snapshotCount ).toBe( 2 )
     expect( mgr.getSnapshot( 1 ) ).toBeDefined()
@@ -102,20 +102,20 @@ describe( 'SnapshotManager — query API (R7)', () => {
 
 // ── 3. restoreState round-trip ────────────────────────────────
 
-describe( 'SnapshotManager — restoreState round-trip (R7)', () => {
-  it( 'rebuilds a live SimulationState (entities + metrics + clock) from a snapshot', () => {
+describe('SnapshotManager — restoreState round-trip (R7)', () => {
+  it('rebuilds a live SimulationState (entities + metrics + clock) from a snapshot', () => {
     const mgr = new SnapshotManager({
       snapshotInterval: 1, persistInterval: 0, storage: new MemoryStorage(),
     } )
 
-    mgr.onTick( 5, stateAt( 5, [ [ 'e1', entity( 'e1', 42 ) ] ], [ [ 'm', 7 ] ] ), ctx )
+    mgr.onTick( 5, stateAt( 5, [ [ 'e1', entity('e1', 42 ) ] ], [ [ 'm', 7 ] ] ), ctx )
 
     const restored = mgr.restoreState( 5 )
     expect( restored ).toBeDefined()
     expect( restored!.tick ).toBe( 5 )
     expect( restored!.time ).toBe( 500 )
-    expect( restored!.entities.get( 'e1' )?.metadata?.value ).toBe( 42 )
-    expect( restored!.metrics.get( 'm' ) ).toBe( 7 )
+    expect( restored!.entities.get('e1')?.metadata?.value ).toBe( 42 )
+    expect( restored!.metrics.get('m') ).toBe( 7 )
 
     expect( mgr.restoreState( 99 ) ).toBeUndefined()
   } )
@@ -123,8 +123,8 @@ describe( 'SnapshotManager — restoreState round-trip (R7)', () => {
 
 // ── 4. Ring-buffer eviction ───────────────────────────────────
 
-describe( 'SnapshotManager — in-memory ring eviction (R7)', () => {
-  it( 'evicts oldest-first past maxInMemorySnapshots', () => {
+describe('SnapshotManager — in-memory ring eviction (R7)', () => {
+  it('evicts oldest-first past maxInMemorySnapshots', () => {
     const mgr = new SnapshotManager({
       snapshotInterval: 1, maxInMemorySnapshots: 2, persistInterval: 0, storage: new MemoryStorage(),
     } )
@@ -142,8 +142,8 @@ describe( 'SnapshotManager — in-memory ring eviction (R7)', () => {
 
 // ── 5. onSnapshot callback ────────────────────────────────────
 
-describe( 'SnapshotManager — onSnapshot callback (R7)', () => {
-  it( 'invokes the replay-feed callback for each snapshot taken', () => {
+describe('SnapshotManager — onSnapshot callback (R7)', () => {
+  it('invokes the replay-feed callback for each snapshot taken', () => {
     const mgr = new SnapshotManager({
       snapshotInterval: 1, persistInterval: 0, computeDeltas: false, storage: new MemoryStorage(),
     } )
@@ -159,21 +159,21 @@ describe( 'SnapshotManager — onSnapshot callback (R7)', () => {
 
 // ── 6. Persistence round-trip ─────────────────────────────────
 
-describe( 'SnapshotManager — persistence via StorageAdapter (R7)', () => {
-  it( 'persistNow() writes a snapshot + sentinel that loadLatestFromStorage() reads back', async () => {
+describe('SnapshotManager — persistence via StorageAdapter (R7)', () => {
+  it('persistNow() writes a snapshot + sentinel that loadLatestFromStorage() reads back', async () => {
     const storage = new MemoryStorage()
     const mgr = new SnapshotManager({ persistInterval: 100, persistPath: '/snaps', storage } )
 
-    await mgr.persistNow( stateAt( 7, [ [ 'e1', entity( 'e1', 99 ) ] ] ) )
+    await mgr.persistNow( stateAt( 7, [ [ 'e1', entity('e1', 99 ) ] ] ) )
 
-    expect( await storage.exists( '/snaps/latest.json' ) ).toBe( true )
+    expect( await storage.exists('/snaps/latest.json') ).toBe( true )
 
     const loaded = await mgr.loadLatestFromStorage()
     expect( loaded ).toBeDefined()
-    expect( loaded!.entities.get( 'e1' )?.metadata?.value ).toBe( 99 )
+    expect( loaded!.entities.get('e1')?.metadata?.value ).toBe( 99 )
   } )
 
-  it( 'persistInterval: 0 disables both persistNow and loadLatestFromStorage', async () => {
+  it('persistInterval: 0 disables both persistNow and loadLatestFromStorage', async () => {
     const storage = new MemoryStorage()
     const mgr = new SnapshotManager({ persistInterval: 0, persistPath: '/snaps', storage } )
 

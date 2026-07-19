@@ -20,29 +20,29 @@ const dossier = ( keid: string, familiarity: number, resolution: number, reliabi
 
 const stateWith = ( params: Record<string, number>, ...extra: any[] ) => {
   const entities = new Map<string, any>()
-  entities.set( 'engine-config-known-entity', cfg( params ) )
+  entities.set('engine-config-known-entity', cfg( params ) )
   for( const e of extra ) entities.set( e.id, e )
   return { tick: 100, entities, metrics: new Map() } as any
 }
 
-const drive = ( r: any ) => ( r.commands?.metrics ?? [] ).find( ( [ k ]: [string, number] ) => k === 'drive.curiosity_resolve' )?.[1]
+const drive = ( r: any ) => ( r.commands?.metrics ?? [] ).find( ( [ k ]: [string, number] ) => k === 'drive.curiosity_resolve')?.[1]
 
-describe( 'KnownEntityTracker — Channel A (effective config drives the dispositions)', () => {
-  it( 'a higher effective curiosityGain scales the curiosity drive up', async () => {
-    const lo = await new KnownEntityTracker().react( 1000 as any, 100 as any, stateWith( { curiosityGain: 1.0 }, dossier( 'x', 0.5, 0.2 ) ), {} as any )
-    const hi = await new KnownEntityTracker().react( 1000 as any, 100 as any, stateWith( { curiosityGain: 2.0 }, dossier( 'x', 0.5, 0.2 ) ), {} as any )
+describe('KnownEntityTracker — Channel A (effective config drives the dispositions)', () => {
+  it('a higher effective curiosityGain scales the curiosity drive up', async () => {
+    const lo = await new KnownEntityTracker().react( 1000 as any, 100 as any, stateWith( { curiosityGain: 1.0 }, dossier('x', 0.5, 0.2 ) ), {} as any )
+    const hi = await new KnownEntityTracker().react( 1000 as any, 100 as any, stateWith( { curiosityGain: 2.0 }, dossier('x', 0.5, 0.2 ) ), {} as any )
     expect( drive( hi ) ).toBeGreaterThan( drive( lo )! )
   } )
 
-  it( 'a higher effective reliabilityRate revises the track-record faster', async () => {
+  it('a higher effective reliabilityRate revises the track-record faster', async () => {
     const slow = new KnownEntityTracker()
     slow.onCognitiveEvent( { type: 'action.outcome', salience: 0.5, payload: { targetEntityId: 'x', success: true } } as any )
-    await slow.react( 1000 as any, 100 as any, stateWith( { reliabilityRate: 0.1 }, dossier( 'x', 0.5, 0.2 ) ), {} as any )
+    await slow.react( 1000 as any, 100 as any, stateWith( { reliabilityRate: 0.1 }, dossier('x', 0.5, 0.2 ) ), {} as any )
 
     const fast = new KnownEntityTracker()
     fast.onCognitiveEvent( { type: 'action.outcome', salience: 0.5, payload: { targetEntityId: 'x', success: true } } as any )
-    await fast.react( 1000 as any, 100 as any, stateWith( { reliabilityRate: 0.5 }, dossier( 'x', 0.5, 0.2 ) ), {} as any )
+    await fast.react( 1000 as any, 100 as any, stateWith( { reliabilityRate: 0.5 }, dossier('x', 0.5, 0.2 ) ), {} as any )
 
-    expect( fast.getDossier( 'x' )!.reliability ).toBeGreaterThan( slow.getDossier( 'x' )!.reliability )
+    expect( fast.getDossier('x')!.reliability ).toBeGreaterThan( slow.getDossier('x')!.reliability )
   } )
 } )

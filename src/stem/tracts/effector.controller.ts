@@ -91,11 +91,11 @@ export class effectorController {
     const tick = instance.tickCount
 
     const intent = instance.simulation.stateManager.snapshot().entities.get( invocationId )
-    if( !intent || intent.type !== 'agency.intent' ){
+    if( !intent || intent.type !== 'agency.intent'){
       // No awaiting intent for this id. Expected when the executor's 15-tick await
       // timeout already abandoned it (writing a failed outcome + advancing any plan)
       // before the host's late ack arrived, or the id is unknown. Drop the straggler.
-      logger.warn( `[effector] confirmExecution: no awaiting agency.intent "${invocationId}" (timed out / already reconciled?) — ignored` )
+      logger.warn(`[effector] confirmExecution: no awaiting agency.intent "${invocationId}" (timed out / already reconciled?) — ignored`)
       return
     }
 
@@ -122,7 +122,7 @@ export class effectorController {
         if( typeof v === 'number' && Number.isFinite( v ) )
           instance.simulation.stateManager.setMetric( k, v )
         else
-          logger.warn( `[effector] confirmExecution: dropped non-finite metric "${k}"=${String( v )} from host ack (${schema})` )
+          logger.warn(`[effector] confirmExecution: dropped non-finite metric "${k}"=${String( v )} from host ack (${schema})`)
       }
 
     instance.sessionLogger?.write({
@@ -135,7 +135,7 @@ export class effectorController {
       confirmedExternally: true,
     } as never)
 
-    logger.info( `[effector] ✓ reconciled ${result.success ? 'success' : 'failure'}: intent "${invocationId}" (${schema})` )
+    logger.info(`[effector] ✓ reconciled ${result.success ? 'success' : 'failure'}: intent "${invocationId}" (${schema})`)
   }
 }
 

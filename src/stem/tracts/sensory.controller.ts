@@ -52,7 +52,7 @@ export class SensoryController {
       gustation:       cog.gustationEngine,
     }
     const engine = engineMap[ domain ]
-    if( !engine ) throw Object.assign( new Error( `Unknown sense domain: ${domain}` ), { code: 400 } )
+    if( !engine ) throw Object.assign( new Error(`Unknown sense domain: ${domain}`), { code: 400 } )
     await engine.ingest( input )
   }
 
@@ -135,7 +135,7 @@ export class SensoryController {
   private _ensureChunkFanout( instance: WillInstance ): void {
     if( this._chunkWired.has( instance ) ) return
     const audition = instance.cognition.auditionEngine
-    if( typeof ( audition as { addChunkCallback?: unknown } ).addChunkCallback !== 'function' ) return
+    if( typeof ( audition as { addChunkCallback?: unknown } ).addChunkCallback !== 'function') return
 
     this._chunkWired.add( instance )
     audition.addChunkCallback( ( entityId: string, _threadId: string, chunk: string ) => {

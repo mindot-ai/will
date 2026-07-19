@@ -28,8 +28,8 @@ function makeRecord( id: string, vector: number[] ): VectorRecord {
   }
 }
 
-describe( 'HNSWIndex — multi-hop graph traversal (FN4)', () => {
-  it( 'reaches a vector many hops from the entry point', async () => {
+describe('HNSWIndex — multi-hop graph traversal (FN4)', () => {
+  it('reaches a vector many hops from the entry point', async () => {
     // Points on a 1D line embedded in 2D. The first inserted point (id "0")
     // is the entry point; its level-0 neighbourhood holds only the M nearest
     // ids near 0. The far endpoint is well outside that neighbourhood, so a
@@ -46,7 +46,7 @@ describe( 'HNSWIndex — multi-hop graph traversal (FN4)', () => {
     expect( results[0]!.episodeId ).toBe( far )
   })
 
-  it( 'achieves high recall@1 over a dataset far larger than M', async () => {
+  it('achieves high recall@1 over a dataset far larger than M', async () => {
     const index = new HNSWIndex({
       dimensions: 2,
       similarityMetric: 'euclidean',
@@ -68,7 +68,7 @@ describe( 'HNSWIndex — multi-hop graph traversal (FN4)', () => {
     expect( found / n ).toBeGreaterThanOrEqual( 0.95 )
   })
 
-  it( 'returns k nearest neighbours in ascending-distance order', async () => {
+  it('returns k nearest neighbours in ascending-distance order', async () => {
     const index = new HNSWIndex({ dimensions: 2, similarityMetric: 'euclidean' })
     const n = 60
     for( let i = 0; i < n; i++ )
@@ -78,7 +78,7 @@ describe( 'HNSWIndex — multi-hop graph traversal (FN4)', () => {
     const results = await index.search( [ 40, 0 ], 5, { minSimilarity: 0 } )
     const ids = results.map( r => r.episodeId )
 
-    expect( ids ).toContain( '40' )
+    expect( ids ).toContain('40')
     // Similarities must be monotonically non-increasing (sorted by distance).
     for( let i = 1; i < results.length; i++ )
       expect( results[i]!.similarity ).toBeLessThanOrEqual( results[i - 1]!.similarity )

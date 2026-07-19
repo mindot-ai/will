@@ -18,10 +18,10 @@ import { PersonaConsolidator } from '#faculties/persona.consolidator'
 
 const stateWith = ( tick: number, emotionalStability: number ) => {
   const entities = new Map<string, any>()
-  entities.set( 'identity-self', {
+  entities.set('identity-self', {
     id: 'identity-self', type: 'identity', metadata: { traits: { 'emotional-stability': emotionalStability } },
   } )
-  entities.set( 'engine-config-frustration', {
+  entities.set('engine-config-frustration', {
     id: 'engine-config-frustration', type: 'engine-config',
     metadata: { params: { irritabilityRate: 0.02 } },
   } )
@@ -29,11 +29,11 @@ const stateWith = ( tick: number, emotionalStability: number ) => {
 }
 
 const priorFor = ( r: any ): Record<string, number> | undefined =>
-  ( r.commands?.set ?? [] ).find( ( e: any ) => e.id === 'persona-prior' )?.metadata
+  ( r.commands?.set ?? [] ).find( ( e: any ) => e.id === 'persona-prior')?.metadata
     ?.priors?.[ 'engine-config-frustration' ]
 
-describe( 'PersonaConsolidator — affect build-rate develops from emotional stability', () => {
-  it( 'demonstrated stability slows the frustration build-rate (irritabilityRate↓)', async () => {
+describe('PersonaConsolidator — affect build-rate develops from emotional stability', () => {
+  it('demonstrated stability slows the frustration build-rate (irritabilityRate↓)', async () => {
     const pc = new PersonaConsolidator()
     const r  = await pc.react( 0 as any, 100 as any, stateWith( 100, 0.9 ), {} as any )
     const fr = priorFor( r )
@@ -41,7 +41,7 @@ describe( 'PersonaConsolidator — affect build-rate develops from emotional sta
     expect( fr?.irritabilityRate ).toBeGreaterThanOrEqual( -0.02 * 0.5 ) // bounded by the cumulative cap (½·base)
   } )
 
-  it( 'neutral stability leaves the build-rate unpushed (decays back to baseline)', async () => {
+  it('neutral stability leaves the build-rate unpushed (decays back to baseline)', async () => {
     const pc = new PersonaConsolidator()
     const r  = await pc.react( 0 as any, 100 as any, stateWith( 100, 0.5 ), {} as any )
     expect( priorFor( r )?.irritabilityRate ?? 0 ).toBe( 0 )

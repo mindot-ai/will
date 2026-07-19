@@ -167,7 +167,7 @@ export class SelfModelUpdater extends AsyncEngine implements CognitiveEngine {
       case 'executive.prediction.formed': {
         const p = e.payload as { predictedDomains: string[]; confidence: number }
         if( p.predictedDomains.includes('metacognition') )
-          this._model.setPrecision( 'self_model.change', 1.0 + p.confidence * 0.5 )
+          this._model.setPrecision('self_model.change', 1.0 + p.confidence * 0.5 )
         
         break
       }
@@ -196,13 +196,13 @@ export class SelfModelUpdater extends AsyncEngine implements CognitiveEngine {
   restore( snap: Record<string, unknown> ): void {
     if( !snap ) return
 
-    if( typeof snap.executiveReflectionTick === 'number' ) 
+    if( typeof snap.executiveReflectionTick === 'number') 
       this._executiveReflectionTick = snap.executiveReflectionTick
 
-    if( typeof snap.lastEvaluationTick === 'number' )
+    if( typeof snap.lastEvaluationTick === 'number')
       this._lastEvaluationTick = snap.lastEvaluationTick
 
-    if( typeof snap.experienceCountAtLastEval === 'number' )
+    if( typeof snap.experienceCountAtLastEval === 'number')
       this._experienceCountAtLastEval = snap.experienceCountAtLastEval
     
     if( Array.isArray( snap.domainPerformance ) )
@@ -231,7 +231,7 @@ export class SelfModelUpdater extends AsyncEngine implements CognitiveEngine {
     // closed edge of the metacognition cycle: a learned prior (written back by
     // the consolidator from the Will's own introspection) modulates how often
     // the self-model re-evaluates, without ever mutating the seeded base.
-    const p = readEffectiveParams( state, 'engine-config-self-model' )
+    const p = readEffectiveParams( state, 'engine-config-self-model')
 
     if( p.minIntervalTicks != null ) this._minIntervalTicks = p.minIntervalTicks
     if( p.minNewExperiences != null ) this._minNewExperiences = p.minNewExperiences
@@ -483,7 +483,7 @@ export class SelfModelUpdater extends AsyncEngine implements CognitiveEngine {
             supportingEpisodes: da.sampleSize,
             lastUpdatedAt:      tick,
             tags:               [ da.domain, 'competence', 'self', 'positive' ]
-          }, tick, 'self-model' )
+          }, tick, 'self-model')
         
         else if( da.successRate < 0.30 )
           this._semanticIntegrator.integrateExecutiveBelief({
@@ -494,14 +494,14 @@ export class SelfModelUpdater extends AsyncEngine implements CognitiveEngine {
             supportingEpisodes: da.sampleSize,
             lastUpdatedAt:      tick,
             tags:               [ da.domain, 'competence', 'self', 'negative' ]
-          }, tick, 'self-model' )
+          }, tick, 'self-model')
       }
     }
 
     // Phase C + F: publish cognitive event — gated by prediction error
     const _bus = this._bus
     if( _bus ){
-      const predErr = this._model.observe( 'self_model.change', changeMagnitude )
+      const predErr = this._model.observe('self_model.change', changeMagnitude )
       if( !predErr.gated )
         _bus.publish({ 
           type: 'self_model.updated',

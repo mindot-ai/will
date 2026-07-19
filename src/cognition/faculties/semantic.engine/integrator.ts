@@ -87,7 +87,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
    * Confidence is capped by evidence count before integration — prevents the
    * executive from asserting high-certainty beliefs from thin episodic support.
    */
-  integrateExecutiveBelief( belief: Belief, tick?: number, cause = 'executive' ): void {
+  integrateExecutiveBelief( belief: Belief, tick?: number, cause = 'executive'): void {
     const capped = this._capConfidenceByEvidence( belief.confidence, belief.supportingEpisodes )
     const result = this._integrateBelief({ ...belief, confidence: capped }, cause )
 
@@ -118,7 +118,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
    */
   private _restoreFromState( state: ReadonlySimulationState ): void {
     for( const entity of state.entities.values() ){
-      if( entity.type !== 'belief' ) continue
+      if( entity.type !== 'belief') continue
       if( this._beliefs.some( b => b.id === entity.id ) ) continue
 
       const m = entity.metadata ?? {}
@@ -160,7 +160,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
       case 'executive.prediction.formed': {
         const p = e.payload as { predictedDomains: string[]; confidence: number }
         if( p.predictedDomains.includes('memory') )
-          this._model.setPrecision( 'belief.count', 1.0 + p.confidence * 0.5 )
+          this._model.setPrecision('belief.count', 1.0 + p.confidence * 0.5 )
 
         break
       }
@@ -201,7 +201,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
         if( payload.knownEntityUpdates )
           for( const u of payload.knownEntityUpdates )
             for( const fact of u.learned ?? [] )
-              if( fact && u.keid && u.keid !== 'agent-self' )
+              if( fact && u.keid && u.keid !== 'agent-self')
                 this.integrateExecutiveBelief({
                   id: `belief-ke-facet-${( this._idSeq++ ).toString( 36 )}`,
                   statement: fact,
@@ -224,7 +224,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
    * No-op at boot: mirror params equal the constructor defaults (reconciled in #83).
    */
   private _readConfigFromState( state: ReadonlySimulationState ): void {
-    const p = readEffectiveParams( state, 'engine-config-semantic' )
+    const p = readEffectiveParams( state, 'engine-config-semantic')
     if( p.minIntervalTicks         != null ) this._minIntervalTicks         = p.minIntervalTicks
     if( p.minNewEpisodes           != null ) this._minNewEpisodes           = p.minNewEpisodes
     if( p.maxBeliefs               != null ) this._maxBeliefs               = p.maxBeliefs
@@ -259,7 +259,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
     if( this._episodicConsolidator && this._shouldRunHeuristic( tick ) ){
       const newBeliefs = await this._heuristicPatternDetection( tick, state )
       for( const belief of newBeliefs )
-        this._integrateBelief( belief, 'heuristic' )
+        this._integrateBelief( belief, 'heuristic')
       
       this._lastIntegrationTick = tick
       if( this._episodicConsolidator )
@@ -283,7 +283,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
         const prev = belief.confidence
         belief.confidence = Math.max( 0.10, belief.confidence - this._beliefDecayRate )
         if( belief.confidence !== prev )
-          SemanticIntegrator._recordHistory( belief, tick, prev, 'decayed' )
+          SemanticIntegrator._recordHistory( belief, tick, prev, 'decayed')
       }
     }
 
@@ -315,7 +315,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
     // Phase C + F: publish cognitive event — gated by prediction error
     const _bus = this._bus
     if( _bus && this._beliefs.length > 0 ){
-      const predErr = this._model.observe( 'belief.count', this._beliefs.length )
+      const predErr = this._model.observe('belief.count', this._beliefs.length )
       if( !predErr.gated )
         _bus.publish({
           type: 'belief.updated',
@@ -531,7 +531,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
       .sort( ( a, b ) => b[1] - a[1] )
       .find( ( [ , count ] ) => count > semanticResults.length * 0.5 )
     
-    if( dominantSource && dominantSource[0] !== 'unknown' ){
+    if( dominantSource && dominantSource[0] !== 'unknown'){
       beliefs.push({
         id: `belief-semantic-source-${( this._idSeq++ ).toString( 36 )}`,
         statement: `My semantically similar experiences tend to come from: ${dominantSource[0]}`,
@@ -567,7 +567,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
       .map( ( [ tag ] ) => tag )
     
     if( topTags.length > 0 ){
-      parts.push( `Themes: ${topTags.join( ', ' )}` )
+      parts.push(`Themes: ${topTags.join(', ')}`)
     }
     
     // Add a sample of recent episode content (first 3, truncated)
@@ -581,17 +581,17 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
       })
     
     if( contentSamples.length > 0 ){
-      parts.push( `Recent experiences: ${contentSamples.join( '; ' )}` )
+      parts.push(`Recent experiences: ${contentSamples.join('; ')}`)
     }
     
     // Add affective context if consistent
     const valenceSum = episodes.reduce( ( s, ep ) => s + ( ep.affectiveContext?.valence ?? 0 ), 0 )
     const meanValence = valenceSum / episodes.length
     if( Math.abs( meanValence ) > 0.2 ){
-      parts.push( `Emotional tone: ${meanValence > 0 ? 'positive' : 'negative'}` )
+      parts.push(`Emotional tone: ${meanValence > 0 ? 'positive' : 'negative'}`)
     }
     
-    return parts.length > 0 ? parts.join( '. ' ) : 'What patterns emerge from my recent experiences?'
+    return parts.length > 0 ? parts.join('. ') : 'What patterns emerge from my recent experiences?'
   }
 
   // ── Belief management ────────────────────────────────────
@@ -620,7 +620,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
     belief.history = next
   }
 
-  private _integrateBelief( newBelief: Belief, cause = 'created' ): Belief {
+  private _integrateBelief( newBelief: Belief, cause = 'created'): Belief {
     const existing = this._beliefs.find( b => this._shouldMerge( b, newBelief ) )
 
     if( existing ){
@@ -628,7 +628,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
       existing.confidence      = ( existing.confidence + newBelief.confidence ) / 2
       existing.supportingEpisodes += newBelief.supportingEpisodes
       existing.lastUpdatedAt   = newBelief.lastUpdatedAt
-      SemanticIntegrator._recordHistory( existing, newBelief.lastUpdatedAt, prev, 'reinforced' )
+      SemanticIntegrator._recordHistory( existing, newBelief.lastUpdatedAt, prev, 'reinforced')
       return existing
     }
 

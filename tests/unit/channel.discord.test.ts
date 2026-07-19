@@ -39,12 +39,12 @@ class FakeClient implements DiscordLikeClient {
 
   channels = { fetch: async ( id: string ) => {
     const c = this.channelsById.get( id )
-    if( !c ) throw new Error( 'unknown channel' )
+    if( !c ) throw new Error('unknown channel')
     return c
   } }
   users = { fetch: async ( id: string ) => {
     const dm = this.dmByUser.get( id )
-    if( !dm ) throw new Error( 'unknown user' )
+    if( !dm ) throw new Error('unknown user')
     return dm
   } }
 
@@ -74,14 +74,14 @@ class FakeWill {
 const flush = () => new Promise( r => setTimeout( r, 0 ) )
 
 let dir: string
-beforeEach( () => { dir = mkdtempSync( join( tmpdir(), 'will-discord-' ) ) } )
+beforeEach( () => { dir = mkdtempSync( join( tmpdir(), 'will-discord-') ) } )
 afterEach( () => rmSync( dir, { recursive: true, force: true } ) )
 
 async function bridgeUp( opts: Partial<Parameters<typeof connectDiscord>[1]> = {} ){
   const client = new FakeClient()
   const will = new FakeWill()
   const bridge = await connectDiscord( will as unknown as Will, {
-    client, rosterPath: join( dir, 'roster.json' ), log: () => {}, ...opts,
+    client, rosterPath: join( dir, 'roster.json'), log: () => {}, ...opts,
   } )
   await bridge.start()
   return { client, will, bridge }
@@ -89,8 +89,8 @@ async function bridgeUp( opts: Partial<Parameters<typeof connectDiscord>[1]> = {
 
 // ── inbound ──────────────────────────────────────────────────────────────────
 
-describe( 'discord bridge — inbound', () => {
-  it( 'maps a guild message onto perceive: stable entity id, learned speaker, per-channel thread', async () => {
+describe('discord bridge — inbound', () => {
+  it('maps a guild message onto perceive: stable entity id, learned speaker, per-channel thread', async () => {
     const { client, will } = await bridgeUp()
     client.emit( { content: 'hello there', channelId: 'c1', author: { id: 'U1', username: 'ada' }, member: { displayName: 'Ada L.' } } )
     await flush()
@@ -101,7 +101,7 @@ describe( 'discord bridge — inbound', () => {
     } )
   } )
 
-  it( 'never perceives bots or itself, and skips empty content', async () => {
+  it('never perceives bots or itself, and skips empty content', async () => {
     const { client, will } = await bridgeUp()
     client.emit( { content: 'beep', channelId: 'c1', author: { id: 'B2', bot: true } } )
     client.emit( { content: 'echo', channelId: 'c1', author: { id: 'BOT' } } )
@@ -110,7 +110,7 @@ describe( 'discord bridge — inbound', () => {
     expect( will.perceived ).toHaveLength( 0 )
   } )
 
-  it( 'honours the channel allowlist', async () => {
+  it('honours the channel allowlist', async () => {
     const { client, will } = await bridgeUp( { channels: [ 'allowed' ] } )
     client.emit( { content: 'in-room', channelId: 'allowed' } )
     client.emit( { content: 'elsewhere', channelId: 'other' } )
@@ -118,7 +118,7 @@ describe( 'discord bridge — inbound', () => {
     expect( will.perceived.map( s => s.text ) ).toEqual( [ 'in-room' ] )
   } )
 
-  it( 'mentionOnly gates guild chatter but never DMs', async () => {
+  it('mentionOnly gates guild chatter but never DMs', async () => {
     const { client, will } = await bridgeUp( { mentionOnly: true } )
     client.emit( { content: 'ambient chatter', channelId: 'c1' } )
     client.emit( { content: 'hey @Aria', channelId: 'c1', mentions: { has: id => id === 'BOT' } } )
@@ -127,13 +127,13 @@ describe( 'discord bridge — inbound', () => {
     expect( will.perceived.map( s => s.text ) ).toEqual( [ 'hey @Aria', 'psst' ] )
   } )
 
-  it( 'sends a typing cue only when addressed — and typing is not a reply', async () => {
+  it('sends a typing cue only when addressed — and typing is not a reply', async () => {
     const { client, will } = await bridgeUp()
     client.emit( { content: 'ambient', channelId: 'c1' } )
     client.emit( { content: 'hey you', channelId: 'c1', mentions: { has: () => true } } )
     await flush()
 
-    const channel = client.channelsById.get( 'c1' )!
+    const channel = client.channelsById.get('c1')!
     expect( channel.typed ).toBe( 1 )
     expect( channel.sent ).toHaveLength( 0 )      // perceiving ≠ answering
     expect( will.perceived ).toHaveLength( 2 )    // ambient chatter is still perceived
@@ -142,50 +142,50 @@ describe( 'discord bridge — inbound', () => {
 
 // ── outbound ─────────────────────────────────────────────────────────────────
 
-describe( 'discord bridge — outbound', () => {
-  it( 'routes an utterance to the addressee via their last shared channel', async () => {
+describe('discord bridge — outbound', () => {
+  it('routes an utterance to the addressee via their last shared channel', async () => {
     const { client, will } = await bridgeUp()
     client.emit( { content: 'hi', channelId: 'c1', author: { id: 'U1', username: 'ada' } } )
     await flush()
 
     will.utter( { id: 'm1', content: 'hello Ada', to: 'discord:U1' } )
     await flush()
-    expect( client.channelsById.get( 'c1' )!.sent ).toEqual( [ 'hello Ada' ] )
+    expect( client.channelsById.get('c1')!.sent ).toEqual( [ 'hello Ada' ] )
   } )
 
-  it( 'falls back to the DM when no shared channel is known (proactive reach)', async () => {
+  it('falls back to the DM when no shared channel is known (proactive reach)', async () => {
     const { client, will } = await bridgeUp()
     client.emit( { content: 'psst', channelId: 'dm1', guildId: null, author: { id: 'U2', username: 'sam' } } )
     await flush()
 
     will.utter( { id: 'm2', content: 'thinking of you', to: 'discord:U2' } )
     await flush()
-    expect( client.channelsById.get( 'dm1' )!.sent ).toEqual( [ 'thinking of you' ] )
+    expect( client.channelsById.get('dm1')!.sent ).toEqual( [ 'thinking of you' ] )
   } )
 
-  it( 'uses the home channel for unknown addressees, else drops silently', async () => {
+  it('uses the home channel for unknown addressees, else drops silently', async () => {
     const { client, will } = await bridgeUp( { homeChannelId: 'home' } )
     const home = new FakeChannel()
-    client.channelsById.set( 'home', home )
+    client.channelsById.set('home', home )
 
     will.utter( { id: 'm3', content: 'is anyone there?', to: 'discord:GHOST' } )
     await flush()
     expect( home.sent ).toEqual( [ 'is anyone there?' ] )
   } )
 
-  it( 'chunks long utterances under the 2000-char platform limit', async () => {
+  it('chunks long utterances under the 2000-char platform limit', async () => {
     const { client, will } = await bridgeUp()
     client.emit( { content: 'hi', channelId: 'c1', author: { id: 'U1' } } )
     await flush()
 
     will.utter( { id: 'm4', content: 'para one\n\n' + 'x'.repeat( 2500 ), to: 'discord:U1' } )
     await flush()
-    const sent = client.channelsById.get( 'c1' )!.sent
+    const sent = client.channelsById.get('c1')!.sent
     expect( sent.length ).toBeGreaterThan( 1 )
     for( const chunk of sent ) expect( chunk.length ).toBeLessThanOrEqual( 2000 )
   } )
 
-  it( 'waits for readiness without subscribing to the deprecated `ready` event', async () => {
+  it('waits for readiness without subscribing to the deprecated `ready` event', async () => {
     // A client that is not yet logged in: `user` is null until login resolves.
     const events: string[] = []
     let ready = false
@@ -196,19 +196,19 @@ describe( 'discord bridge — outbound', () => {
       once( e: string ){ events.push( e ) },
       async login(){ setTimeout( () => { ready = true; client.user = { id: 'BOT' } }, 10 ); return 'ok' },
       destroy(){},
-      channels: { fetch: async () => { throw new Error( 'none' ) } },
-      users:    { fetch: async () => { throw new Error( 'none' ) } },
+      channels: { fetch: async () => { throw new Error('none') } },
+      users:    { fetch: async () => { throw new Error('none') } },
     }
     const bridge = await connectDiscord( new FakeWill() as unknown as Will, {
-      client: client as unknown as DiscordLikeClient, rosterPath: join( dir, 'r.json' ), log: () => {},
+      client: client as unknown as DiscordLikeClient, rosterPath: join( dir, 'r.json'), log: () => {},
     } )
     await bridge.start()                          // resolves via the isReady poll
 
-    expect( events ).not.toContain( 'ready' )     // the deprecated name is never subscribed
-    expect( events ).toContain( 'clientReady' )
+    expect( events ).not.toContain('ready')     // the deprecated name is never subscribed
+    expect( events ).toContain('clientReady')
   } )
 
-  it( 'close() stops delivery and disconnects the client', async () => {
+  it('close() stops delivery and disconnects the client', async () => {
     const { client, will, bridge } = await bridgeUp()
     client.emit( { content: 'hi', channelId: 'c1', author: { id: 'U1' } } )
     await flush()
@@ -217,7 +217,7 @@ describe( 'discord bridge — outbound', () => {
     await bridge.close()                          // idempotent
     will.utter( { id: 'm5', content: 'too late', to: 'discord:U1' } )
     await flush()
-    expect( client.channelsById.get( 'c1' )!.sent ).toHaveLength( 0 )
+    expect( client.channelsById.get('c1')!.sent ).toHaveLength( 0 )
     expect( client.destroyed ).toBe( true )
   } )
 } )

@@ -37,47 +37,47 @@ function setup( { priority = 0, feasibility = 0.8 }: { priority?: number; feasib
   return { engine, spawned: () => spawned }
 }
 
-describe( 'PlanningEngine — emergent supervision tier', () => {
-  it( 'starts DELIBERATE for a high-priority goal (top-down)', async () => {
+describe('PlanningEngine — emergent supervision tier', () => {
+  it('starts DELIBERATE for a high-priority goal (top-down)', async () => {
     const { engine, spawned } = setup( { priority: 0.9 } )
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )
-    expect( engine.getPlan( 'goal-1' )!.executionTier ).toBe( 'deliberate' )
+    expect( engine.getPlan('goal-1')!.executionTier ).toBe('deliberate')
     expect( spawned() ).toBe( 1 )
   } )
 
-  it( 'starts DELIBERATE for a low-confidence plan (top-down)', async () => {
+  it('starts DELIBERATE for a low-confidence plan (top-down)', async () => {
     const { engine, spawned } = setup( { priority: 0, feasibility: 0.3 } )
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )
-    expect( engine.getPlan( 'goal-1' )!.executionTier ).toBe( 'deliberate' )
+    expect( engine.getPlan('goal-1')!.executionTier ).toBe('deliberate')
     expect( spawned() ).toBe( 1 )
   } )
 
-  it( 'stays AUTOMATIC for a routine confident plan; a clean success does not escalate', async () => {
+  it('stays AUTOMATIC for a routine confident plan; a clean success does not escalate', async () => {
     const { engine, spawned } = setup( { priority: 0.3, feasibility: 0.8 } )
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )
-    expect( engine.getPlan( 'goal-1' )!.executionTier ).toBe( 'automatic' )
+    expect( engine.getPlan('goal-1')!.executionTier ).toBe('automatic')
 
-    engine.onCognitiveEvent( outcome( 'plan-1', 'step-0', true, 0.8 ) )   // success → no surprise
-    expect( engine.getPlan( 'goal-1' )!.executionTier ).toBe( 'automatic' )
+    engine.onCognitiveEvent( outcome('plan-1', 'step-0', true, 0.8 ) )   // success → no surprise
+    expect( engine.getPlan('goal-1')!.executionTier ).toBe('automatic')
     expect( spawned() ).toBe( 0 )
   } )
 
-  it( 'ESCALATES an automatic plan to deliberate on step FAILURE (bottom-up)', async () => {
+  it('ESCALATES an automatic plan to deliberate on step FAILURE (bottom-up)', async () => {
     const { engine, spawned } = setup( { priority: 0.3, feasibility: 0.8 } )
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )
-    expect( engine.getPlan( 'goal-1' )!.executionTier ).toBe( 'automatic' )
+    expect( engine.getPlan('goal-1')!.executionTier ).toBe('automatic')
 
-    engine.onCognitiveEvent( outcome( 'plan-1', 'step-0', false, 0.1 ) )   // failure → escalate
-    expect( engine.getPlan( 'goal-1' )!.executionTier ).toBe( 'deliberate' )
+    engine.onCognitiveEvent( outcome('plan-1', 'step-0', false, 0.1 ) )   // failure → escalate
+    expect( engine.getPlan('goal-1')!.executionTier ).toBe('deliberate')
     expect( spawned() ).toBe( 1 )
   } )
 
-  it( 'ESCALATES on a surprising low-quality success (quality < threshold)', async () => {
+  it('ESCALATES on a surprising low-quality success (quality < threshold)', async () => {
     const { engine, spawned } = setup( { priority: 0.3, feasibility: 0.8 } )
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )
 
-    engine.onCognitiveEvent( outcome( 'plan-1', 'step-0', true, 0.1 ) )   // 0.1 < 0.25 → escalate
-    expect( engine.getPlan( 'goal-1' )!.executionTier ).toBe( 'deliberate' )
+    engine.onCognitiveEvent( outcome('plan-1', 'step-0', true, 0.1 ) )   // 0.1 < 0.25 → escalate
+    expect( engine.getPlan('goal-1')!.executionTier ).toBe('deliberate')
     expect( spawned() ).toBe( 1 )
   } )
 } )

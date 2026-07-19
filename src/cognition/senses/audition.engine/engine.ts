@@ -474,7 +474,7 @@ export class AuditionEngine extends BaseSenseEngine {
       attachmentScore: this._getAttachmentScore?.( entityId ) ?? 0,
       activeGoalText:  this._getActiveGoalText?.()            ?? [],
     })
-    const salience = this._model.observe( `audition.${entityId}`, langEnergy ).salience
+    const salience = this._model.observe(`audition.${entityId}`, langEnergy ).salience
 
     // ── Percept ────────────────────────────────────────────────
     const percept: LanguagePercept = {
@@ -717,7 +717,7 @@ export class AuditionEngine extends BaseSenseEngine {
           goalsToAbandon:          output.goalsToAbandon,
           newBeliefs:              output.newBeliefs,
           knownEntityUpdates:      output.knownEntityUpdates,
-          requiresMasterAttention: ( output.actions ?? [] ).some( a => a.type === 'escalate' ),
+          requiresMasterAttention: ( output.actions ?? [] ).some( a => a.type === 'escalate'),
         }
       }
     }

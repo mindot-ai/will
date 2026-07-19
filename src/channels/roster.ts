@@ -42,7 +42,7 @@ export class ChannelRoster {
   constructor( private readonly path: string ) {
     if( existsSync( path ) ){
       try {
-        const raw = JSON.parse( readFileSync( path, 'utf8' ) ) as RosterEntry[]
+        const raw = JSON.parse( readFileSync( path, 'utf8') ) as RosterEntry[]
         for( const e of Array.isArray( raw ) ? raw : [] ) this.entries.set( e.entityId, e )
       }
       catch { /* a corrupt roster is not worth failing a boot over — start fresh */ }

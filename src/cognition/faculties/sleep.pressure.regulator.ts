@@ -84,10 +84,10 @@ export class SleepPressureRegulator implements SimulationEngine, CognitiveEngine
 
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
-    if( e.type === 'executive.prediction.formed' ){
+    if( e.type === 'executive.prediction.formed'){
       const p = e.payload as { predictedDomains: string[]; confidence: number }
       if( p.predictedDomains.includes('interoception') )
-        this._model.setPrecision( 'sleep.pressure', 1.0 + p.confidence * 0.5 )
+        this._model.setPrecision('sleep.pressure', 1.0 + p.confidence * 0.5 )
     }
   }
 
@@ -224,10 +224,10 @@ export class SleepPressureRegulator implements SimulationEngine, CognitiveEngine
     // Phase C: publish cognitive event
     const _bus = this._bus
     if( _bus && newPressure > 70 )
-      _bus.publish({ type: 'sleep.pressure.critical', version: 1, sourceEngine: this.name, salience: Math.max( 0.7, this._model.observe( 'sleep.critical', newPressure ).salience ), payload: { pressure: newPressure } })
+      _bus.publish({ type: 'sleep.pressure.critical', version: 1, sourceEngine: this.name, salience: Math.max( 0.7, this._model.observe('sleep.critical', newPressure ).salience ), payload: { pressure: newPressure } })
     // Phase D + F: rich state-change event — gated by prediction error
     if( _bus ){
-      const predErr = this._model.observe( 'sleep.pressure', newPressure )
+      const predErr = this._model.observe('sleep.pressure', newPressure )
       if( !predErr.gated )
         _bus.publish({ type: 'sleep.state.changed', version: 1, sourceEngine: this.name, salience: predErr.salience, payload: { pressure: newPressure, intensity } })
     }

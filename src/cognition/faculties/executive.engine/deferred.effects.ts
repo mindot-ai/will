@@ -72,7 +72,7 @@ export class DeferredEffectQueue {
   flush( state: ReadonlySimulationState, currentTick: number ): void {
     if( this._entries.length === 0 ) return
 
-    const committedTick = state.metrics.get( 'executive.last_tick' )
+    const committedTick = state.metrics.get('executive.last_tick')
     const keep: DeferredEntry[] = []
 
     for( const entry of this._entries ){
@@ -87,7 +87,7 @@ export class DeferredEffectQueue {
         for( const effect of entry.effects ){
           try { effect() }
           catch( err ){
-            logger.error( `[executive] deferred effect failed (tick ${entry.observedTick}):`, err )
+            logger.error(`[executive] deferred effect failed (tick ${entry.observedTick}):`, err )
           }
         }
       }

@@ -44,7 +44,7 @@ export function parseResponse(
   }
   catch {
     // Strategy 2: balanced-bracket extractor
-    const actionsStr = extractBalancedArray( fullText, 'actions' )
+    const actionsStr = extractBalancedArray( fullText, 'actions')
     if( !actionsStr) {
       logger.warn('[executive] No actions found in response — using fallback')
       return buildFallbackOutput( state, recentActionTypes )
@@ -91,10 +91,10 @@ export function parseIdeation( responseText: string ): IdeationOutput {
       .map( c => {
         const o = ( c ?? {} ) as Record<string, unknown>
         return {
-          approach:    String( o.approach    ?? '' ).trim(),
-          description: String( o.description ?? '' ).trim(),
-          upside:      String( o.upside      ?? '' ).trim(),
-          risk:        String( o.risk        ?? '' ).trim(),
+          approach:    String( o.approach    ?? '').trim(),
+          description: String( o.description ?? '').trim(),
+          upside:      String( o.upside      ?? '').trim(),
+          risk:        String( o.risk        ?? '').trim(),
         }
       } )
       .filter( c => c.approach.length > 0 || c.description.length > 0 )
@@ -109,7 +109,7 @@ export function parseIdeation( responseText: string ): IdeationOutput {
   catch { /* fall through to bracket extraction */ }
 
   // Strategy 2: balanced-bracket extraction of the `candidates` array.
-  const arrStr = extractBalancedArray( text, 'candidates' )
+  const arrStr = extractBalancedArray( text, 'candidates')
   if( arrStr ){
     try { return { candidates: coerce( JSON.parse( arrStr ) ) } }
     catch { /* fall through to empty */ }
@@ -145,15 +145,15 @@ function extractBalancedArray( text: string, key: string ): string | null {
       continue
     }
 
-    if( ch === '"' ){
+    if( ch === '"'){
       inString = !inString
       continue
     }
 
     if( inString ) continue
 
-    if( ch === '[' || ch === '{' ) depth++
-    else if( ch === ']' || ch === '}' ){
+    if( ch === '[' || ch === '{') depth++
+    else if( ch === ']' || ch === '}'){
       depth--
 
       if( depth === 0 ) 
@@ -196,7 +196,7 @@ function parseTaggedBlocks(
   ],
   found = taggedTypes.filter( t => text.includes(`[${t}]`) )
   if( found.length > 0 ){
-    const closed = found.map( t => `${t}: ${text.includes(`[/${t}]`) ? 'CLOSED' : 'UNCLOSED'}` ).join(', ')
+    const closed = found.map( t => `${t}: ${text.includes(`[/${t}]`) ? 'CLOSED' : 'UNCLOSED'}`).join(', ')
     logger.info(`[executive] TAGGED BLOCKS: ${closed}`)
   }
 
@@ -362,7 +362,7 @@ export function buildFallbackOutput(
   }
   else {
     // Vary the fallback when low-effort actions have dominated recently
-    const monotonous = recentActionTypes.filter( t => t === 'reflect' || t === 'observe' ).length >= 3
+    const monotonous = recentActionTypes.filter( t => t === 'reflect' || t === 'observe').length >= 3
     if( monotonous) {
       const alternatives = ['explore', 'learn', 'express_emotion', 'rest']
       const tick = state.tick as number

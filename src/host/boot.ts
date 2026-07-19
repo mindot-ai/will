@@ -37,12 +37,12 @@ import { anthropicWireHeaders, defaultBaseFor, defaultModelFor } from '#llm/inde
  */
 export function routeLogsToStderr(): void {
   const err = ( level: string ) => ( msg: string, ...rest: unknown[] ) =>
-    console.error( `[will:${ level }] ${ msg }`, ...rest )
-  setLogger( { debug: () => {}, info: err( 'info' ), warn: err( 'warn' ), error: err( 'error' ) } )
+    console.error(`[will:${ level }] ${ msg }`, ...rest )
+  setLogger( { debug: () => {}, info: err('info'), warn: err('warn'), error: err('error') } )
 }
 
 function slug( s: string ): string {
-  return s.toLowerCase().replace( /[^a-z0-9]+/g, '-' ).replace( /^-+|-+$/g, '' ) || 'will'
+  return s.toLowerCase().replace( /[^a-z0-9]+/g, '-').replace( /^-+|-+$/g, '') || 'will'
 }
 
 /** The LLM mode the hosts will boot with: an explicit WILL_LLM, else whichever
@@ -57,7 +57,7 @@ export function resolveLlmMode(): 'mock' | 'anthropic' | 'glm' {
 
 /** The key for a live mode — the provider-agnostic override first, then the
  *  provider's own env. */
-function resolveLlmKey( mode: 'anthropic' | 'glm' ): string | undefined {
+function resolveLlmKey( mode: 'anthropic' | 'glm'): string | undefined {
   return process.env.WILL_LLM_API_KEY
     ?? ( mode === 'glm' ? process.env.ZAI_API_KEY : process.env.ANTHROPIC_API_KEY )
 }
@@ -79,13 +79,13 @@ function resolveLlmKey( mode: 'anthropic' | 'glm' ): string | undefined {
  */
 async function preflightLLM( anatomy: string ): Promise<void> {
   const mode = resolveLlmMode()
-  if( mode === 'mock' || anatomy === 'reflex' ) return
+  if( mode === 'mock' || anatomy === 'reflex') return
 
   const key = resolveLlmKey( mode )
   if( !key ){
     const expected = mode === 'glm' ? 'ZAI_API_KEY' : 'ANTHROPIC_API_KEY'
-    console.error( `[will] WILL_LLM=${ mode } but no ${ expected } / WILL_LLM_API_KEY is set.` )
-    console.error( '[will] The Will would boot, perceive, and never speak. Set a key, or run keyless with WILL_LLM=mock.' )
+    console.error(`[will] WILL_LLM=${ mode } but no ${ expected } / WILL_LLM_API_KEY is set.`)
+    console.error('[will] The Will would boot, perceive, and never speak. Set a key, or run keyless with WILL_LLM=mock.')
     process.exit( 2 )
   }
 
@@ -95,9 +95,9 @@ async function preflightLLM( anatomy: string ): Promise<void> {
   // speaks the same wire at Z.ai's compat endpoint, so one ping serves both.
   const base  = process.env.WILL_LLM_BASE_URL ?? defaultBaseFor( mode )
   const model = process.env.WILL_LLM_MODEL
-    ?? ( mode === 'glm' ? defaultModelFor( 'glm' ) : 'claude-haiku-4-5-20251001' )
+    ?? ( mode === 'glm' ? defaultModelFor('glm') : 'claude-haiku-4-5-20251001')
   try {
-    const res = await fetch( `${ base }/messages`, {
+    const res = await fetch(`${ base }/messages`, {
       method:  'POST',
       headers: anthropicWireHeaders( mode, key ),
       body:    JSON.stringify( { model, max_tokens: 1, messages: [ { role: 'user', content: 'ping' } ] } ),
@@ -105,20 +105,20 @@ async function preflightLLM( anatomy: string ): Promise<void> {
     } )
     if( res.ok ) return
 
-    const detail = ( await res.text().catch( () => '' ) ).slice( 0, 300 )
+    const detail = ( await res.text().catch( () => '') ).slice( 0, 300 )
     const fatal  = res.status === 400 || res.status === 401 || res.status === 403
     if( !fatal ){
-      console.error( `[will] the executive's LLM answered ${ res.status } on a test call — raising the mind anyway (it retries): ${ detail }` )
+      console.error(`[will] the executive's LLM answered ${ res.status } on a test call — raising the mind anyway (it retries): ${ detail }`)
       return
     }
-    console.error( `[will] the executive's LLM refused a test call (${ res.status }) — this Will would boot, perceive, and never speak:` )
-    console.error( `       ${ detail }` )
-    console.error( '[will] fix the key / credit / model above, or run keyless with WILL_LLM=mock.' )
+    console.error(`[will] the executive's LLM refused a test call (${ res.status }) — this Will would boot, perceive, and never speak:`)
+    console.error(`       ${ detail }`)
+    console.error('[will] fix the key / credit / model above, or run keyless with WILL_LLM=mock.')
     process.exit( 1 )
   }
   catch( e ){
-    console.error( `[will] could not reach the executive's LLM: ${ ( e as Error ).message }` )
-    console.error( '[will] the Will would boot and stay silent. Check the network / WILL_LLM_BASE_URL, or run keyless with WILL_LLM=mock.' )
+    console.error(`[will] could not reach the executive's LLM: ${ ( e as Error ).message }`)
+    console.error('[will] the Will would boot and stay silent. Check the network / WILL_LLM_BASE_URL, or run keyless with WILL_LLM=mock.')
     process.exit( 1 )
   }
 }
@@ -138,8 +138,8 @@ export interface BootedWill {
 /** Raise the mind from env config — wake from the artifact if one exists. */
 export async function bootWillFromEnv(): Promise<BootedWill> {
   const name       = process.env.WILL_NAME ?? 'Will'
-  const pmaPath    = resolve( process.env.WILL_PMA_PATH ?? `.will/${ slug( name ) }.pma.json` )
-  const tickMs     = parseInt( process.env.WILL_TICK_MS ?? '1000' )
+  const pmaPath    = resolve( process.env.WILL_PMA_PATH ?? `.will/${ slug( name ) }.pma.json`)
+  const tickMs     = parseInt( process.env.WILL_TICK_MS ?? '1000')
   const anatomy = ( process.env.WILL_ANATOMY as CreateWillOptions['anatomy'] ) ?? 'mind'
 
   await preflightLLM( anatomy )
@@ -153,23 +153,23 @@ export async function bootWillFromEnv(): Promise<BootedWill> {
 
   let will: Will
   if( existsSync( pmaPath ) ){
-    const pma = JSON.parse( readFileSync( pmaPath, 'utf8' ) ) as PMASnapshot
+    const pma = JSON.parse( readFileSync( pmaPath, 'utf8') ) as PMASnapshot
     will = await Will.wake( pma, opts )
-    console.error( `[will] ${ name } woke from ${ pmaPath }` )
+    console.error(`[will] ${ name } woke from ${ pmaPath }`)
     // A woken Will carries its own identity — that is the point of an artifact.
     // But an operator editing WILL_IDENTITY and seeing nothing change deserves
     // to know why, rather than concluding the persona layer is broken.
     if( process.env.WILL_IDENTITY )
-      console.error( `[will] note: WILL_IDENTITY is ignored — ${ name } woke as itself. Delete ${ pmaPath } to be born fresh from it.` )
+      console.error(`[will] note: WILL_IDENTITY is ignored — ${ name } woke as itself. Delete ${ pmaPath } to be born fresh from it.`)
   }
   else {
     will = await Will.create( {
       ...opts,
       identity: { prompt: process.env.WILL_IDENTITY ?? `I am ${ name }, a persistent mind.` },
     } )
-    console.error( `[will] ${ name } born (no artifact at ${ pmaPath } yet)` )
+    console.error(`[will] ${ name } born (no artifact at ${ pmaPath } yet)`)
   }
-  will.on( 'error', e => console.error( `[will] error: ${ e.message }` ) )
+  will.on('error', e => console.error(`[will] error: ${ e.message }`) )
 
   // Onward bridges: MCP servers whose tools become the Will's OWN abilities.
   // Best-effort — a bad entry warns and is skipped; the mind still boots.
@@ -181,12 +181,12 @@ export async function bootWillFromEnv(): Promise<BootedWill> {
         try {
           const { names, close } = await connectMcpEffectors( will, source )
           cleanups.push( close )
-          console.error( `[will] ${ name } gained abilities: ${ names.join( ', ' ) }` )
+          console.error(`[will] ${ name } gained abilities: ${ names.join(', ') }`)
         }
-        catch( e ){ console.error( `[will] MCP bridge failed (skipped): ${ ( e as Error ).message }` ) }
+        catch( e ){ console.error(`[will] MCP bridge failed (skipped): ${ ( e as Error ).message }`) }
       }
     }
-    catch( e ){ console.error( `[will] WILL_MCP_SERVERS is not valid JSON — ignoring: ${ ( e as Error ).message }` ) }
+    catch( e ){ console.error(`[will] WILL_MCP_SERVERS is not valid JSON — ignoring: ${ ( e as Error ).message }`) }
   }
 
   // Hibernate exactly once on the way out — cleanups (LIFO), distill + stop, persist.
@@ -199,13 +199,13 @@ export async function bootWillFromEnv(): Promise<BootedWill> {
       const pma = await will.hibernate()
       mkdirSync( dirname( pmaPath ), { recursive: true } )
       writeFileSync( pmaPath, JSON.stringify( pma ) )
-      console.error( `[will] ${ name } hibernated to ${ pmaPath } (${ why })` )
+      console.error(`[will] ${ name } hibernated to ${ pmaPath } (${ why })`)
     }
-    catch( e ){ console.error( `[will] hibernate failed: ${ ( e as Error ).message }` ) }
+    catch( e ){ console.error(`[will] hibernate failed: ${ ( e as Error ).message }`) }
     process.exit( 0 )
   }
-  process.on( 'SIGINT',  () => void shutdown( 'SIGINT' ) )
-  process.on( 'SIGTERM', () => void shutdown( 'SIGTERM' ) )
+  process.on('SIGINT',  () => void shutdown('SIGINT') )
+  process.on('SIGTERM', () => void shutdown('SIGTERM') )
 
   return {
     will, name, pmaPath, tickMs, anatomy,

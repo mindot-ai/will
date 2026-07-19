@@ -289,8 +289,8 @@ export class GenerativeModel {
    */
   restore( snap: GenerativeModelSnapshot | undefined | null ): void {
     if( !snap ) return
-    if( typeof snap.defaultAlpha === 'number' ) this._defaultAlpha = snap.defaultAlpha
-    if( typeof snap.defaultRange === 'number' ) this._defaultRange = snap.defaultRange
+    if( typeof snap.defaultAlpha === 'number') this._defaultAlpha = snap.defaultAlpha
+    if( typeof snap.defaultRange === 'number') this._defaultRange = snap.defaultRange
 
     this._streams = new Map(
       ( snap.streams ?? [] ).map( ([ k, v ]) => [ k, {

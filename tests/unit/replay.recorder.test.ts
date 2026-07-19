@@ -52,12 +52,12 @@ function makeInbound( tick: number ) {
   }
 }
 
-describe( 'DefaultReplayRecorder — persistence (FN2)', () => {
+describe('DefaultReplayRecorder — persistence (FN2)', () => {
   let storage: MemoryStorage
 
   beforeEach( () => { storage = new MemoryStorage() })
 
-  it( 'retains all records across a buffer rollover when a flush path is set', async () => {
+  it('retains all records across a buffer rollover when a flush path is set', async () => {
     const recorder = new DefaultReplayRecorder(
       'sim', 'run', 42,
       { bufferSize: 5, flushBasePath: '/replays/run' },
@@ -70,16 +70,16 @@ describe( 'DefaultReplayRecorder — persistence (FN2)', () => {
 
     // Let any in-flight flush().catch() microtasks settle.
     await recorder.flush()
-    await recorder.save( '/replays/run.json' )
+    await recorder.save('/replays/run.json')
 
-    const saved = JSON.parse( await storage.read( '/replays/run.json' ) )
+    const saved = JSON.parse( await storage.read('/replays/run.json') )
     expect( saved.records ).toHaveLength( 23 )
     expect( saved.records.map( ( r: { tick: number } ) => r.tick ) )
       .toEqual( Array.from({ length: 23 }, ( _, i ) => i ) )
     expect( saved.metadata.totalEvents ).toBe( 23 )
   })
 
-  it( 'cleans up segment files after consolidation', async () => {
+  it('cleans up segment files after consolidation', async () => {
     const recorder = new DefaultReplayRecorder(
       'sim', 'run', 42,
       { bufferSize: 2, flushBasePath: '/replays/run' },
@@ -88,14 +88,14 @@ describe( 'DefaultReplayRecorder — persistence (FN2)', () => {
 
     for( let t = 0; t < 6; t++ )
       recorder.recordTick( t, [] )
-    await recorder.save( '/replays/run.json' )
+    await recorder.save('/replays/run.json')
 
     const segments = [ ...storage.files.keys() ].filter( k => k.includes('.part') )
     expect( segments ).toHaveLength( 0 )
-    expect( storage.files.has( '/replays/run.json' ) ).toBe( true )
+    expect( storage.files.has('/replays/run.json') ).toBe( true )
   })
 
-  it( 'never discards records when no flush path is configured', async () => {
+  it('never discards records when no flush path is configured', async () => {
     const recorder = new DefaultReplayRecorder(
       'sim', 'run', 42,
       { bufferSize: 3 },  // no flushBasePath
@@ -105,33 +105,33 @@ describe( 'DefaultReplayRecorder — persistence (FN2)', () => {
     for( let t = 0; t < 10; t++ )
       recorder.recordTick( t, [] )
     await recorder.flush()  // no-op retention path
-    await recorder.save( '/replays/run.json' )
+    await recorder.save('/replays/run.json')
 
-    const saved = JSON.parse( await storage.read( '/replays/run.json' ) )
+    const saved = JSON.parse( await storage.read('/replays/run.json') )
     expect( saved.records ).toHaveLength( 10 )
   })
 })
 
-describe( 'DefaultReplayRecorder — LLM completions (FN3)', () => {
+describe('DefaultReplayRecorder — LLM completions (FN3)', () => {
   let storage: MemoryStorage
 
   beforeEach( () => { storage = new MemoryStorage() })
 
-  it( 'persists recorded completions and counts them in metadata', async () => {
+  it('persists recorded completions and counts them in metadata', async () => {
     const recorder = new DefaultReplayRecorder(
       'sim', 'run', 42, { flushBasePath: '/replays/run' }, storage
     )
     recorder.recordCompletion( makeCompletion( 1 ) )
     recorder.recordCompletion( makeCompletion( 2 ) )
-    await recorder.save( '/replays/run.json' )
+    await recorder.save('/replays/run.json')
 
-    const saved = JSON.parse( await storage.read( '/replays/run.json' ) )
+    const saved = JSON.parse( await storage.read('/replays/run.json') )
     expect( saved.completions ).toHaveLength( 2 )
     expect( saved.completions.map( ( c: { text: string } ) => c.text ) ).toEqual( [ 't1', 't2' ] )
     expect( saved.metadata.totalCompletions ).toBe( 2 )
   })
 
-  it( 'retains completions across a buffer rollover alongside records', async () => {
+  it('retains completions across a buffer rollover alongside records', async () => {
     const recorder = new DefaultReplayRecorder(
       'sim', 'run', 42, { bufferSize: 2, flushBasePath: '/replays/run' }, storage
     )
@@ -140,35 +140,35 @@ describe( 'DefaultReplayRecorder — LLM completions (FN3)', () => {
       recorder.recordCompletion( makeCompletion( t ) )
     }
     await recorder.flush()
-    await recorder.save( '/replays/run.json' )
+    await recorder.save('/replays/run.json')
 
-    const saved = JSON.parse( await storage.read( '/replays/run.json' ) )
+    const saved = JSON.parse( await storage.read('/replays/run.json') )
     expect( saved.records ).toHaveLength( 5 )
     expect( saved.completions ).toHaveLength( 5 )
     expect( saved.metadata.totalCompletions ).toBe( 5 )
   })
 })
 
-describe( 'DefaultReplayRecorder — external inbound (1.3)', () => {
+describe('DefaultReplayRecorder — external inbound (1.3)', () => {
   let storage: MemoryStorage
   beforeEach( () => { storage = new MemoryStorage() })
 
-  it( 'persists recorded inbound envelopes and counts them in metadata', async () => {
+  it('persists recorded inbound envelopes and counts them in metadata', async () => {
     const recorder = new DefaultReplayRecorder(
       'sim', 'run', 42, { flushBasePath: '/replays/run' }, storage
     )
     recorder.recordInbound( makeInbound( 1 ) )
     recorder.recordInbound( makeInbound( 2 ) )
-    await recorder.save( '/replays/run.json' )
+    await recorder.save('/replays/run.json')
 
-    const saved = JSON.parse( await storage.read( '/replays/run.json' ) )
+    const saved = JSON.parse( await storage.read('/replays/run.json') )
     expect( saved.inbound ).toHaveLength( 2 )
     expect( saved.inbound.map( ( i: { tick: number } ) => i.tick ) ).toEqual( [ 1, 2 ] )
-    expect( saved.inbound[0].envelope.content ).toBe( 'msg1' )
+    expect( saved.inbound[0].envelope.content ).toBe('msg1')
     expect( saved.metadata.totalInbound ).toBe( 2 )
   })
 
-  it( 'retains inbound across a buffer rollover alongside records + completions', async () => {
+  it('retains inbound across a buffer rollover alongside records + completions', async () => {
     const recorder = new DefaultReplayRecorder(
       'sim', 'run', 42, { bufferSize: 2, flushBasePath: '/replays/run' }, storage
     )
@@ -177,9 +177,9 @@ describe( 'DefaultReplayRecorder — external inbound (1.3)', () => {
       recorder.recordInbound( makeInbound( t ) )
     }
     await recorder.flush()
-    await recorder.save( '/replays/run.json' )
+    await recorder.save('/replays/run.json')
 
-    const saved = JSON.parse( await storage.read( '/replays/run.json' ) )
+    const saved = JSON.parse( await storage.read('/replays/run.json') )
     expect( saved.inbound ).toHaveLength( 5 )
     expect( saved.metadata.totalInbound ).toBe( 5 )
   })

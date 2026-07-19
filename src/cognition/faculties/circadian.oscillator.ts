@@ -79,10 +79,10 @@ export class CircadianOscillator implements SimulationEngine, CognitiveEngine {
 
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
-    if( e.type === 'executive.prediction.formed' ){
+    if( e.type === 'executive.prediction.formed'){
       const p = e.payload as { predictedDomains: string[]; confidence: number }
       if( p.predictedDomains.includes('circadian') )
-        this._model.setPrecision( 'circadian.alertness', 1.0 + p.confidence * 0.5 )
+        this._model.setPrecision('circadian.alertness', 1.0 + p.confidence * 0.5 )
     }
   }
 
@@ -249,7 +249,7 @@ export class CircadianOscillator implements SimulationEngine, CognitiveEngine {
       _bus.publish({ type: 'circadian.alertness.shifted', version: 1, sourceEngine: this.name, salience: Math.abs(alertnessSignal - 0.5) * 0.6, payload: { alertness: alertnessSignal, phase: phaseLabel } })
     // Phase D + F: rich state-change event — gated by prediction error
     if( _bus ){
-      const predErr = this._model.observe( 'circadian.alertness', alertnessSignal )
+      const predErr = this._model.observe('circadian.alertness', alertnessSignal )
       if( !predErr.gated )
         _bus.publish({ type: 'circadian.state.changed', version: 1, sourceEngine: this.name, salience: predErr.salience, payload: { alertness: alertnessSignal, timeOfDay, phaseCode, moodBaseline: moodSignal } })
     }

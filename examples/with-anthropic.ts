@@ -71,7 +71,7 @@ const unsub = stem.addTickListener( willId, ( snapshot, tick, outboxMessages ) =
 await new Promise( r => setTimeout( r, 3_000 ) )
 
 const question = 'Hello! Tell me — what is it like to be you, right now?'
-console.log( `\n💬 You: "${question}"\n` )
+console.log(`\n💬 You: "${question}"\n`)
 
 await stem.ingestText( willId, {
   kind:        'text',
@@ -82,7 +82,7 @@ await stem.ingestText( willId, {
 })
 
 const reply = await replyArrived
-console.log( reply ? `\n🧠 Dot: "${reply}"` : '\n🧠 (no reply within 120 s)' )
+console.log( reply ? `\n🧠 Dot: "${reply}"` : '\n🧠 (no reply within 120 s)')
 
 unsub()
 await stem.archiveWill( willId )

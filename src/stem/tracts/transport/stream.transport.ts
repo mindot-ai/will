@@ -39,7 +39,7 @@ export class StreamTransport implements ExternalTransport {
   private readonly _inboundHandlers = new Set<( env: InboundEnvelope ) => void>()
   private readonly _statusHandlers  = new Set<( s: TransportStatus ) => void>()
 
-  constructor( willId: string = 'stream' ){
+  constructor( willId: string = 'stream'){
     this.willId = willId
   }
 
@@ -71,7 +71,7 @@ export class StreamTransport implements ExternalTransport {
    * `'reply'`) or `'*'` for all. Returns an unsubscribe function.
    */
   on( channel: StreamChannel, listener: OutboundListener ): () => void {
-    if( channel === '*' ) return this.subscribe( listener )
+    if( channel === '*') return this.subscribe( listener )
     let set = this._outboundByCh.get( channel )
     if( !set ){ set = new Set(); this._outboundByCh.set( channel, set ) }
     set.add( listener )

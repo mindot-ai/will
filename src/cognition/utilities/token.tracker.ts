@@ -96,9 +96,9 @@ const CACHE_WRITE_MULT = 1.25
  */
 function normalizeModelKey( model: string ): string {
   let m = model.toLowerCase().trim()
-  const slash = m.lastIndexOf( '/' )
+  const slash = m.lastIndexOf('/')
   if( slash >= 0 ) m = m.slice( slash + 1 )   // drop "provider/" prefix
-  return m.replace( /[-@]\d{6,8}$/, '' )        // drop trailing -YYYYMMDD date stamp
+  return m.replace( /[-@]\d{6,8}$/, '')        // drop trailing -YYYYMMDD date stamp
 }
 
 // Pre-index the pricing table by normalized model name for O(1), date-insensitive
@@ -106,7 +106,7 @@ function normalizeModelKey( model: string ): string {
 const PRICING_BY_NORM: Record<string, { input: number; output: number }> = ( () => {
   const out: Record<string, { input: number; output: number }> = {}
   for( const [ key, price ] of Object.entries( MODEL_PRICING ) ){
-    if( key === '__default__' ) continue
+    if( key === '__default__') continue
     out[ normalizeModelKey( key ) ] = price
   }
   return out
@@ -305,10 +305,10 @@ export class TokenTracker implements SimulationEngine {
     if( this._ledgerPath ){
       try {
         if( !this._ledgerDirReady ){
-          mkdirSync( this._ledgerPath.slice( 0, this._ledgerPath.lastIndexOf( '/' ) ), { recursive: true } )
+          mkdirSync( this._ledgerPath.slice( 0, this._ledgerPath.lastIndexOf('/') ), { recursive: true } )
           this._ledgerDirReady = true
         }
-        appendFileSync( this._ledgerPath, JSON.stringify( record ) + '\n' )
+        appendFileSync( this._ledgerPath, JSON.stringify( record ) + '\n')
       }
       catch { /* ledger file is best-effort */ }
     }

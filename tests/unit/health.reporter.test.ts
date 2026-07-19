@@ -35,27 +35,27 @@ function makeInstance( opts: {
 
 const HEALTHY_METRICS = { 'affect.valence': 0.2, 'emotion.frustration': 0.1, 'emotion.irritability': 0.1, 'stress.load': 0.2 }
 
-describe( 'HealthReporter', () => {
+describe('HealthReporter', () => {
   const reporter = new HealthReporter()
 
-  it( 'reports healthy for a calm, goal-active, well-calibrated Will', () => {
+  it('reports healthy for a calm, goal-active, well-calibrated Will', () => {
     const h = reporter.report( makeInstance({
       metrics: HEALTHY_METRICS,
       goals:   [ { status: 'active' }, { status: 'in_progress' } ],
       beliefs: [ { confidence: 0.6, supportingEpisodes: 5 }, { confidence: 0.65, supportingEpisodes: 4 } ],
     }) )
-    expect( h.status ).toBe( 'healthy' )
+    expect( h.status ).toBe('healthy')
     expect( h.goals ).toEqual({ total: 2, active: 2 })
   })
 
-  it( 'counts goals via the type index (ignores non-goal entities)', () => {
+  it('counts goals via the type index (ignores non-goal entities)', () => {
     const inst = makeInstance({ metrics: HEALTHY_METRICS, goals: [ { status: 'active' }, { status: 'completed' } ] })
     ;( inst.simulation.stateManager as DefaultStateManager ).setEntity({ id: 'belief-x', type: 'belief', metadata: {} })
     const h = reporter.report( inst )
     expect( h.goals ).toEqual({ total: 2, active: 1 })
   })
 
-  it( 'sustained low valence drags health down even with low frustration/stress', () => {
+  it('sustained low valence drags health down even with low frustration/stress', () => {
     const base = reporter.report( makeInstance({ metrics: HEALTHY_METRICS, goals: [ { status: 'active' } ] }) )
     const sad  = reporter.report( makeInstance({
       metrics: { ...HEALTHY_METRICS, 'affect.valence': -0.8 },   // only valence changed
@@ -65,7 +65,7 @@ describe( 'HealthReporter', () => {
     expect( sad.affect.valence ).toBe( -0.8 )
   })
 
-  it( 'flags over-confident, thinly-evidenced beliefs as high risk', () => {
+  it('flags over-confident, thinly-evidenced beliefs as high risk', () => {
     const h = reporter.report( makeInstance({
       metrics: HEALTHY_METRICS,
       beliefs: [ { confidence: 0.95, supportingEpisodes: 1 }, { confidence: 0.9, supportingEpisodes: 2 } ],

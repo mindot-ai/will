@@ -222,7 +222,7 @@ export class DefaultSerializer implements Serializer {
     if( Array.isArray( value ) )
       return value.map( v => this._encodeSpecial( v ) )
 
-    if( typeof value === 'object' ){
+    if( typeof value === 'object'){
       const out: Record<string, unknown> = {}
       for( const [ k, v ] of Object.entries( value as Record<string, unknown> ) )
         out[k] = this._encodeSpecial( v )
@@ -233,11 +233,11 @@ export class DefaultSerializer implements Serializer {
   }
 
   private _decodeSpecial( value: unknown ): unknown {
-    if( value === null || typeof value !== 'object' ) return value
+    if( value === null || typeof value !== 'object') return value
     if( Array.isArray( value ) ) return value.map( v => this._decodeSpecial( v ) )
 
     const tag = ( value as Record<string, unknown> ).__ser
-    if( typeof tag === 'string' ){
+    if( typeof tag === 'string'){
       const payload = ( value as Record<string, unknown> ).__val
       switch( tag ){
         case 'undefined': return undefined

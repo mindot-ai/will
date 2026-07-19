@@ -25,9 +25,9 @@ const BASE: Omit<WillConfig, 'id' | 'enableAgency'> = {
 const ofType = ( entities: Map<string, SimulationEntity>, t: string ) =>
   [ ...entities.values() ].filter( e => e.type === t )
 
-describe( 'agency pipeline — live in an assembled mind', () => {
-  it( 'synthesizes a field, enacts intents, and accretes competence over real ticks', async () => {
-    const { simulation, cognition } = assembleMind( 'agency-smoke-on', {
+describe('agency pipeline — live in an assembled mind', () => {
+  it('synthesizes a field, enacts intents, and accretes competence over real ticks', async () => {
+    const { simulation, cognition } = assembleMind('agency-smoke-on', {
       id: 'agency-smoke-on', ...BASE,
     } )
 
@@ -36,8 +36,8 @@ describe( 'agency pipeline — live in an assembled mind', () => {
     const state = simulation.stateManager.snapshot()
 
     // The field is synthesized every tick (innate floor at minimum).
-    expect( ofType( state.entities, 'affordance' ).length ).toBeGreaterThan( 0 )
-    expect( state.metrics.get( 'affordance.field_size' ) ?? 0 ).toBeGreaterThan( 0 )
+    expect( ofType( state.entities, 'affordance').length ).toBeGreaterThan( 0 )
+    expect( state.metrics.get('affordance.field_size') ?? 0 ).toBeGreaterThan( 0 )
 
     // Something was selected and enacted, and the repertoire learned from it.
     const skills = cognition.schemaRepertoire.skills()
@@ -46,10 +46,10 @@ describe( 'agency pipeline — live in an assembled mind', () => {
     expect( totalEnactments ).toBeGreaterThan( 0 )
 
     // The learning loop mirrored at least one skill into state.
-    expect( ofType( state.entities, 'agency.skill' ).length ).toBeGreaterThan( 0 )
+    expect( ofType( state.entities, 'agency.skill').length ).toBeGreaterThan( 0 )
 
     // Cutover: the agency pipeline is the SOLE action system — the legacy heuristic
     // observe-fallback was removed, so no decision.records are emitted at all.
-    expect( ofType( state.entities, 'decision.record' ) ).toHaveLength( 0 )
+    expect( ofType( state.entities, 'decision.record') ).toHaveLength( 0 )
   } )
 } )

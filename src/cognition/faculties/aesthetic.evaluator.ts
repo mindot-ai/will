@@ -113,19 +113,19 @@ export class AestheticEvaluator implements SimulationEngine, CognitiveEngine {
 
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
-    if( e.type === 'executive.prediction.formed' ){
+    if( e.type === 'executive.prediction.formed'){
       const p = e.payload as { predictedDomains: string[]; confidence: number }
       if( p.predictedDomains.includes('aesthetic') )
-        this._model.setPrecision( 'emotion.awe', 1.0 + p.confidence * 0.5 )
+        this._model.setPrecision('emotion.awe', 1.0 + p.confidence * 0.5 )
     }
-    if( e.type === 'percept.category.updated' ){
+    if( e.type === 'percept.category.updated'){
       const p = e.payload as { category: string; count: number }
       this._categoryBuffer.set(
         p.category,
         ( this._categoryBuffer.get( p.category ) ?? 0 ) + p.count
       )
     }
-    if( e.type === 'novelty.state.changed' || e.type === 'perception.novelty.spike' ){
+    if( e.type === 'novelty.state.changed' || e.type === 'perception.novelty.spike'){
       const p = e.payload as { novelty: number }
       this._cachedNovelty = p.novelty
     }
@@ -146,7 +146,7 @@ export class AestheticEvaluator implements SimulationEngine, CognitiveEngine {
     // Channel A (openness → aesthetic sensitivity): the awe threshold is read live as
     // base ⊕ persona-prior. An open Will develops a lower threshold and so is moved to
     // awe by beauty/novelty more readily. (The seed entity already existed but was ignored.)
-    const aweThreshold = readEffectiveParams( state, 'engine-config-aesthetic' ).aweThreshold ?? this._aweThreshold
+    const aweThreshold = readEffectiveParams( state, 'engine-config-aesthetic').aweThreshold ?? this._aweThreshold
 
     // Consume category buffer for this tick
     const categories = new Map( this._categoryBuffer )
@@ -250,7 +250,7 @@ export class AestheticEvaluator implements SimulationEngine, CognitiveEngine {
     // Phase C: publish cognitive event
     const _bus = this._bus
     if( _bus && awe > 0.4 ){
-      const predErr = this._model.observe( 'emotion.awe', awe )
+      const predErr = this._model.observe('emotion.awe', awe )
       if( !predErr.gated )
         _bus.publish({ type: 'emotion.awe.experienced', version: 1, sourceEngine: this.name, salience: Math.min(1, awe * 2), payload: { awe } })
     }

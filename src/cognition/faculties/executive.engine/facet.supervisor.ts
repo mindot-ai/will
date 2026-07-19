@@ -140,12 +140,12 @@ export class FacetSupervisor {
       // vanish silently. The TTL measures *quiet* facets only.
       if( facet.busy ) continue
       if( tick - facet.lastActiveTick > this._idleTtlTicks )
-        this._reap( id, 'idle' )
+        this._reap( id, 'idle')
     }
   }
 
   /** Destroy + deregister a facet and notify its owner. Shared by the reaper + LRU eviction. */
-  private _reap( facetId: string, reason: 'idle' | 'lru' ): void {
+  private _reap( facetId: string, reason: 'idle' | 'lru'): void {
     const facet = this._facets.get( facetId )
     if( !facet ) return
 
@@ -154,7 +154,7 @@ export class FacetSupervisor {
     const onReaped = this._onReaped.get( facetId )
     this._onReaped.delete( facetId )
 
-    logger.info( `[executive] facet ${facetId} reaped (${reason}); remaining: ${this._facets.size}` )
+    logger.info(`[executive] facet ${facetId} reaped (${reason}); remaining: ${this._facets.size}`)
     this._sessionLogger?.write({
       type:        'executive.facet.destroy',
       tick:        this._lastStateRef?.tick as unknown as number ?? 0,
@@ -165,7 +165,7 @@ export class FacetSupervisor {
 
     // Notify the owner (e.g. AuditionEngine) so it drops its handle + session state.
     try { onReaped?.() }
-    catch( err ){ logger.error( `[executive] facet ${facetId} onReaped error:`, err ) }
+    catch( err ){ logger.error(`[executive] facet ${facetId} onReaped error:`, err ) }
   }
 
   private _leastRecentlyActive(): string | null {
@@ -198,13 +198,13 @@ export class FacetSupervisor {
    */
   spawn( deps: FacetSpawnDeps ): SpawnResult {
     if( !deps.bus )
-      throw new Error( 'Cannot spawn facet — CognitiveBus not attached. Was addEngine() called?' )
+      throw new Error('Cannot spawn facet — CognitiveBus not attached. Was addEngine() called?')
 
     if( !deps.llmDirector )
-      throw new Error( 'Cannot spawn facet — LLM director not initialized. Set willId first.' )
+      throw new Error('Cannot spawn facet — LLM director not initialized. Set willId first.')
 
     if( !deps.stateRef )
-      throw new Error( 'Cannot spawn facet — no state snapshot available. Wait for first tick.' )
+      throw new Error('Cannot spawn facet — no state snapshot available. Wait for first tick.')
 
     // Authoritative current state ref from the engine — keep it so a later
     // destroy() logs the same tick the engine would.
@@ -214,15 +214,15 @@ export class FacetSupervisor {
     const maxFacets = Math.max( 1, Math.floor( this._attentionFreeCapacity / 0.3 ) )
     if( this._facets.size >= maxFacets ){
       if( !this._evictLruOnPressure ){
-        logger.info( `[executive] attention full (${this._facets.size}/${maxFacets} facets) ` )
+        logger.info(`[executive] attention full (${this._facets.size}/${maxFacets} facets) `)
         return { attention: 'full' }
       }
       // Budget full but a new conversation arrived — evict the least-recently-active
       // facet so a fresh, live conversation preempts a stale one (no silent drop).
       const lru = this._leastRecentlyActive()
       if( !lru ) return { attention: 'full' }   // nothing evictable (shouldn't happen)
-      logger.info( `[executive] attention full (${this._facets.size}/${maxFacets}) — evicting LRU facet ${lru}` )
-      this._reap( lru, 'lru' )
+      logger.info(`[executive] attention full (${this._facets.size}/${maxFacets}) — evicting LRU facet ${lru}`)
+      this._reap( lru, 'lru')
     }
 
     this._facetCounter++
@@ -248,7 +248,7 @@ export class FacetSupervisor {
 
     this._facets.set( facetId, facet )
 
-    logger.info( `[executive] spawned facet → ${facetId} (total facets: ${this._facets.size})` )
+    logger.info(`[executive] spawned facet → ${facetId} (total facets: ${this._facets.size})`)
 
     this._sessionLogger?.write({
       type:      'executive.facet.spawn',
@@ -271,7 +271,7 @@ export class FacetSupervisor {
           facet.destroy()
           this._facets.delete( facetId )
           this._onReaped.delete( facetId )   // explicit close — owner already knows; don't fire onReaped
-          logger.info( `[executive] facet ${facetId} destroyed (remaining: ${this._facets.size})` )
+          logger.info(`[executive] facet ${facetId} destroyed (remaining: ${this._facets.size})`)
           this._sessionLogger?.write({
             type:      'executive.facet.destroy',
             tick:      this._lastStateRef?.tick as unknown as number ?? 0,

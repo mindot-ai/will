@@ -368,7 +368,7 @@ export class PMAEvalHarness {
     let loadedTraits: Record<string, number> = {}
 
     for( const entity of state.entities.values() ){
-      if( entity.type === 'will.identity' ){
+      if( entity.type === 'will.identity'){
         loadedTraits = ( entity.metadata?.['traits'] as Record<string, number> ) ?? {}
         break
       }

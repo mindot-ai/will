@@ -33,10 +33,10 @@ const req = ( parameters: Record<string, unknown> ): ActionRequest => ({
 })
 
 const wmItems = ( commands: any ) =>
-  ( commands.set ?? [] ).filter( ( c: any ) => c.type === 'working_memory.item' )
+  ( commands.set ?? [] ).filter( ( c: any ) => c.type === 'working_memory.item')
 
-describe( 'ProactiveCommunicator — outbound conversation memory (§8 option a)', () => {
-  it( 'persists a conversation.exchange WM item for a master-initiated message (no inbound)', async () => {
+describe('ProactiveCommunicator — outbound conversation memory (§8 option a)', () => {
+  it('persists a conversation.exchange WM item for a master-initiated message (no inbound)', async () => {
     const { exec } = make()
 
     const res = await exec.executeAction(
@@ -48,18 +48,18 @@ describe( 'ProactiveCommunicator — outbound conversation memory (§8 option a)
     const items = wmItems( res.commands )
     expect( items ).toHaveLength( 1 )
     const m = items[0].metadata
-    expect( m.wmType ).toBe( 'conversation.exchange' )
-    expect( m.tags ).toContain( 'entity:alice' )
-    expect( m.tags ).toContain( 'conversation' )
+    expect( m.wmType ).toBe('conversation.exchange')
+    expect( m.tags ).toContain('entity:alice')
+    expect( m.tags ).toContain('conversation')
     // Will-initiated shape: "I → <name>: …"
-    expect( m.summary ).toContain( 'I → Alice' )
-    expect( m.summary ).toContain( 'Hey, are you around?' )
-    expect( m.entityId ).toBe( 'alice' )
-    expect( m.willReply ).toBe( 'Hey, are you around?' )
-    expect( m.userMessage ).toBe( '' )
+    expect( m.summary ).toContain('I → Alice')
+    expect( m.summary ).toContain('Hey, are you around?')
+    expect( m.entityId ).toBe('alice')
+    expect( m.willReply ).toBe('Hey, are you around?')
+    expect( m.userMessage ).toBe('')
   } )
 
-  it( 'persists a conversation.exchange WM item for a reply (inbound present)', async () => {
+  it('persists a conversation.exchange WM item for a reply (inbound present)', async () => {
     const { exec } = make()
 
     const res = await exec.executeAction(
@@ -75,21 +75,21 @@ describe( 'ProactiveCommunicator — outbound conversation memory (§8 option a)
     const items = wmItems( res.commands )
     expect( items ).toHaveLength( 1 )
     const m = items[0].metadata
-    expect( m.wmType ).toBe( 'conversation.exchange' )
+    expect( m.wmType ).toBe('conversation.exchange')
     // Reply shape: "<name>: "<inbound>" → "<reply>""
-    expect( m.summary ).toContain( 'How are you?' )
-    expect( m.summary ).toContain( 'Doing well, thanks!' )
-    expect( m.userMessage ).toBe( 'How are you?' )
-    expect( m.willReply ).toBe( 'Doing well, thanks!' )
+    expect( m.summary ).toContain('How are you?')
+    expect( m.summary ).toContain('Doing well, thanks!')
+    expect( m.userMessage ).toBe('How are you?')
+    expect( m.willReply ).toBe('Doing well, thanks!')
   } )
 
-  it( 'does NOT write a legacy conversation.session entity', async () => {
+  it('does NOT write a legacy conversation.session entity', async () => {
     const { exec } = make()
     const res = await exec.executeAction(
       req({ targetEntityName: 'Alice', messages: ['hi'], originalMessage: 'yo', tick: 1 }),
       {} as any,
     )
-    const sessions = ( res.commands.set ?? [] ).filter( ( c: any ) => c.type === 'conversation.session' )
+    const sessions = ( res.commands.set ?? [] ).filter( ( c: any ) => c.type === 'conversation.session')
     expect( sessions ).toHaveLength( 0 )
   } )
 } )

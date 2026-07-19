@@ -137,8 +137,8 @@ globalSchemaRegistry.register({
   version: 1,
   validate( payload ){
     if( !isRecord( payload ) ) return 'clock.tick payload must be an object'
-    if( typeof payload['tick'] !== 'number' ) return 'clock.tick requires numeric tick'
-    if( typeof payload['delta'] !== 'number' ) return 'clock.tick requires numeric delta'
+    if( typeof payload['tick'] !== 'number') return 'clock.tick requires numeric tick'
+    if( typeof payload['delta'] !== 'number') return 'clock.tick requires numeric delta'
 
     return null
   }

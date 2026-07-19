@@ -21,7 +21,7 @@ setLogger( { debug: () => {}, info: () => {}, warn: () => {}, error: console.err
 
 const token = process.env.DISCORD_BOT_TOKEN
 if( !token ){
-  console.error( 'DISCORD_BOT_TOKEN is required — see docs/channels/discord.md for the 90-second setup.' )
+  console.error('DISCORD_BOT_TOKEN is required — see docs/channels/discord.md for the 90-second setup.')
   process.exit( 2 )
 }
 
@@ -34,19 +34,19 @@ const will = await Will.create( {
 } )
 
 // Watch the inner life while it socialises (optional, but half the fun).
-will.on( 'emotion', a => console.log( `   mood → valence ${ a.valence.toFixed( 2 ) }, arousal ${ a.arousal.toFixed( 2 ) }` ) )
-will.on( 'message', m => console.log( `💬 ${ will.name } → ${ m.to }: ${ m.content }` ) )
+will.on('emotion', a => console.log(`   mood → valence ${ a.valence.toFixed( 2 ) }, arousal ${ a.arousal.toFixed( 2 ) }`) )
+will.on('message', m => console.log(`💬 ${ will.name } → ${ m.to }: ${ m.content }`) )
 
 const bridge = await connectDiscord( will, {
   token,
-  channels:      process.env.WILL_DISCORD_CHANNELS?.split( ',' ).map( s => s.trim() ).filter( Boolean ),
-  mentionOnly:   /^(1|true|yes)$/i.test( process.env.WILL_DISCORD_MENTION_ONLY ?? '' ),
+  channels:      process.env.WILL_DISCORD_CHANNELS?.split(',').map( s => s.trim() ).filter( Boolean ),
+  mentionOnly:   /^(1|true|yes)$/i.test( process.env.WILL_DISCORD_MENTION_ONLY ?? ''),
   homeChannelId: process.env.WILL_DISCORD_HOME_CHANNEL,
 } )
 await bridge.start()
-console.log( `🦉 ${ will.name } is present. Silence is a valid outcome — give it a moment, or say hi.` )
+console.log(`🦉 ${ will.name } is present. Silence is a valid outcome — give it a moment, or say hi.`)
 
-process.on( 'SIGINT', async () => {
+process.on('SIGINT', async () => {
   await bridge.close()
   await will.hibernate()   // … persist it yourself, or use the CLI which does
   process.exit( 0 )

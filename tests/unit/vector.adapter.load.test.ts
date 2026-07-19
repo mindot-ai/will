@@ -30,12 +30,12 @@ class MemStorage implements StorageAdapter {
   async write( path: string, content: string | Uint8Array ): Promise<void> { this._files.set( path, content ) }
   async read( path: string ): Promise<string> {
     const v = this._files.get( path )
-    if( v == null ) throw new Error( `not found: ${path}` )
+    if( v == null ) throw new Error(`not found: ${path}`)
     return typeof v === 'string' ? v : new TextDecoder().decode( v )
   }
   async readBytes( path: string ): Promise<Uint8Array> {
     const v = this._files.get( path )
-    if( v == null ) throw new Error( `not found: ${path}` )
+    if( v == null ) throw new Error(`not found: ${path}`)
     return typeof v === 'string' ? new TextEncoder().encode( v ) : v
   }
   async exists( path: string ): Promise<boolean> { return this._files.has( path ) }
@@ -60,14 +60,14 @@ function makeEpisode( id: string, tick: number ): EpisodicMemory {
 
 const baseCfg = { dimensions: 128, minSimilarity: -1, seed: 42, persistPath: 'idx' }
 
-describe( 'DefaultVectorMemoryAdapter — load() (#2 / #7)', () => {
-  it( 'rebuilds the eviction id-set on load so a loaded-at-cap index still evicts (no hang)', async () => {
+describe('DefaultVectorMemoryAdapter — load() (#2 / #7)', () => {
+  it('rebuilds the eviction id-set on load so a loaded-at-cap index still evicts (no hang)', async () => {
     const storage = new MemStorage()
     const cfg = { ...baseCfg, maxIndexedEpisodes: 5 }
 
     const a1 = new DefaultVectorMemoryAdapter( new MockEmbedder( 42 ), cfg, storage )
     for( let i = 0; i < 5; i++ )
-      await a1.index( makeEpisode( `ep-${i}`, i ), `content-${i}` )
+      await a1.index( makeEpisode(`ep-${i}`, i ), `content-${i}`)
     await a1.persist()
     expect( a1.size ).toBe( 5 )
 
@@ -80,24 +80,24 @@ describe( 'DefaultVectorMemoryAdapter — load() (#2 / #7)', () => {
     // timeout below turns a regression into a failing test, not a frozen suite).
     await a2.indexBatch(
       Array.from( { length: 3 }, ( _, i ) => ( {
-        episode: makeEpisode( `new-${i}`, 100 + i ),
+        episode: makeEpisode(`new-${i}`, 100 + i ),
         content: `new-content-${i}`,
       } ) ),
     )
     expect( a2.size ).toBeLessThanOrEqual( 5 )
   }, 5000 )
 
-  it( 'discards a persisted index built with a different embedding model', async () => {
+  it('discards a persisted index built with a different embedding model', async () => {
     const storage = new MemStorage()
     const cfg = { ...baseCfg, maxIndexedEpisodes: 100 }
 
     const a1 = new DefaultVectorMemoryAdapter( new MockEmbedder( 42 ), cfg, storage )  // model 'mock', 128d
     for( let i = 0; i < 3; i++ )
-      await a1.index( makeEpisode( `ep-${i}`, i ), `content-${i}` )
+      await a1.index( makeEpisode(`ep-${i}`, i ), `content-${i}`)
     await a1.persist()
 
     // Different model → mismatch → stale index discarded (size stays 0, caller rebuilds).
-    const a2 = new DefaultVectorMemoryAdapter( new TaggedEmbedder( 'other-model', 128 ), cfg, storage )
+    const a2 = new DefaultVectorMemoryAdapter( new TaggedEmbedder('other-model', 128 ), cfg, storage )
     await a2.load()
     expect( a2.size ).toBe( 0 )
 
@@ -107,17 +107,17 @@ describe( 'DefaultVectorMemoryAdapter — load() (#2 / #7)', () => {
     expect( a3.size ).toBe( 3 )
   } )
 
-  it( 'discards a persisted index built with a different dimension count', async () => {
+  it('discards a persisted index built with a different dimension count', async () => {
     const storage = new MemStorage()
     const cfg = { ...baseCfg, maxIndexedEpisodes: 100 }
 
-    const a1 = new DefaultVectorMemoryAdapter( new TaggedEmbedder( 'm', 128 ), cfg, storage )
+    const a1 = new DefaultVectorMemoryAdapter( new TaggedEmbedder('m', 128 ), cfg, storage )
     for( let i = 0; i < 3; i++ )
-      await a1.index( makeEpisode( `ep-${i}`, i ), `content-${i}` )
+      await a1.index( makeEpisode(`ep-${i}`, i ), `content-${i}`)
     await a1.persist()
 
     // Same model name, different dimensions → still a mismatch → discard.
-    const a2 = new DefaultVectorMemoryAdapter( new TaggedEmbedder( 'm', 256 ), { ...cfg, dimensions: 256 }, storage )
+    const a2 = new DefaultVectorMemoryAdapter( new TaggedEmbedder('m', 256 ), { ...cfg, dimensions: 256 }, storage )
     await a2.load()
     expect( a2.size ).toBe( 0 )
   } )

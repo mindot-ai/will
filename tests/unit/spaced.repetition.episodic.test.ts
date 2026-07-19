@@ -35,14 +35,14 @@ function runReact( sr: SpacedRepetition, tick: number, metrics = new Map<string,
   return sr.react( 0 as never, tick as never, { tick, metrics, entities: new Map() } as never, {} as never )
 }
 
-describe( 'SpacedRepetition — episodic rehearsal (waking)', () => {
-  it( 'rehearses the most salient due episodes and skips fresh / faint ones', async () => {
+describe('SpacedRepetition — episodic rehearsal (waking)', () => {
+  it('rehearses the most salient due episodes and skips fresh / faint ones', async () => {
     const episodes = [
-      ep( 'hot',   { emotionalTags: { fear: 0.9 }, activationStrength: 0.5 } ),                          // due + salient
-      ep( 'mild',  { emotionalTags: { joy: 0.3 },  activationStrength: 0.6 } ),                          // due + mild
-      ep( 'flat',  { emotionalTags: {},            activationStrength: 0.9 } ),                          // due but low score
-      ep( 'fresh', { emotionalTags: { fear: 0.9 }, activationStrength: 0.5, lastRetrievedAt: 9 as never } ), // retrieved 1 tick ago → not due
-      ep( 'faint', { emotionalTags: { fear: 0.9 }, activationStrength: 0.02 } ),                         // below pruning floor
+      ep('hot',   { emotionalTags: { fear: 0.9 }, activationStrength: 0.5 } ),                          // due + salient
+      ep('mild',  { emotionalTags: { joy: 0.3 },  activationStrength: 0.6 } ),                          // due + mild
+      ep('flat',  { emotionalTags: {},            activationStrength: 0.9 } ),                          // due but low score
+      ep('fresh', { emotionalTags: { fear: 0.9 }, activationStrength: 0.5, lastRetrievedAt: 9 as never } ), // retrieved 1 tick ago → not due
+      ep('faint', { emotionalTags: { fear: 0.9 }, activationStrength: 0.02 } ),                         // below pruning floor
     ]
     const { consolidator, retrieved } = stub( episodes )
     const sr = new SpacedRepetition( { reviewIntervalTicks: 5, maxReviewsPerCycle: 2 } )
@@ -51,16 +51,16 @@ describe( 'SpacedRepetition — episodic rehearsal (waking)', () => {
     await runReact( sr, 10 )
 
     const ids = retrieved.map( r => r.id )
-    expect( ids ).toContain( 'hot' )
-    expect( ids ).toContain( 'mild' )
-    expect( ids ).not.toContain( 'flat' )   // capped at 2, lower score
-    expect( ids ).not.toContain( 'fresh' )  // retrieved within the interval
-    expect( ids ).not.toContain( 'faint' )  // below the pruning floor
+    expect( ids ).toContain('hot')
+    expect( ids ).toContain('mild')
+    expect( ids ).not.toContain('flat')   // capped at 2, lower score
+    expect( ids ).not.toContain('fresh')  // retrieved within the interval
+    expect( ids ).not.toContain('faint')  // below the pruning floor
     expect( retrieved.every( r => r.tick === 10 ) ).toBe( true )
   } )
 
-  it( 'does not rehearse while sleeping (DreamSimulator owns sleep)', async () => {
-    const { consolidator, retrieved } = stub( [ ep( 'hot', { emotionalTags: { fear: 0.9 } } ) ] )
+  it('does not rehearse while sleeping (DreamSimulator owns sleep)', async () => {
+    const { consolidator, retrieved } = stub( [ ep('hot', { emotionalTags: { fear: 0.9 } } ) ] )
     const sr = new SpacedRepetition( { reviewIntervalTicks: 5 } )
     sr.attachEpisodicConsolidator( consolidator )
 
@@ -68,8 +68,8 @@ describe( 'SpacedRepetition — episodic rehearsal (waking)', () => {
     expect( retrieved ).toHaveLength( 0 )
   } )
 
-  it( 'respects episodicRehearsalEnabled=false', async () => {
-    const { consolidator, retrieved } = stub( [ ep( 'hot', { emotionalTags: { fear: 0.9 } } ) ] )
+  it('respects episodicRehearsalEnabled=false', async () => {
+    const { consolidator, retrieved } = stub( [ ep('hot', { emotionalTags: { fear: 0.9 } } ) ] )
     const sr = new SpacedRepetition( { reviewIntervalTicks: 5, episodicRehearsalEnabled: false } )
     sr.attachEpisodicConsolidator( consolidator )
 
@@ -77,8 +77,8 @@ describe( 'SpacedRepetition — episodic rehearsal (waking)', () => {
     expect( retrieved ).toHaveLength( 0 )
   } )
 
-  it( 'only rehearses once the review interval has elapsed', async () => {
-    const { consolidator, retrieved } = stub( [ ep( 'hot', { emotionalTags: { fear: 0.9 } } ) ] )
+  it('only rehearses once the review interval has elapsed', async () => {
+    const { consolidator, retrieved } = stub( [ ep('hot', { emotionalTags: { fear: 0.9 } } ) ] )
     const sr = new SpacedRepetition( { reviewIntervalTicks: 50 } )
     sr.attachEpisodicConsolidator( consolidator )
 

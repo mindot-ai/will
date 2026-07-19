@@ -25,10 +25,10 @@ function stateWith( entity: SimulationEntity ): SimulationState {
   } as unknown as SimulationState
 }
 
-describe( 'DefaultSerializer — updatedAtTick round-trip', () => {
+describe('DefaultSerializer — updatedAtTick round-trip', () => {
   const ser = new DefaultSerializer({ includeChecksum: true, prettyPrint: false })
 
-  it( 'preserves updatedAtTick through serialize/deserialize', () => {
+  it('preserves updatedAtTick through serialize/deserialize', () => {
     const entity: SimulationEntity = {
       id: 'e1', type: 't',
       createdAt: 1000, updatedAt: 2000,
@@ -36,15 +36,15 @@ describe( 'DefaultSerializer — updatedAtTick round-trip', () => {
       metadata: { components: {} },
     }
 
-    const restored = ser.deserialize( ser.serialize( stateWith( entity ), 'json' ) as string )
-    expect( restored.entities.get( 'e1' )!.updatedAtTick ).toBe( 7 )
+    const restored = ser.deserialize( ser.serialize( stateWith( entity ), 'json') as string )
+    expect( restored.entities.get('e1')!.updatedAtTick ).toBe( 7 )
   })
 
-  it( 'tampering with updatedAtTick alone is caught by the checksum', () => {
+  it('tampering with updatedAtTick alone is caught by the checksum', () => {
     const entity: SimulationEntity = {
       id: 'e1', type: 't', createdAt: 0, updatedAt: 5, updatedAtTick: 5, metadata: { components: {} },
     }
-    const serialized = ser.serialize( stateWith( entity ), 'json' ) as string
+    const serialized = ser.serialize( stateWith( entity ), 'json') as string
 
     const parsed = JSON.parse( serialized )
     parsed.entities[0].updatedAtTick = 999  // leave id/type/updatedAt/checksum untouched
@@ -52,11 +52,11 @@ describe( 'DefaultSerializer — updatedAtTick round-trip', () => {
     expect( () => ser.deserialize( JSON.stringify( parsed ) ) ).toThrow( /Checksum mismatch/ )
   })
 
-  it( 'an entity without updatedAtTick round-trips as undefined (no fabricated value)', () => {
+  it('an entity without updatedAtTick round-trips as undefined (no fabricated value)', () => {
     const entity: SimulationEntity = {
       id: 'e1', type: 't', createdAt: 0, updatedAt: 1, metadata: { components: {} },
     }
-    const restored = ser.deserialize( ser.serialize( stateWith( entity ), 'json' ) as string )
-    expect( restored.entities.get( 'e1' )!.updatedAtTick ).toBeUndefined()
+    const restored = ser.deserialize( ser.serialize( stateWith( entity ), 'json') as string )
+    expect( restored.entities.get('e1')!.updatedAtTick ).toBeUndefined()
   })
 })

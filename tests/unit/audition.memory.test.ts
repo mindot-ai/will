@@ -40,83 +40,83 @@ function syncExecutive( opts: { reply?: string; confidence?: number; onFocus?: (
   }
 }
 
-const text = ( content: string, entityId = 'alice' ): TextMessage =>
+const text = ( content: string, entityId = 'alice'): TextMessage =>
   ({ kind: 'text', entityId, threadId: 't1', content })
 
-describe( 'AuditionEngine — conversation memory (Section 5)', () => {
-  it( 'persists a conversation.exchange WM item after a completed exchange', async () => {
+describe('AuditionEngine — conversation memory (Section 5)', () => {
+  it('persists a conversation.exchange WM item after a completed exchange', async () => {
     const entities: any[] = []
     const engine = new AuditionEngine()
     engine.attachBus( createTestBus() )
     engine.attachExecutiveEngine( syncExecutive() as any )
     engine.attachMemorySink( e => entities.push( e ) )
 
-    await engine.ingest( text( 'hello there' ) )
+    await engine.ingest( text('hello there') )
 
     expect( entities ).toHaveLength( 1 )
     const e = entities[0]
-    expect( e.type ).toBe( 'working_memory.item' )
-    expect( e.metadata.wmType ).toBe( 'conversation.exchange' )
-    expect( e.metadata.summary ).toContain( 'hello there' )
-    expect( e.metadata.summary ).toContain( 'Mock reply' )
-    expect( e.metadata.tags ).toContain( 'entity:alice' )
-    expect( e.metadata.tags ).toContain( 'conversation' )
+    expect( e.type ).toBe('working_memory.item')
+    expect( e.metadata.wmType ).toBe('conversation.exchange')
+    expect( e.metadata.summary ).toContain('hello there')
+    expect( e.metadata.summary ).toContain('Mock reply')
+    expect( e.metadata.tags ).toContain('entity:alice')
+    expect( e.metadata.tags ).toContain('conversation')
     expect( e.metadata.activation ).toBeGreaterThanOrEqual( 0.6 )
     expect( e.metadata.activation ).toBeLessThanOrEqual( 1 )
     // setEntity stamps the sim-clock timestamps — the engine must not supply them.
-    expect( e ).not.toHaveProperty( 'createdAt' )
+    expect( e ).not.toHaveProperty('createdAt')
   } )
 
-  it( 'still records the inbound even when the reply is empty', async () => {
+  it('still records the inbound even when the reply is empty', async () => {
     const entities: any[] = []
     const engine = new AuditionEngine()
     engine.attachBus( createTestBus() )
     engine.attachExecutiveEngine( syncExecutive({ reply: '' }) as any )
     engine.attachMemorySink( e => entities.push( e ) )
 
-    await engine.ingest( text( 'remember this' ) )
+    await engine.ingest( text('remember this') )
 
     expect( entities ).toHaveLength( 1 )
-    expect( entities[0].metadata.summary ).toContain( 'remember this' )
+    expect( entities[0].metadata.summary ).toContain('remember this')
   } )
 
   // §5 — recall is unified: the facet sets focus.recallQuery (the live message),
   // which drives the single "## Relevant Memories" section in buildExecutiveContext.
   // The AuditionEngine no longer injects a separate recall block into the focus.
-  it( 'drives unified recall via focus.recallQuery = the live message', async () => {
+  it('drives unified recall via focus.recallQuery = the live message', async () => {
     const focuses: any[] = []
     const engine = new AuditionEngine()
     engine.attachBus( createTestBus() )
     engine.attachExecutiveEngine( syncExecutive({ onFocus: f => focuses.push( f ) }) as any )
 
-    await engine.ingest( text( 'what about tomorrow?' ) )
+    await engine.ingest( text('what about tomorrow?') )
 
     expect( focuses.length ).toBeGreaterThanOrEqual( 1 )
-    expect( focuses[0].recallQuery ).toBe( 'what about tomorrow?' )
+    expect( focuses[0].recallQuery ).toBe('what about tomorrow?')
   } )
 
-  it( 'does NOT inject a separate recall block into the focus content', async () => {
+  it('does NOT inject a separate recall block into the focus content', async () => {
     const focuses: any[] = []
     const engine = new AuditionEngine()
     engine.attachBus( createTestBus() )
     engine.attachExecutiveEngine( syncExecutive({ onFocus: f => focuses.push( f ) }) as any )
 
-    await engine.ingest( text( 'hi' ) )
+    await engine.ingest( text('hi') )
 
-    expect( focuses[0].content ).not.toContain( 'Relevant memories' )
-    expect( focuses[0].content ).not.toContain( 'recalled' )
+    expect( focuses[0].content ).not.toContain('Relevant memories')
+    expect( focuses[0].content ).not.toContain('recalled')
   } )
 
-  it( 'no memory sink attached → ingest still succeeds (no throw)', async () => {
+  it('no memory sink attached → ingest still succeeds (no throw)', async () => {
     const engine = new AuditionEngine()
     engine.attachBus( createTestBus() )
     engine.attachExecutiveEngine( syncExecutive() as any )
-    await expect( engine.ingest( text( 'hi' ) ) ).resolves.toBeUndefined()
+    await expect( engine.ingest( text('hi') ) ).resolves.toBeUndefined()
   } )
 } )
 
-describe( 'AuditionEngine — reply fast-path callback (Section 2.1)', () => {
-  it( 'fires the reply callback with bubbles when talk is allowed', async () => {
+describe('AuditionEngine — reply fast-path callback (Section 2.1)', () => {
+  it('fires the reply callback with bubbles when talk is allowed', async () => {
     const replies: Array<{ entityId: string; threadId: string; bubbles: string[] }> = []
     const engine = new AuditionEngine()
     engine.attachBus( createTestBus() )
@@ -124,13 +124,13 @@ describe( 'AuditionEngine — reply fast-path callback (Section 2.1)', () => {
     engine.attachGrants({ isAllowed: () => true } as any )   // listen + talk allowed
     engine.attachReplyCallback( ( entityId, threadId, bubbles ) => replies.push({ entityId, threadId, bubbles }) )
 
-    await engine.ingest( text( 'hello' ) )
+    await engine.ingest( text('hello') )
 
     expect( replies ).toHaveLength( 1 )
     expect( replies[0] ).toEqual({ entityId: 'alice', threadId: 't1', bubbles: ['Hi there'] })
   } )
 
-  it( 'does NOT fire the reply callback when talk is denied', async () => {
+  it('does NOT fire the reply callback when talk is denied', async () => {
     const replies: unknown[] = []
     const engine = new AuditionEngine()
     engine.attachBus( createTestBus() )
@@ -138,14 +138,14 @@ describe( 'AuditionEngine — reply fast-path callback (Section 2.1)', () => {
     engine.attachGrants({ isAllowed: ( a: string ) => a === 'listen' } as any )   // talk denied
     engine.attachReplyCallback( ( e, t, b ) => replies.push({ e, t, b }) )
 
-    await engine.ingest( text( 'hello' ) )
+    await engine.ingest( text('hello') )
 
     expect( replies ).toHaveLength( 0 )
   } )
 } )
 
-describe( 'AuditionEngine — salience inputs (§3) + thread keying (§2)', () => {
-  it( 'consults the attachment + active-goal accessors for salience', async () => {
+describe('AuditionEngine — salience inputs (§3) + thread keying (§2)', () => {
+  it('consults the attachment + active-goal accessors for salience', async () => {
     const attachCalls: string[] = []
     let goalCalls = 0
     const engine = new AuditionEngine()
@@ -154,13 +154,13 @@ describe( 'AuditionEngine — salience inputs (§3) + thread keying (§2)', () =
     engine.attachAttachmentScore( id => { attachCalls.push( id ); return 0.9 } )
     engine.attachActiveGoalText( () => { goalCalls++; return ['ship it'] } )
 
-    await engine.ingest( text( 'hello' ) )
+    await engine.ingest( text('hello') )
 
     expect( attachCalls ).toEqual( ['alice'] )
     expect( goalCalls ).toBeGreaterThanOrEqual( 1 )
   } )
 
-  it( 'replies on the CURRENT thread when an entity spans multiple threads (§2)', async () => {
+  it('replies on the CURRENT thread when an entity spans multiple threads (§2)', async () => {
     const threads: string[] = []
     const engine = new AuditionEngine()
     engine.attachBus( createTestBus() )

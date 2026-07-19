@@ -56,7 +56,7 @@ const bareOutcome = ( actionType: string, success = true ) => ( {
   },
 } as any )
 
-describe( 'PlanningEngine — conscious-enaction credit (no-provenance outcomes)', () => {
+describe('PlanningEngine — conscious-enaction credit (no-provenance outcomes)', () => {
   let engine: PlanningEngine
 
   beforeEach( () => {
@@ -64,17 +64,17 @@ describe( 'PlanningEngine — conscious-enaction credit (no-provenance outcomes)
     engine.attachGoalManager( goalStub )
   } )
 
-  it( 'credits the matching active step when the outcome carries no provenance', async () => {
+  it('credits the matching active step when the outcome carries no provenance', async () => {
     engine.attachExecutiveEngine( makeExecutiveStub( [ { goalId: 'goal-1', steps: [ step('remember') ] } ] ) )
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )   // ingest + activate
 
     engine.onCognitiveEvent( bareOutcome('remember') )
     await engine.react( 0 as any, 2 as any, makeState( 2 ), {} as any )   // advance
 
-    expect( engine.getPlan('goal-1')?.status ).toBe( 'completed' )
+    expect( engine.getPlan('goal-1')?.status ).toBe('completed')
   } )
 
-  it( 'does not credit when no active step matches the action', async () => {
+  it('does not credit when no active step matches the action', async () => {
     engine.attachExecutiveEngine( makeExecutiveStub( [ { goalId: 'goal-1', steps: [ step('remember') ] } ] ) )
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )
 
@@ -82,11 +82,11 @@ describe( 'PlanningEngine — conscious-enaction credit (no-provenance outcomes)
     await engine.react( 0 as any, 2 as any, makeState( 2 ), {} as any )
 
     const plan = engine.getPlan('goal-1')!
-    expect( plan.status ).toBe( 'executing' )
-    expect( plan.steps[0]!.status ).toBe( 'active' )
+    expect( plan.status ).toBe('executing')
+    expect( plan.steps[0]!.status ).toBe('active')
   } )
 
-  it( 'credits exactly one step per outcome when two plans want the same action', async () => {
+  it('credits exactly one step per outcome when two plans want the same action', async () => {
     engine.attachExecutiveEngine( makeExecutiveStub( [
       { goalId: 'goal-1', steps: [ step('observe') ] },
       { goalId: 'goal-2', steps: [ step('observe') ] },
@@ -97,25 +97,25 @@ describe( 'PlanningEngine — conscious-enaction credit (no-provenance outcomes)
     await engine.react( 0 as any, 2 as any, makeState( 2 ), {} as any )
 
     const done = [ engine.getPlan('goal-1')!, engine.getPlan('goal-2')! ]
-      .filter( p => p.status === 'completed' ).length
+      .filter( p => p.status === 'completed').length
     expect( done ).toBe( 1 )                                              // first match only
 
     engine.onCognitiveEvent( bareOutcome('observe') )
     await engine.react( 0 as any, 3 as any, makeState( 3 ), {} as any )
-    expect( engine.getPlan('goal-2')?.status ).toBe( 'completed' )
+    expect( engine.getPlan('goal-2')?.status ).toBe('completed')
   } )
 
-  it( 'failed conscious enactions also land (step fails, supervision can react)', async () => {
+  it('failed conscious enactions also land (step fails, supervision can react)', async () => {
     engine.attachExecutiveEngine( makeExecutiveStub( [ { goalId: 'goal-1', steps: [ step('inquire') ] } ] ) )
     await engine.react( 0 as any, 1 as any, makeState( 1 ), {} as any )
 
     engine.onCognitiveEvent( bareOutcome('inquire', false ) )
-    expect( engine.getPlan('goal-1')!.steps[0]!.status ).toBe( 'failed' )
+    expect( engine.getPlan('goal-1')!.steps[0]!.status ).toBe('failed')
   } )
 } )
 
-describe( 'PlanningEngine — legacy plan-executive-* sweep', () => {
-  it( 'deletes legacy raw plan entities once, on the first react', async () => {
+describe('PlanningEngine — legacy plan-executive-* sweep', () => {
+  it('deletes legacy raw plan entities once, on the first react', async () => {
     const engine = new PlanningEngine( { bus: createTestBus() } )
     engine.attachGoalManager( goalStub )
 
@@ -125,9 +125,9 @@ describe( 'PlanningEngine — legacy plan-executive-* sweep', () => {
     } ] ] )
 
     const r1 = await engine.react( 0 as any, 1 as any, makeState( 1, legacy ), {} as any )
-    expect( r1.commands?.delete ).toContain( 'plan-executive-goal-5-626' )
+    expect( r1.commands?.delete ).toContain('plan-executive-goal-5-626')
 
     const r2 = await engine.react( 0 as any, 2 as any, makeState( 2, legacy ), {} as any )
-    expect( r2.commands?.delete ?? [] ).not.toContain( 'plan-executive-goal-5-626' )
+    expect( r2.commands?.delete ?? [] ).not.toContain('plan-executive-goal-5-626')
   } )
 } )

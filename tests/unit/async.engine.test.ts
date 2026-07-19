@@ -93,15 +93,15 @@ class TestEngine extends AsyncEngine {
 
 // ── Helpers ───────────────────────────────────────────────────
 
-const ctx = createContext( 'test', 'async', 42 )
+const ctx = createContext('test', 'async', 42 )
 
 /** Drain all pending microtasks + the current macrotask so `.then` settle
  *  callbacks have fired before the next react(). */
 const flush = () => new Promise<void>( r => setTimeout( r, 0 ) )
 
 /** Pull the engine's pending_depth metric out of a react() result. */
-function pendingDepth( result: EngineResult, name = 'test-engine' ): number | undefined {
-  return result.commands?.metrics?.find( ( [ k ] ) => k === `engine.${name}.pending_depth` )?.[1]
+function pendingDepth( result: EngineResult, name = 'test-engine'): number | undefined {
+  return result.commands?.metrics?.find( ( [ k ] ) => k === `engine.${name}.pending_depth`)?.[1]
 }
 
 /** Snapshot a state manager as the readonly view react() expects. */
@@ -113,8 +113,8 @@ afterEach( () => { vi.restoreAllMocks() } )
 
 // ── 1. Non-blocking ───────────────────────────────────────────
 
-describe( 'AsyncEngine — non-blocking react (R7)', () => {
-  it( 'returns the tick while reasoning is still in flight and reports depth=1', async () => {
+describe('AsyncEngine — non-blocking react (R7)', () => {
+  it('returns the tick while reasoning is still in flight and reports depth=1', async () => {
     const engine = new TestEngine()
     engine.reasonImpl = () => new Promise<unknown>( () => {} )  // never settles
 
@@ -132,8 +132,8 @@ describe( 'AsyncEngine — non-blocking react (R7)', () => {
 
 // ── 2. shouldAct gating ───────────────────────────────────────
 
-describe( 'AsyncEngine — single in-flight reasoning (R7)', () => {
-  it( 'does not start a second reasoning while one is pending', async () => {
+describe('AsyncEngine — single in-flight reasoning (R7)', () => {
+  it('does not start a second reasoning while one is pending', async () => {
     const engine = new TestEngine()
     engine.reasonImpl = () => new Promise<unknown>( () => {} )  // stays pending
 
@@ -154,8 +154,8 @@ describe( 'AsyncEngine — single in-flight reasoning (R7)', () => {
 
 // ── 3. Cross-tick clean completion ────────────────────────────
 
-describe( 'AsyncEngine — cross-tick completion without conflict (R7)', () => {
-  it( 'commits onReasoningComplete commands on a later tick when nothing changed', async () => {
+describe('AsyncEngine — cross-tick completion without conflict (R7)', () => {
+  it('commits onReasoningComplete commands on a later tick when nothing changed', async () => {
     const engine = new TestEngine()
     engine.reasonImpl   = async () => 'done'
     engine.completeImpl = () => ({ metrics: [ [ 'reasoning.committed', 1 ] ] })
@@ -183,9 +183,9 @@ describe( 'AsyncEngine — cross-tick completion without conflict (R7)', () => {
 
 // ── 4. Conflict + FORCE ───────────────────────────────────────
 
-describe( 'AsyncEngine — conflict resolved with FORCE (R7)', () => {
-  it( 'applies the full result despite an intervening write', async () => {
-    vi.spyOn( console, 'warn' ).mockImplementation( () => {} )       // silence conflict log
+describe('AsyncEngine — conflict resolved with FORCE (R7)', () => {
+  it('applies the full result despite an intervening write', async () => {
+    vi.spyOn( console, 'warn').mockImplementation( () => {} )       // silence conflict log
 
     const engine = new TestEngine({ defaultStrategy: 'FORCE' } )
     engine.reasonImpl   = async () => 'forced'
@@ -214,9 +214,9 @@ describe( 'AsyncEngine — conflict resolved with FORCE (R7)', () => {
 
 // ── 5. Conflict + REJECT ──────────────────────────────────────
 
-describe( 'AsyncEngine — conflict resolved with REJECT (R7)', () => {
-  it( 'drops the result and reruns reasoning against current state', async () => {
-    vi.spyOn( console, 'warn' ).mockImplementation( () => {} )       // silence conflict log
+describe('AsyncEngine — conflict resolved with REJECT (R7)', () => {
+  it('drops the result and reruns reasoning against current state', async () => {
+    vi.spyOn( console, 'warn').mockImplementation( () => {} )       // silence conflict log
 
     const engine = new TestEngine({ defaultStrategy: 'REJECT', rerunOnRejection: true } )
     engine.reasonImpl   = async () => 'stale'
@@ -241,8 +241,8 @@ describe( 'AsyncEngine — conflict resolved with REJECT (R7)', () => {
     expect( engine.hasPendingWork ).toBe( true )                     // the rerun is pending
   } )
 
-  it( 'drops the result silently when rerunOnRejection is false', async () => {
-    vi.spyOn( console, 'warn' ).mockImplementation( () => {} )
+  it('drops the result silently when rerunOnRejection is false', async () => {
+    vi.spyOn( console, 'warn').mockImplementation( () => {} )
 
     const engine = new TestEngine({ defaultStrategy: 'REJECT', rerunOnRejection: false } )
     engine.reasonImpl   = async () => 'stale'
@@ -270,9 +270,9 @@ describe( 'AsyncEngine — conflict resolved with REJECT (R7)', () => {
 
 // ── 6. Stale prune ────────────────────────────────────────────
 
-describe( 'AsyncEngine — stale reasoning pruning (R7)', () => {
-  it( 'drops a reasoning that exceeds maxPendingTicks', async () => {
-    vi.spyOn( console, 'warn' ).mockImplementation( () => {} )
+describe('AsyncEngine — stale reasoning pruning (R7)', () => {
+  it('drops a reasoning that exceeds maxPendingTicks', async () => {
+    vi.spyOn( console, 'warn').mockImplementation( () => {} )
 
     const engine = new TestEngine({ maxPendingTicks: 2 } )
     engine.reasonImpl = () => new Promise<unknown>( () => {} )       // never settles
@@ -302,12 +302,12 @@ describe( 'AsyncEngine — stale reasoning pruning (R7)', () => {
 
 // ── 7. reasonAsync rejection ──────────────────────────────────
 
-describe( 'AsyncEngine — reasoning that throws (R7)', () => {
-  it( 'swallows the error, removes the pending entry, and commits nothing', async () => {
-    const errSpy = vi.spyOn( console, 'error' ).mockImplementation( () => {} )
+describe('AsyncEngine — reasoning that throws (R7)', () => {
+  it('swallows the error, removes the pending entry, and commits nothing', async () => {
+    const errSpy = vi.spyOn( console, 'error').mockImplementation( () => {} )
 
     const engine = new TestEngine()
-    engine.reasonImpl   = () => Promise.reject( new Error( 'reasoning blew up' ) )
+    engine.reasonImpl   = () => Promise.reject( new Error('reasoning blew up') )
     engine.completeImpl = () => ({ metrics: [ [ 'should.not.commit', 1 ] ] })
 
     const sm = new DefaultStateManager()

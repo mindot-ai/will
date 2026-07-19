@@ -36,7 +36,7 @@ export interface WiringRecord {
 
 /** `attachFooBar` → `_fooBar` (the codebase-wide injector/field convention). */
 function fieldForAttach( method: string ): string {
-  const stem = method.slice( 'attach'.length )
+  const stem = method.slice('attach'.length )
   return '_' + stem.charAt( 0 ).toLowerCase() + stem.slice( 1 )
 }
 
@@ -46,7 +46,7 @@ function attachMethods( engine: object ): string[] {
   let proto: object | null = engine
   while( proto && proto !== Object.prototype ){
     for( const name of Object.getOwnPropertyNames( proto ) )
-      if( /^attach[A-Z]/.test( name ) && typeof ( engine as Record<string, unknown> )[ name ] === 'function' )
+      if( /^attach[A-Z]/.test( name ) && typeof ( engine as Record<string, unknown> )[ name ] === 'function')
         seen.add( name )
     proto = Object.getPrototypeOf( proto )
   }
@@ -84,5 +84,5 @@ export function auditAssemblyWiring( engines: readonly SimulationEngine[] ): Wir
 
 /** Compact `engine.attachMethod` keys for the given status (test snapshots). */
 export function wiringKeys( records: WiringRecord[], status: WiringRecord['status'] ): string[] {
-  return records.filter( r => r.status === status ).map( r => `${r.engine}.${r.method}` ).sort()
+  return records.filter( r => r.status === status ).map( r => `${r.engine}.${r.method}`).sort()
 }

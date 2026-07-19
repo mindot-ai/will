@@ -77,7 +77,7 @@ export function readEffectiveParams(
 
   const out: Record<string, number> = { ...base }
   for( const [ key, delta ] of Object.entries( prior ) )
-    if( typeof out[ key ] === 'number' && typeof delta === 'number' )
+    if( typeof out[ key ] === 'number' && typeof delta === 'number')
       out[ key ] = out[ key ] + delta
 
   return out

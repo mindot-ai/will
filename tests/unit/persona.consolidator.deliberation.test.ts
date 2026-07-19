@@ -15,10 +15,10 @@ import { PersonaConsolidator } from '#faculties/persona.consolidator'
 
 const stateWith = ( tick: number, analytical: number ) => {
   const entities = new Map<string, any>()
-  entities.set( 'identity-self', {
+  entities.set('identity-self', {
     id: 'identity-self', type: 'identity', metadata: { traits: { analytical } },
   } )
-  entities.set( 'engine-config-executive', {
+  entities.set('engine-config-executive', {
     id: 'engine-config-executive', type: 'engine-config',
     metadata: { params: { deliberateThreshold: 0.5 } },
   } )
@@ -26,11 +26,11 @@ const stateWith = ( tick: number, analytical: number ) => {
 }
 
 const priorFor = ( r: any ): Record<string, number> | undefined =>
-  ( r.commands?.set ?? [] ).find( ( e: any ) => e.id === 'persona-prior' )?.metadata
+  ( r.commands?.set ?? [] ).find( ( e: any ) => e.id === 'persona-prior')?.metadata
     ?.priors?.[ 'engine-config-executive' ]
 
-describe( 'PersonaConsolidator — effort allocation develops from analytical disposition', () => {
-  it( 'demonstrated analytical thinking lowers the deliberation threshold (deliberate sooner)', async () => {
+describe('PersonaConsolidator — effort allocation develops from analytical disposition', () => {
+  it('demonstrated analytical thinking lowers the deliberation threshold (deliberate sooner)', async () => {
     const pc = new PersonaConsolidator()
     const r  = await pc.react( 0 as any, 100 as any, stateWith( 100, 0.9 ), {} as any )
     const ex = priorFor( r )
@@ -38,7 +38,7 @@ describe( 'PersonaConsolidator — effort allocation develops from analytical di
     expect( ex?.deliberateThreshold ).toBeGreaterThanOrEqual( -0.5 * 0.5 )    // bounded by the cumulative cap (½·base)
   } )
 
-  it( 'neutral analytical leaves the threshold unpushed (decays back to baseline)', async () => {
+  it('neutral analytical leaves the threshold unpushed (decays back to baseline)', async () => {
     const pc = new PersonaConsolidator()
     const r  = await pc.react( 0 as any, 100 as any, stateWith( 100, 0.5 ), {} as any )
     expect( priorFor( r )?.deliberateThreshold ?? 0 ).toBe( 0 )
@@ -50,22 +50,22 @@ describe( 'PersonaConsolidator — effort allocation develops from analytical di
 // agency selector a second consumer of this threshold, it acts on thinner margins too.
 const stateWithTraits = ( tick: number, traits: Record<string, number> ) => {
   const entities = new Map<string, any>()
-  entities.set( 'identity-self', { id: 'identity-self', type: 'identity', metadata: { traits } } )
-  entities.set( 'engine-config-executive', {
+  entities.set('identity-self', { id: 'identity-self', type: 'identity', metadata: { traits } } )
+  entities.set('engine-config-executive', {
     id: 'engine-config-executive', type: 'engine-config',
     metadata: { params: { deliberateThreshold: 0.5 } },
   } )
   return { tick, entities, metrics: new Map<string, number>() } as any
 }
 
-describe( 'PersonaConsolidator — decisiveness develops the opposing deliberativeness pull', () => {
-  it( 'demonstrated decisiveness raises the deliberation threshold (commit on thinner evidence)', async () => {
+describe('PersonaConsolidator — decisiveness develops the opposing deliberativeness pull', () => {
+  it('demonstrated decisiveness raises the deliberation threshold (commit on thinner evidence)', async () => {
     const pc = new PersonaConsolidator()
     const r  = await pc.react( 0 as any, 100 as any, stateWithTraits( 100, { decisiveness: 0.9 } ), {} as any )
     expect( priorFor( r )?.deliberateThreshold ).toBeGreaterThan( 0 )   // engages System 2 LESS readily
   } )
 
-  it( 'analytical and decisiveness compose into ONE net delta on the shared threshold', async () => {
+  it('analytical and decisiveness compose into ONE net delta on the shared threshold', async () => {
     const pc = new PersonaConsolidator()
     // Opposing pulls on the SAME param partially cancel: the combined delta is smaller in
     // magnitude than the analytical driver alone — proving they share one bounded, auditable

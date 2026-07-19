@@ -20,7 +20,7 @@ export class UtteranceTap {
 
   constructor( will: Will ){
     this._will = will
-    will.on( 'message', m => {
+    will.on('message', m => {
       this._pending.push( m )
       if( this._pending.length > BUFFER_CAP ) this._pending.shift()
     } )

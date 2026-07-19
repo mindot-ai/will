@@ -18,9 +18,9 @@
  * strings are already clean text and pass through unchanged.
  */
 export function episodeContentToText( content: unknown ): string {
-  if( typeof content === 'string' ) return content
+  if( typeof content === 'string') return content
 
-  if( content && typeof content === 'object' ){
+  if( content && typeof content === 'object'){
     const m = content as Record<string, unknown>
 
     // Conversation exchanges carry the actual dialogue — by far the strongest
@@ -28,7 +28,7 @@ export function episodeContentToText( content: unknown ): string {
     const user  = typeof m['userMessage'] === 'string' ? m['userMessage'] as string : ''
     const reply = typeof m['willReply']   === 'string' ? m['willReply']   as string : ''
     if( user || reply )
-      return [ user, reply ].filter( Boolean ).join( ' → ' )
+      return [ user, reply ].filter( Boolean ).join(' → ')
 
     // Most WM items carry a top-level human summary.
     if( typeof m['summary'] === 'string' && m['summary'] ) return m['summary'] as string
@@ -36,7 +36,7 @@ export function episodeContentToText( content: unknown ): string {
     // Descriptor items nest their payload (e.g. plan: { content: { summary } }).
     const nested = m['content']
     if( typeof nested === 'string' && nested ) return nested
-    if( nested && typeof nested === 'object' ){
+    if( nested && typeof nested === 'object'){
       const nm = nested as Record<string, unknown>
       if( typeof nm['summary'] === 'string' && nm['summary'] ) return nm['summary'] as string
     }

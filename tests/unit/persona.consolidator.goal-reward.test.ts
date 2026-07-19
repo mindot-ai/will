@@ -13,27 +13,27 @@ import { PersonaConsolidator } from '#faculties/persona.consolidator'
 
 const stateWith = ( tick: number, conscientiousness: number ) => {
   const entities = new Map<string, any>()
-  entities.set( 'identity-self', {
+  entities.set('identity-self', {
     id: 'identity-self', type: 'identity', metadata: { traits: { conscientiousness } },
   } )
-  entities.set( 'engine-config-reward', {
+  entities.set('engine-config-reward', {
     id: 'engine-config-reward', type: 'engine-config', metadata: { params: { goalWeight: 0.4 } },
   } )
   return { tick, entities, metrics: new Map<string, number>() } as any
 }
 
 const priorFor = ( r: any ): Record<string, number> | undefined =>
-  ( r.commands?.set ?? [] ).find( ( e: any ) => e.id === 'persona-prior' )?.metadata?.priors?.[ 'engine-config-reward' ]
+  ( r.commands?.set ?? [] ).find( ( e: any ) => e.id === 'persona-prior')?.metadata?.priors?.[ 'engine-config-reward' ]
 
-describe( 'PersonaConsolidator — achievement-striving develops from conscientiousness', () => {
-  it( 'demonstrated conscientiousness makes goal completion more rewarding (goalWeight↑)', async () => {
+describe('PersonaConsolidator — achievement-striving develops from conscientiousness', () => {
+  it('demonstrated conscientiousness makes goal completion more rewarding (goalWeight↑)', async () => {
     const pc = new PersonaConsolidator()
     const r  = await pc.react( 0 as any, 100 as any, stateWith( 100, 0.9 ), {} as any )
     expect( priorFor( r )?.goalWeight ).toBeGreaterThan( 0 )
     expect( priorFor( r )?.goalWeight ).toBeLessThanOrEqual( 0.5 * 0.4 ) // cumulative cap
   } )
 
-  it( 'neutral conscientiousness leaves goal weighting unpushed', async () => {
+  it('neutral conscientiousness leaves goal weighting unpushed', async () => {
     const pc = new PersonaConsolidator()
     const r  = await pc.react( 0 as any, 100 as any, stateWith( 100, 0.5 ), {} as any )
     expect( priorFor( r )?.goalWeight ?? 0 ).toBe( 0 )

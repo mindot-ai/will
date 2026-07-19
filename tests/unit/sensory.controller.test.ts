@@ -18,8 +18,8 @@ function makeInstance( tick: number ): WillInstance {
   return { tickCount: tick, simulation: { stateManager: sm } } as unknown as WillInstance
 }
 
-describe( 'SensoryController.injectEvent — deterministic ids', () => {
-  it( 'mints tick + monotonic ids and reproduces them across equal runs', () => {
+describe('SensoryController.injectEvent — deterministic ids', () => {
+  it('mints tick + monotonic ids and reproduces them across equal runs', () => {
     const run = () => {
       const ctrl = new SensoryController()
       const inst = makeInstance( 42 )
@@ -31,11 +31,11 @@ describe( 'SensoryController.injectEvent — deterministic ids', () => {
     expect( run() ).toEqual( run() )   // no wall-clock / Math.random drift
   } )
 
-  it( 'stamps createdAt from the sim clock, not wall time', () => {
+  it('stamps createdAt from the sim clock, not wall time', () => {
     const ctrl = new SensoryController()
     const inst = makeInstance( 7 )
     ctrl.injectEvent( inst, { type: 'percept.social', payload: {} } )
-    const entity = inst.simulation.stateManager.getEntity( 'external-event-7-1' )
+    const entity = inst.simulation.stateManager.getEntity('external-event-7-1')
     expect( entity?.createdAt ).toBe( 1000 )   // the sim time set via updateClock
   } )
 } )

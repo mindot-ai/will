@@ -55,7 +55,7 @@ const ENV_OVERRIDES: Record<string, string | undefined> = {
 }
 const _savedEnv: Record<string, string | undefined> = {}
 
-describe( 'Per-Will token tracker isolation (R4-a)', () => {
+describe('Per-Will token tracker isolation (R4-a)', () => {
   beforeAll( () => {
     for( const key of Object.keys( ENV_OVERRIDES ) ){
       _savedEnv[ key ] = process.env[ key ]
@@ -73,9 +73,9 @@ describe( 'Per-Will token tracker isolation (R4-a)', () => {
     }
   })
 
-  it( 'gives each assembled mind its own tracker instance', () => {
-    const a = assembleMind( 'will-iso-a', makeConfig( 'will-iso-a' ) )
-    const b = assembleMind( 'will-iso-b', makeConfig( 'will-iso-b' ) )
+  it('gives each assembled mind its own tracker instance', () => {
+    const a = assembleMind('will-iso-a', makeConfig('will-iso-a') )
+    const b = assembleMind('will-iso-b', makeConfig('will-iso-b') )
 
     expect( a.cognition.tokenTracker ).toBeDefined()
     expect( b.cognition.tokenTracker ).toBeDefined()
@@ -83,9 +83,9 @@ describe( 'Per-Will token tracker isolation (R4-a)', () => {
     expect( a.cognition.tokenTracker ).not.toBe( b.cognition.tokenTracker )
   })
 
-  it( 'does not conflate usage/cost across Wills', () => {
-    const a = assembleMind( 'will-iso-c', makeConfig( 'will-iso-c' ) )
-    const b = assembleMind( 'will-iso-d', makeConfig( 'will-iso-d' ) )
+  it('does not conflate usage/cost across Wills', () => {
+    const a = assembleMind('will-iso-c', makeConfig('will-iso-c') )
+    const b = assembleMind('will-iso-d', makeConfig('will-iso-d') )
 
     // Both start empty.
     expect( a.cognition.tokenTracker.totalCostUsd ).toBe( 0 )

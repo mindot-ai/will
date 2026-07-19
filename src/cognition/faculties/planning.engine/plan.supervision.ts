@@ -106,9 +106,9 @@ export class PlanSupervisor {
 
     try {
       const { attention, handle: facet } = this._executiveEngine.spawnFacet('supervision')
-      if( !facet || attention === 'full' ){
+      if( !facet || attention === 'full'){
         plan.executionTier = 'automatic'
-        logger.info( `[planning] attention full — plan ${plan.id} stays automatic (no facet)` )
+        logger.info(`[planning] attention full — plan ${plan.id} stays automatic (no facet)`)
         return
       }
 
@@ -125,7 +125,7 @@ export class PlanSupervisor {
       // facet whose report() silently no-ops. (P2)
       facet.onReaped( () => {
         this._activeFacets.delete( plan.id )
-        if( plan.status === 'executing' || plan.status === 'ready' )
+        if( plan.status === 'executing' || plan.status === 'ready')
           plan.executionTier = 'automatic'
         logger.info(
           `[planning] facet for plan ${plan.id} reaped — degraded to automatic`
@@ -138,7 +138,7 @@ export class PlanSupervisor {
         const initialReport: FacetReport = {
           type: 'plan.initialized',
           contextId: plan.id,
-          instructions: this._buildDecisionGuidance( 'plan.initialized', undefined ),
+          instructions: this._buildDecisionGuidance('plan.initialized', undefined ),
           payload: {
             planId: plan.id,
             goalId: plan.goalId,
@@ -150,10 +150,10 @@ export class PlanSupervisor {
         facet.report( initialReport )
       }
 
-      logger.info( `[planning] facet activated: plan=${plan.id} facetId=${facet.facetId}` )
+      logger.info(`[planning] facet activated: plan=${plan.id} facetId=${facet.facetId}`)
     }
     catch( err ){
-      logger.error( `[planning] facet failed for plan ${plan.id}:`, err )
+      logger.error(`[planning] facet failed for plan ${plan.id}:`, err )
       plan.executionTier = 'automatic'
     }
   }
@@ -188,7 +188,7 @@ export class PlanSupervisor {
                      s.status === 'failed'     ? '✗' :
                      s.status === 'active'     ? '→' : '○'
       return `${marker} [${s.id}] ${s.action}: ${s.description}`
-    } ).join( '\n' )
+    } ).join('\n')
 
     const completedCount = plan.steps.filter(
       s => s.status === 'completed' || s.status === 'skipped'
@@ -302,9 +302,9 @@ export class PlanSupervisor {
     const facet = this._activeFacets.get( plan.id )
     if( !facet ) return false
 
-    const allDone   = plan.steps.every( s => s.status === 'completed' || s.status === 'skipped' )
-    const anyFailed = plan.steps.some( s => s.status === 'failed' )
-    const pendingCount = plan.steps.filter( s => s.status !== 'completed' && s.status !== 'skipped' ).length
+    const allDone   = plan.steps.every( s => s.status === 'completed' || s.status === 'skipped')
+    const anyFailed = plan.steps.some( s => s.status === 'failed')
+    const pendingCount = plan.steps.filter( s => s.status !== 'completed' && s.status !== 'skipped').length
 
     let statusType: string
     if( allDone && !anyFailed )      statusType = 'plan_completed'
@@ -350,8 +350,8 @@ export class PlanSupervisor {
         prerequisites: s.prerequisites,
       } ) ),
       totalSteps: plan.steps.length,
-      completedSteps: plan.steps.filter( s => s.status === 'completed' || s.status === 'skipped' ).length,
-      skippedSteps: plan.steps.filter( s => s.status === 'skipped' ).map( s => s.id ),
+      completedSteps: plan.steps.filter( s => s.status === 'completed' || s.status === 'skipped').length,
+      skippedSteps: plan.steps.filter( s => s.status === 'skipped').map( s => s.id ),
       executionTier: plan.executionTier
     }
   }
@@ -385,14 +385,14 @@ export class PlanSupervisor {
         break
 
       case 'skip': {
-        const failedStep = plan.steps.find( s => s.status === 'failed' )
+        const failedStep = plan.steps.find( s => s.status === 'failed')
         if( failedStep ) failedStep.status = 'skipped'
         this._host.executePlans()
         break
       }
 
       case 'abandon': {
-        this._host.planFailed( plan, `Facet abandoned: ${decision.reasoning.slice( 0, 100 )}` )
+        this._host.planFailed( plan, `Facet abandoned: ${decision.reasoning.slice( 0, 100 )}`)
         this.cleanupFacet( plan.id )
         break
       }
@@ -410,7 +410,7 @@ export class PlanSupervisor {
             status: 'pending' as const,
           } ) )
 
-          logger.info( `[planning] plan ${plan.id} replanned (${plan.steps.length} steps)` )
+          logger.info(`[planning] plan ${plan.id} replanned (${plan.steps.length} steps)`)
 
           // Surface: the mind rewrote the plan mid-flight — a course-correction the
           // master should be aware of (mirrors plan.escalated). Only fires when steps
@@ -443,10 +443,10 @@ export class PlanSupervisor {
         // re-activates it on the frontier; capped per step so a stuck step can't loop forever.
         let retried = 0
         for( const s of plan.steps ){
-          if( s.status !== 'failed' ) continue
+          if( s.status !== 'failed') continue
           const n = s.retries ?? 0
           if( n >= this._dispositions.maxStepRetries ){
-            logger.info( `[planning] step ${s.id} retry exhausted (${n}/${this._dispositions.maxStepRetries}); left failed` )
+            logger.info(`[planning] step ${s.id} retry exhausted (${n}/${this._dispositions.maxStepRetries}); left failed`)
             continue
           }
           s.retries = n + 1
@@ -454,7 +454,7 @@ export class PlanSupervisor {
           s.outcome = undefined
           retried++
         }
-        logger.info( `[planning] plan ${plan.id} retrying ${retried} step(s)` )
+        logger.info(`[planning] plan ${plan.id} retrying ${retried} step(s)`)
         this._host.executePlans()
         break
       }
@@ -464,7 +464,7 @@ export class PlanSupervisor {
         // Free the facet's attention while held.
         plan.status = 'paused'
         this.cleanupFacet( plan.id )
-        logger.info( `[planning] plan ${plan.id} paused by facet` )
+        logger.info(`[planning] plan ${plan.id} paused by facet`)
         break
       }
 
@@ -485,7 +485,7 @@ export class PlanSupervisor {
             requestingThreadId: plan.requestingThreadId,
           }
         } )
-        logger.info( `[planning] plan ${plan.id} escalated to master` )
+        logger.info(`[planning] plan ${plan.id} escalated to master`)
         break
       }
     }

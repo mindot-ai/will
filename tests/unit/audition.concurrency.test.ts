@@ -43,9 +43,9 @@ function makeControllableExecutive(){
         facetId: `facet-${spawns}`,
         report( r: any ){
           const content = ( r.payload as any ).content
-          log.push( `report:${content}` )
+          log.push(`report:${content}`)
           pending.push( () => {
-            log.push( `decision:${content}` )
+            log.push(`decision:${content}`)
             subscriber?.({
               decision: { reply: 'ok', replyBubbles: ['ok'], targetEntityId: 'x', requiresMasterAttention: false },
               reasoning: '',
@@ -69,7 +69,7 @@ function makeControllableExecutive(){
   }
 }
 
-describe( 'AuditionEngine — coalescing + per-entity serialization', () => {
+describe('AuditionEngine — coalescing + per-entity serialization', () => {
   let ctrl:   ReturnType<typeof makeControllableExecutive>
   let engine: AuditionEngine
 
@@ -80,11 +80,11 @@ describe( 'AuditionEngine — coalescing + per-entity serialization', () => {
     engine.attachExecutiveEngine( ctrl.engine as any )
   } )
 
-  it( 'coalesces a burst that piles up before the turn starts into ONE turn (§6)', async () => {
+  it('coalesces a burst that piles up before the turn starts into ONE turn (§6)', async () => {
     const ps = [
-      engine.ingest( text( 'alice', 'A' ) ),
-      engine.ingest( text( 'alice', 'B' ) ),
-      engine.ingest( text( 'alice', 'C' ) ),
+      engine.ingest( text('alice', 'A') ),
+      engine.ingest( text('alice', 'B') ),
+      engine.ingest( text('alice', 'C') ),
     ]
 
     await tick()
@@ -99,15 +99,15 @@ describe( 'AuditionEngine — coalescing + per-entity serialization', () => {
     expect( ctrl.spawns ).toBe( 1 )
   } )
 
-  it( 'does not begin the next turn until the in-flight turn resolves', async () => {
-    const p1 = engine.ingest( text( 'alice', 'A' ) )
+  it('does not begin the next turn until the in-flight turn resolves', async () => {
+    const p1 = engine.ingest( text('alice', 'A') )
 
     await tick()
     // A's window started immediately — its turn is in flight.
     expect( ctrl.log ).toEqual( [ 'report:A' ] )
 
     // B arrives AFTER A started → it opens a fresh window queued behind A.
-    const p2 = engine.ingest( text( 'alice', 'B' ) )
+    const p2 = engine.ingest( text('alice', 'B') )
     await tick()
     expect( ctrl.log ).toEqual( [ 'report:A' ] )      // B blocked on A's decision
 
@@ -122,14 +122,14 @@ describe( 'AuditionEngine — coalescing + per-entity serialization', () => {
     expect( ctrl.spawns ).toBe( 1 )   // one facet reused across both turns
   } )
 
-  it( 'coalesces messages that arrive DURING an in-flight turn into the next turn (§6)', async () => {
-    const p1 = engine.ingest( text( 'alice', 'A' ) )
+  it('coalesces messages that arrive DURING an in-flight turn into the next turn (§6)', async () => {
+    const p1 = engine.ingest( text('alice', 'A') )
     await tick()
     expect( ctrl.log ).toEqual( [ 'report:A' ] )      // A in flight
 
     // B and C arrive while A is still reasoning → they fold into one next turn.
-    const p2 = engine.ingest( text( 'alice', 'B' ) )
-    const p3 = engine.ingest( text( 'alice', 'C' ) )
+    const p2 = engine.ingest( text('alice', 'B') )
+    const p3 = engine.ingest( text('alice', 'C') )
     await tick()
     expect( ctrl.log ).toEqual( [ 'report:A' ] )      // both wait behind A
 
@@ -142,13 +142,13 @@ describe( 'AuditionEngine — coalescing + per-entity serialization', () => {
     expect( ctrl.log ).toEqual( [ 'report:A', 'decision:A', 'report:B\nC', 'decision:B\nC' ] )
   } )
 
-  it( 'processes different entities concurrently (no cross-entity blocking)', async () => {
-    const p1 = engine.ingest( text( 'alice', 'A' ) )
-    const p2 = engine.ingest( text( 'bob',   'B' ) )
+  it('processes different entities concurrently (no cross-entity blocking)', async () => {
+    const p1 = engine.ingest( text('alice', 'A') )
+    const p2 = engine.ingest( text('bob',   'B') )
 
     await tick()
     // Both reported without waiting on each other.
-    expect( ctrl.log.filter( l => l.startsWith( 'report:' ) ).sort() )
+    expect( ctrl.log.filter( l => l.startsWith('report:') ).sort() )
       .toEqual( [ 'report:A', 'report:B' ] )
 
     ctrl.flushAll()

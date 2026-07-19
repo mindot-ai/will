@@ -155,7 +155,7 @@ export class LossEvaluator implements SimulationEngine, CognitiveEngine {
 
           // Publish cognitive event — gated by prediction error
           if( sadness > 0.4 ){
-            const predErr = this._model.observe( 'emotion.sadness', sadness )
+            const predErr = this._model.observe('emotion.sadness', sadness )
             if( !predErr.gated )
               _bus.publish({ type: 'emotion.sadness.elevated', version: 1, sourceEngine: this.name, salience: Math.min(1, sadness * 1.5), payload: { sadness } })
           }
@@ -168,7 +168,7 @@ export class LossEvaluator implements SimulationEngine, CognitiveEngine {
         const p = e.payload as { predictedDomains: string[]; confidence: number }
 
         if( p.predictedDomains.includes('affect') )
-          this._model.setPrecision( 'emotion.sadness', 1.0 + p.confidence * 0.5 )
+          this._model.setPrecision('emotion.sadness', 1.0 + p.confidence * 0.5 )
 
         // Approximate goal loss from prediction confidence:
         // Low confidence in domains signals uncertain/failing goals

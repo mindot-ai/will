@@ -36,7 +36,7 @@ export function chunkText( text: string, max: number ): string[] {
   while( rest.length > max ){
     // Prefer a paragraph break, then a line break, then a space — else hard-cut.
     const window = rest.slice( 0, max )
-    const cut = Math.max( window.lastIndexOf( '\n\n' ), window.lastIndexOf( '\n' ), window.lastIndexOf( ' ' ) )
+    const cut = Math.max( window.lastIndexOf('\n\n'), window.lastIndexOf('\n'), window.lastIndexOf(' ') )
     const at = cut > max * 0.5 ? cut : max
     chunks.push( rest.slice( 0, at ).trimEnd() )
     rest = rest.slice( at ).trimStart()

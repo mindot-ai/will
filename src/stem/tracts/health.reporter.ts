@@ -87,7 +87,7 @@ export class HealthReporter {
     for( const entity of instance.simulation.stateManager.getEntitiesByType('goal') ){
       totalGoals++
       const s = entity.metadata?.status
-      if( s === 'active' || s === 'in_progress' ) activeGoals++
+      if( s === 'active' || s === 'in_progress') activeGoals++
     }
 
     const goalScore = totalGoals === 0

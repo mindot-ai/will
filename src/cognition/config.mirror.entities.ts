@@ -21,11 +21,11 @@ export interface EngineConfigEntity {
 }
 
 export function buildEngineConfigEntities( config: WillConfig, executiveInterval: number ): EngineConfigEntity[] {
-  const selfBelonging  = parseFloat( process.env.WILL_SELF_BELONGING  ?? '0.35' )
-  const boredomRate    = parseFloat( process.env.WILL_BOREDOM_RATE    ?? '0.005' )
-  const curiosityFloor = parseFloat( process.env.WILL_CURIOSITY_FLOOR ?? '0.08' )
-  const summaryInterval   = parseInt( process.env.WILL_SUMMARY_INTERVAL   ?? '10' )
-  const summaryBufferSize = parseInt( process.env.WILL_SUMMARY_BUFFER_SIZE ?? '12' )
+  const selfBelonging  = parseFloat( process.env.WILL_SELF_BELONGING  ?? '0.35')
+  const boredomRate    = parseFloat( process.env.WILL_BOREDOM_RATE    ?? '0.005')
+  const curiosityFloor = parseFloat( process.env.WILL_CURIOSITY_FLOOR ?? '0.08')
+  const summaryInterval   = parseInt( process.env.WILL_SUMMARY_INTERVAL   ?? '10')
+  const summaryBufferSize = parseInt( process.env.WILL_SUMMARY_BUFFER_SIZE ?? '12')
 
   return [
     // ── System metadata ──────────────────────────────────────────

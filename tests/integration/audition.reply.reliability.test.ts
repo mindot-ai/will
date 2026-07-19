@@ -41,7 +41,7 @@ async function replyLatency( message: string, withEffector: boolean ): Promise<{
 
     while( will.state().tick < 30 ) await new Promise( r => setTimeout( r, 5 ) )
     const ingestTick = will.state().tick
-    await will.tell( 'sam', 'Sam', message )
+    await will.tell('sam', 'Sam', message )
     await Promise.race( [ done, new Promise( r => setTimeout( r, WAIT_MS ) ) ] )
 
     return { replied: replyTick >= 0, latency: replyTick >= 0 ? replyTick - ingestTick : -1 }
@@ -49,21 +49,21 @@ async function replyLatency( message: string, withEffector: boolean ): Promise<{
   finally { await will.stop() }
 }
 
-describe( 'Audition reply reliability (mock, bounded tick budget)', () => {
-  it( 'replies to a greeting within budget', async () => {
-    const r = await replyLatency( 'Hello, who are you?', false )
+describe('Audition reply reliability (mock, bounded tick budget)', () => {
+  it('replies to a greeting within budget', async () => {
+    const r = await replyLatency('Hello, who are you?', false )
     expect( r.replied ).toBe( true )
     expect( r.latency ).toBeLessThanOrEqual( REPLY_BUDGET_TICKS )
   }, 30_000 )
 
-  it( 'replies to instruction-shaped phrasing within budget (the original suppressor)', async () => {
-    const r = await replyLatency( 'Please remember that my favorite color is blue.', false )
+  it('replies to instruction-shaped phrasing within budget (the original suppressor)', async () => {
+    const r = await replyLatency('Please remember that my favorite color is blue.', false )
     expect( r.replied ).toBe( true )
     expect( r.latency ).toBeLessThanOrEqual( REPLY_BUDGET_TICKS )
   }, 30_000 )
 
-  it( 'replies with a custom effector registered within budget (the original starver)', async () => {
-    const r = await replyLatency( 'Hello, who are you?', true )
+  it('replies with a custom effector registered within budget (the original starver)', async () => {
+    const r = await replyLatency('Hello, who are you?', true )
     expect( r.replied ).toBe( true )
     expect( r.latency ).toBeLessThanOrEqual( REPLY_BUDGET_TICKS )
   }, 30_000 )

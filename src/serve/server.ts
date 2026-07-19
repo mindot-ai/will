@@ -42,7 +42,7 @@ function json( res: ServerResponse, status: number, body: unknown ): void {
 async function readJsonBody( req: IncomingMessage ): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []
   for await ( const c of req ) chunks.push( c as Buffer )
-  const raw = Buffer.concat( chunks ).toString( 'utf8' ).trim()
+  const raw = Buffer.concat( chunks ).toString('utf8').trim()
   if( !raw ) return {}
   return JSON.parse( raw ) as Record<string, unknown>
 }
@@ -61,9 +61,9 @@ export function buildWillHttpServer( will: Will, opts: WillHttpOptions = {} ): S
     const frame = `event: ${ event }\ndata: ${ JSON.stringify( data ) }\n\n`
     for( const res of streams ) res.write( frame )
   }
-  will.on( 'message',  m => fanout( 'utterance', m ) )
-  will.on( 'emotion',  a => fanout( 'emotion', a ) )
-  will.on( 'effector', a => fanout( 'action', a ) )
+  will.on('message',  m => fanout('utterance', m ) )
+  will.on('emotion',  a => fanout('emotion', a ) )
+  will.on('effector', a => fanout('action', a ) )
 
   const server = createServer( ( req, res ) => {
     void handle( req, res ).catch( err => {
@@ -74,10 +74,10 @@ export function buildWillHttpServer( will: Will, opts: WillHttpOptions = {} ): S
   } )
 
   async function handle( req: IncomingMessage, res: ServerResponse ): Promise<void> {
-    const url = new URL( req.url ?? '/', 'http://sidecar' )
+    const url = new URL( req.url ?? '/', 'http://sidecar')
     const route = `${ req.method } ${ url.pathname }`
 
-    if( req.method === 'OPTIONS' ){
+    if( req.method === 'OPTIONS'){
       res.writeHead( 204, {
         'access-control-allow-origin':  '*',
         'access-control-allow-methods': 'GET, POST, OPTIONS',
@@ -109,8 +109,8 @@ export function buildWillHttpServer( will: Will, opts: WillHttpOptions = {} ): S
       }
 
       case 'GET /next-utterance': {
-        const within = Math.min( Math.max( parseInt( url.searchParams.get( 'within_ms' ) ?? '15000' ) || 15_000, 100 ), 120_000 )
-        const from   = url.searchParams.get( 'from' ) ?? undefined
+        const within = Math.min( Math.max( parseInt( url.searchParams.get('within_ms') ?? '15000') || 15_000, 100 ), 120_000 )
+        const from   = url.searchParams.get('from') ?? undefined
         const msg    = await tap.next( within, from )
         return msg
           ? json( res, 200, { utterance: msg } )
@@ -124,10 +124,10 @@ export function buildWillHttpServer( will: Will, opts: WillHttpOptions = {} ): S
           'connection':                  'keep-alive',
           'access-control-allow-origin': '*',
         } )
-        res.write( `event: hello\ndata: ${ JSON.stringify( { name: will.name, tick: will.state().tick } ) }\n\n` )
+        res.write(`event: hello\ndata: ${ JSON.stringify( { name: will.name, tick: will.state().tick } ) }\n\n`)
         streams.add( res )
-        const heartbeat = setInterval( () => res.write( `: tick ${ will.state().tick }\n\n` ), SSE_HEARTBEAT_MS )
-        req.on( 'close', () => { clearInterval( heartbeat ); streams.delete( res ) } )
+        const heartbeat = setInterval( () => res.write(`: tick ${ will.state().tick }\n\n`), SSE_HEARTBEAT_MS )
+        req.on('close', () => { clearInterval( heartbeat ); streams.delete( res ) } )
         return
       }
 
@@ -148,7 +148,7 @@ export function buildWillHttpServer( will: Will, opts: WillHttpOptions = {} ): S
   }
 
   // Close open SSE streams when the server closes (so close() can complete).
-  server.on( 'close', () => { for( const res of streams ) res.end(); streams.clear() } )
+  server.on('close', () => { for( const res of streams ) res.end(); streams.clear() } )
 
   return server
 }

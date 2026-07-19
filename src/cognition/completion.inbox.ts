@@ -70,7 +70,7 @@ export class CompletionInbox {
     for( const { label, apply } of batch ){
       try { apply() }
       catch( err ){
-        logger.error( `[completion-inbox] "${label}" failed while landing at tick ${tick}:`, err )
+        logger.error(`[completion-inbox] "${label}" failed while landing at tick ${tick}:`, err )
       }
     }
 

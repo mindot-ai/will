@@ -49,10 +49,10 @@ function metricMap( commands: { metrics?: Array<[ string, number ]> } ): Map<str
   return new Map( commands.metrics ?? [] )
 }
 
-describe( 'ForgettingCurve — eviction (FN7)', () => {
+describe('ForgettingCurve — eviction (FN7)', () => {
   let consolidator: EpisodicConsolidator
   let curve: ForgettingCurve
-  const ctx = createContext( 'sim', 'run', 42 )
+  const ctx = createContext('sim', 'run', 42 )
 
   beforeEach( () => {
     consolidator = new EpisodicConsolidator({ autoIndex: false })
@@ -60,12 +60,12 @@ describe( 'ForgettingCurve — eviction (FN7)', () => {
     curve.attachConsolidator( consolidator )
   })
 
-  it( 'removes sub-threshold episodes from the store', async () => {
+  it('removes sub-threshold episodes from the store', async () => {
     consolidator.restoreEpisodes([
-      makeEpisode( 'keep-1', 0.9 ),
-      makeEpisode( 'drop-1', 0.005 ),
-      makeEpisode( 'keep-2', 0.5 ),
-      makeEpisode( 'drop-2', 0.0 ),
+      makeEpisode('keep-1', 0.9 ),
+      makeEpisode('drop-1', 0.005 ),
+      makeEpisode('keep-2', 0.5 ),
+      makeEpisode('drop-2', 0.0 ),
     ])
 
     const commands = ( await curve.react( 1000, 1, emptyState(), ctx ) ).commands as StateCommands
@@ -76,37 +76,37 @@ describe( 'ForgettingCurve — eviction (FN7)', () => {
     expect( ( commands.delete ?? [] ).sort() ).toEqual( [ 'drop-1', 'drop-2' ] )
   })
 
-  it( 'reports an honest pruned/total metric (no phantom prunes)', async () => {
+  it('reports an honest pruned/total metric (no phantom prunes)', async () => {
     consolidator.restoreEpisodes([
-      makeEpisode( 'a', 0.9 ),
-      makeEpisode( 'b', 0.001 ),
-      makeEpisode( 'c', 0.001 ),
+      makeEpisode('a', 0.9 ),
+      makeEpisode('b', 0.001 ),
+      makeEpisode('c', 0.001 ),
     ])
 
     const commands = ( await curve.react( 1000, 1, emptyState(), ctx ) ).commands as StateCommands
     const m = metricMap( commands )
 
-    expect( m.get( 'memory.pruned_this_tick' ) ).toBe( 2 )
-    expect( m.get( 'memory.total_episodes' ) ).toBe( 1 )
+    expect( m.get('memory.pruned_this_tick') ).toBe( 2 )
+    expect( m.get('memory.total_episodes') ).toBe( 1 )
     expect( consolidator.getAllEpisodes() ).toHaveLength( 1 )
   })
 
-  it( 'does not prune when every episode is above threshold', async () => {
-    consolidator.restoreEpisodes([ makeEpisode( 'a', 0.9 ), makeEpisode( 'b', 0.5 ) ])
+  it('does not prune when every episode is above threshold', async () => {
+    consolidator.restoreEpisodes([ makeEpisode('a', 0.9 ), makeEpisode('b', 0.5 ) ])
 
     const commands = ( await curve.react( 1000, 1, emptyState(), ctx ) ).commands as StateCommands
 
     expect( commands.delete ?? [] ).toHaveLength( 0 )
-    expect( metricMap( commands ).get( 'memory.pruned_this_tick' ) ).toBe( 0 )
+    expect( metricMap( commands ).get('memory.pruned_this_tick') ).toBe( 0 )
     expect( consolidator.getAllEpisodes() ).toHaveLength( 2 )
   })
 
-  it( 'honours maxPrunePerTick', async () => {
+  it('honours maxPrunePerTick', async () => {
     const limited = new ForgettingCurve({ pruningThreshold: 0.01, maxPrunePerTick: 2 })
     limited.attachConsolidator( consolidator )
     consolidator.restoreEpisodes([
-      makeEpisode( 'a', 0 ), makeEpisode( 'b', 0 ),
-      makeEpisode( 'c', 0 ), makeEpisode( 'd', 0 ),
+      makeEpisode('a', 0 ), makeEpisode('b', 0 ),
+      makeEpisode('c', 0 ), makeEpisode('d', 0 ),
     ])
 
     const commands = ( await limited.react( 1000, 1, emptyState(), ctx ) ).commands as StateCommands
@@ -115,7 +115,7 @@ describe( 'ForgettingCurve — eviction (FN7)', () => {
     expect( consolidator.getAllEpisodes() ).toHaveLength( 2 )
   })
 
-  it( 'evicts pruned episodes from the vector index', async () => {
+  it('evicts pruned episodes from the vector index', async () => {
     const deleted: string[] = []
     const mockVector = {
       delete: async ( id: string ) => { deleted.push( id ) },
@@ -124,7 +124,7 @@ describe( 'ForgettingCurve — eviction (FN7)', () => {
     const withVector = new EpisodicConsolidator({ autoIndex: false, vectorMemory: mockVector })
     const c2 = new ForgettingCurve({ pruningThreshold: 0.01, maxPrunePerTick: 10 })
     c2.attachConsolidator( withVector )
-    withVector.restoreEpisodes([ makeEpisode( 'live', 0.8 ), makeEpisode( 'dead', 0 ) ])
+    withVector.restoreEpisodes([ makeEpisode('live', 0.8 ), makeEpisode('dead', 0 ) ])
 
     await c2.react( 1000, 1, emptyState(), ctx )
 

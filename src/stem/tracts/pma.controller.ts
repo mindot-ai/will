@@ -29,7 +29,7 @@ export class PMAController {
    * with existing beliefs may cause unintended merges.
    */
   load( id: string, instance: WillInstance, pma: PMASnapshot ): void {
-    if( instance.status === 'active' )
+    if( instance.status === 'active')
       throw new Error(`Cannot load PMA into an active Will (${id}). Pause first.`)
 
     // Re-validate the artifact's persona at the load boundary (Phase 2): a stored

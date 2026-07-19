@@ -130,7 +130,7 @@ export class ExecutiveSummarizer {
 
   private async _run(): Promise<void> {
     if( !this._llmDirector ){
-      logger.warn( '[summarizer] skipping — LLMDirector not attached yet' )
+      logger.warn('[summarizer] skipping — LLMDirector not attached yet')
       return
     }
 
@@ -139,8 +139,8 @@ export class ExecutiveSummarizer {
 
     try {
       const userMessage = snapshot
-        .map( ( r, i ) => `[Cycle ${i + 1}]\n${r}` )
-        .join( '\n\n---\n\n' )
+        .map( ( r, i ) => `[Cycle ${i + 1}]\n${r}`)
+        .join('\n\n---\n\n')
 
       // Use _callCount as the tick value — it's only used for token tracking/logging
       const result = await this._llmDirector.call(
@@ -161,7 +161,7 @@ export class ExecutiveSummarizer {
       }
     }
     catch( err ){
-      logger.warn( '[summarizer] failed:', err instanceof Error ? err.message : err )
+      logger.warn('[summarizer] failed:', err instanceof Error ? err.message : err )
     }
     finally {
       this._summarizing = false

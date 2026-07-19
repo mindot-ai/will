@@ -134,7 +134,7 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
    * the curiosity pull; analytical sharpens how fast reliability judgments are revised.
    */
   private _readConfigFromState( state: ReadonlySimulationState ): void {
-    const p = readEffectiveParams( state, 'engine-config-known-entity' )
+    const p = readEffectiveParams( state, 'engine-config-known-entity')
     if( p.familiarityGrowthRate != null ) this._growthRate      = p.familiarityGrowthRate
     if( p.curiosityGain         != null ) this._curiosityGain   = p.curiosityGain
     if( p.reliabilityRate       != null ) this._reliabilityRate = p.reliabilityRate
@@ -149,17 +149,17 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     this._model.observe( e.type, e.salience )
 
     // Conscious learning (the reasoning write-path): a learned name + felt valence.
-    if( e.type === 'known.entity.learned' ){
+    if( e.type === 'known.entity.learned'){
       const u = e.payload as { keid?: string; name?: string; feeling?: number }
-      if( u?.keid && u.keid !== 'agent-self' )
+      if( u?.keid && u.keid !== 'agent-self')
         this._pendingConscious.push({ keid: u.keid, name: u.name, feeling: u.feeling })
       return
     }
 
     // Acting on/with an entity and seeing how it went — the reliability track-record.
-    if( e.type === 'action.outcome' ){
+    if( e.type === 'action.outcome'){
       const o = e.payload as { targetEntityId?: string; success?: boolean; outcomeQuality?: number }
-      if( o?.targetEntityId && o.targetEntityId !== 'agent-self' )
+      if( o?.targetEntityId && o.targetEntityId !== 'agent-self')
         this._pendingOutcomes.push({ keid: o.targetEntityId, signal: o.success ? 1 : 0 })
       return
     }
@@ -167,7 +167,7 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     // Otherwise a senses.<domain>.percept — bind the perceived entity (sourceEntityId).
     const p = e.payload as Percept | undefined
     const keid = p?.sourceEntityId
-    if( !keid || keid === 'agent-self' ) return
+    if( !keid || keid === 'agent-self') return
 
     // A channel-supplied display name rides on the raw input (e.g. TextMessage.speakerName).
     const raw  = p?.raw as { speakerName?: unknown } | undefined
@@ -252,7 +252,7 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     for( const d of [ ...this._dossiers.values() ] )
       if( d.familiarity < FORGET_FLOOR && !d.name && d.resolutionConfidence < CURIOUS_RESOLUTION ){
         this._dossiers.delete( d.keid )
-        commands.delete!.push( `ke-${d.keid}` )
+        commands.delete!.push(`ke-${d.keid}`)
       }
 
     // Persist dossiers (the perceptual layer of the known-entity node).
@@ -296,7 +296,7 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     // which only accepts [\w.] names — keids may contain ':' e.g. web:42.)
     for( const d of this._dossiers.values() ){
       if( d.familiarity < CURIOUS_FAMILIARITY ) continue          // only ones that matter
-      const skeid = d.keid.replace( /[^\w.]/g, '_' )
+      const skeid = d.keid.replace( /[^\w.]/g, '_')
       commands.metrics!.push([ `known_entity.${skeid}.resolution`, d.resolutionConfidence ])
 
       if( d.resolutionConfidence < CURIOUS_RESOLUTION )
@@ -312,12 +312,12 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
             goalCompletionCondition: `known_entity.${skeid}.resolution >= ${CURIOUS_RESOLVED}`,
           },
         })
-      else if( state.entities.has( `curiosity-${d.keid}` ) )
-        commands.delete!.push( `curiosity-${d.keid}` )            // resolved → the pull subsides
+      else if( state.entities.has(`curiosity-${d.keid}`) )
+        commands.delete!.push(`curiosity-${d.keid}`)            // resolved → the pull subsides
     }
 
     if( touched && this._bus ){
-      const predErr = this._model.observe( 'known_entity.count', this._dossiers.size )
+      const predErr = this._model.observe('known_entity.count', this._dossiers.size )
       if( !predErr.gated )
         this._bus.publish({ type: 'known.entity.updated', version: 1, sourceEngine: this.name,
           salience: Math.max( 0.2, predErr.salience ), payload: { tracked: this._dossiers.size } })
@@ -373,7 +373,7 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
 
         this._dossiers.delete( alias.keid )
         this._aliases.set( alias.keid, canon.keid )
-        commands.delete!.push( `ke-${alias.keid}` )
+        commands.delete!.push(`ke-${alias.keid}`)
         commands.set!.push({ id: `kea-${alias.keid}`, type: 'known-entity-alias',
           metadata: { aliasKeid: alias.keid, canonicalKeid: canon.keid } })
         merged = true
@@ -411,21 +411,21 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
   private _restoreFromState( state: ReadonlySimulationState ): void {
     // Recognised aliases first, so incoming references redirect to the canonical referent.
     for( const entity of state.entities.values() )
-      if( entity.type === 'known-entity-alias' ){
+      if( entity.type === 'known-entity-alias'){
         const a = entity.metadata?.['aliasKeid'] as string | undefined
         const c = entity.metadata?.['canonicalKeid'] as string | undefined
         if( a && c ) this._aliases.set( a, c )
       }
 
     for( const entity of state.entities.values() ){
-      if( entity.type !== 'known-entity' ) continue
+      if( entity.type !== 'known-entity') continue
       const m    = entity.metadata ?? {}
       const keid = m['keid'] as string | undefined
       if( !keid || this._dossiers.has( keid ) ) continue
 
       this._dossiers.set( keid, {
         keid,
-        kind:                 ( m['kind']                 as 'sentient' | 'thing' ) ?? 'sentient',
+        kind:                 ( m['kind']                 as 'sentient' | 'thing') ?? 'sentient',
         name:                 ( m['name']                 as string | undefined ),
         familiarity:          ( m['familiarity']          as number ) ?? 0,
         valence:              ( m['valence']              as number ) ?? 0,

@@ -104,7 +104,7 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
     if( this._index.size >= this._maxIndexedEpisodes )
       await this._evictColdest()
 
-    const embedding = await this._embedder.embed( episodeContentToText( content ), 'index' )
+    const embedding = await this._embedder.embed( episodeContentToText( content ), 'index')
 
     const record: VectorRecord = {
       id: episode.id,
@@ -138,7 +138,7 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
       await this._evictColdest()
 
     const contents = newEpisodes.map( e => episodeContentToText( e.content ) )
-    const embeddings = await this._embedder.embedBatch( contents, 'index' )
+    const embeddings = await this._embedder.embedBatch( contents, 'index')
 
     for( let i = 0; i < newEpisodes.length; i++ ){
       const { episode } = newEpisodes[i]!
@@ -167,7 +167,7 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
   }
 
   async search( query: unknown, filter?: VectorQueryFilter ): Promise<VectorQueryResult[]> {
-    const embedding = await this._embedder.embed( episodeContentToText( query ), 'recall' )
+    const embedding = await this._embedder.embed( episodeContentToText( query ), 'recall')
     return this.searchWithVector( embedding, filter )
   }
 
@@ -275,7 +275,7 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
       }
     }
     catch( err ){
-      logger.warn( `[VectorMemoryAdapter] Failed to load index:`, err )
+      logger.warn(`[VectorMemoryAdapter] Failed to load index:`, err )
     }
   }
 
@@ -308,7 +308,7 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
 
     this._persistDebounceTimer = setTimeout( () => {
       this.persist().catch( err => {
-        logger.error( `[VectorMemoryAdapter] Persist failed:`, err )
+        logger.error(`[VectorMemoryAdapter] Persist failed:`, err )
       } )
       this._persistDebounceTimer = null
     }, 5000 )

@@ -32,8 +32,8 @@ function deferred<T = void>() {
   return { promise, resolve, reject }
 }
 
-describe( 'LLMSemaphore — concurrency cap (R7)', () => {
-  it( 'admits up to max acquisitions without queueing, then frees them', async () => {
+describe('LLMSemaphore — concurrency cap (R7)', () => {
+  it('admits up to max acquisitions without queueing, then frees them', async () => {
     const sem = new LLMSemaphore( 2 )
 
     const r1 = await sem.acquire()
@@ -47,7 +47,7 @@ describe( 'LLMSemaphore — concurrency cap (R7)', () => {
     expect( sem.running ).toBe( 0 )
   } )
 
-  it( 'queues acquisitions beyond max and wakes them FIFO on release', async () => {
+  it('queues acquisitions beyond max and wakes them FIFO on release', async () => {
     const sem = new LLMSemaphore( 1 )
 
     const r1 = await sem.acquire()        // running=1, the only slot
@@ -76,7 +76,7 @@ describe( 'LLMSemaphore — concurrency cap (R7)', () => {
     expect( sem.queued ).toBe( 0 )
   } )
 
-  it( 'treats a double release as a no-op (no counter underflow)', async () => {
+  it('treats a double release as a no-op (no counter underflow)', async () => {
     const sem = new LLMSemaphore( 1 )
 
     const rel = await sem.acquire()
@@ -90,7 +90,7 @@ describe( 'LLMSemaphore — concurrency cap (R7)', () => {
     rel2()
   } )
 
-  it( 'does not start a queued waiter until a slot actually opens', async () => {
+  it('does not start a queued waiter until a slot actually opens', async () => {
     const sem = new LLMSemaphore( 1 )
     const rel = await sem.acquire()
 
@@ -109,28 +109,28 @@ describe( 'LLMSemaphore — concurrency cap (R7)', () => {
   } )
 } )
 
-describe( 'isRateLimitError — only 429-shaped Errors retry (R7)', () => {
-  it( 'returns true for a statusCode 429 Error', () => {
-    const err = Object.assign( new Error( 'boom' ), { statusCode: 429 } )
+describe('isRateLimitError — only 429-shaped Errors retry (R7)', () => {
+  it('returns true for a statusCode 429 Error', () => {
+    const err = Object.assign( new Error('boom'), { statusCode: 429 } )
     expect( isRateLimitError( err ) ).toBe( true )
   } )
 
-  it( 'returns true for rate-limit message variants', () => {
-    expect( isRateLimitError( new Error( 'rate_limit_error: slow down' ) ) ).toBe( true )
-    expect( isRateLimitError( new Error( 'hit the rate limit' ) ) ).toBe( true )
-    expect( isRateLimitError( new Error( 'HTTP 429 Too Many Requests' ) ) ).toBe( true )
+  it('returns true for rate-limit message variants', () => {
+    expect( isRateLimitError( new Error('rate_limit_error: slow down') ) ).toBe( true )
+    expect( isRateLimitError( new Error('hit the rate limit') ) ).toBe( true )
+    expect( isRateLimitError( new Error('HTTP 429 Too Many Requests') ) ).toBe( true )
   } )
 
-  it( 'returns false for ordinary errors and non-Error values', () => {
-    expect( isRateLimitError( new Error( 'network unreachable' ) ) ).toBe( false )
-    expect( isRateLimitError( '429' ) ).toBe( false )              // string, not Error
+  it('returns false for ordinary errors and non-Error values', () => {
+    expect( isRateLimitError( new Error('network unreachable') ) ).toBe( false )
+    expect( isRateLimitError('429') ).toBe( false )              // string, not Error
     expect( isRateLimitError( { statusCode: 429 } ) ).toBe( false ) // plain object, not Error
     expect( isRateLimitError( null ) ).toBe( false )
     expect( isRateLimitError( undefined ) ).toBe( false )
   } )
 } )
 
-describe( 'withGate — retry semantics (R7)', () => {
+describe('withGate — retry semantics (R7)', () => {
   // Real timers with a tiny env-tuned backoff (WILL_LLM_RETRY_BASE_MS, read
   // lazily by withGate) — bun:test's `vi` has no async fake-timer helpers, and
   // real waits of a few ms exercise the genuine code path anyway.
@@ -143,7 +143,7 @@ describe( 'withGate — retry semantics (R7)', () => {
     process.env.WILL_LLM_RETRY_BASE_MS = '1'   // backoff ≈ 2, 4 ms
     process.env.WILL_LLM_MAX_RETRIES   = '2'
     // Pin the backoff jitter so delays are deterministic.
-    vi.spyOn( Math, 'random' ).mockReturnValue( 0 )
+    vi.spyOn( Math, 'random').mockReturnValue( 0 )
   } )
 
   afterEach( () => {
@@ -154,42 +154,42 @@ describe( 'withGate — retry semantics (R7)', () => {
     vi.restoreAllMocks()
   } )
 
-  it( 'calls fn once and returns its value on success', async () => {
-    const fn = vi.fn().mockResolvedValue( 'ok' )
+  it('calls fn once and returns its value on success', async () => {
+    const fn = vi.fn().mockResolvedValue('ok')
 
-    const result = await withGate( fn, 'success' )
+    const result = await withGate( fn, 'success')
 
-    expect( result ).toBe( 'ok' )
+    expect( result ).toBe('ok')
     expect( fn ).toHaveBeenCalledTimes( 1 )
   } )
 
-  it( 'propagates a non-rate-limit error immediately without retrying', async () => {
-    const fn = vi.fn().mockRejectedValue( new Error( 'fatal' ) )
+  it('propagates a non-rate-limit error immediately without retrying', async () => {
+    const fn = vi.fn().mockRejectedValue( new Error('fatal') )
 
-    await expect( withGate( fn, 'fatal' ) ).rejects.toThrow( 'fatal' )
+    await expect( withGate( fn, 'fatal') ).rejects.toThrow('fatal')
     expect( fn ).toHaveBeenCalledTimes( 1 )
   } )
 
-  it( 'retries after a 429 and resolves on the next attempt', async () => {
+  it('retries after a 429 and resolves on the next attempt', async () => {
     const fn = vi.fn()
-      .mockRejectedValueOnce( new Error( 'rate_limit_error' ) )
-      .mockResolvedValueOnce( 'recovered' )
+      .mockRejectedValueOnce( new Error('rate_limit_error') )
+      .mockResolvedValueOnce('recovered')
 
     // Backoff is ~2 ms (env-tuned) — await straight through it.
-    await expect( withGate( fn, 'retry-once' ) ).resolves.toBe( 'recovered' )
+    await expect( withGate( fn, 'retry-once') ).resolves.toBe('recovered')
     expect( fn ).toHaveBeenCalledTimes( 2 )
   } )
 
-  it( 'gives up and rejects with the 429 after exhausting the retry budget', async () => {
-    const rateLimit = Object.assign( new Error( 'too many requests' ), { statusCode: 429 } )
+  it('gives up and rejects with the 429 after exhausting the retry budget', async () => {
+    const rateLimit = Object.assign( new Error('too many requests'), { statusCode: 429 } )
     const fn = vi.fn().mockRejectedValue( rateLimit )
 
-    await expect( withGate( fn, 'persistent-429' ) ).rejects.toBe( rateLimit )
+    await expect( withGate( fn, 'persistent-429') ).rejects.toBe( rateLimit )
     // Initial attempt + the full retry budget (WILL_LLM_MAX_RETRIES=2) = 3 calls.
     expect( fn ).toHaveBeenCalledTimes( 3 )
   } )
 
-  it( 'releases its slot during backoff so other engines are not starved (R7)', async () => {
+  it('releases its slot during backoff so other engines are not starved (R7)', async () => {
     // A single-slot gate makes starvation observable: if the rate-limited call
     // held its slot through the backoff, the competitor below could never run.
     // Use a WIDE real backoff (200 ms) so "mid-backoff" is unambiguous.
@@ -197,9 +197,9 @@ describe( 'withGate — retry semantics (R7)', () => {
     const gate = new LLMSemaphore( 1 )
 
     const blocked = vi.fn()
-      .mockRejectedValueOnce( Object.assign( new Error( 'rate_limit_error' ), { statusCode: 429 } ) )
-      .mockResolvedValueOnce( 'recovered' )
-    const competitor = vi.fn().mockResolvedValue( 'through' )
+      .mockRejectedValueOnce( Object.assign( new Error('rate_limit_error'), { statusCode: 429 } ) )
+      .mockResolvedValueOnce('recovered')
+    const competitor = vi.fn().mockResolvedValue('through')
 
     const pBlocked    = withGate( blocked, 'blocked', gate )
     const pCompetitor = withGate( competitor, 'competitor', gate )
@@ -207,14 +207,14 @@ describe( 'withGate — retry semantics (R7)', () => {
     // `blocked` attempts once, hits the 429, releases its slot, and parks in
     // setTimeout for ~200 ms. The freed slot lets `competitor` acquire and
     // resolve right now — mid-backoff (would hang under the old slot-holding bug).
-    await expect( pCompetitor ).resolves.toBe( 'through' )
+    await expect( pCompetitor ).resolves.toBe('through')
 
     expect( blocked ).toHaveBeenCalledTimes( 1 )   // attempted once, still backing off
     expect( competitor ).toHaveBeenCalledTimes( 1 )
     expect( gate.running ).toBe( 0 )               // competitor released; the sleeping call holds nothing
 
     // Let the backoff elapse: `blocked` re-acquires, retries, and resolves.
-    await expect( pBlocked ).resolves.toBe( 'recovered' )
+    await expect( pBlocked ).resolves.toBe('recovered')
     expect( blocked ).toHaveBeenCalledTimes( 2 )
   } )
 } )

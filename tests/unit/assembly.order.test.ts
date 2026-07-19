@@ -139,34 +139,34 @@ const EXPECTED_UNWIRED: Record<Anatomy, string[]> = {
   ].sort(),
 }
 
-describe( 'mind assembly — order + wiring as reviewed artifacts', () => {
+describe('mind assembly — order + wiring as reviewed artifacts', () => {
   beforeAll( () => setLogger( { debug: () => {}, info: () => {}, warn: () => {}, error: console.error } ) )
   afterAll( () => resetLogger() )
 
   for( const anatomy of [ 'reflex', 'mind' ] as Anatomy[] ){
-    it( `${anatomy}: engine execution order matches the pinned artifact`, () => {
-      const { simulation } = assembleMind( `assembly-${anatomy}`, makeConfig( anatomy ) )
+    it(`${anatomy}: engine execution order matches the pinned artifact`, () => {
+      const { simulation } = assembleMind(`assembly-${anatomy}`, makeConfig( anatomy ) )
       expect( simulation.orchestrator.engineNames ).toEqual( EXPECTED_ORDER[ anatomy ] )
     } )
 
-    it( `${anatomy}: no attachment is unwired beyond the pinned expected set`, () => {
-      const { simulation } = assembleMind( `assembly-audit-${anatomy}`, makeConfig( anatomy ) )
+    it(`${anatomy}: no attachment is unwired beyond the pinned expected set`, () => {
+      const { simulation } = assembleMind(`assembly-audit-${anatomy}`, makeConfig( anatomy ) )
       const audit = auditAssemblyWiring( simulation.orchestrator.engines )
-      expect( wiringKeys( audit, 'unwired' ) ).toEqual( EXPECTED_UNWIRED[ anatomy ] )
+      expect( wiringKeys( audit, 'unwired') ).toEqual( EXPECTED_UNWIRED[ anatomy ] )
     } )
   }
 
-  it( 'threads config.model to the executive as a concrete id (env pin wins)', () => {
+  it('threads config.model to the executive as a concrete id (env pin wins)', () => {
     const saved = process.env['WILL_LLM_MODEL']
     delete process.env['WILL_LLM_MODEL']
     try {
-      const { cognition } = assembleMind( 'assembly-model', {
+      const { cognition } = assembleMind('assembly-model', {
         ...makeConfig('mind'), id: 'assembly-model', model: 'test-model-id',
       } )
-      expect( cognition.executiveEngine.modelId ).toBe( 'test-model-id' )
+      expect( cognition.executiveEngine.modelId ).toBe('test-model-id')
 
       // Per-role map: summarizer diverges, deliberation falls back to executive.
-      const { cognition: c3 } = assembleMind( 'assembly-model-3', {
+      const { cognition: c3 } = assembleMind('assembly-model-3', {
         ...makeConfig('mind'), id: 'assembly-model-3',
         model: { executive: 'big-model', summarizer: 'small-model' },
       } )
@@ -175,10 +175,10 @@ describe( 'mind assembly — order + wiring as reviewed artifacts', () => {
       } )
 
       process.env['WILL_LLM_MODEL'] = 'operator-pin'
-      const { cognition: c2 } = assembleMind( 'assembly-model-2', {
+      const { cognition: c2 } = assembleMind('assembly-model-2', {
         ...makeConfig('mind'), id: 'assembly-model-2', model: 'test-model-id',
       } )
-      expect( c2.executiveEngine.modelId ).toBe( 'operator-pin' )
+      expect( c2.executiveEngine.modelId ).toBe('operator-pin')
     } finally {
       if( saved === undefined ) delete process.env['WILL_LLM_MODEL']
       else process.env['WILL_LLM_MODEL'] = saved

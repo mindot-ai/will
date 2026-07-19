@@ -103,7 +103,7 @@ export async function buildExecutiveContext(
       }
       
       // Filter goal-type episodes — they duplicate the Active Goals section
-      const recalled = combined.filter( ep => ep.sourceType !== 'goal' ).slice( 0, 8 )
+      const recalled = combined.filter( ep => ep.sourceType !== 'goal').slice( 0, 8 )
       relevantPlanIds = collectPlanIds( recalled )
       memories = recalled.map( mapEpisodeToMemory )
       // Recall reinforces retention: marking each surfaced episode as retrieved
@@ -117,7 +117,7 @@ export async function buildExecutiveContext(
       // the default query order may not be chronological when using PMA replay.
       const fallbackResults = deps.episodicConsolidator.query({ limit: 20 })
       const recalled = fallbackResults
-        .filter( ep => ep.sourceType !== 'goal' )
+        .filter( ep => ep.sourceType !== 'goal')
         .slice()
         .sort( ( a, b ) => ( ( b.createdAt as unknown as number ) ?? 0 ) - ( ( a.createdAt as unknown as number ) ?? 0 ) )
         .slice( 0, 8 )
@@ -168,7 +168,7 @@ export async function buildExecutiveContext(
 
   // ── Stage 1: Deduplication ────────────────────────────────
   const _tokenize = ( s: string ): Set<string> =>
-    new Set( s.toLowerCase().replace( /[^a-z0-9 ]/g, '' ).split( /\s+/ ).filter( Boolean ) )
+    new Set( s.toLowerCase().replace( /[^a-z0-9 ]/g, '').split( /\s+/ ).filter( Boolean ) )
 
   const _jaccard = ( a: Set<string>, b: Set<string> ): number => {
     let intersection = 0
@@ -236,7 +236,7 @@ export async function buildExecutiveContext(
   // impulsivity falls as conscientiousness is demonstrated. So it is no longer static
   // per session. `readEffectiveParams` only layers a prior onto a key the base already
   // has, so absent a PMA seed this degrades to base ⇒ undefined disposition.
-  const execParams = readEffectiveParams( state, 'engine-config-executive' )
+  const execParams = readEffectiveParams( state, 'engine-config-executive')
   const behavioralDisposition = (
     execParams.riskTolerance   !== undefined ||
     execParams.explorationRate !== undefined ||
@@ -257,7 +257,7 @@ export async function buildExecutiveContext(
   }> = []
 
   for( const entity of state.entities.values() ){
-    if( entity.type !== 'decision.record' ) continue
+    if( entity.type !== 'decision.record') continue
     const actionStatus = entity.metadata?.actionStatus as string | undefined
     if( !actionStatus ) continue
     if( !( [ 'completed', 'failed', 'awaiting_host', 'timed_out' ] as string[] ).includes( actionStatus ) ) continue
@@ -266,7 +266,7 @@ export async function buildExecutiveContext(
       type:   ( entity.metadata?.actionType as string )    ?? 'unknown',
       status: actionStatus as 'completed' | 'failed' | 'awaiting_host' | 'timed_out',
       tick:   ( entity.metadata?.executionTick as number ) ?? ( entity.metadata?.dispatchedAt as number ) ?? 0,
-      outcome: String( entity.metadata?.outcome ?? '' ).slice( 0, 120 ),
+      outcome: String( entity.metadata?.outcome ?? '').slice( 0, 120 ),
       planId: entity.metadata?.planId as string | undefined,
     })
   }
@@ -280,7 +280,7 @@ export async function buildExecutiveContext(
   // progress, enabling it to target a specific plan by id when managing several. (P4)
   const plans: ExecutiveContext['plans'] = []
   for( const entity of state.entities.values() ){
-    if( entity.type !== 'plan' ) continue
+    if( entity.type !== 'plan') continue
     const m = entity.metadata ?? {}
     const steps = ( m['steps'] as Array<{ status?: string }> | undefined ) ?? []
     plans.push({
@@ -289,7 +289,7 @@ export async function buildExecutiveContext(
       status:          ( m['status'] as string ) ?? 'unknown',
       executionTier:   ( m['executionTier'] as string ) ?? 'automatic',
       totalSteps:      steps.length,
-      completedSteps:  steps.filter( s => s.status === 'completed' || s.status === 'skipped' ).length,
+      completedSteps:  steps.filter( s => s.status === 'completed' || s.status === 'skipped').length,
       expectedOutcome: ( m['expectedOutcome'] as string ) ?? '',
       requestingEntityId: m['requestingEntityId'] as string | undefined,
     })
@@ -346,7 +346,7 @@ const MAX_SURFACED_ABILITIES = 8
 export function extractAbilities( state: ReadonlySimulationState ): ExecutiveContext['abilities'] {
   const out: NonNullable<ExecutiveContext['abilities']> = []
   for( const e of state.entities.values() ){
-    if( e.type !== 'affordance' ) continue
+    if( e.type !== 'affordance') continue
     const m = e.metadata as Record<string, unknown> | undefined
     if( m?.['source'] !== 'external' || m?.['available'] === false ) continue
     const name = typeof m?.['schema'] === 'string' ? m['schema'] as string : undefined
@@ -372,13 +372,13 @@ export function extractCurrentFocus(
   state: ReadonlySimulationState,
   goals: ExecutiveContext['goals']
 ): ExecutiveContext['currentFocus'] {
-  const m = state.entities.get( 'task-switch-focus' )?.metadata as Record<string, unknown> | undefined
+  const m = state.entities.get('task-switch-focus')?.metadata as Record<string, unknown> | undefined
   if( !m?.goalId ) return undefined
   return {
     goalId:          m.goalId as string,
     goalDescription: goals.find( g => g.id === m.goalId )?.description,
     focusTicks:      ( m.focusTicks as number ) ?? 0,
-    switchCost:      state.metrics.get( 'task_switch.switch_cost' ) ?? 0,
+    switchCost:      state.metrics.get('task_switch.switch_cost') ?? 0,
   }
 }
 
@@ -397,7 +397,7 @@ export function extractKnownEntities( state: ReadonlySimulationState ): Executiv
   // triple / dossier / beliefs under the old keid all aggregate under the one someone.
   const alias = new Map<string, string>()
   for( const e of state.entities.values() )
-    if( e.type === 'known-entity-alias' ){
+    if( e.type === 'known-entity-alias'){
       const a = e.metadata?.aliasKeid as string | undefined
       const c = e.metadata?.canonicalKeid as string | undefined
       if( a && c ) alias.set( a, c )
@@ -421,7 +421,7 @@ export function extractKnownEntities( state: ReadonlySimulationState ): Executiv
     }
     else if( e.type === 'reputation' && m.keid ){
       const a = get( m.keid as string )
-      if( typeof m.name === 'string' ) a.name = m.name
+      if( typeof m.name === 'string') a.name = m.name
       a.trust           = m.trustworthiness as number
       a.cooperativeness = m.cooperativeness as number
       a.reliability   ??= m.reliability as number   // sentient social reliability — the dossier's wins if present
@@ -433,13 +433,13 @@ export function extractKnownEntities( state: ReadonlySimulationState ): Executiv
       // sentient social one). (familiarity is intentionally NOT surfaced — it decays each
       // tick and would churn the cached prompt; it stays internal to the tracker.)
       const a = get( m.keid as string )
-      if( typeof m.name === 'string' ) a.name = m.name
-      if( m.kind === 'thing' || m.kind === 'sentient' ) a.kind = m.kind as 'thing' | 'sentient'
-      if( typeof m.reliability === 'number' ) a.reliability = m.reliability as number
+      if( typeof m.name === 'string') a.name = m.name
+      if( m.kind === 'thing' || m.kind === 'sentient') a.kind = m.kind as 'thing' | 'sentient'
+      if( typeof m.reliability === 'number') a.reliability = m.reliability as number
       a._recency = Math.max( a._recency, ( m.lastSeenTick as number ) ?? 0 )
     }
-    else if( e.type === 'attachment.bond' ){
-      const keid = ( m.keid as string ) ?? e.id.replace( /^bond-/, '' )
+    else if( e.type === 'attachment.bond'){
+      const keid = ( m.keid as string ) ?? e.id.replace( /^bond-/, '')
       get( keid ).closeness = m.attachmentStrength as number
     }
   }
@@ -465,33 +465,33 @@ function buildSemanticQuery(
   // Active goals (highest priority first)
   const goals = goalManager?.getActiveGoals().slice( 0, 3 ) ?? []
   if( goals.length > 0 ){
-    parts.push( `Current goals: ${goals.map( g => g.description ).join( '; ' )}` )
+    parts.push(`Current goals: ${goals.map( g => g.description ).join('; ')}`)
   }
 
   // Dominant emotion if intense
   const valence = state.metrics.get('affect.valence') ?? 0
   const dominantEmotion = valence > 0.3 ? 'positive' : valence < -0.3 ? 'negative' : 'neutral'
-  if( dominantEmotion !== 'neutral' ) parts.push( `Feeling ${dominantEmotion}` )
+  if( dominantEmotion !== 'neutral') parts.push(`Feeling ${dominantEmotion}`)
 
   // Active conversation entities — pulls memories about current interlocutors
   const senderNames = new Set<string>()
   for( const entity of state.entities.values() ){
-    if( entity.type !== 'communication' ) continue
+    if( entity.type !== 'communication') continue
     const msgTick = ( entity.metadata?.tick as number ) ?? 0
     if( state.tick - msgTick > 30 ) continue
     if( entity.metadata?.processedByExecutive ) continue
     const name = entity.metadata?.agentName as string | undefined
-    if( name && name !== 'unknown' ) senderNames.add( name )
+    if( name && name !== 'unknown') senderNames.add( name )
   }
-  if( senderNames.size > 0 ) parts.push( `Talking with: ${[ ...senderNames ].join( ', ' )}` )
+  if( senderNames.size > 0 ) parts.push(`Talking with: ${[ ...senderNames ].join(', ')}`)
 
   // Recent percepts (top 3 by salience)
   const percepts = extractPercepts( state ).slice( 0, 3 )
   if( percepts.length > 0 ){
-    parts.push( `Recently observed: ${percepts.map( p => p.summary ).join( '; ' )}` )
+    parts.push(`Recently observed: ${percepts.map( p => p.summary ).join('; ')}`)
   }
 
-  return parts.length > 0 ? parts.join( '. ' ) : 'Current situation'
+  return parts.length > 0 ? parts.join('. ') : 'Current situation'
 }
 
 /** Pull planIds from recalled plan-descriptor episodes (their content carries planId). */
@@ -500,26 +500,26 @@ function collectPlanIds( episodes: Array<{ content: unknown }> ): string[] {
   for( const ep of episodes ){
     const c = ep.content as Record<string, any> | null | undefined
     const pid = c?.[ 'planId' ] ?? c?.[ 'content' ]?.[ 'planId' ]
-    if( typeof pid === 'string' ) ids.push( pid )
+    if( typeof pid === 'string') ids.push( pid )
   }
   return [ ...new Set( ids ) ]
 }
 
 function _extractEpisodeContent( raw: unknown ): string {
-  if( typeof raw === 'string' ) return raw
+  if( typeof raw === 'string') return raw
   if( typeof raw !== 'object' || raw === null ) return String( raw )
   const c = raw as Record<string, unknown>
 
   // WMItem wrapper: { wmType, content: { description | summary | ... } }
   // Check wmType first so we correctly unwrap structured WM items.
-  if( typeof c['wmType'] === 'string' ){
+  if( typeof c['wmType'] === 'string'){
     const inner = c['content']
-    if( typeof inner === 'string' ) return inner
+    if( typeof inner === 'string') return inner
     if( typeof inner === 'object' && inner !== null ){
       const ic = inner as Record<string, unknown>
-      if( typeof ic['description'] === 'string' ) return ic['description']
-      if( typeof ic['summary']     === 'string' ) return ic['summary']
-      if( typeof ic['userMessage'] === 'string' ){
+      if( typeof ic['description'] === 'string') return ic['description']
+      if( typeof ic['summary']     === 'string') return ic['summary']
+      if( typeof ic['userMessage'] === 'string'){
         const reply = typeof ic['willReply'] === 'string' ? ` → "${ic['willReply']}"` : ''
         return `"${ic['userMessage']}"${reply}`
       }
@@ -527,23 +527,23 @@ function _extractEpisodeContent( raw: unknown ): string {
   }
 
   // Plain percept WMItem: { summary }  or nested { content: { summary } }
-  if( typeof c['summary'] === 'string' ) return c['summary']
+  if( typeof c['summary'] === 'string') return c['summary']
   const inner = c['content']
-  if( typeof inner === 'string' ) return inner
+  if( typeof inner === 'string') return inner
   if( typeof inner === 'object' && inner !== null ){
     const ic = inner as Record<string, unknown>
-    if( typeof ic['summary'] === 'string' ) return ic['summary']
-    if( typeof ic['description'] === 'string' ) return ic['description']
+    if( typeof ic['summary'] === 'string') return ic['summary']
+    if( typeof ic['description'] === 'string') return ic['description']
   }
   // Belief: { statement }
-  if( typeof c['statement'] === 'string' ) return c['statement']
+  if( typeof c['statement'] === 'string') return c['statement']
   // Conversation turn: { userMessage, willReply }
-  if( typeof c['userMessage'] === 'string' ){
+  if( typeof c['userMessage'] === 'string'){
     const reply = typeof c['willReply'] === 'string' ? ` → "${c['willReply']}"` : ''
     return `"${c['userMessage']}"${reply}`
   }
   // Goal: { description }
-  if( typeof c['description'] === 'string' ) return c['description']
+  if( typeof c['description'] === 'string') return c['description']
   return JSON.stringify( raw ).slice( 0, 200 )
 }
 
@@ -570,10 +570,10 @@ function mapEpisodeToMemory( ep: {
 }
 
 function extractSummary( content: unknown ): string {
-  if( typeof content === 'string' )
+  if( typeof content === 'string')
     return content.slice( 0, 120 )
 
-  if( content && typeof content === 'object' ){
+  if( content && typeof content === 'object'){
     const obj = content as Record<string, unknown>
 
     return (obj.summary as string)
@@ -581,7 +581,7 @@ function extractSummary( content: unknown ): string {
             ?? JSON.stringify( content ).slice( 0, 120 )
   }
 
-  return String( content ?? '' ).slice( 0, 120 )
+  return String( content ?? '').slice( 0, 120 )
 }
 
 function extractPercepts( state: ReadonlySimulationState ): Array<{ category: string; summary: string; salience: number }> {

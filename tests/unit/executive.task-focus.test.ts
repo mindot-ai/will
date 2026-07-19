@@ -18,26 +18,26 @@ const goals: ExecutiveContext['goals'] = [ { id: 'g1', description: 'finish the 
 
 const stateFocusedOn = ( goalId: string | null, focusTicks: number, switchCost: number ) => {
   const entities = new Map<string, any>()
-  if( goalId ) entities.set( 'task-switch-focus', { id: 'task-switch-focus', type: 'task.focus', metadata: { goalId, focusTicks } } )
+  if( goalId ) entities.set('task-switch-focus', { id: 'task-switch-focus', type: 'task.focus', metadata: { goalId, focusTicks } } )
   const metrics = new Map<string, number>([ [ 'task_switch.switch_cost', switchCost ] ])
   return { tick: 60, entities, metrics } as any
 }
 
-describe( 'extractCurrentFocus — surfaces task.switcher focus', () => {
-  it( 'joins the focus entity to the goal description + switch cost', () => {
-    const f = extractCurrentFocus( stateFocusedOn( 'g1', 12, 0.35 ), goals )!
-    expect( f.goalId ).toBe( 'g1' )
-    expect( f.goalDescription ).toBe( 'finish the report' )
+describe('extractCurrentFocus — surfaces task.switcher focus', () => {
+  it('joins the focus entity to the goal description + switch cost', () => {
+    const f = extractCurrentFocus( stateFocusedOn('g1', 12, 0.35 ), goals )!
+    expect( f.goalId ).toBe('g1')
+    expect( f.goalDescription ).toBe('finish the report')
     expect( f.focusTicks ).toBe( 12 )
     expect( f.switchCost ).toBe( 0.35 )
   } )
 
-  it( 'is undefined when nothing is in focus', () => {
+  it('is undefined when nothing is in focus', () => {
     expect( extractCurrentFocus( stateFocusedOn( null, 0, 0.3 ), goals ) ).toBeUndefined()
   } )
 } )
 
-describe( 'buildUserMessage — Task Focus block + persistence resistance', () => {
+describe('buildUserMessage — Task Focus block + persistence resistance', () => {
   const render = ( currentFocus?: ExecutiveContext['currentFocus'] ): string =>
     buildUserMessage( {
       context: {
@@ -53,16 +53,16 @@ describe( 'buildUserMessage — Task Focus block + persistence resistance', () =
       focus: { title: 'T', content: 'c' }, mode: 'master',
     } )
 
-  it( 'renders the focus + a stronger pull-to-stay for a higher (conscientious) switch cost', () => {
+  it('renders the focus + a stronger pull-to-stay for a higher (conscientious) switch cost', () => {
     const low  = render( { goalId: 'g1', goalDescription: 'finish the report', focusTicks: 12, switchCost: 0.30 } )
     const high = render( { goalId: 'g1', goalDescription: 'finish the report', focusTicks: 12, switchCost: 0.50 } )
-    expect( low ).toContain( '## Task Focus' )
-    expect( low ).toContain( 'finish the report' )
-    expect( low ).toContain( 'some inertia to overcome' )
-    expect( high ).toContain( 'a strong pull to see this through' )
+    expect( low ).toContain('## Task Focus')
+    expect( low ).toContain('finish the report')
+    expect( low ).toContain('some inertia to overcome')
+    expect( high ).toContain('a strong pull to see this through')
   } )
 
-  it( 'omits the block when nothing is in focus', () => {
-    expect( render() ).not.toContain( '## Task Focus' )
+  it('omits the block when nothing is in focus', () => {
+    expect( render() ).not.toContain('## Task Focus')
   } )
 } )

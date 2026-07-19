@@ -331,8 +331,8 @@ export class AffectiveBlender implements SimulationEngine, CognitiveEngine {
     //     dampens by resonance × closeness, so it folds in with a modest weight. Before
     //     inertia so the contagion smooths naturally rather than being applied cold.
     const empathicPAD: PADState = {
-      valence:   Math.max( -1, Math.min( 1, socialPAD.valence + ( state.metrics.get( 'empathy.vicarious_valence' ) ?? 0 ) * EMPATHY_CONTAGION_WEIGHT )),
-      arousal:   Math.max( 0, Math.min( 1, socialPAD.arousal + ( state.metrics.get( 'empathy.vicarious_arousal' ) ?? 0 ) * EMPATHY_CONTAGION_WEIGHT )),
+      valence:   Math.max( -1, Math.min( 1, socialPAD.valence + ( state.metrics.get('empathy.vicarious_valence') ?? 0 ) * EMPATHY_CONTAGION_WEIGHT )),
+      arousal:   Math.max( 0, Math.min( 1, socialPAD.arousal + ( state.metrics.get('empathy.vicarious_arousal') ?? 0 ) * EMPATHY_CONTAGION_WEIGHT )),
       dominance: socialPAD.dominance,
     }
 
@@ -398,7 +398,7 @@ export class AffectiveBlender implements SimulationEngine, CognitiveEngine {
       _bus.publish({ type: 'affect.state.shifted', version: 1, sourceEngine: this.name, salience: Math.min(1, Math.abs(modulatedPAD.valence) + modulatedPAD.arousal * 0.5), payload: { valence: modulatedPAD.valence, arousal: modulatedPAD.arousal, dominantEmotion: dominant } })
     // Phase D: rich state-change event
     if( _bus )
-      _bus.publish({ type: 'affect.state.changed', version: 1, sourceEngine: this.name, salience: this._model.observe( 'affect.arousal', modulatedPAD.arousal ).salience, payload: { valence: modulatedPAD.valence, arousal: modulatedPAD.arousal, dominance: modulatedPAD.dominance } })
+      _bus.publish({ type: 'affect.state.changed', version: 1, sourceEngine: this.name, salience: this._model.observe('affect.arousal', modulatedPAD.arousal ).salience, payload: { valence: modulatedPAD.valence, arousal: modulatedPAD.arousal, dominance: modulatedPAD.dominance } })
     return { events: events.length > 0 ? events : undefined, commands }
   }
 

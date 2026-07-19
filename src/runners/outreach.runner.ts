@@ -111,8 +111,8 @@ async function main(): Promise<void> {
     lastBlocked   = g('agency.communicate.blocked')
 
     if( tick % 10 === 0 ){
-      const goals = [ ...snap.entities.values() ].filter( e => e.type === 'goal' && e.metadata?.status === 'active' ).length
-      const sent  = [ ...snap.entities.values() ].filter( e => e.type === 'conversation.sent' ).length
+      const goals = [ ...snap.entities.values() ].filter( e => e.type === 'goal' && e.metadata?.status === 'active').length
+      const sent  = [ ...snap.entities.values() ].filter( e => e.type === 'conversation.sent').length
       console.log(
         `[t${tick}] v=${g('affect.valence').toFixed(2)} arousal=${g('affect.arousal').toFixed(2)} ` +
         `frust=${g('emotion.frustration').toFixed(2)} energy=${g('energy.level').toFixed(0)} ` +
@@ -130,7 +130,7 @@ async function main(): Promise<void> {
   const startedAt = Date.now()
   while( true ){
     const s = m.listWills().find( w => w.id === WILL_ID )
-    if( !s || s.status === 'archived' ) break
+    if( !s || s.status === 'archived') break
     if( s.tickCount >= END_TICK ) break
     if( sawReactive && sawProactive ){ console.log('\n[scenario] both paths observed — wrapping up'); break }
     if( Date.now() - startedAt > SAFETY_MS ){ console.log('\n[scenario] safety cap hit'); break }

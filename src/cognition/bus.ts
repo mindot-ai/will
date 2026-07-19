@@ -73,11 +73,11 @@ interface Subscription {
 }
 
 function topicMatches( pattern: string, topic: string ): boolean {
-  if( pattern === '*' ) return true   // global workspace subscription
+  if( pattern === '*') return true   // global workspace subscription
   if( pattern === topic ) return true
   if( pattern.endsWith('.*') ){
     const prefix = pattern.slice( 0, -2 )
-    return topic === prefix || topic.startsWith( prefix + '.' )
+    return topic === prefix || topic.startsWith( prefix + '.')
   }
   return false
 }

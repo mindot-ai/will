@@ -5,10 +5,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '#cognition':  path.resolve( __dirname, 'src/cognition'  ),
-      '#faculties':  path.resolve( __dirname, 'src/cognition/faculties' ),
-      '#agency':     path.resolve( __dirname, 'src/cognition/agency' ),
-      '#senses':     path.resolve( __dirname, 'src/cognition/senses' ),
-      '#memory':     path.resolve( __dirname, 'src/cognition/memory' ),
+      '#faculties':  path.resolve( __dirname, 'src/cognition/faculties'),
+      '#agency':     path.resolve( __dirname, 'src/cognition/agency'),
+      '#senses':     path.resolve( __dirname, 'src/cognition/senses'),
+      '#memory':     path.resolve( __dirname, 'src/cognition/memory'),
       '#extensions': path.resolve( __dirname, 'src/extensions'        ),
       '#effectors':  path.resolve( __dirname, 'src/effectors'         ),
       '#sandboxes':  path.resolve( __dirname, 'src/sandboxes'         ),

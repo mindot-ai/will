@@ -84,7 +84,7 @@ export class DefaultEventLog implements EventLog {
   }
 
   private async _writeBatch( batch: CognitiveEvent[] ): Promise<void> {
-    const lines  = batch.map( e => JSON.stringify( e ) ).join( '\n' ) + '\n'
+    const lines  = batch.map( e => JSON.stringify( e ) ).join('\n') + '\n'
     let existing = ''
 
     try {
@@ -92,7 +92,7 @@ export class DefaultEventLog implements EventLog {
         existing = await this._storage.read( this._path )
     } catch { /* file may not exist yet */ }
 
-    await this._storage.ensureDir?.( this._path.replace( /\/[^/]+$/, '' ) )
+    await this._storage.ensureDir?.( this._path.replace( /\/[^/]+$/, '') )
     await this._storage.write( this._path, existing + lines )
   }
 }

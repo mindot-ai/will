@@ -23,7 +23,7 @@ import { SnapshotManager } from '#core/snapshot.manager'
 import { createContext } from '#core/utils'
 import type { ReadonlySimulationState, SimulationContext, Tick } from '#core/types'
 
-const ctx = createContext( 'sim', 'run', 1 ) as unknown as SimulationContext
+const ctx = createContext('sim', 'run', 1 ) as unknown as SimulationContext
 
 /**
  * A state whose single counter metric grows by `tick` each call and which
@@ -33,14 +33,14 @@ const ctx = createContext( 'sim', 'run', 1 ) as unknown as SimulationContext
 function stateAt( tick: number ): ReadonlySimulationState {
   const entities = new Map()
   // One entity that is rewritten every tick (updatedAt advances) …
-  entities.set( 'counter', {
+  entities.set('counter', {
     id: 'counter', type: 'counter',
     createdAt: 0, updatedAt: tick,
     metadata: { value: tick, components: {} },
   })
   // … plus a brand-new entity each tick, so the *cumulative* entity set grows
   // monotonically while the *per-interval* delta stays a single addition.
-  entities.set( `e-${tick}`, {
+  entities.set(`e-${tick}`, {
     id: `e-${tick}`, type: 'ephemeral',
     createdAt: tick, updatedAt: tick,
     metadata: { components: {} },
@@ -60,8 +60,8 @@ function run( mgr: SnapshotManager, lastTick: number ): void {
     mgr.onTick( t as Tick, stateAt( t ), ctx )
 }
 
-describe( 'SnapshotManager — delta baseline advances every snapshot (FN13)', () => {
-  it( 'each delta references its immediate predecessor, not the frozen tick-0 base', () => {
+describe('SnapshotManager — delta baseline advances every snapshot (FN13)', () => {
+  it('each delta references its immediate predecessor, not the frozen tick-0 base', () => {
     const mgr = new SnapshotManager({ snapshotInterval: 1, persistInterval: 0 })
     run( mgr, 5 )
 
@@ -80,7 +80,7 @@ describe( 'SnapshotManager — delta baseline advances every snapshot (FN13)', (
     }
   })
 
-  it( 'deltas stay bounded — one interval of change, not cumulative-since-tick-0', () => {
+  it('deltas stay bounded — one interval of change, not cumulative-since-tick-0', () => {
     const mgr = new SnapshotManager({ snapshotInterval: 1, persistInterval: 0 })
     run( mgr, 6 )
 
@@ -92,14 +92,14 @@ describe( 'SnapshotManager — delta baseline advances every snapshot (FN13)', (
     for( let i = 1; i < snaps.length; i++ ){
       const delta = snaps[i]!.delta!
       expect( delta.addedEntities.length ).toBe( 1 )
-      expect( delta.addedEntities[0]!.id ).toBe( `e-${snaps[i]!.tick}` )
+      expect( delta.addedEntities[0]!.id ).toBe(`e-${snaps[i]!.tick}`)
       // The single shared metric changes by a constant +10 each interval —
       // never an accumulating sum.
       expect( delta.metricsDelta ).toEqual( [ [ 'count', 10 ] ] )
     }
   })
 
-  it( 'surviving entries restore correctly after the baseline entry is evicted', () => {
+  it('surviving entries restore correctly after the baseline entry is evicted', () => {
     // Ring holds only 3 snapshots; we take 6, so ticks 1–3 are evicted and the
     // original delta baseline is long gone.
     const mgr = new SnapshotManager({ snapshotInterval: 1, persistInterval: 0, maxInMemorySnapshots: 3 })
@@ -117,12 +117,12 @@ describe( 'SnapshotManager — delta baseline advances every snapshot (FN13)', (
     const restored = mgr.restoreState( 5 as Tick )
     expect( restored ).toBeDefined()
     expect( restored!.tick ).toBe( 5 )
-    expect( restored!.metrics.get( 'count' ) ).toBe( 50 )
-    expect( restored!.entities.has( 'e-5' ) ).toBe( true )
-    expect( restored!.entities.get( 'counter' )!.updatedAt ).toBe( 5 )
+    expect( restored!.metrics.get('count') ).toBe( 50 )
+    expect( restored!.entities.has('e-5') ).toBe( true )
+    expect( restored!.entities.get('counter')!.updatedAt ).toBe( 5 )
   })
 
-  it( 'computeDeltas:false produces keyframe-only entries and never advances a baseline', () => {
+  it('computeDeltas:false produces keyframe-only entries and never advances a baseline', () => {
     const mgr = new SnapshotManager({ snapshotInterval: 1, persistInterval: 0, computeDeltas: false })
     run( mgr, 4 )
 
@@ -131,6 +131,6 @@ describe( 'SnapshotManager — delta baseline advances every snapshot (FN13)', (
 
     // Restore still works purely from the stored full state.
     const restored = mgr.restoreState( 3 as Tick )
-    expect( restored!.metrics.get( 'count' ) ).toBe( 30 )
+    expect( restored!.metrics.get('count') ).toBe( 30 )
   })
 })

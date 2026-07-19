@@ -95,7 +95,7 @@ below MUST honor:
     readonly connected: boolean
     emit( env: OutboundEnvelope, opts?: { ackTimeoutMs?: number } ): Promise<AckResult>
     onInbound( handler: ( env: InboundEnvelope ) => void ): () => void
-    onStatus( handler: ( s: 'connected' | 'disconnected' | 'reconnecting' ) => void ): () => void
+    onStatus( handler: ( s: 'connected' | 'disconnected' | 'reconnecting') => void ): () => void
     close(): void
   }
   ```

@@ -42,7 +42,7 @@ interface DeliberationFacetHandle {
   destroy(): void
 }
 export interface DeliberationFacetProvider {
-  spawnFacet( role?: 'deliberation' ): { attention: 'available' | 'full'; handle?: DeliberationFacetHandle }
+  spawnFacet( role?: 'deliberation'): { attention: 'available' | 'full'; handle?: DeliberationFacetHandle }
 }
 
 interface Candidate {
@@ -95,8 +95,8 @@ export class DeliberationEngine implements CognitiveEngine {
     // One deliberation per tick (the serial bottleneck).
     let target: { id: string; meta: Record<string, unknown> } | null = null
     for( const [ id, e ] of state.entities ){
-      if( e.type !== 'agency.intent' ) continue
-      if( str( e.metadata?.['status'] ) !== 'deliberating' ) continue
+      if( e.type !== 'agency.intent') continue
+      if( str( e.metadata?.['status'] ) !== 'deliberating') continue
       const meta = ( e.metadata ?? {} ) as Record<string, unknown>
       if( !target || id < target.id ) target = { id, meta }   // stable pick
     }
@@ -108,7 +108,7 @@ export class DeliberationEngine implements CognitiveEngine {
 
     // No executive → confirm the substrate's winner (graceful System-1).
     if( !this._provider )
-      return { commands: { set: [ this._commit( id, meta, provisional, candidates, 'no-executive' ) ] } }
+      return { commands: { set: [ this._commit( id, meta, provisional, candidates, 'no-executive') ] } }
 
     // Deliberate through a UNIFIED facet (same persona/context as the master).
     const chosen = await this._deliberate( state, candidates, provisional, meta )
@@ -126,7 +126,7 @@ export class DeliberationEngine implements CognitiveEngine {
 
     return {
       commands: {
-        set:     [ this._commit( id, meta, chosen, candidates, 'facet' ) ],
+        set:     [ this._commit( id, meta, chosen, candidates, 'facet') ],
         metrics: [ [ 'agency.deliberation.count', 1 ] ],
       },
     }
@@ -145,7 +145,7 @@ export class DeliberationEngine implements CognitiveEngine {
       if( !this._handle ){
         const spawned = this._provider!.spawnFacet('deliberation')
         if( spawned.attention === 'full' || !spawned.handle ){
-          logger.info( '[deliberation] facet budget full — confirming substrate winner' )
+          logger.info('[deliberation] facet budget full — confirming substrate winner')
           return provisional
         }
         this._handle = spawned.handle
@@ -170,7 +170,7 @@ export class DeliberationEngine implements CognitiveEngine {
       // Director/state not ready (e.g. executive hasn't run yet) or LLM failure →
       // fall back to the substrate winner. Drop a possibly-dead handle.
       this._handle = null
-      logger.warn( `[deliberation] facet unavailable, confirming winner: ${ err instanceof Error ? err.message : String( err ) }` )
+      logger.warn(`[deliberation] facet unavailable, confirming winner: ${ err instanceof Error ? err.message : String( err ) }`)
       return provisional
     }
   }
@@ -209,9 +209,9 @@ export class DeliberationEngine implements CognitiveEngine {
     // facet owns the interruption in-character rather than reasoning in a vacuum.
     const preemptedFrom = str( meta['preemptedFrom'] )
     if( preemptedFrom )
-      lines.push( `I just broke off a pending action ("${ preemptedFrom }") because something more pressing pulled at me. Decide what to do now:` )
+      lines.push(`I just broke off a pending action ("${ preemptedFrom }") because something more pressing pulled at me. Decide what to do now:`)
     else
-      lines.push( 'My automatic action-selection was uncertain. Candidate actions:' )
+      lines.push('My automatic action-selection was uncertain. Candidate actions:')
     candidates.forEach( ( c, i ) => {
       const to   = c.targetEntityId ? ` toward ${ c.targetEntityId }` : ''
       // The ability's meaning, so the facet weighs what each option IS FOR rather
@@ -220,9 +220,9 @@ export class DeliberationEngine implements CognitiveEngine {
       // Channel B: name the plan link so the facet chooses as the self pursuing it,
       // not blindly among labels ("this one is the next step of the plan I'm on").
       const plan = c.fromPlan ? " (my current plan's next step)" : ''
-      lines.push( `${ i + 1 }. ${ c.schema }${ to }${ what }${ plan }` )
+      lines.push(`${ i + 1 }. ${ c.schema }${ to }${ what }${ plan }`)
     })
-    return lines.join( '\n' )
+    return lines.join('\n')
   }
 }
 
@@ -230,7 +230,7 @@ export class DeliberationEngine implements CognitiveEngine {
 
 /** Pull the chosen schema from a facet decision, validated against the candidates. */
 function extractChosen( decision: unknown, candidates: Candidate[] ): string | undefined {
-  if( !decision || typeof decision !== 'object' ) return undefined
+  if( !decision || typeof decision !== 'object') return undefined
   const actions = ( decision as Record<string, unknown> )['actions']
   if( !Array.isArray( actions ) ) return undefined
   const valid = new Set( candidates.map( c => c.schema ) )

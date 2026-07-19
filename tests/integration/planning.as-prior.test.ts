@@ -54,8 +54,8 @@ function executiveStub( steps: Array<{ action: string; description: string; expe
 // so no executive facet machinery needed); still a healthy planBias strength.
 const goalStub = { getGoal: () => ( { id: 'goal-1', priority: 0.6 } ), getActiveGoals: () => [] } as any
 
-describe( 'planning as a top-down prior — end-to-end on the real agency pipeline', () => {
-  it( 'a plan biases the competition, the field enacts the step, and the plan advances', async () => {
+describe('planning as a top-down prior — end-to-end on the real agency pipeline', () => {
+  it('a plan biases the competition, the field enacts the step, and the plan advances', async () => {
     const events: Array<{ type: string; payload: Record<string, unknown> }> = []
     const bus = { publish: ( e: any ) => { events.push( e ); }, subscribe: () => {}, unsubscribe: () => {} } as any
 
@@ -94,28 +94,28 @@ describe( 'planning as a top-down prior — end-to-end on the real agency pipeli
 
       // Route enaction outcomes back to the planner (what the cognitive bus does live).
       for( const e of events.splice( 0 ) ){
-        if( e.type === 'action.outcome' ){
-          if( ( e.payload as any )?.planId === 'plan-1' ) planOutcomes.push( e )
+        if( e.type === 'action.outcome'){
+          if( ( e.payload as any )?.planId === 'plan-1') planOutcomes.push( e )
           planning.onCognitiveEvent( e as any )
         }
       }
     }
 
-    const plan = planning.getPlan( 'goal-1' )!
+    const plan = planning.getPlan('goal-1')!
 
     // The plan never dispatched — it biased the field, which enacted the step.
-    expect( plan.status ).toBe( 'completed' )
-    expect( plan.steps[ 0 ]?.status ).toBe( 'completed' )
+    expect( plan.status ).toBe('completed')
+    expect( plan.steps[ 0 ]?.status ).toBe('completed')
 
     // The proof of the seam: the executor emitted an action.outcome carrying the
     // plan provenance — which can ONLY be there if it flowed plan.prior → affordance
     // → committed intent → enaction. No dispatch channel produced it.
     expect( planOutcomes.length ).toBeGreaterThan( 0 )
-    expect( ( planOutcomes[0]?.payload as any )?.stepId ).toBe( 'step-0' )
-    expect( ( planOutcomes[0]?.payload as any )?.actionType ).toBe( 'reflect' )
+    expect( ( planOutcomes[0]?.payload as any )?.stepId ).toBe('step-0')
+    expect( ( planOutcomes[0]?.payload as any )?.actionType ).toBe('reflect')
   } )
 
-  it( 'projects the frontier as a competing plan.prior — never a directed intent', async () => {
+  it('projects the frontier as a competing plan.prior — never a directed intent', async () => {
     const events: Array<{ type: string; payload: Record<string, unknown> }> = []
     const bus = { publish: ( e: any ) => { events.push( e ); }, subscribe: () => {}, unsubscribe: () => {} } as any
 
@@ -136,21 +136,21 @@ describe( 'planning as a top-down prior — end-to-end on the real agency pipeli
     s.tick = 1
     apply( s, ( await planning.react( 0 as any, 1 as any, frozen( s ), CTX ) ).commands )
 
-    const priors = ofType( s, 'plan.prior' )
+    const priors = ofType( s, 'plan.prior')
     expect( priors.length ).toBe( 1 )
-    expect( priors[0]?.metadata?.[ 'schema' ] ).toBe( 'reflect' )
-    expect( priors[0]?.metadata?.[ 'planId' ] ).toBe( 'plan-1' )
-    expect( priors[0]?.metadata?.[ 'stepId' ] ).toBe( 'step-0' )
+    expect( priors[0]?.metadata?.[ 'schema' ] ).toBe('reflect')
+    expect( priors[0]?.metadata?.[ 'planId' ] ).toBe('plan-1')
+    expect( priors[0]?.metadata?.[ 'stepId' ] ).toBe('step-0')
     expect( priors[0]?.metadata?.[ 'planBias' ] as number ).toBeGreaterThan( 0 )
 
     // No directed plan intent was ever created (the old dispatch path is gone).
-    expect( ofType( s, 'agency.intent' ).length ).toBe( 0 )
+    expect( ofType( s, 'agency.intent').length ).toBe( 0 )
 
     // Tick 1 synthesizer: the prior surfaces as a COMPETING affordance, source 'plan'.
     apply( s, ( await synth.react( 0 as any, 1 as any, frozen( s ), CTX ) ).commands )
-    const planAffordance = ofType( s, 'affordance' ).find( a => a.metadata?.[ 'source' ] === 'plan' )
+    const planAffordance = ofType( s, 'affordance').find( a => a.metadata?.[ 'source' ] === 'plan')
     expect( planAffordance ).toBeDefined()
-    expect( planAffordance?.metadata?.[ 'planId' ] ).toBe( 'plan-1' )
+    expect( planAffordance?.metadata?.[ 'planId' ] ).toBe('plan-1')
     expect( planAffordance?.metadata?.[ 'available' ] ).toBe( true )
   } )
 } )

@@ -28,10 +28,10 @@ const belief = ( over: Partial<Belief> = {} ): Belief => ( {
   ...over,
 } )
 
-const beliefEntity = ( res: any ) => ( res.commands?.set ?? [] ).find( ( e: any ) => e.type === 'belief' )
+const beliefEntity = ( res: any ) => ( res.commands?.set ?? [] ).find( ( e: any ) => e.type === 'belief')
 
-describe( 'SemanticIntegrator — belief history survives state freezing (regression)', () => {
-  it( 'reinforcing a belief after its persisted state was frozen does not throw', async () => {
+describe('SemanticIntegrator — belief history survives state freezing (regression)', () => {
+  it('reinforcing a belief after its persisted state was frozen does not throw', async () => {
     const integ = new SemanticIntegrator()
     integ.integrateExecutiveBelief( belief(), 1 )
 
@@ -49,7 +49,7 @@ describe( 'SemanticIntegrator — belief history survives state freezing (regres
     expect( ( ent2.metadata as any ).history.length ).toBeGreaterThan( 1 )
   } )
 
-  it( 'a belief restored from frozen state can still record history', async () => {
+  it('a belief restored from frozen state can still record history', async () => {
     const state = {
       tick: 5, time: 0, metrics: new Map(),
       entities: new Map( [ [ 'b1', { id: 'b1', type: 'belief', metadata: {

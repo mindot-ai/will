@@ -196,7 +196,7 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
       case 'executive.prediction.formed': {
         const p = e.payload as { predictedDomains: string[]; confidence: number }
         if( p.predictedDomains.includes('planning') )
-          this._model.setPrecision( 'planning.plans', 1.0 + p.confidence * 0.5 )
+          this._model.setPrecision('planning.plans', 1.0 + p.confidence * 0.5 )
         break
       }
 
@@ -217,15 +217,15 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
         // (observed live: 8 authorings for one goal, zero completions).
         // Deterministic: stores iterate in insertion order; first match wins.
         if( !p.planId || !p.stepId ){
-          if( !p.actionType || typeof p.success !== 'boolean' ) return
+          if( !p.actionType || typeof p.success !== 'boolean') return
           for( const plan of this._store.all() ){
-            if( plan.status !== 'executing' ) continue
+            if( plan.status !== 'executing') continue
             const step = plan.steps.find( s => s.status === 'active' && s.action === p.actionType )
             if( !step ) continue
-            logger.info( `[planning] conscious-enaction credit: ${plan.id}/${step.id}=${step.action} (no provenance on outcome)` )
+            logger.info(`[planning] conscious-enaction credit: ${plan.id}/${step.id}=${step.action} (no provenance on outcome)`)
             this._onStepOutcome( plan.id, step.id, {
               success: p.success,
-              description: p.description ?? ( p.success ? 'Completed' : 'Failed' ),
+              description: p.description ?? ( p.success ? 'Completed' : 'Failed'),
               outcomeQuality: p.outcomeQuality,
             } )
             return   // credit exactly one step per outcome
@@ -236,18 +236,18 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
 
         this._onStepOutcome( p.planId, p.stepId, {
           success: p.success,
-          description: p.description ?? ( p.success ? 'Completed' : 'Failed' ),
+          description: p.description ?? ( p.success ? 'Completed' : 'Failed'),
           outcomeQuality: p.outcomeQuality,
         } )
         break
       }
 
       case 'goal.achieved':
-        this._cancelPlansForGoal( ( e.payload as { goalId?: string } ).goalId, 'goal achieved' )
+        this._cancelPlansForGoal( ( e.payload as { goalId?: string } ).goalId, 'goal achieved')
         break
 
       case 'goal.abandoned':
-        this._cancelPlansForGoal( ( e.payload as { goalId?: string } ).goalId, 'goal abandoned' )
+        this._cancelPlansForGoal( ( e.payload as { goalId?: string } ).goalId, 'goal abandoned')
         break
     }
   }
@@ -276,14 +276,14 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
           planId:             plan.id,
           goalId:             plan.goalId,
           reason,
-          completedSteps:     plan.steps.filter( s => s.status === 'completed' ).length,
+          completedSteps:     plan.steps.filter( s => s.status === 'completed').length,
           totalSteps:         plan.steps.length,
           requestingEntityId: plan.requestingEntityId,
           requestingThreadId: plan.requestingThreadId,
         }
       } )
 
-      logger.info( `[planning] plan ${plan.id} cancelled — ${reason} (goal ${goalId})` )
+      logger.info(`[planning] plan ${plan.id} cancelled — ${reason} (goal ${goalId})`)
     }
   }
 
@@ -344,7 +344,7 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
 
     // 5. Metrics
     const executingPlans = Array.from( this._store.all() )
-                                .filter( p => p.status === 'executing' || p.status === 'ready' )
+                                .filter( p => p.status === 'executing' || p.status === 'ready')
 
     commands.metrics!.push(
       [ 'planning.total_plans',     this._store.size ],
@@ -352,17 +352,17 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
       [ 'planning.active_facets',    this._supervisor.activeFacetCount ],
       // Supervision distribution — how the mind corrects course mid-execution. The
       // raw signal the planning-quality eval harness reads (replan/abandon rates etc).
-      [ 'planning.supervision.replan',   this._supervisor.supervisionCount( 'replan' ) ],
-      [ 'planning.supervision.retry',    this._supervisor.supervisionCount( 'retry' ) ],
-      [ 'planning.supervision.skip',     this._supervisor.supervisionCount( 'skip' ) ],
-      [ 'planning.supervision.escalate', this._supervisor.supervisionCount( 'escalate' ) ],
-      [ 'planning.supervision.abandon',  this._supervisor.supervisionCount( 'abandon' ) ],
+      [ 'planning.supervision.replan',   this._supervisor.supervisionCount('replan') ],
+      [ 'planning.supervision.retry',    this._supervisor.supervisionCount('retry') ],
+      [ 'planning.supervision.skip',     this._supervisor.supervisionCount('skip') ],
+      [ 'planning.supervision.escalate', this._supervisor.supervisionCount('escalate') ],
+      [ 'planning.supervision.abandon',  this._supervisor.supervisionCount('abandon') ],
     )
 
     // Phase C + F: publish cognitive event — gated by prediction error
     const _bus = this._bus
     if( _bus && this._store.size > 0 ){
-      const predErr = this._model.observe( 'planning.plans', this._store.size )
+      const predErr = this._model.observe('planning.plans', this._store.size )
       if( !predErr.gated )
         _bus.publish( {
           type: 'planning.plan.created', version: 1, sourceEngine: this.name,
@@ -385,10 +385,10 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
    * dispositions, no wall-clock, no RNG.
    */
   private _readConfigFromState( state: ReadonlySimulationState ): void {
-    const p = readEffectiveParams( state, 'engine-config-planning' )
-    if( typeof p.maxStepRetries         === 'number' ) this._dispositions.maxStepRetries         = p.maxStepRetries
-    if( typeof p.surpriseOutcomeQuality === 'number' ) this._dispositions.surpriseOutcomeQuality = p.surpriseOutcomeQuality
-    if( typeof p.planBiasGain           === 'number' ) this._dispositions.planBiasGain           = p.planBiasGain
+    const p = readEffectiveParams( state, 'engine-config-planning')
+    if( typeof p.maxStepRetries         === 'number') this._dispositions.maxStepRetries         = p.maxStepRetries
+    if( typeof p.surpriseOutcomeQuality === 'number') this._dispositions.surpriseOutcomeQuality = p.surpriseOutcomeQuality
+    if( typeof p.planBiasGain           === 'number') this._dispositions.planBiasGain           = p.planBiasGain
   }
 
   // ── Plan ingestion ─────────────────────────────────────────
@@ -427,24 +427,24 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
             break
           }
 
-          this._createPlan( planData, tick, 'draft' )
+          this._createPlan( planData, tick, 'draft')
           break
         }
 
         case 'validate': {
           if( !existingPlan ){
-            this._createPlan( planData, tick, 'validated' )
+            this._createPlan( planData, tick, 'validated')
             break
           }
 
           existingPlan.status = 'validated'
-          logger.info( `[planning] plan ${existingPlan.id} validated` )
+          logger.info(`[planning] plan ${existingPlan.id} validated`)
           break
         }
 
         case 'execute': {
           if( !existingPlan ){
-            const newPlan = this._createPlan( planData, tick, 'approved' )
+            const newPlan = this._createPlan( planData, tick, 'approved')
             newPlan.status = 'ready'
             // Infer supervision (emergent tier): important/uncertain plans start
             // deliberate (a facet supervises from the first step); else automatic.
@@ -470,7 +470,7 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
         }
 
         case 'revise': {
-          if( !existingPlan ){ this._createPlan( planData, tick, 'revised' ); break }
+          if( !existingPlan ){ this._createPlan( planData, tick, 'revised'); break }
 
           existingPlan.steps = planData.steps.map( ( s, i ) => ( {
             id: `step-${i}`,
@@ -505,7 +505,7 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
           this._store.markTerminal( existingPlan.id, this._lastTick )
           this._supervisor.cleanupFacet( existingPlan.id )
 
-          logger.info( `[planning] plan ${existingPlan.id} cancelled` )
+          logger.info(`[planning] plan ${existingPlan.id} cancelled`)
           break
         }
       }
@@ -565,9 +565,9 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
 
   private _executePlans(): void {
     for( const plan of this._store.all() ){
-      if( plan.status !== 'ready' && plan.status !== 'executing' ) continue
+      if( plan.status !== 'ready' && plan.status !== 'executing') continue
 
-      if( plan.status === 'ready' ){
+      if( plan.status === 'ready'){
         plan.status = 'executing'
 
         // Emit plan.started so the activity stream knows execution has begun.
@@ -592,14 +592,14 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
           this._activateStep( plan, step )
 
       // Check for plan completion
-      const allDone   = plan.steps.every( s => s.status === 'completed' || s.status === 'skipped' )
-      const anyFailed = plan.steps.some( s => s.status === 'failed' )
+      const allDone   = plan.steps.every( s => s.status === 'completed' || s.status === 'skipped')
+      const anyFailed = plan.steps.some( s => s.status === 'failed')
 
       if( allDone && !anyFailed )
         this._onPlanCompleted( plan )
 
-      else if( anyFailed && plan.executionTier === 'automatic' )
-        this._onPlanFailed( plan, 'One or more steps failed' )
+      else if( anyFailed && plan.executionTier === 'automatic')
+        this._onPlanFailed( plan, 'One or more steps failed')
     }
   }
 
@@ -638,7 +638,7 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
       totalSteps:  plan.steps.length,
     } as any)
 
-    logger.info( `[planning] step active: ${plan.id}/${step.id}=${step.action} (biasing the field)` )
+    logger.info(`[planning] step active: ${plan.id}/${step.id}=${step.action} (biasing the field)`)
   }
 
   // ── Step outcome handling ──────────────────────────────────
@@ -661,8 +661,8 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
     // already moved past — and re-running supervision below could re-spawn the facet
     // we just tore down. The enaction itself still happened (and still taught the
     // repertoire via reafference); the plan simply no longer cares.
-    if( plan.status !== 'executing' ){
-      logger.info( `[planning] ignoring late step outcome ${planId}/${stepId} — plan is ${plan.status}, not executing` )
+    if( plan.status !== 'executing'){
+      logger.info(`[planning] ignoring late step outcome ${planId}/${stepId} — plan is ${plan.status}, not executing`)
       return
     }
 
@@ -688,7 +688,7 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
         success:            outcome.success,
         outcomeQuality:     outcome.outcomeQuality,
         description:        outcome.description.slice( 0, 300 ),
-        completedSteps:     plan.steps.filter( s => s.status === 'completed' || s.status === 'skipped' ).length,
+        completedSteps:     plan.steps.filter( s => s.status === 'completed' || s.status === 'skipped').length,
         totalSteps:         plan.steps.length,
         requestingEntityId: plan.requestingEntityId,
         requestingThreadId: plan.requestingThreadId,
@@ -704,7 +704,7 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
       success:        outcome.success,
       outcomeQuality: outcome.outcomeQuality,
       description:    outcome.description.slice( 0, 300 ),
-      completedSteps: plan.steps.filter( s => s.status === 'completed' || s.status === 'skipped' ).length,
+      completedSteps: plan.steps.filter( s => s.status === 'completed' || s.status === 'skipped').length,
       totalSteps:     plan.steps.length,
     } as any)
 
@@ -714,15 +714,15 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
     // extension point for more triggers.
     if( plan.executionTier !== 'deliberate' && this._supervisor.shouldEscalate( plan, step, outcome ) ){
       plan.executionTier = 'deliberate'
-      logger.info( `[planning] plan ${planId} escalated to deliberate (surprise on ${stepId})` )
+      logger.info(`[planning] plan ${planId} escalated to deliberate (surprise on ${stepId})`)
       this._supervisor.activateFacet( plan, false )   // lazy spawn; the step report below follows
     }
 
-    if( plan.executionTier === 'deliberate' ){
+    if( plan.executionTier === 'deliberate'){
       const reported = this._supervisor.reportToFacet( plan, step, outcome )
       if( !reported ){
         // attention saturated / spawn failed → activateFacet downgraded to automatic
-        logger.warn( `[planning] no facet to supervise plan ${planId}; continuing automatically` )
+        logger.warn(`[planning] no facet to supervise plan ${planId}; continuing automatically`)
         this._executePlans()
       }
     }
@@ -742,15 +742,15 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
       payload: {
         planId:             plan.id,
         goalId:             plan.goalId,
-        completedSteps:     plan.steps.filter( s => s.status === 'completed' ).length,
-        skippedSteps:       plan.steps.filter( s => s.status === 'skipped' ).map( s => s.id ),
+        completedSteps:     plan.steps.filter( s => s.status === 'completed').length,
+        skippedSteps:       plan.steps.filter( s => s.status === 'skipped').map( s => s.id ),
         totalSteps:         plan.steps.length,
         requestingEntityId: plan.requestingEntityId,
         requestingThreadId: plan.requestingThreadId,
       }
     } )
 
-    logger.info( `[planning] plan completed: ${plan.id} → goal ${plan.goalId}` )
+    logger.info(`[planning] plan completed: ${plan.id} → goal ${plan.goalId}`)
   }
 
   private _onPlanFailed( plan: Plan, reason: string ): void {
@@ -766,15 +766,15 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
         planId:             plan.id,
         goalId:             plan.goalId,
         reason,
-        completedSteps:     plan.steps.filter( s => s.status === 'completed' ).length,
-        skippedSteps:       plan.steps.filter( s => s.status === 'skipped' ).map( s => s.id ),
+        completedSteps:     plan.steps.filter( s => s.status === 'completed').length,
+        skippedSteps:       plan.steps.filter( s => s.status === 'skipped').map( s => s.id ),
         totalSteps:         plan.steps.length,
         requestingEntityId: plan.requestingEntityId,
         requestingThreadId: plan.requestingThreadId,
       }
     } )
 
-    logger.info( `[planning] plan failed: ${plan.id} — ${reason}` )
+    logger.info(`[planning] plan failed: ${plan.id} — ${reason}`)
   }
 
   // ── Recall descriptors (awareness Stage 2) ─────────────────

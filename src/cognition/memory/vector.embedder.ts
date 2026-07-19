@@ -68,10 +68,10 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
     this._tokenTracker = config.tokenTracker ?? null
   }
 
-  async embed( content: unknown, fn: string = 'recall' ): Promise<number[]> {
+  async embed( content: unknown, fn: string = 'recall'): Promise<number[]> {
     let response: Response
     try {
-      response = await fetch( `${this._apiUrl}/embeddings`, {
+      response = await fetch(`${this._apiUrl}/embeddings`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -87,13 +87,13 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
     }
     catch( err ){
       // AbortSignal.timeout rejects with a DOMException named 'TimeoutError'.
-      if( err instanceof Error && err.name === 'TimeoutError' )
-        throw new Error( `Embedding request timed out after ${this._timeoutMs}ms` )
+      if( err instanceof Error && err.name === 'TimeoutError')
+        throw new Error(`Embedding request timed out after ${this._timeoutMs}ms`)
       throw err
     }
 
     if( !response.ok )
-      throw new Error( `Embedding failed: ${response.status} ${response.statusText}` )
+      throw new Error(`Embedding failed: ${response.status} ${response.statusText}`)
 
     const data = await response.json() as {
       data?:  Array<{ embedding?: number[] }>
@@ -104,7 +104,7 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
     // opaque TypeError on an empty/malformed body (FN16).
     const embedding = data?.data?.[ 0 ]?.embedding
     if( !Array.isArray( embedding ) || embedding.length === 0 )
-      throw new Error( `Embedding response was empty or malformed for model ${this.modelName}` )
+      throw new Error(`Embedding response was empty or malformed for model ${this.modelName}`)
 
     // Meter embedding token usage (input-only — embeddings have no completion).
     // Recorded under the 'embedding' category so per-Will dashboards can split
@@ -128,7 +128,7 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
     return embedding
   }
 
-  async embedBatch( contents: unknown[], fn: string = 'index' ): Promise<number[][]> {
+  async embedBatch( contents: unknown[], fn: string = 'index'): Promise<number[][]> {
     // Bounded fan-out: cap concurrent requests at _maxConcurrency instead of
     // firing all of them at once (FN16), while preserving input order.
     const results: number[][] = new Array( contents.length )
@@ -170,7 +170,7 @@ export class MockEmbedder implements EmbeddingProvider {
     this._seed = seed
   }
 
-  async embed( content: unknown, _fn: string = 'recall' ): Promise<number[]> {
+  async embed( content: unknown, _fn: string = 'recall'): Promise<number[]> {
     const str = typeof content === 'string' ? content : JSON.stringify( content )
     const hash = this._hashString( str )
     const embedding: number[] = []
@@ -184,7 +184,7 @@ export class MockEmbedder implements EmbeddingProvider {
     return embedding
   }
 
-  async embedBatch( contents: unknown[], fn: string = 'index' ): Promise<number[][]> {
+  async embedBatch( contents: unknown[], fn: string = 'index'): Promise<number[][]> {
     return Promise.all( contents.map( c => this.embed( c, fn ) ) )
   }
 

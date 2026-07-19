@@ -234,7 +234,7 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
         type: string,
         tags: string[],
       ): EpisodicMemory['outcomeStatus'] => {
-        if( type === 'conversation.exchange' ) return 'confirmed'
+        if( type === 'conversation.exchange') return 'confirmed'
         if( tags.includes('failed') || tags.includes('error') || tags.includes('timed_out') ) return 'failed'
         if( tags.includes('completed') || tags.includes('success') || tags.includes('confirmed') ) return 'confirmed'
         if( tags.includes('goal') || tags.includes('plan') ) return 'intended'
@@ -413,7 +413,7 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
     // facet chains await this inside prompt building, so an unbounded hang here
     // stalls the mind's reasoning and everything downstream of it.
     // WILL_RECALL_TIMEOUT_MS (default 5000) — read lazily for tests/live tuning.
-    const timeoutMs = parseInt( process.env.WILL_RECALL_TIMEOUT_MS ?? '5000' )
+    const timeoutMs = parseInt( process.env.WILL_RECALL_TIMEOUT_MS ?? '5000')
     let timer: ReturnType<typeof setTimeout> | undefined
     const timedOut = Symbol('recall-timeout')
 
@@ -426,7 +426,7 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
     ] ).finally( () => clearTimeout( timer ) )
 
     if( results === timedOut ){
-      logger.warn( `[EpisodicConsolidator] semanticQuery timed out after ${timeoutMs}ms — returning no recall (embedder slow/unreachable?)` )
+      logger.warn(`[EpisodicConsolidator] semanticQuery timed out after ${timeoutMs}ms — returning no recall (embedder slow/unreachable?)`)
       return []
     }
 
@@ -659,13 +659,13 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
       await this._vectorMemory.load()
       if( this._vectorMemory.size === 0 && this._store.length > 0 ){
         await this._vectorMemory.rebuildFromStore( this._store )
-        logger.info( `[episodic] vector index rebuilt with ${this._store.length} episodes` )
+        logger.info(`[episodic] vector index rebuilt with ${this._store.length} episodes`)
       } else if( this._vectorMemory.size > 0 ){
-        logger.info( `[episodic] vector index loaded from disk (${this._vectorMemory.size} entries)` )
+        logger.info(`[episodic] vector index loaded from disk (${this._vectorMemory.size} entries)`)
       }
     }
 
-    logger.info( `[episodic] restored ${this._store.length} episodes from snapshot` )
+    logger.info(`[episodic] restored ${this._store.length} episodes from snapshot`)
   }
 
   // ── Internal ─────────────────────────────────────────────

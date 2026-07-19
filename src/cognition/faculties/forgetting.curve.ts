@@ -94,10 +94,10 @@ export class ForgettingCurve implements SimulationEngine, CognitiveEngine {
 
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
-    if( e.type === 'executive.prediction.formed' ){
+    if( e.type === 'executive.prediction.formed'){
       const p = e.payload as { predictedDomains: string[]; confidence: number }
       if( p.predictedDomains.includes('memory') )
-        this._model.setPrecision( 'memory.decay_rate', 1.0 + p.confidence * 0.5 )
+        this._model.setPrecision('memory.decay_rate', 1.0 + p.confidence * 0.5 )
     }
   }
 
@@ -189,7 +189,7 @@ export class ForgettingCurve implements SimulationEngine, CognitiveEngine {
     // Phase C: publish cognitive event
     const _bus = this._bus
     if( _bus && decayedCount > 0 )
-      _bus.publish({ type: 'memory.decay.applied', version: 1, sourceEngine: this.name, salience: this._model.observe( 'memory.decay_rate', decayedCount ).salience, payload: { decayed: decayedCount } })
+      _bus.publish({ type: 'memory.decay.applied', version: 1, sourceEngine: this.name, salience: this._model.observe('memory.decay_rate', decayedCount ).salience, payload: { decayed: decayedCount } })
 
     return { commands }
   }

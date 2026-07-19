@@ -40,28 +40,28 @@ const RESPONSE_WITH_ESCAPES = `{"actions":[{"type":"observe","reasoning":"watch"
 {"selfObservations":["I notice I said \\"hi\\" twice"]}
 [/SELF_OBS]`
 
-describe( 'executive parser — non-destructive tagged-block JSON (FN10)', () => {
-  it( 'keeps blocks whose valid JSON contains escaped quotes/newlines', () => {
+describe('executive parser — non-destructive tagged-block JSON (FN10)', () => {
+  it('keeps blocks whose valid JSON contains escaped quotes/newlines', () => {
     const out = parseResponse( RESPONSE_WITH_ESCAPES, emptyState(), [] )
 
     // Actions still parse (Strategy 2 balanced-array extractor).
-    expect( out.actions[0]!.type ).toBe( 'observe' )
+    expect( out.actions[0]!.type ).toBe('observe')
     expect( out.confidence ).toBe( 0.7 )
 
     // NARRATIVE survives — the old un-escape would have produced raw quotes
     // (`He said "hello"...`) → invalid JSON → dropped block.
-    expect( out.narrative ).toBe( 'He said "hello" to me.\nThen left.' )
-    expect( out.currentSelfView ).toBe( 'calm' )
+    expect( out.narrative ).toBe('He said "hello" to me.\nThen left.')
+    expect( out.currentSelfView ).toBe('calm')
 
     // BELIEFS survives with its escaped quote intact.
     expect( out.newBeliefs ).toHaveLength( 1 )
-    expect( out.newBeliefs![0]!.statement ).toBe( 'Quotes like "this" are fine' )
+    expect( out.newBeliefs![0]!.statement ).toBe('Quotes like "this" are fine')
 
     // SELF_OBS survives.
     expect( out.selfObservations ).toEqual( [ 'I notice I said "hi" twice' ] )
   })
 
-  it( 'parses a [KNOWN_ENTITIES] block into knownEntityUpdates (Phase 2.2)', () => {
+  it('parses a [KNOWN_ENTITIES] block into knownEntityUpdates (Phase 2.2)', () => {
     const response = `{"actions":[{"type":"observe","reasoning":"r","expectedOutcome":"o"}],"confidence":0.6}
 
 [KNOWN_ENTITIES]
@@ -69,12 +69,12 @@ describe( 'executive parser — non-destructive tagged-block JSON (FN10)', () =>
 [/KNOWN_ENTITIES]`
     const out = parseResponse( response, emptyState(), [] )
     expect( out.knownEntityUpdates ).toHaveLength( 1 )
-    expect( out.knownEntityUpdates![0]!.keid ).toBe( 'web:42' )
-    expect( out.knownEntityUpdates![0]!.name ).toBe( 'Mara' )
+    expect( out.knownEntityUpdates![0]!.keid ).toBe('web:42')
+    expect( out.knownEntityUpdates![0]!.name ).toBe('Mara')
     expect( out.knownEntityUpdates![0]!.learned ).toEqual( [ 'studies coral reefs' ] )
   })
 
-  it( 'still parses plain (non-escaped) JSON blocks', () => {
+  it('still parses plain (non-escaped) JSON blocks', () => {
     const response = `{"actions":[{"type":"reflect","reasoning":"r","expectedOutcome":"o"}],"confidence":0.5}
 
 [GOALS_NEW]
@@ -83,10 +83,10 @@ describe( 'executive parser — non-destructive tagged-block JSON (FN10)', () =>
 
     const out = parseResponse( response, emptyState(), [] )
     expect( out.newGoals ).toHaveLength( 1 )
-    expect( out.newGoals![0]!.description ).toBe( 'rest more' )
+    expect( out.newGoals![0]!.description ).toBe('rest more')
   })
 
-  it( 'falls back to the repair pass for a double-escaped block', () => {
+  it('falls back to the repair pass for a double-escaped block', () => {
     // Here the block is NOT verbatim-parseable (`{\"k\": ...}`); the repair
     // pass un-escapes it. Proves the fallback is retained, not removed.
     const response = `{"actions":[{"type":"observe","reasoning":"r","expectedOutcome":"o"}],"confidence":0.5}
@@ -96,10 +96,10 @@ describe( 'executive parser — non-destructive tagged-block JSON (FN10)', () =>
 [/NARRATIVE]`
 
     const out = parseResponse( response, emptyState(), [] )
-    expect( out.narrative ).toBe( 'recovered via repair' )
+    expect( out.narrative ).toBe('recovered via repair')
   })
 
-  it( 'drops an unparseable optional block without affecting actions', () => {
+  it('drops an unparseable optional block without affecting actions', () => {
     const response = `{"actions":[{"type":"observe","reasoning":"r","expectedOutcome":"o"}],"confidence":0.5}
 
 [BELIEFS]
@@ -107,7 +107,7 @@ this is not json at all {{{
 [/BELIEFS]`
 
     const out = parseResponse( response, emptyState(), [] )
-    expect( out.actions[0]!.type ).toBe( 'observe' )
+    expect( out.actions[0]!.type ).toBe('observe')
     expect( out.newBeliefs ).toBeUndefined()
   })
 })

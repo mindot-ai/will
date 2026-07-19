@@ -81,7 +81,7 @@ export class TaskSwitcher implements SimulationEngine, CognitiveEngine {
   private _readConfigFromState( state: ReadonlySimulationState ): void {
     // Effective config = base engine-config-task-switcher ⊕ persona-prior. Channel A: a
     // conscientious Will develops a higher baseSwitchCost and so is less distractible.
-    const p = readEffectiveParams( state, 'engine-config-task-switcher' )
+    const p = readEffectiveParams( state, 'engine-config-task-switcher')
     if( p.baseSwitchCost != null ) this._baseSwitchCost = p.baseSwitchCost
     if( p.switchThreshold != null ) this._switchThreshold = p.switchThreshold
     if( p.minFocusTicks != null ) this._minFocusTicks = p.minFocusTicks
@@ -93,10 +93,10 @@ export class TaskSwitcher implements SimulationEngine, CognitiveEngine {
 
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
-    if( e.type === 'executive.prediction.formed' ){
+    if( e.type === 'executive.prediction.formed'){
       const p = e.payload as { predictedDomains: string[]; confidence: number }
       if( p.predictedDomains.includes('executive') )
-        this._model.setPrecision( 'task.focus_ticks', 1.0 + p.confidence * 0.5 )
+        this._model.setPrecision('task.focus_ticks', 1.0 + p.confidence * 0.5 )
     }
   }
 
@@ -204,7 +204,7 @@ export class TaskSwitcher implements SimulationEngine, CognitiveEngine {
     // Phase C + F: publish cognitive event — gated by prediction error
     const _bus = this._bus
     if( _bus ){
-      const predErr = this._model.observe( 'task.focus_ticks', this._currentFocus.focusTicks )
+      const predErr = this._model.observe('task.focus_ticks', this._currentFocus.focusTicks )
       if( !predErr.gated )
         _bus.publish({ type: 'task.focus.changed', version: 1, sourceEngine: this.name, salience: Math.max( 0.3, predErr.salience ), payload: { focusTicks: this._currentFocus.focusTicks } })
     }

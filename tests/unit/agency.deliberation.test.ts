@@ -20,13 +20,13 @@ function makeState( intentMeta: Record<string, unknown> ): ReadonlySimulationSta
 }
 
 const intentOf = ( set: EntityInput[] | undefined ) =>
-  ( set ?? [] ).find( e => e.type === 'agency.intent' )
+  ( set ?? [] ).find( e => e.type === 'agency.intent')
 
 /** A fake unified-facet provider: its facet "chooses" `choice` (as an action.type). */
-function fakeProvider( choice: string | undefined, attention: 'available' | 'full' = 'available' ): DeliberationFacetProvider {
+function fakeProvider( choice: string | undefined, attention: 'available' | 'full' = 'available'): DeliberationFacetProvider {
   return {
     spawnFacet() {
-      if( attention === 'full' ) return { attention: 'full' }
+      if( attention === 'full') return { attention: 'full' }
       let listener: ( ( d: { decision: unknown } ) => void ) | null = null
       return {
         attention: 'available',
@@ -49,26 +49,26 @@ const CANDIDATES = [
 const deliberating = ( extra: Record<string, unknown> = {} ) =>
   makeState({ status: 'deliberating', schema: 'reflect', parameters: {}, candidates: CANDIDATES, ...extra } )
 
-describe( 'DeliberationEngine — unified-facet choice', () => {
-  it( 'resolves a deliberating intent to the facet-chosen action (status → selected)', async () => {
+describe('DeliberationEngine — unified-facet choice', () => {
+  it('resolves a deliberating intent to the facet-chosen action (status → selected)', async () => {
     const eng = new DeliberationEngine()
-    eng.attachExecutive( fakeProvider( 'reach-out' ) )
+    eng.attachExecutive( fakeProvider('reach-out') )
 
     const res    = await eng.react( 0, 1, deliberating(), CTX )
     const intent = intentOf( res.commands?.set )
-    expect( intent?.metadata?.['schema'] ).toBe( 'reach-out' )
-    expect( intent?.metadata?.['status'] ).toBe( 'selected' )
-    expect( intent?.metadata?.['deliberatedVia'] ).toBe( 'facet' )
-    expect( intent?.metadata?.['targetEntityId'] ).toBe( 'alice' )   // bound from the chosen candidate
+    expect( intent?.metadata?.['schema'] ).toBe('reach-out')
+    expect( intent?.metadata?.['status'] ).toBe('selected')
+    expect( intent?.metadata?.['deliberatedVia'] ).toBe('facet')
+    expect( intent?.metadata?.['targetEntityId'] ).toBe('alice')   // bound from the chosen candidate
   })
 
-  it( 'clamps an off-list facet choice back to the provisional winner', async () => {
+  it('clamps an off-list facet choice back to the provisional winner', async () => {
     const eng = new DeliberationEngine()
-    eng.attachExecutive( fakeProvider( 'launch_missiles' ) )   // not a candidate
+    eng.attachExecutive( fakeProvider('launch_missiles') )   // not a candidate
 
     const intent = intentOf( ( await eng.react( 0, 1, deliberating(), CTX ) ).commands?.set )
-    expect( intent?.metadata?.['schema'] ).toBe( 'reflect' )    // provisional winner held
-    expect( intent?.metadata?.['status'] ).toBe( 'selected' )
+    expect( intent?.metadata?.['schema'] ).toBe('reflect')    // provisional winner held
+    expect( intent?.metadata?.['status'] ).toBe('selected')
   })
 })
 
@@ -92,28 +92,28 @@ function capturingProvider( choice: string ): { provider: DeliberationFacetProvi
   return { provider, focus: () => captured }
 }
 
-describe( 'DeliberationEngine — Channel B: owns a preemption in-character', () => {
-  it( 'surfaces the interrupted action into the facet focus when the choice preempted one', async () => {
+describe('DeliberationEngine — Channel B: owns a preemption in-character', () => {
+  it('surfaces the interrupted action into the facet focus when the choice preempted one', async () => {
     const eng = new DeliberationEngine()
-    const cap = capturingProvider( 'reflect' )
+    const cap = capturingProvider('reflect')
     eng.attachExecutive( cap.provider )
     await eng.react( 0, 1, deliberating({ preemptedFrom: 'reach-out' }), CTX )
-    expect( cap.focus() ).toContain( 'reach-out' )            // names what it broke off
-    expect( cap.focus().toLowerCase() ).toContain( 'broke off' )
+    expect( cap.focus() ).toContain('reach-out')            // names what it broke off
+    expect( cap.focus().toLowerCase() ).toContain('broke off')
   })
 
-  it( 'uses the neutral framing when no preemption occurred', async () => {
+  it('uses the neutral framing when no preemption occurred', async () => {
     const eng = new DeliberationEngine()
-    const cap = capturingProvider( 'reflect' )
+    const cap = capturingProvider('reflect')
     eng.attachExecutive( cap.provider )
     await eng.react( 0, 1, deliberating(), CTX )
-    expect( cap.focus() ).toContain( 'uncertain' )
-    expect( cap.focus().toLowerCase() ).not.toContain( 'broke off' )
+    expect( cap.focus() ).toContain('uncertain')
+    expect( cap.focus().toLowerCase() ).not.toContain('broke off')
   })
 
-  it( 'names a plan-step candidate so the facet chooses as the self pursuing the plan', async () => {
+  it('names a plan-step candidate so the facet chooses as the self pursuing the plan', async () => {
     const eng = new DeliberationEngine()
-    const cap = capturingProvider( 'reflect' )
+    const cap = capturingProvider('reflect')
     eng.attachExecutive( cap.provider )
     await eng.react( 0, 1, deliberating({
       candidates: [ { schema: 'reflect', fromPlan: true }, { schema: 'rest' } ],
@@ -123,7 +123,7 @@ describe( 'DeliberationEngine — Channel B: owns a preemption in-character', ()
 
   it( "surfaces each candidate's MEANING so the facet weighs what it's for, not bare labels", async () => {
     const eng = new DeliberationEngine()
-    const cap = capturingProvider( 'give' )
+    const cap = capturingProvider('give')
     eng.attachExecutive( cap.provider )
     await eng.react( 0, 1, deliberating({
       candidates: [
@@ -131,31 +131,31 @@ describe( 'DeliberationEngine — Channel B: owns a preemption in-character', ()
         { schema: 'shove', targetEntityId: 'ada', description: 'Push someone away from you' },
       ],
     }), CTX )
-    expect( cap.focus() ).toContain( 'give toward ada — Offer an item to someone present' )
-    expect( cap.focus() ).toContain( 'shove toward ada — Push someone away from you' )
+    expect( cap.focus() ).toContain('give toward ada — Offer an item to someone present')
+    expect( cap.focus() ).toContain('shove toward ada — Push someone away from you')
   })
 })
 
-describe( 'DeliberationEngine — graceful System-1 degradation', () => {
-  it( 'confirms the substrate winner when no executive is attached', async () => {
+describe('DeliberationEngine — graceful System-1 degradation', () => {
+  it('confirms the substrate winner when no executive is attached', async () => {
     const eng    = new DeliberationEngine()                     // no attachExecutive
     const intent = intentOf( ( await eng.react( 0, 1, deliberating(), CTX ) ).commands?.set )
-    expect( intent?.metadata?.['schema'] ).toBe( 'reflect' )
-    expect( intent?.metadata?.['status'] ).toBe( 'selected' )
-    expect( intent?.metadata?.['deliberatedVia'] ).toBe( 'no-executive' )
+    expect( intent?.metadata?.['schema'] ).toBe('reflect')
+    expect( intent?.metadata?.['status'] ).toBe('selected')
+    expect( intent?.metadata?.['deliberatedVia'] ).toBe('no-executive')
   })
 
-  it( 'confirms the substrate winner when the facet budget is full', async () => {
+  it('confirms the substrate winner when the facet budget is full', async () => {
     const eng = new DeliberationEngine()
-    eng.attachExecutive( fakeProvider( 'reach-out', 'full' ) )
+    eng.attachExecutive( fakeProvider('reach-out', 'full') )
     const intent = intentOf( ( await eng.react( 0, 1, deliberating(), CTX ) ).commands?.set )
-    expect( intent?.metadata?.['schema'] ).toBe( 'reflect' )
-    expect( intent?.metadata?.['status'] ).toBe( 'selected' )
+    expect( intent?.metadata?.['schema'] ).toBe('reflect')
+    expect( intent?.metadata?.['status'] ).toBe('selected')
   })
 
-  it( 'ignores ticks with no deliberating intent', async () => {
+  it('ignores ticks with no deliberating intent', async () => {
     const eng = new DeliberationEngine()
-    eng.attachExecutive( fakeProvider( 'reach-out' ) )
+    eng.attachExecutive( fakeProvider('reach-out') )
     const res = await eng.react( 0, 1, makeState({ status: 'selected', schema: 'wait' }), CTX )
     expect( intentOf( res.commands?.set ) ).toBeUndefined()
   })

@@ -102,7 +102,7 @@ export interface ExecutiveEngineConfig {
  */
 export function effortTargetForActions( actionTypes: Iterable<string> ): number | null {
   const types = new Set( actionTypes )
-  if( types.has( 'focus' ) ) return 1.0
+  if( types.has('focus') ) return 1.0
   if( [ 'rest', 'sleep', 'wait', 'meditate' ].some( t => types.has( t ) ) ) return 0.4
   return null
 }
@@ -308,10 +308,10 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       d = new LLMDirector( {
         willId: this._willId!,
         model,
-        maxOutputTokens: this._llm?.maxOutputTokens ?? parseInt( process.env.WILL_MAX_OUTPUT_TOKENS ?? '8096' ),
+        maxOutputTokens: this._llm?.maxOutputTokens ?? parseInt( process.env.WILL_MAX_OUTPUT_TOKENS ?? '8096'),
         // Provider-agnostic key; falls back to ANTHROPIC_API_KEY for back-compat.
         apiKey: this._llm?.apiKey ?? process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? '',
-        provider: ( this._llm?.provider ?? process.env.WILL_LLM_PROVIDER ?? 'anthropic' ) as LLMProvider,
+        provider: ( this._llm?.provider ?? process.env.WILL_LLM_PROVIDER ?? 'anthropic') as LLMProvider,
         // Optional base-URL override (e.g. Ollama / Azure / self-hosted). Unset →
         // the director uses the provider's official endpoint.
         baseUrl: this._llm?.baseUrl ?? process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
@@ -327,7 +327,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     return d
   }
 
-   spawnFacet( role?: 'deliberation' | 'conversation' | 'outreach' | 'supervision' ): { attention: 'available' | 'full', handle?: ExecutiveFacetHandle } {
+   spawnFacet( role?: 'deliberation' | 'conversation' | 'outreach' | 'supervision'): { attention: 'available' | 'full', handle?: ExecutiveFacetHandle } {
     // Delegate to FacetSupervisor (R5-g-3), passing the current engine
     // attachments. The supervisor owns the registry + attention budget and
     // performs the throw-checks on bus / director / state ref.
@@ -376,7 +376,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
     // Set attention state for bandwidth allowance
     // One facet per ~0.3 free capacity units, floor at 1
-    if( event.type === 'attention.state.changed' ){
+    if( event.type === 'attention.state.changed'){
       const p = event.payload as { freeFraction: number }
       this._facetSupervisor.setAttentionState( p.freeFraction )
       return
@@ -437,7 +437,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // per distinct role model; roles that share a model share the instance.
     if( !this._llmDirector && this._willId ){
       const execModel = this._models.executive ?? process.env.WILL_LLM_MODEL
-        ?? defaultModelFor( ( this._llm?.provider ?? process.env.WILL_LLM_PROVIDER ?? 'anthropic' ) as LLMProvider )
+        ?? defaultModelFor( ( this._llm?.provider ?? process.env.WILL_LLM_PROVIDER ?? 'anthropic') as LLMProvider )
       this._llmDirector = this._directorFor( execModel )
       // The summarizer runs its role's model (falls back to executive) with the
       // same provider, session logging and token tracking.
@@ -457,7 +457,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     updateGatingState( this._gatingState, state, tick, result.shouldActivate, result.cleanedBuffer )
 
     if( result.shouldActivate )
-      logger.info( `[executive] activating — reason: ${result.reason} (tick=${tick})` )
+      logger.info(`[executive] activating — reason: ${result.reason} (tick=${tick})`)
 
     return result.shouldActivate
   }
@@ -507,7 +507,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       semanticIntegrator: this._semanticIntegrator
     }, state )
 
-    stream.report( 'context_assembled', {
+    stream.report('context_assembled', {
       workingMemoryItems: execContext.workingMemory.length,
       activeGoals: execContext.goals.length,
       totalEpisodes: this._episodicConsolidator?.getAllEpisodes().length ?? 0,
@@ -516,7 +516,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
     // Compute modulation and uncertainty using PromptFactory
     const qualityModulation = PromptFactory.computeQualityModulation( state )
-    stream.report( 'modulation', { qualityModulation } )
+    stream.report('modulation', { qualityModulation } )
 
     const epistemicUncertainty = PromptFactory.computeEpistemicUncertainty( execContext, state )
     this._lastEpistemicUncertainty = epistemicUncertainty
@@ -526,15 +526,15 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // computed this tick, so the choice is free and deterministic (R2). The threshold is
     // the *effective* one (base ⊕ persona-prior): an analytical Will develops a lower
     // threshold and deliberates more readily — effort allocation as a developing trait.
-    const deliberateThreshold = readEffectiveParams( state, 'engine-config-executive' ).deliberateThreshold ?? DELIBERATE_THRESHOLD
+    const deliberateThreshold = readEffectiveParams( state, 'engine-config-executive').deliberateThreshold ?? DELIBERATE_THRESHOLD
     const processSelection = selectProcess( {
       epistemicUncertainty,
       priorConfidence:   this._lastExecutiveOutput?.confidence ?? 0.5,
-      novelty:           state.metrics.get( 'perception.novelty' ) ?? 0,
-      stressLoad:        state.metrics.get( 'stress.load' ) ?? 0,
+      novelty:           state.metrics.get('perception.novelty') ?? 0,
+      stressLoad:        state.metrics.get('stress.load') ?? 0,
       hasPendingMessage: this._messageQueue.pendingMessages.length > 0,
     }, deliberateThreshold )
-    stream.report( 'process_selected', {
+    stream.report('process_selected', {
       process:     processSelection.process,
       effortScore: processSelection.effortScore,
       reason:      processSelection.reason,
@@ -600,7 +600,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         `candidates=${ideationCandidates?.length ?? 0}  temp=${proposeTemperature.toFixed( 2 )}  latency=${wallClock() - ideationStart}ms`
       )
     }
-    stream.report( 'ideation_complete', {
+    stream.report('ideation_complete', {
       process:        processSelection.process,
       candidateCount: ideationCandidates?.length ?? 0,
     } )
@@ -639,7 +639,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
     // Call LLM
     if( !this._llmDirector )
-      throw new Error( 'LLM director not initialized — willId must be set before first tick' )
+      throw new Error('LLM director not initialized — willId must be set before first tick')
 
     const llmStart = wallClock()  // perf timing only — latency is telemetry, never replay state
     let executiveOutput: ExecutiveOutputFull
@@ -668,7 +668,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       )
 
       const responsePath = this._willId
-        ? `./data/wills/${this._willId}/debug/response-tick-${String( state.tick ).padStart( 6, '0' )}.txt`
+        ? `./data/wills/${this._willId}/debug/response-tick-${String( state.tick ).padStart( 6, '0')}.txt`
         : ''
       this._sessionLogger?.write( {
         type: 'executive.response',
@@ -692,7 +692,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     }
     catch( err: unknown ){
       const msg = err instanceof Error ? err.message : String( err )
-      logger.error( `[executive] LLM call failed: ${msg.slice( 0, 200 )}` )
+      logger.error(`[executive] LLM call failed: ${msg.slice( 0, 200 )}`)
 
       this._sessionLogger?.write( {
         type: 'executive.response',
@@ -725,7 +725,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       hasNarrative: !!executiveOutput.narrative
     } )
 
-    stream.report( 'executive_complete', {
+    stream.report('executive_complete', {
       actionCount: executiveOutput.actions.length,
       planCount: executiveOutput.plans?.length ?? 0,
       newBeliefCount: executiveOutput.newBeliefs?.length ?? 0,
@@ -744,7 +744,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   ): StateCommands | null {
     const data = result as Record<string, unknown>
 
-    if( step === 'context_assembled' )
+    if( step === 'context_assembled')
       return {
         metrics: [
           [ 'executive.phase', 0 ],
@@ -752,7 +752,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         ]
       }
 
-    if( step === 'modulation' )
+    if( step === 'modulation')
       return {
         metrics: [
           [ 'executive.phase', 1 ],
@@ -760,7 +760,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         ]
       }
 
-    if( step === 'process_selected' )
+    if( step === 'process_selected')
       return {
         metrics: [
           [ 'executive.process', ( data.process as string ) === 'deliberate' ? 1 : 0 ],
@@ -768,14 +768,14 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         ]
       }
 
-    if( step === 'ideation_complete' )
+    if( step === 'ideation_complete')
       return {
         metrics: [
           [ 'executive.deliberate_candidates', ( data.candidateCount as number ) ?? 0 ]
         ]
       }
 
-    if( step === 'executive_complete' )
+    if( step === 'executive_complete')
       return {
         metrics: [
           [ 'executive.phase', 2 ],
@@ -1044,7 +1044,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   private _restoreSummarizer( state: ReadonlySimulationState ): void {
     if( !this._summarizer ) return
 
-    const entity = state.entities.get( 'executive-rolling-summary' )
+    const entity = state.entities.get('executive-rolling-summary')
     if( !entity ) return
 
     const m = entity.metadata ?? {}
@@ -1054,6 +1054,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
     this._summarizer.restore( summary, buffer, callCount )
     if( summary )
-      logger.info( `[executive] summarizer restored (${summary.length} chars, ${callCount} prior calls)` )
+      logger.info(`[executive] summarizer restored (${summary.length} chars, ${callCount} prior calls)`)
   }
 }

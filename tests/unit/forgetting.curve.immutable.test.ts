@@ -40,14 +40,14 @@ function emptyState(): ReadonlySimulationState {
   return { tick: 1, time: 0, entities: new Map(), metrics: new Map() } as unknown as ReadonlySimulationState
 }
 
-const ctx = createContext( 'sim', 'run', 42 )
+const ctx = createContext('sim', 'run', 42 )
 
-describe( 'ForgettingCurve — no shared-state mutation (FN8)', () => {
-  it( 'does not mutate the live episode objects in place', async () => {
+describe('ForgettingCurve — no shared-state mutation (FN8)', () => {
+  it('does not mutate the live episode objects in place', async () => {
     const consolidator = new EpisodicConsolidator({ autoIndex: false })
     const curve = new ForgettingCurve({ pruningThreshold: 0 })  // never prune here
     curve.attachConsolidator( consolidator )
-    consolidator.restoreEpisodes([ makeEpisode( 'a', 0.8 ), makeEpisode( 'b', 0.6 ) ])
+    consolidator.restoreEpisodes([ makeEpisode('a', 0.8 ), makeEpisode('b', 0.6 ) ])
 
     // Freeze the references the curve borrows: the OLD code's in-place write
     // would throw a TypeError on a frozen object.
@@ -61,16 +61,16 @@ describe( 'ForgettingCurve — no shared-state mutation (FN8)', () => {
     expect( refA.activationStrength ).toBe( 0.8 )
     // …while the consolidator now reports the decayed value via a fresh object.
     const after = consolidator.getAllEpisodes()
-    expect( after[0]!.id ).toBe( 'a' )
+    expect( after[0]!.id ).toBe('a')
     expect( after[0]!.activationStrength ).toBeLessThan( 0.8 )
     expect( after[0] ).not.toBe( refA )
   })
 
-  it( 'replaces only changed episodes, leaving unchanged ones by reference', async () => {
+  it('replaces only changed episodes, leaving unchanged ones by reference', async () => {
     const consolidator = new EpisodicConsolidator({ autoIndex: false })
     const curve = new ForgettingCurve({ pruningThreshold: 0 })
     curve.attachConsolidator( consolidator )
-    consolidator.restoreEpisodes([ makeEpisode( 'decays', 0.8 ), makeEpisode( 'floored', 0 ) ])
+    consolidator.restoreEpisodes([ makeEpisode('decays', 0.8 ), makeEpisode('floored', 0 ) ])
 
     const before = consolidator.getAllEpisodes()
     const refDecays = before[0]!
@@ -83,11 +83,11 @@ describe( 'ForgettingCurve — no shared-state mutation (FN8)', () => {
     expect( after[1] ).toBe( refFloored )         // unchanged → same reference
   })
 
-  it( 'still decays activation deterministically through the owner', async () => {
+  it('still decays activation deterministically through the owner', async () => {
     const consolidator = new EpisodicConsolidator({ autoIndex: false })
     const curve = new ForgettingCurve({ pruningThreshold: 0, baseForgettingRate: 0.1, emotionProtection: 0 })
     curve.attachConsolidator( consolidator )
-    consolidator.restoreEpisodes([ makeEpisode( 'a', 0.5 ) ])
+    consolidator.restoreEpisodes([ makeEpisode('a', 0.5 ) ])
 
     await curve.react( 1000, 1, emptyState(), ctx )  // 1s, rate 0.1 → 0.5 - 0.1 = 0.4
 

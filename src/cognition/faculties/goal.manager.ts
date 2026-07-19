@@ -223,7 +223,7 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
         break
       case 'belief.updated':
         // Salience model only — authoritative count always read from state.metrics.
-        this._model.observe( 'belief.count', ( e.payload as Record<string,number> )['total'] ?? 0 )
+        this._model.observe('belief.count', ( e.payload as Record<string,number> )['total'] ?? 0 )
         break
       case 'executive.goal.proposed':
         // Track that executive proposed goals — prioritize executive-sourced goals slightly higher
@@ -272,7 +272,7 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
           
         if( payload.goalId && payload.goalProgress !== undefined ){
           const goal = this._goals.get( payload.goalId )
-          if( goal?.status === 'active' ){
+          if( goal?.status === 'active'){
             goal.progress = Math.max( goal.progress, payload.goalProgress )  // forward-only
             if( goal.progress >= 0.95 )
               goal.status = 'pending_verification'
@@ -286,7 +286,7 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
         p = e.payload as { goalId: string },
         goal = this._goals.get( p.goalId )
 
-        if( goal?.status === 'active' )
+        if( goal?.status === 'active')
           goal.status = 'pending_verification'  // queued for condition eval next tick
 
         break
@@ -392,7 +392,7 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
         type: 'goal.state.changed',
         version: 1,
         sourceEngine: this.name,
-        salience: Math.max( 0.4, this._model.observe( 'goal.active_count', activeGoals.length ).salience ),
+        salience: Math.max( 0.4, this._model.observe('goal.active_count', activeGoals.length ).salience ),
         payload: { activeCount: activeGoals.length }
       })
 
@@ -563,7 +563,7 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
    */
   abandonGoal( goalId: string, reason?: string ): void {
     const goal = this._goals.get( goalId )
-    if( goal && goal.status === 'active' ){
+    if( goal && goal.status === 'active'){
       goal.status = 'abandoned'
       // Optionally store the reason (if GoalState had a reason field; we can add it or store in tags)
       reason && goal.tags.push(`abandoned:${reason.slice(0,50)}`)
@@ -683,7 +683,7 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
         const cType   = ( m.goalCompletionType as GoalState['completionType'] ) ?? 'action'
         const cCond   = m.goalCompletionCondition as string | undefined
         // Dedup by the referent (keid: tag) when present, else by description.
-        const keidTag = tags.find( t => t.startsWith( 'keid:' ) )
+        const keidTag = tags.find( t => t.startsWith('keid:') )
         const existing = Array.from( this._goals.values() ).find( g =>
           g.status === 'active' && ( keidTag ? g.tags.includes( keidTag ) : g.description === desc ) )
 
@@ -698,10 +698,10 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
   private _updatePriorities( state: ReadonlySimulationState ): void {
     // Task-persistence: which goal the Will is focused on + how committed (task.switcher)
     // and the (developable) cost of switching away. Drives the commitment boost below.
-    const focusMeta     = state.entities.get( 'task-switch-focus' )?.metadata as Record<string, unknown> | undefined
+    const focusMeta     = state.entities.get('task-switch-focus')?.metadata as Record<string, unknown> | undefined
     const focusedGoalId = focusMeta?.goalId as string | undefined
     const focusTicks    = ( focusMeta?.focusTicks as number ) ?? 0
-    const switchCost    = state.metrics.get( 'task_switch.switch_cost' ) ?? 0
+    const switchCost    = state.metrics.get('task_switch.switch_cost') ?? 0
 
     for( const goal of this._goals.values() ){
       if( goal.status !== 'active') continue
@@ -764,7 +764,7 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
       if( e.type !== 'plan' || e.metadata?.goalId !== goalId ) continue
       const steps = ( e.metadata?.steps as Array<{ status?: string }> | undefined ) ?? []
       if( steps.length === 0 ) continue
-      const done = steps.filter( s => s.status === 'completed' || s.status === 'skipped' ).length
+      const done = steps.filter( s => s.status === 'completed' || s.status === 'skipped').length
       return done / steps.length
     }
     return 0
@@ -792,14 +792,14 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
       // (defence-in-depth beyond the already-satisfied creation guard in _activateFromDrives).
       if( goal.activatedAt === tick ) continue
 
-      if( goal.status === 'pending_verification' ){
+      if( goal.status === 'pending_verification'){
         const met = this._evaluateMetricProgress( goal, state ) >= 1
-        met ? this.completeGoal( goal.id ) : ( goal.status = 'active' )
+        met ? this.completeGoal( goal.id ) : ( goal.status = 'active')
 
         continue  // skip completionType switch entirely
       }
 
-      if( goal.status !== 'active' && goal.status !== 'blocked' ) continue
+      if( goal.status !== 'active' && goal.status !== 'blocked') continue
 
       switch( goal.completionType ){
         case 'metric':
@@ -859,8 +859,8 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
                                 || dLow === 'communication'
 
     for( const goal of this._goals.values() ){
-      if( goal.status !== 'active' && goal.status !== 'blocked' ) continue
-      if( goal.completionType !== 'action' ) continue
+      if( goal.status !== 'active' && goal.status !== 'blocked') continue
+      if( goal.completionType !== 'action') continue
 
       const hasMatch = goal.tags.some( tag => {
         const t = tag.toLowerCase()
@@ -940,7 +940,7 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
    * seeded by the PMA and developed by the metacognition cycle — not a constant.
    */
   private _readConfigFromState( state: ReadonlySimulationState ): void {
-    const p = readEffectiveParams( state, 'engine-config-goal-manager' )
+    const p = readEffectiveParams( state, 'engine-config-goal-manager')
     if( p.gritPriority         != null ) this._gritPriority         = p.gritPriority
     if( p.gritPatienceScale    != null ) this._gritPatienceScale    = p.gritPatienceScale
     if( p.frustrationTolerance != null ) this._frustrationTolerance = p.frustrationTolerance

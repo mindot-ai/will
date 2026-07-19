@@ -28,49 +28,49 @@ function make( extra: Partial<{ maxConcurrency: number; timeoutMs: number }> = {
 
 afterEach( () => { globalThis.fetch = realFetch } )
 
-describe( 'OpenAICompatibleEmbedder — timeout + response guard (FN16)', () => {
-  it( 'passes an AbortSignal to fetch so a hung request can be cancelled', async () => {
+describe('OpenAICompatibleEmbedder — timeout + response guard (FN16)', () => {
+  it('passes an AbortSignal to fetch so a hung request can be cancelled', async () => {
     let seenSignal: unknown
     globalThis.fetch = ( async ( _url: string, init: RequestInit ) => {
       seenSignal = init.signal
       return okEmbedding( [ 0.1, 0.2, 0.3 ] )
     } ) as unknown as typeof fetch
 
-    await make().embed( 'hello' )
+    await make().embed('hello')
     expect( seenSignal ).toBeInstanceOf( AbortSignal )
   })
 
-  it( 'translates an abort/timeout into a clear error message', async () => {
+  it('translates an abort/timeout into a clear error message', async () => {
     globalThis.fetch = ( async () => {
-      throw Object.assign( new Error( 'The operation timed out.' ), { name: 'TimeoutError' } )
+      throw Object.assign( new Error('The operation timed out.'), { name: 'TimeoutError' } )
     } ) as unknown as typeof fetch
 
-    await expect( make({ timeoutMs: 1234 }).embed( 'x' ) ).rejects.toThrow( /timed out after 1234ms/ )
+    await expect( make({ timeoutMs: 1234 }).embed('x') ).rejects.toThrow( /timed out after 1234ms/ )
   })
 
-  it( 'throws a descriptive error on an empty response array', async () => {
+  it('throws a descriptive error on an empty response array', async () => {
     globalThis.fetch = ( async () => ( { ok: true, status: 200, json: async () => ({ data: [] }) } ) ) as unknown as typeof fetch
-    await expect( make().embed( 'x' ) ).rejects.toThrow( /empty or malformed/ )
+    await expect( make().embed('x') ).rejects.toThrow( /empty or malformed/ )
   })
 
-  it( 'throws on a present-but-embedding-less entry instead of an opaque TypeError', async () => {
+  it('throws on a present-but-embedding-less entry instead of an opaque TypeError', async () => {
     globalThis.fetch = ( async () => ( { ok: true, status: 200, json: async () => ({ data: [ {} ] }) } ) ) as unknown as typeof fetch
-    await expect( make().embed( 'x' ) ).rejects.toThrow( /empty or malformed/ )
+    await expect( make().embed('x') ).rejects.toThrow( /empty or malformed/ )
   })
 
-  it( 'returns the embedding on a well-formed response', async () => {
+  it('returns the embedding on a well-formed response', async () => {
     globalThis.fetch = ( async () => okEmbedding( [ 1, 2, 3 ] ) ) as unknown as typeof fetch
-    expect( await make().embed( 'x' ) ).toEqual( [ 1, 2, 3 ] )
+    expect( await make().embed('x') ).toEqual( [ 1, 2, 3 ] )
   })
 
-  it( 'still surfaces non-ok HTTP statuses', async () => {
+  it('still surfaces non-ok HTTP statuses', async () => {
     globalThis.fetch = ( async () => ( { ok: false, status: 503, statusText: 'Service Unavailable', json: async () => ({}) } ) ) as unknown as typeof fetch
-    await expect( make().embed( 'x' ) ).rejects.toThrow( /Embedding failed: 503/ )
+    await expect( make().embed('x') ).rejects.toThrow( /Embedding failed: 503/ )
   })
 })
 
-describe( 'OpenAICompatibleEmbedder — embedBatch concurrency gate (FN16)', () => {
-  it( 'never exceeds maxConcurrency in-flight requests and preserves order', async () => {
+describe('OpenAICompatibleEmbedder — embedBatch concurrency gate (FN16)', () => {
+  it('never exceeds maxConcurrency in-flight requests and preserves order', async () => {
     let active = 0
     let peak = 0
     globalThis.fetch = ( async ( _url: string, init: RequestInit ) => {
@@ -91,7 +91,7 @@ describe( 'OpenAICompatibleEmbedder — embedBatch concurrency gate (FN16)', () 
     expect( out.map( e => e[ 0 ] ) ).toEqual( [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 ] )
   })
 
-  it( 'handles an empty input list without firing any requests', async () => {
+  it('handles an empty input list without firing any requests', async () => {
     let calls = 0
     globalThis.fetch = ( async () => { calls++; return okEmbedding( [ 0 ] ) } ) as unknown as typeof fetch
     expect( await make().embedBatch( [] ) ).toEqual( [] )

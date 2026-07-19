@@ -7,13 +7,18 @@
 // learned, and what it fears. This is the basal-ganglia Go/NoGo arithmetic,
 // kept pure so it is trivially testable and replay-deterministic.
 //
-//   activation = goalRelevance + expectedReward + novelty + driveUrgency
+//   activation = goalRelevance
+//              + expectedReward
+//              + novelty
+//              + driveUrgency
 //              + habitStrength·W                              (additive habit bonus)
 //              + planBias·W                                   (top-down prior)
-//              − cost − inhibition − risk
+//              − cost
+//              − inhibition
+//              − risk
 //
 // The habit term is additive (per design decision): an overlearned schema wins
-// cheaply AND lowers its own deliberation threshold (see selector.ts), which is
+// cheaply AND lowers its own deliberation threshold (see action.selector.ts), which is
 // how the instrumental→habitual gradient cashes out as falling LLM spend.
 // ─────────────────────────────────────────────────────────────
 
@@ -77,22 +82,29 @@ export const DEFAULT_TEMPERATURE = 0.15
  */
 export function collectGoalTargets( state: ReadonlySimulationState ): Map<string, number> {
   const targets = new Map<string, number>()
+
   for( const e of state.entities.values() ){
-    if( e.type !== 'goal' ) continue
+    if( e.type !== 'goal') continue
+
     const m = e.metadata as Record<string, unknown> | undefined
     const status = typeof m?.['status'] === 'string' ? m['status'] : undefined
-    if( status !== 'active' && status !== 'in_progress' ) continue
+
+    if( status !== 'active' && status !== 'in_progress') continue
+
     const priority = typeof m?.['priority'] === 'number' ? m['priority'] as number : 0
     const link = ( id: unknown ): void => {
       if( typeof id !== 'string' || !id ) return
       targets.set( id, Math.max( targets.get( id ) ?? 0, priority ) )
     }
+
     link( m?.['targetEntityId'] )
     link( m?.['requestingEntityId'] )
+
     if( Array.isArray( m?.['tags'] ) )
       for( const t of m['tags'] as unknown[] )
-        if( typeof t === 'string' && t.startsWith( 'keid:' ) ) link( t.slice( 5 ) )
+        if( typeof t === 'string' && t.startsWith('keid:') ) link( t.slice( 5 ) )
   }
+
   return targets
 }
 
@@ -100,18 +112,22 @@ export function collectGoalTargets( state: ReadonlySimulationState ): Map<string
 export function goalRelevance( a: Affordance, bias: BiasContext ): number {
   if( a.targetEntityId && bias.goalTargets.has( a.targetEntityId ) )
     return bias.maxGoalPriority
+
   return 0
 }
 
 /** Homeostatic urgency routed to the affordance by its schema tags. */
 export function driveUrgency( a: Affordance, bias: BiasContext ): number {
   const t = a.tags
-  if( t.includes( 'regulatory' ) || t.includes( 'self-care' ) || t.includes( 'rest' ) )
+  if( t.includes('regulatory') || t.includes('self-care') || t.includes('rest') )
     return Math.max( bias.drives.energy, bias.drives.sleep )
-  if( t.includes( 'social' ) )
+
+  if( t.includes('social') )
     return bias.drives.social
-  if( t.includes( 'self-protection' ) )
+
+  if( t.includes('self-protection') )
     return Math.max( bias.drives.stress, bias.threat )
+
   return 0
 }
 

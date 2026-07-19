@@ -114,14 +114,12 @@ export class AffordanceSynthesizer implements CognitiveEngine {
 
     // Clear the previous tick's field — affordances are transient.
     for( const [ id, e ] of state.entities )
-      if( e.type === 'affordance' ) del.push( id )
+      if( e.type === 'affordance') del.push( id )
 
     // ── 1. innate floor — always emitted, never attention-capped ──
-    const floor = schemas.filter( s => s.binds === 'none' )
+    const floor = schemas.filter( s => s.binds === 'none')
     for( const schema of floor )
-      set.push( this._toEntity(
-        this._build( schema, tick, state, valence, energyLow, skills, {} ),
-      ) )
+      set.push( this._toEntity( this._build( schema, tick, state, valence, energyLow, skills, {} ) ) )
 
     // ── 2. perception-bound candidates, attention-budgeted ───────
     // Goal-relevance counts at the CAP, not only at selection: an affordance whose
@@ -131,14 +129,16 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     const candidates:  Candidate[]           = []
     const goalTargets: Map<string, number>   = collectGoalTargets( state )
 
-    const perceptSchema = schemas.find( s => s.binds === 'percept' )
+    const perceptSchema = schemas.find( s => s.binds === 'percept')
     if( perceptSchema )
       for( const [ id, e ] of state.entities ){
-        if( e.type !== 'percept' ) continue
+        if( e.type !== 'percept') continue
+
         const m        = e.metadata
         const salience = num( m?.['salience'], 0 )
         const summary  = str( m?.['summary'] ) ?? str( m?.['category'] ) ?? 'something'
         const target   = str( m?.['entityId'] ) ?? str( m?.['targetEntityId'] )
+
         candidates.push({
           salience: salience + ( target ? goalTargets.get( target ) ?? 0 : 0 ),
           affordance: this._build( perceptSchema, tick, state, valence, energyLow, skills, {
@@ -155,21 +155,26 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // things — so the Will can direct `give`/`greet` at someone or `use`/`pick-up`
     // at something in particular. Each (schema × target) enters as a candidate at
     // the target's salience and competes through the attention cap.
-    const personSchemas = schemas.filter( s => s.binds === 'entity' )
-    const objectSchemas = schemas.filter( s => s.binds === 'object' )
+    const personSchemas = schemas.filter( s => s.binds === 'entity')
+    const objectSchemas = schemas.filter( s => s.binds === 'object')
+
     if( personSchemas.length > 0 || objectSchemas.length > 0 )
       for( const [ id, e ] of state.entities ){
-        if( e.type !== 'known-entity' ) continue
+        if( e.type !== 'known-entity') continue
+
         const m    = e.metadata
         const kind = str( m?.['kind'] )
         const applicable = kind === 'sentient' ? personSchemas : kind === 'thing' ? objectSchemas : null
+
         if( !applicable || applicable.length === 0 ) continue
+
         const keid = str( m?.['keid'] ) ?? id
         const fam  = num( m?.['familiarity'], 0 )
         const val  = num( m?.['valence'], 0 )
         const res  = num( m?.['resolutionConfidence'], 0 )
         const salience = fam * 0.6 + Math.max( 0, val ) * 0.3 + res * 0.1 + ( goalTargets.get( keid ) ?? 0 )
         const name     = str( m?.['name'] ) ?? keid
+
         for( const schema of applicable )
           candidates.push({
             salience,
@@ -188,11 +193,14 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // it. This is the AffordanceSource.ideomotor leg: executive intention → an
     // affordance that competes like any other.
     for( const [ id, e ] of state.entities ){
-      if( e.type !== 'ideomotor.intent' ) continue
+      if( e.type !== 'ideomotor.intent') continue
+
       const m        = e.metadata
       const schemaId = str( m?.['schema'] )
       const schema   = schemaId ? schemas.find( s => s.id === schemaId ) : undefined
+
       if( !schema ) continue
+
       candidates.push({
         salience: IDEOMOTOR_BASE_SALIENCE + num( m?.['priority'], 0.8 ),
         affordance: this._build( schema, tick, state, valence, energyLow, skills, {
@@ -215,11 +223,14 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // next tick. The suggested schema must resolve in the repertoire; if it does not,
     // the prior cannot surface as an action and the plan waits / replans.
     for( const [ id, e ] of state.entities ){
-      if( e.type !== 'plan.prior' ) continue
+      if( e.type !== 'plan.prior') continue
+
       const m        = e.metadata
       const schemaId = str( m?.['schema'] )
       const schema   = schemaId ? schemas.find( s => s.id === schemaId ) : undefined
+
       if( !schema ) continue
+
       const planBias = clamp01( num( m?.['planBias'], 0.6 ) )
       candidates.push({
         salience: IDEOMOTOR_BASE_SALIENCE + planBias,
@@ -266,7 +277,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
         })
       }
       catch( err ){
-        logger.warn( `[affordance] bus publish failed: ${ err instanceof Error ? err.message : String( err ) }` )
+        logger.warn(`[affordance] bus publish failed: ${ err instanceof Error ? err.message : String( err ) }`)
       }
     }
 
@@ -296,8 +307,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     const skill = skills?.get( schema.id )
 
     // Learned value if known, else the schema's intrinsic prior mapped to 0..1.
-    const expectedReward = skill?.valueEstimate
-      ?? clamp01( ( ( schema.baseValence ?? 0 ) + 1 ) / 2 )
+    const expectedReward = skill?.valueEstimate ?? clamp01( ( ( schema.baseValence ?? 0 ) + 1 ) / 2 )
     const expectedValence = schema.baseValence ?? valence
     const habitStrength   = skill?.habitStrength ?? 0
     // Low energy makes everything feel costlier.
@@ -374,7 +384,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
   }
 
   private _attentionCap( state: ReadonlySimulationState ): number {
-    const cap = state.metrics.get( 'attention.capacity' ) ?? this._defaultCap
+    const cap = state.metrics.get('attention.capacity') ?? this._defaultCap
     return Math.max( 1, Math.min( MAX_ATTENTION_CAP, Math.round( cap ) ) )
   }
 }

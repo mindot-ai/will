@@ -220,7 +220,7 @@ describe('Full Mind Integration', () => {
     // Full metric equivalence — every key, not just five.
     const metricKeys = new Set([ ...snap1.metrics.keys(), ...snap2.metrics.keys() ])
     for( const key of metricKeys )
-      expect( snap1.metrics.get( key ), `metric "${key}" diverged on replay` ).toBe( snap2.metrics.get( key ) )
+      expect( snap1.metrics.get( key ), `metric "${key}" diverged on replay`).toBe( snap2.metrics.get( key ) )
     expect( snap1.metrics.size ).toBe( snap2.metrics.size )
 
     // Full entity-map equivalence — every entity, including its id, createdAt /
@@ -231,7 +231,7 @@ describe('Full Mind Integration', () => {
     expect( snap1.entities.size ).toBe( snap2.entities.size )
     const entityIds = new Set([ ...snap1.entities.keys(), ...snap2.entities.keys() ])
     for( const id of entityIds )
-      expect( snap2.entities.get( id ), `entity "${id}" diverged on replay` )
+      expect( snap2.entities.get( id ), `entity "${id}" diverged on replay`)
         .toEqual( snap1.entities.get( id ) )
   }, 120_000)
 

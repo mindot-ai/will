@@ -97,12 +97,12 @@ export class ReputationTracker implements SimulationEngine, CognitiveEngine {
 
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
-    if( e.type === 'executive.prediction.formed' ){
+    if( e.type === 'executive.prediction.formed'){
       const p = e.payload as { predictedDomains: string[]; confidence: number }
       if( p.predictedDomains.includes('social') )
-        this._model.setPrecision( 'reputation.tracked', 1.0 + p.confidence * 0.5 )
+        this._model.setPrecision('reputation.tracked', 1.0 + p.confidence * 0.5 )
     }
-    if( e.type === 'interaction.occurred' ){
+    if( e.type === 'interaction.occurred'){
       const p = e.payload as { keid: string; valence: number; intensity: number; directedAtSelf: boolean }
       this._pendingInteractions.push( p )
     }
@@ -124,7 +124,7 @@ export class ReputationTracker implements SimulationEngine, CognitiveEngine {
     // agent's cooperativeness is refreshed each tick as base ⊕ persona-prior. An agreeable
     // Will develops a larger step — it extends benefit-of-the-doubt and credits cooperation
     // more readily (the trust facet).
-    this._trustGrowthStep = readEffectiveParams( state, 'engine-config-reputation' ).trustGrowthStep ?? this._trustGrowthStep
+    this._trustGrowthStep = readEffectiveParams( state, 'engine-config-reputation').trustGrowthStep ?? this._trustGrowthStep
 
     // Rehydrate _reputations from persisted state on the first tick after
     // construction / snapshot restore. Without this, every session restart
@@ -213,7 +213,7 @@ export class ReputationTracker implements SimulationEngine, CognitiveEngine {
     // Phase C + F: publish cognitive event — gated by prediction error
     const _bus = this._bus
     if( _bus && this._reputations.size > 0 ){
-      const predErr = this._model.observe( 'reputation.tracked', this._reputations.size )
+      const predErr = this._model.observe('reputation.tracked', this._reputations.size )
       if( !predErr.gated )
         _bus.publish({ type: 'reputation.updated', version: 1, sourceEngine: this.name, salience: Math.max( 0.2, predErr.salience ), payload: { trackedAgents: this._reputations.size } })
     }
@@ -240,7 +240,7 @@ export class ReputationTracker implements SimulationEngine, CognitiveEngine {
    */
   private _restoreFromState( state: ReadonlySimulationState ): void {
     for( const entity of state.entities.values() ){
-      if( entity.type !== 'reputation' ) continue
+      if( entity.type !== 'reputation') continue
       const m = entity.metadata ?? {}
       const keid = m['keid'] as string | undefined
       if( !keid ) continue

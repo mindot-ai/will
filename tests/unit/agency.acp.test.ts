@@ -163,6 +163,30 @@ describe('ActionSelector — sense percepts can rupture (ACP §2b)', () => {
     expect( metricVal( r2.commands, 'situation.stability') ).toBeUndefined()
   })
 
+  it('a model-error state-change event ruptures (registry #6)', async () => {
+    const sel = new ActionSelector()
+    sel.onCognitiveEvent({ type: 'stress.state.changed', version: 1, sourceEngine: 'stress-regulator',
+      salience: 0.9, payload: { load: 85, zoneCode: 2 } } as never )
+    const s = freshState(); s.tick = 5
+    s.entities.set('d', { createdAt: 0, updatedAt: 0, id: 'd', type: 'agency.intent',
+      metadata: { status: 'deliberating', schema: 'ponder' } } as SimulationEntity )
+    const r = await sel.react( 0, 5, frozen( s ), CTX )
+    expect( metricVal( r.commands, 'situation.stability')! ).toBeLessThan( 1 )
+  })
+
+  it('a self-caused model-error event (ACP-attenuated at source) cannot rupture', async () => {
+    const sel = new ActionSelector()
+    // ACP-P2 consumers emit self-caused swings at ≤ ACP_SELF_PRECISION (0.35),
+    // below RUPTURE_SALIENCE_GATE (0.4) — the echo guard composes end to end.
+    sel.onCognitiveEvent({ type: 'affect.state.changed', version: 1, sourceEngine: 'affective-blender',
+      salience: 0.35, payload: { arousal: 0.6 } } as never )
+    const s = freshState(); s.tick = 5
+    s.entities.set('d', { createdAt: 0, updatedAt: 0, id: 'd', type: 'agency.intent',
+      metadata: { status: 'deliberating', schema: 'ponder' } } as SimulationEntity )
+    const r = await sel.react( 0, 5, frozen( s ), CTX )
+    expect( metricVal( r.commands, 'situation.stability') ).toBeUndefined()
+  })
+
   it('the buffer survives a snapshot/restore boundary (FN9)', async () => {
     const sel = new ActionSelector()
     sel.onCognitiveEvent( senseEvent( 0.9 ) )

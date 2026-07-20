@@ -23,7 +23,7 @@
 | **3** | **ACP-P2: the efferent-anticipation seam** — engines holding a GenerativeModel subscribe to `agency.enacted` / `agency.communicate` / `agency.invocation` and `anticipate()` the streams that action class predictably moves ⇒ self-caused stream movement stops recruiting the workspace | this file | `anticipate()` (exists) | M/L | OPEN — design §3, first consumer TBD |
 | **4** | **Composite immediate-switch** — deferred-macro-advance so a preempting challenger can commit the same tick a routine is cancelled | pre-existing debt (selector comment) | independent | M | OPEN |
 | **5** | **Valence-driven P5 soft quality** — sensory confirmation quality from the matched percept's *felt* valence instead of the fixed 0.6 | EXAFFERENCE P5 deviation note | affect writing per-percept valence (an appraisal→percept annotation seam — affect-side work) | M | BLOCKED on affect seam |
-| **6** | **ACP-P3: model-error rupture term** — fold `gated` prediction-error crossings into `computeRupture` once ACP-P2 makes those errors action-conditioned (before that it would double-count our own actions) | EXAFFERENCE P3 deferral | #3 | S | OPEN — after #3 |
+| **6** | **ACP-P3: model-error rupture term** — the selector buffers `attention/affect/stress.state.changed` (each carries its engine's prediction-error salience) into `computeRupture`. The echo guard composes at the SOURCE: ACP-P2 consumers emit self-caused swings at ≤ 0.35, below the 0.4 rupture gate — an interoceptive wake of our own action cannot rupture, a world-caused internal storm can | EXAFFERENCE P3 deferral | #3 (✅) | S | ✅ shipped 2026-07-20 |
 
 **Adjacent, interrelated, NOT this repo/arc (tracked elsewhere):**
 - **Record anchoring → VLX** (`.TODO/RECORD_ANCHORING.md`, VLX/SPEC.md §7) —
@@ -163,8 +163,14 @@ Design (settled here, implementation phased):
          workspace-entry count from self-caused streams drops vs. baseline,
          with world-event detection latency unchanged. Only then widen to
          further engines.
-5. - [ ] Then **ACP-P3** (registry #6): fold action-conditioned `gated`
-         crossings into `computeRupture` as the secondary term.
+5. - [x] **ACP-P3 (registry #6, shipped 2026-07-20):** rather than reading
+         other engines' models (impossible from the selector), the selector
+         buffers their error-driven `*.state.changed` events into the same
+         FN9-snapshotted afferent buffer that carries sense percepts, and
+         `computeRupture` folds them in. No new guard needed — ACP-P2 IS the
+         guard: self-caused swings arrive pre-attenuated below the rupture
+         gate. Tests in `agency.acp.test.ts` (world-caused internal storm
+         ruptures; ACP-attenuated self-caused wake cannot).
 
 **Why not all 36 engines at once:** anticipation with wrong expected values
 *suppresses real surprise* — the over-attribution failure mode again, now at

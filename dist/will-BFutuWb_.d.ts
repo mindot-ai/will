@@ -6420,11 +6420,12 @@ declare class ActionSelector implements CognitiveEngine {
     publishes(): CognitiveEventSchema[];
     subscribes(): string[];
     /**
-     * Mostly pull-model — but sense-channel percepts never become entities
-     * (they live on the bus, ACTION_CONDITIONED_PREDICTION §2b), so rupture
-     * would be blind to a sensory shock. Buffer them here (cross-tick: bus
-     * flush at T, consumed by react at T+1 — FN9-snapshotted) and fold into
-     * computeRupture with the echo guard applied at read time.
+     * Mostly pull-model — but two afferent classes never become entities and
+     * would leave rupture blind: sense-channel percepts
+     * (ACTION_CONDITIONED_PREDICTION §2b) and the model-error state-change
+     * events (registry #6). Buffer both (cross-tick: bus flush at T, consumed
+     * by react at T+1 — FN9-snapshotted); the echo guard is applied at read
+     * time for texts, and at the SOURCE for model errors (ACP-P2 precision).
      */
     onCognitiveEvent(e: CognitiveEvent): void;
     snapshot(): Record<string, unknown>;

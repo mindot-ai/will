@@ -116,6 +116,21 @@ describe('MotorSchemaExecutor — descriptor registration (EXAFFERENCE P1)', () 
     expect( c!.expiresAt ).toBe( 3 + CONSEQUENCE_TTL_TICKS )
   })
 
+  it('awaiting communicate with authored content carries text (P5 echo-matchable)', async () => {
+    const exec = new MotorSchemaExecutor()   // no comms attached → communicate falls to awaiting hold
+    const s = freshState()
+    seedIntent( s, { schema: 'reach-out', targetEntityId: 'alice', parameters: { content: 'are you free later' } } )
+
+    const r = await exec.react( 0, 3, frozen( s ), CTX )
+    apply( s, r.commands )
+
+    expect( s.entities.get('agency-intent-1')?.metadata?.['status'] ).toBe('awaiting')
+    const c = readConsequence( descriptors( s )[0]!.metadata )
+    expect( c!.mode ).toBe('communicate')
+    expect( c!.text ).toBe('are you free later')
+    expect( c!.textHash ).toBe( fnv1a('are you free later') )
+  })
+
   it('sync innate enaction registers NO descriptor (internal effects only)', async () => {
     const exec = new MotorSchemaExecutor()
     const s = freshState({ 'energy.level': 30 })

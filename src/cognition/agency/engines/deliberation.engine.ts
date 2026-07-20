@@ -30,6 +30,7 @@ import type {
 import type { CognitiveBus } from '#cognition/bus'
 import type { CognitiveEngine, EngineResult } from '#cognition/types'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
+import { revokedIntentIds, revocationId } from '#agency/revocation'
 
 // ── Minimal structural view of the executive's facet machinery ───────────────
 // Kept structural (not an import of the executive engine) so the agency module
@@ -92,15 +93,23 @@ export class DeliberationEngine implements CognitiveEngine {
     state:    ReadonlySimulationState,
     _context: SimulationContext,
   ): Promise<EngineResult> {
+    // Honor commitment revocations first (EXAFFERENCE P4): a `deliberating`
+    // intent under a live tombstone is dropped — the world ruptured hard enough
+    // to let go of it — and the tombstone with it. We never deliberate a
+    // revoked intent.
+    const revoked = revokedIntentIds( state.entities, tick )
+    const del: string[] = []
+
     // One deliberation per tick (the serial bottleneck).
     let target: { id: string; meta: Record<string, unknown> } | null = null
     for( const [ id, e ] of state.entities ){
       if( e.type !== 'agency.intent') continue
       if( str( e.metadata?.['status'] ) !== 'deliberating') continue
+      if( revoked.has( id ) ){ del.push( id, revocationId( id ) ); continue }   // revoked → drop
       const meta = ( e.metadata ?? {} ) as Record<string, unknown>
       if( !target || id < target.id ) target = { id, meta }   // stable pick
     }
-    if( !target ) return { commands: {} }
+    if( !target ) return del.length > 0 ? { commands: { delete: del } } : { commands: {} }
 
     const { id, meta }   = target
     const provisional    = str( meta['schema'] ) ?? 'wait'
@@ -108,7 +117,8 @@ export class DeliberationEngine implements CognitiveEngine {
 
     // No executive → confirm the substrate's winner (graceful System-1).
     if( !this._provider )
-      return { commands: { set: [ this._commit( id, meta, provisional, candidates, 'no-executive') ] } }
+      return { commands: { set: [ this._commit( id, meta, provisional, candidates, 'no-executive') ],
+        ...( del.length > 0 ? { delete: del } : {} ) } }
 
     // Deliberate through a UNIFIED facet (same persona/context as the master).
     const chosen = await this._deliberate( state, candidates, provisional, meta )
@@ -127,6 +137,7 @@ export class DeliberationEngine implements CognitiveEngine {
     return {
       commands: {
         set:     [ this._commit( id, meta, chosen, candidates, 'facet') ],
+        ...( del.length > 0 ? { delete: del } : {} ),
         metrics: [ [ 'agency.deliberation.count', 1 ] ],
       },
     }

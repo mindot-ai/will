@@ -5446,6 +5446,42 @@ function matchConsequenceText(descriptors, candidate) {
   return null;
 }
 
+// src/cognition/agency/revocation.ts
+var REVOCATION_TYPE = "agency.revocation";
+var RUPTURE_REVOKE_GATE = 0.7;
+var REVOCATION_TTL_TICKS = 5;
+function revocationId(intentId) {
+  return `agency-revocation-${intentId}`;
+}
+function revocationEntity(intentId, schema, rupture, tick) {
+  return {
+    id: revocationId(intentId),
+    type: REVOCATION_TYPE,
+    metadata: { intentId, schema, rupture, tick, expiresAt: tick + REVOCATION_TTL_TICKS }
+  };
+}
+function revokedIntentIds(entities, tick) {
+  const out = /* @__PURE__ */ new Set();
+  for (const [, e] of entities) {
+    if (e.type !== REVOCATION_TYPE) continue;
+    const m = e.metadata ?? {};
+    const intentId = typeof m["intentId"] === "string" ? m["intentId"] : void 0;
+    const expiresAt = typeof m["expiresAt"] === "number" ? m["expiresAt"] : 0;
+    if (intentId && tick < expiresAt) out.add(intentId);
+  }
+  return out;
+}
+function staleRevocationIds(entities, tick) {
+  const stale = [];
+  for (const [id, e] of entities) {
+    if (e.type !== REVOCATION_TYPE) continue;
+    const m = e.metadata ?? {};
+    const expiresAt = typeof m["expiresAt"] === "number" ? m["expiresAt"] : 0;
+    if (tick >= expiresAt) stale.push(id);
+  }
+  return stale;
+}
+
 // src/cognition/faculties/exteroception.ts
 var internalTypes = /* @__PURE__ */ new Set([
   "percept",
@@ -5474,7 +5510,9 @@ var internalTypes = /* @__PURE__ */ new Set([
   "executive.summary",
   // The agency's own forward-model records (EXAFFERENCE P1/P2): perceiving our
   // expected-consequence descriptors would be a self-noise loop.
-  CONSEQUENCE_TYPE
+  CONSEQUENCE_TYPE,
+  // The agency's own revocation tombstones (EXAFFERENCE P4) — internal bookkeeping.
+  REVOCATION_TYPE
 ]);
 var Exteroception = class {
   name = "exteroception";
@@ -20216,7 +20254,8 @@ var ActionSelector = class {
       { type: "agency.selection.made", version: 1, validate: () => null },
       { type: "agency.selection.ambiguous", version: 1, validate: () => null },
       { type: "agency.action.preempted", version: 1, validate: () => null },
-      { type: "agency.situation.rupture", version: 1, validate: () => null }
+      { type: "agency.situation.rupture", version: 1, validate: () => null },
+      { type: "agency.commitment.revoked", version: 1, validate: () => null }
     ];
   }
   subscribes() {
@@ -20254,9 +20293,12 @@ var ActionSelector = class {
     let blocking = false;
     let awaiting = null;
     let composite = null;
+    let deliberating = null;
     for (const it of intents) {
-      if (it.st === "deliberating") blocking = true;
-      else if (it.st === "expanding") composite = { id: it.id, activation: it.activation, schema: it.schema };
+      if (it.st === "deliberating") {
+        blocking = true;
+        deliberating = { id: it.id, schema: it.schema };
+      } else if (it.st === "expanding") composite = { id: it.id, activation: it.activation, schema: it.schema };
       else if (it.st === "awaiting") awaiting = { id: it.id, activation: it.activation, schema: it.schema, target: it.target, dispatchedAt: it.dispatchedAt };
       else if (it.st === "selected") {
         const activeMacroSub = it.parentIntentId !== void 0 && expandingParents.has(it.parentIntentId);
@@ -20290,6 +20332,32 @@ var ActionSelector = class {
         ]
       }
     });
+    if (deliberating && rupture >= RUPTURE_REVOKE_GATE) {
+      if (this._bus) {
+        try {
+          this._bus.publish({
+            type: "agency.commitment.revoked",
+            version: 1,
+            sourceEngine: this.name,
+            salience: 0.85,
+            payload: { from: deliberating.schema, reason: "exafferent-rupture", rupture, tick }
+          });
+        } catch (err) {
+          logger.warn(`[selector] revoked publish failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      return {
+        commands: {
+          set: [revocationEntity(deliberating.id, deliberating.schema, rupture, tick)],
+          metrics: [
+            ["agency.field.eligible", eligible.length],
+            ["agency.selection.busy", 1],
+            ["agency.commitment.revoked", 1],
+            ...stabMetrics
+          ]
+        }
+      };
+    }
     if (blocking) return busy(eligible.length);
     if (eligible.length === 0)
       return {
@@ -20583,19 +20651,28 @@ var DeliberationEngine = class {
     return { deliberations: this._deliberations };
   }
   async react(_delta, tick, state, _context) {
+    const revoked = revokedIntentIds(state.entities, tick);
+    const del = [];
     let target = null;
     for (const [id2, e] of state.entities) {
       if (e.type !== "agency.intent") continue;
       if (str3(e.metadata?.["status"]) !== "deliberating") continue;
+      if (revoked.has(id2)) {
+        del.push(id2, revocationId(id2));
+        continue;
+      }
       const meta2 = e.metadata ?? {};
       if (!target || id2 < target.id) target = { id: id2, meta: meta2 };
     }
-    if (!target) return { commands: {} };
+    if (!target) return del.length > 0 ? { commands: { delete: del } } : { commands: {} };
     const { id, meta } = target;
     const provisional = str3(meta["schema"]) ?? "wait";
     const candidates = Array.isArray(meta["candidates"]) ? meta["candidates"] : [];
     if (!this._provider)
-      return { commands: { set: [this._commit(id, meta, provisional, candidates, "no-executive")] } };
+      return { commands: {
+        set: [this._commit(id, meta, provisional, candidates, "no-executive")],
+        ...del.length > 0 ? { delete: del } : {}
+      } };
     const chosen = await this._deliberate(state, candidates, provisional, meta);
     this._deliberations++;
     if (this._bus) {
@@ -20613,6 +20690,7 @@ var DeliberationEngine = class {
     return {
       commands: {
         set: [this._commit(id, meta, chosen, candidates, "facet")],
+        ...del.length > 0 ? { delete: del } : {},
         metrics: [["agency.deliberation.count", 1]]
       }
     };
@@ -20847,6 +20925,8 @@ var MotorSchemaExecutor = class {
       if (e.type !== CONSEQUENCE_TYPE) continue;
       if (tick >= num3(e.metadata?.["expiresAt"], 0)) del.push(id);
     }
+    del.push(...staleRevocationIds(state.entities, tick));
+    const revoked = revokedIntentIds(state.entities, tick);
     for (const [id, e] of state.entities) {
       if (e.type !== "agency.intent" || str5(e.metadata?.["status"]) !== "awaiting") continue;
       const dispatchedAt = num3(e.metadata?.["dispatchedAt"], tick);
@@ -20873,6 +20953,10 @@ var MotorSchemaExecutor = class {
     const selected = [...state.entities.entries()].filter(([, e]) => e.type === "agency.intent" && str5(e.metadata?.["status"]) === "selected").sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
     let enactedCount = 0;
     for (const [id, e] of selected) {
+      if (revoked.has(id)) {
+        del.push(id, revocationId(id));
+        continue;
+      }
       const intent = readIntent(id, e.metadata);
       const schema = this._resolve(intent.schema);
       if (schema?.kind === "composite" && schema.composedOf && schema.composedOf.length > 0) {

@@ -32,6 +32,7 @@ import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import { GenerativeModel } from '#cognition/generative.model'
 import { CONSEQUENCE_TYPE, ATTENUATION, liveConsequences, matchConsequenceText } from '#agency/consequence'
+import { REVOCATION_TYPE } from '#agency/revocation'
 
 export interface ExteroceptionConfig {
   /** Maximum percepts to produce per tick */
@@ -71,6 +72,8 @@ const internalTypes = new Set([
   // The agency's own forward-model records (EXAFFERENCE P1/P2): perceiving our
   // expected-consequence descriptors would be a self-noise loop.
   CONSEQUENCE_TYPE,
+  // The agency's own revocation tombstones (EXAFFERENCE P4) — internal bookkeeping.
+  REVOCATION_TYPE,
 ])
 
 export class Exteroception implements SimulationEngine, CognitiveEngine {

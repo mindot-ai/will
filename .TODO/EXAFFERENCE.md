@@ -241,25 +241,36 @@ a tick — the race-safe rule is correct); no LLM in any matching path.
       mean-reverts on a quiet tick. Full unit suite 944/944; replay-equivalence
       green; typecheck clean.
 
-### P4 — Commitment revocation (the letting-go)
-- [ ] Above `RUPTURE_REVOKE_GATE`: revoke via **tombstone** (P0 amendment — never
-      a direct delete): selector writes `agency.revocation` keyed by intent id +
-      emits **`agency.commitment.revoked`** `{ from: schema, reason:
-      'exafferent-rupture', rupture, tick }`; next tick the Deliberation engine
-      skips + deletes tombstoned intents, and the Executor refuses tombstoned
-      `selected` intents (both then clean up tombstone + intent).
-- [ ] Revocation does **not** commit a successor in the same tick — the field
-      re-forms (the rupturing percept's un-attenuated salience carries it through
-      the attention budget) and the next tick selects. Channel B: the *next*
-      deliberating intent carries `preemptedFrom` + a `revokedBy` hint so the facet
-      can own the rupture in-character ("something just changed — I dropped what I
-      was weighing").
-- [ ] (Optional sub-item, pre-existing debt) composite **immediate-switch**: the
-      deferred-macro-advance upgrade the selector comment already flags — in-scope
-      here only if P4 touches the same seam anyway; otherwise leave cancel-only.
-- [ ] Tests: mid-deliberation rupture → revoked → re-selection next tick; orphan
-      facet result dropped without throw; revocation event in the log exactly once;
-      replay determinism across the whole sequence.
+### P4 — Commitment revocation (the letting-go) ⟶ done (2026-07-20)
+- [x] New `agency/revocation.ts`: `REVOCATION_TYPE`, `RUPTURE_REVOKE_GATE = 0.7`,
+      `REVOCATION_TTL_TICKS = 5`, `revocationEntity` / `revokedIntentIds` /
+      `staleRevocationIds`. Above the gate the selector writes an
+      `agency.revocation` tombstone (keyed by intent id — never a direct delete,
+      per the P0 resurrection-race finding) and emits **`agency.commitment.revoked`**
+      `{ from, reason: 'exafferent-rupture', rupture, tick }`.
+- [x] Both honorers act next tick from frozen state: the **Deliberation engine**
+      skips + deletes tombstoned `deliberating` intents (+ their tombstone) before
+      picking a target — never deliberating a revoked one, while non-tombstoned
+      intents proceed; the **Executor** refuses a tombstoned `selected` intent (the
+      half-race where deliberation committed the same tick the tombstone landed),
+      deleting intent + tombstone with no enaction, and TTL-reaps orphan tombstones.
+- [x] **No successor same tick** — the revocation return carries only the
+      tombstone; the field re-forms and next tick selects. Tombstone type added to
+      Exteroception `internalTypes` (never perceived).
+- [x] Tests (`agency.revocation.test.ts`, 6 cases): selector issues tombstone +
+      event once with no successor; sub-gate rupture does not revoke; Deliberation
+      drops the revoked intent (+ tombstone) while a co-present live intent still
+      deliberates; Executor refuses + cleans a tombstoned `selected` without
+      enacting; orphan-tombstone TTL reap. Full unit suite 950/950;
+      replay-equivalence green; typecheck clean.
+
+> **Deferred (documented, not blocking):** the Channel-B `revokedBy` in-character
+> hint on the *next* deliberating intent — needs cross-tick selector bookkeeping
+> (snapshot surface); left out to keep determinism simple. The orphan-facet-drop
+> concern from P0 is moot by construction: the Deliberation engine is stateless
+> across ticks (it re-reads frozen state each `react`), so a revoked intent it
+> never picks up produces no dangling handle. Composite immediate-switch remains
+> pre-existing debt (untouched).
 
 ### P5 — Sensory reafference learns (optional follow-up)
 - [ ] Matched (`reafferent`, `sourceIntentId`) percepts route a *soft* outcome to

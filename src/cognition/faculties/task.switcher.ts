@@ -143,8 +143,13 @@ export class TaskSwitcher implements SimulationEngine, CognitiveEngine {
         const currentPriority = currentGoal?.priority ?? 0
         const switchAdvantage = topGoal.priority - currentPriority
 
-        // Account for switching cost
-        const switchCost = this._baseSwitchCost * ( 1 + this._currentFocus.focusTicks * 0.01 )
+        // Account for switching cost. EXAFFERENCE P3 follow-up: `situation.stability`
+        // (absent ⇒ 1 ⇒ unchanged) scales the focus-hardening term, so a
+        // destabilized world loosens focus here exactly as it does in the
+        // ActionSelector — the two owners of switch resistance now read the same
+        // stability signal at their native scales (goal-priority vs. activation).
+        const stability  = state.metrics.get('situation.stability') ?? 1
+        const switchCost = this._baseSwitchCost * ( 1 + this._currentFocus.focusTicks * 0.01 * stability )
         const netBenefit = switchAdvantage - switchCost
 
         if( netBenefit > this._switchThreshold

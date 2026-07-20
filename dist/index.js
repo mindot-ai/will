@@ -14879,7 +14879,8 @@ var TaskSwitcher = class {
         const currentGoal = activeGoals.find((g) => g.id === this._currentFocus.goalId);
         const currentPriority = currentGoal?.priority ?? 0;
         const switchAdvantage = topGoal.priority - currentPriority;
-        const switchCost = this._baseSwitchCost * (1 + this._currentFocus.focusTicks * 0.01);
+        const stability = state.metrics.get("situation.stability") ?? 1;
+        const switchCost = this._baseSwitchCost * (1 + this._currentFocus.focusTicks * 0.01 * stability);
         const netBenefit = switchAdvantage - switchCost;
         if (netBenefit > this._switchThreshold && this._currentFocus.focusTicks >= this._minFocusTicks) {
           this._currentFocus = {
@@ -18914,11 +18915,17 @@ var RUPTURE_SALIENCE_GATE = 0.4;
 var RUPTURE_WINDOW_TICKS = 2;
 var STABILITY_RECOVERY = 0.05;
 var STABILITY_EPSILON = 1e-4;
+var REVOKE_HINT_WINDOW = 8;
 var ActionSelector = class {
   name = "action-selector";
   _bus = null;
   _lastEntropy = 0;
   _lastDeliberate = false;
+  // EXAFFERENCE P4 follow-up (Channel B): the schema we most recently revoked
+  // under rupture, so the *next* deliberation formed in its wake can own the
+  // interruption in-character ("something changed — I dropped what I was
+  // weighing"). Telemetry-grade instance state, mirroring _lastEntropy.
+  _lastRevoked = null;
   attachBus(bus) {
     this._bus = bus;
   }
@@ -18937,7 +18944,7 @@ var ActionSelector = class {
   onCognitiveEvent() {
   }
   snapshot() {
-    return { lastEntropy: this._lastEntropy, lastDeliberate: this._lastDeliberate };
+    return { lastEntropy: this._lastEntropy, lastDeliberate: this._lastDeliberate, lastRevoked: this._lastRevoked };
   }
   async react(_delta, tick, state, _context) {
     const eligible = [];
@@ -19019,6 +19026,7 @@ var ActionSelector = class {
           logger.warn(`[selector] revoked publish failed: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
+      this._lastRevoked = { schema: deliberating.schema, tick };
       return {
         commands: {
           set: [revocationEntity(deliberating.id, deliberating.schema, rupture, tick)],
@@ -19108,6 +19116,13 @@ var ActionSelector = class {
     const deliberate = margin < marginGate || stk > stakesGate;
     this._lastEntropy = entropy;
     this._lastDeliberate = deliberate;
+    let revokedBy;
+    if (this._lastRevoked) {
+      if (deliberate && tick - this._lastRevoked.tick <= REVOKE_HINT_WINDOW)
+        revokedBy = this._lastRevoked.schema;
+      if (revokedBy || tick - this._lastRevoked.tick > REVOKE_HINT_WINDOW)
+        this._lastRevoked = null;
+    }
     const intent = {
       id: `agency-intent-${tick}`,
       type: "agency.intent",
@@ -19150,6 +19165,9 @@ var ActionSelector = class {
         // interrupted, so the deliberation facet can own the interruption in-character
         // ("I was about to X, but this pulled me away"). Only meaningful while deliberating.
         ...preemptedFrom ? { preemptedFrom } : {},
+        // Channel B: this deliberation forms in the wake of a rupture-driven
+        // revocation — the facet can own "something changed, I let go of X".
+        ...revokedBy ? { revokedBy } : {},
         tick
       }
     };
@@ -19421,7 +19439,10 @@ var DeliberationEngine = class {
   _buildFocusContent(state, candidates, meta) {
     const lines = [];
     const preemptedFrom = str3(meta["preemptedFrom"]);
-    if (preemptedFrom)
+    const revokedBy = str3(meta["revokedBy"]);
+    if (revokedBy)
+      lines.push(`Something in my situation just shifted and I let go of what I was weighing ("${revokedBy}"). Decide afresh what to do now:`);
+    else if (preemptedFrom)
       lines.push(`I just broke off a pending action ("${preemptedFrom}") because something more pressing pulled at me. Decide what to do now:`);
     else
       lines.push("My automatic action-selection was uncertain. Candidate actions:");

@@ -219,7 +219,10 @@ export class DeliberationEngine implements CognitiveEngine {
     // Channel B: if this choice arose by interrupting a pending action, name it so the
     // facet owns the interruption in-character rather than reasoning in a vacuum.
     const preemptedFrom = str( meta['preemptedFrom'] )
-    if( preemptedFrom )
+    const revokedBy     = str( meta['revokedBy'] )
+    if( revokedBy )
+      lines.push(`Something in my situation just shifted and I let go of what I was weighing ("${ revokedBy }"). Decide afresh what to do now:`)
+    else if( preemptedFrom )
       lines.push(`I just broke off a pending action ("${ preemptedFrom }") because something more pressing pulled at me. Decide what to do now:`)
     else
       lines.push('My automatic action-selection was uncertain. Candidate actions:')

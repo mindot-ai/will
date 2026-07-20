@@ -116,6 +116,9 @@ const STABILITY_RECOVERY = 0.05
 /** Snap-to-1 threshold: a settled mind stops re-writing the stability metric,
  *  so a never-ruptured run is byte-identical to pre-P3 (the metric is absent). */
 const STABILITY_EPSILON = 1e-4
+/** How many ticks a revocation stays "recent" enough to flavor the next
+ *  deliberation formed in its wake (Channel-B hint); after this it's forgotten. */
+const REVOKE_HINT_WINDOW = 8
 
 export class ActionSelector implements CognitiveEngine {
   readonly name = 'action-selector'
@@ -123,6 +126,11 @@ export class ActionSelector implements CognitiveEngine {
   private _bus: CognitiveBus | null = null
   private _lastEntropy    = 0
   private _lastDeliberate = false
+  // EXAFFERENCE P4 follow-up (Channel B): the schema we most recently revoked
+  // under rupture, so the *next* deliberation formed in its wake can own the
+  // interruption in-character ("something changed — I dropped what I was
+  // weighing"). Telemetry-grade instance state, mirroring _lastEntropy.
+  private _lastRevoked: { schema: string; tick: number } | null = null
 
   attachBus( bus: CognitiveBus ): void { this._bus = bus }
 
@@ -138,7 +146,7 @@ export class ActionSelector implements CognitiveEngine {
   subscribes(): string[] { return [] }
   onCognitiveEvent(): void { /* pull model — reads the field from frozen state */ }
   snapshot(): Record<string, unknown> {
-    return { lastEntropy: this._lastEntropy, lastDeliberate: this._lastDeliberate }
+    return { lastEntropy: this._lastEntropy, lastDeliberate: this._lastDeliberate, lastRevoked: this._lastRevoked }
   }
 
   async react(
@@ -249,6 +257,7 @@ export class ActionSelector implements CognitiveEngine {
         }
         catch( err ){ logger.warn(`[selector] revoked publish failed: ${ err instanceof Error ? err.message : String( err ) }`) }
       }
+      this._lastRevoked = { schema: deliberating.schema, tick }   // Channel-B: flavor the next deliberation
       return {
         commands: {
           set: [ revocationEntity( deliberating.id, deliberating.schema, rupture, tick ) ],
@@ -386,6 +395,17 @@ export class ActionSelector implements CognitiveEngine {
     this._lastEntropy    = entropy
     this._lastDeliberate = deliberate
 
+    // Channel-B revocation hint: if we let go of a commitment under rupture in the
+    // last few ticks and are now forming a fresh deliberation, tell it so — then
+    // forget (consumed once). Stale hints are cleared without stamping.
+    let revokedBy: string | undefined
+    if( this._lastRevoked ){
+      if( deliberate && tick - this._lastRevoked.tick <= REVOKE_HINT_WINDOW )
+        revokedBy = this._lastRevoked.schema
+      if( revokedBy || tick - this._lastRevoked.tick > REVOKE_HINT_WINDOW )
+        this._lastRevoked = null
+    }
+
     const intent: EntityInput = {
       id:   `agency-intent-${ tick }`,
       type: 'agency.intent',
@@ -430,6 +450,9 @@ export class ActionSelector implements CognitiveEngine {
         // interrupted, so the deliberation facet can own the interruption in-character
         // ("I was about to X, but this pulled me away"). Only meaningful while deliberating.
         ...( preemptedFrom ? { preemptedFrom } : {} ),
+        // Channel B: this deliberation forms in the wake of a rupture-driven
+        // revocation — the facet can own "something changed, I let go of X".
+        ...( revokedBy ? { revokedBy } : {} ),
         tick,
       },
     }

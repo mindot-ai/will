@@ -1794,6 +1794,8 @@ declare class StressRegulator implements SimulationEngine, CognitiveEngine {
     subscribes(): string[];
     publishes(): CognitiveEventSchema[];
     onCognitiveEvent(e: CognitiveEvent): StateCommands | void;
+    /** ACP-P2: self-caused stress attenuation armed; react() restores after one observe. */
+    private _acpOneShot;
     snapshot(): Record<string, unknown>;
     react(delta: Duration, _tick: Tick, state: ReadonlySimulationState, context: SimulationContext): Promise<EngineResult>;
     private _readConfigFromState;

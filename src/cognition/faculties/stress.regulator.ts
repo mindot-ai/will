@@ -33,6 +33,7 @@ import type { SimulationEngine, EngineResult, CognitiveEngine } from '#cognition
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import { GenerativeModel } from '#cognition/generative.model'
+import { ACP_SELF_PRECISION } from '#cognition/acp'
 import { readEffectiveParams } from '#cognition/persona.prior'
 
 export interface StressRegulatorConfig {
@@ -93,7 +94,9 @@ export class StressRegulator implements SimulationEngine, CognitiveEngine {
   // ── Engine interface ─────────────────────────────────────
 
 
-  subscribes(): string[] { return ["energy.state.changed","sleep.state.changed","novelty.state.changed","goal.state.changed","metacognition.state.changed","executive.prediction.formed"] }
+  subscribes(): string[] { return ["energy.state.changed","sleep.state.changed","novelty.state.changed","goal.state.changed","metacognition.state.changed","executive.prediction.formed",
+    // ACP-P2: our own enactions — the stress swing they cause is expected
+    "agency.enacted","agency.communicate","agency.invocation"] }
   publishes(): CognitiveEventSchema[] { return [] }
 
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
@@ -120,8 +123,23 @@ export class StressRegulator implements SimulationEngine, CognitiveEngine {
           this._model.setPrecision('stress.load', 1.0 + p.confidence * 0.5)
         break
       }
+      case 'agency.enacted':
+      case 'agency.communicate':
+      case 'agency.invocation': {
+        // ACP-P2 (final inventoried consumer): we just acted — the stress
+        // swing that follows is our own doing. Precision-only (no directional
+        // prior: acting can LOAD or RELIEVE, so we don't pretend to know the
+        // sign); react() restores after one observe so a genuine world
+        // stressor next tick lands at full weight.
+        this._model.setPrecision('stress.load', ACP_SELF_PRECISION )
+        this._acpOneShot = true
+        break
+      }
     }
   }
+
+  /** ACP-P2: self-caused stress attenuation armed; react() restores after one observe. */
+  private _acpOneShot = false
 
   snapshot(): Record<string, unknown> {
     return {
@@ -267,6 +285,11 @@ export class StressRegulator implements SimulationEngine, CognitiveEngine {
     if( _bus ){
       const zoneCode = zone === 'low' ? 0 : zone === 'optimal' ? 1 : zone === 'distress' ? 2 : 3
       const predErr  = this._model.observe('stress.load', newLoad )
+      // ACP-P2: self-caused observe done — restore full precision immediately.
+      if( this._acpOneShot ){
+        this._model.setPrecision('stress.load', 1.0 )
+        this._acpOneShot = false
+      }
       if( !predErr.gated || zone !== previousZone ){
         _bus.publish({ type: 'stress.state.changed', version: 1, sourceEngine: this.name, salience: predErr.salience, payload: { load: newLoad, zoneCode, deadlineUrgency: state.metrics.get('deadline.urgency') ?? 0, cognitiveLoad: state.metrics.get('cognitive.load') ?? state.metrics.get('attention.usage') ?? 0 } })
       }

@@ -5062,7 +5062,18 @@ var StressRegulator = class {
   }
   // ── Engine interface ─────────────────────────────────────
   subscribes() {
-    return ["energy.state.changed", "sleep.state.changed", "novelty.state.changed", "goal.state.changed", "metacognition.state.changed", "executive.prediction.formed"];
+    return [
+      "energy.state.changed",
+      "sleep.state.changed",
+      "novelty.state.changed",
+      "goal.state.changed",
+      "metacognition.state.changed",
+      "executive.prediction.formed",
+      // ACP-P2: our own enactions — the stress swing they cause is expected
+      "agency.enacted",
+      "agency.communicate",
+      "agency.invocation"
+    ];
   }
   publishes() {
     return [];
@@ -5091,8 +5102,17 @@ var StressRegulator = class {
           this._model.setPrecision("stress.load", 1 + p.confidence * 0.5);
         break;
       }
+      case "agency.enacted":
+      case "agency.communicate":
+      case "agency.invocation": {
+        this._model.setPrecision("stress.load", ACP_SELF_PRECISION);
+        this._acpOneShot = true;
+        break;
+      }
     }
   }
+  /** ACP-P2: self-caused stress attenuation armed; react() restores after one observe. */
+  _acpOneShot = false;
   snapshot() {
     return {
       energyLevel: this._energyLevel,
@@ -5185,6 +5205,10 @@ var StressRegulator = class {
     if (_bus) {
       const zoneCode = zone === "low" ? 0 : zone === "optimal" ? 1 : zone === "distress" ? 2 : 3;
       const predErr = this._model.observe("stress.load", newLoad);
+      if (this._acpOneShot) {
+        this._model.setPrecision("stress.load", 1);
+        this._acpOneShot = false;
+      }
       if (!predErr.gated || zone !== previousZone) {
         _bus.publish({ type: "stress.state.changed", version: 1, sourceEngine: this.name, salience: predErr.salience, payload: { load: newLoad, zoneCode, deadlineUrgency: state.metrics.get("deadline.urgency") ?? 0, cognitiveLoad: state.metrics.get("cognitive.load") ?? state.metrics.get("attention.usage") ?? 0 } });
       }

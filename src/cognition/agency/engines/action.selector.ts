@@ -148,6 +148,17 @@ export class ActionSelector implements CognitiveEngine {
   snapshot(): Record<string, unknown> {
     return { lastEntropy: this._lastEntropy, lastDeliberate: this._lastDeliberate, lastRevoked: this._lastRevoked }
   }
+  /** FN9: `_lastRevoked` has behavioral effect (the Channel-B `revokedBy` stamp),
+   *  so a restored mind must carry it — a rupture-driven letting-go survives a
+   *  snapshot boundary instead of silently losing its narrative thread. */
+  restore( s: Record<string, unknown> ): void {
+    if( typeof s['lastEntropy']    === 'number'  ) this._lastEntropy    = s['lastEntropy']
+    if( typeof s['lastDeliberate'] === 'boolean' ) this._lastDeliberate = s['lastDeliberate']
+    const lr = s['lastRevoked'] as { schema?: unknown; tick?: unknown } | null | undefined
+    this._lastRevoked = lr && typeof lr === 'object' && typeof lr.schema === 'string' && typeof lr.tick === 'number'
+      ? { schema: lr.schema, tick: lr.tick }
+      : null
+  }
 
   async react(
     _delta:   Duration,

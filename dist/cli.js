@@ -20273,6 +20273,15 @@ var ActionSelector = class {
   snapshot() {
     return { lastEntropy: this._lastEntropy, lastDeliberate: this._lastDeliberate, lastRevoked: this._lastRevoked };
   }
+  /** FN9: `_lastRevoked` has behavioral effect (the Channel-B `revokedBy` stamp),
+   *  so a restored mind must carry it — a rupture-driven letting-go survives a
+   *  snapshot boundary instead of silently losing its narrative thread. */
+  restore(s) {
+    if (typeof s["lastEntropy"] === "number") this._lastEntropy = s["lastEntropy"];
+    if (typeof s["lastDeliberate"] === "boolean") this._lastDeliberate = s["lastDeliberate"];
+    const lr = s["lastRevoked"];
+    this._lastRevoked = lr && typeof lr === "object" && typeof lr.schema === "string" && typeof lr.tick === "number" ? { schema: lr.schema, tick: lr.tick } : null;
+  }
   async react(_delta, tick, state, _context) {
     const eligible = [];
     const intents = [];
@@ -21417,6 +21426,7 @@ var ReafferenceEngine = class {
     for (const [id, e] of state.entities) {
       if (e.type !== "agency.intent" || str6(e.metadata?.["status"]) !== "awaiting") continue;
       const m = e.metadata ?? {};
+      if (tick - num4(m["dispatchedAt"], tick) >= AWAIT_TIMEOUT) continue;
       awaiting.set(id, {
         schema: str6(m["schema"]) ?? "",
         predictedReward: num4(m["predictedReward"], 0.5),

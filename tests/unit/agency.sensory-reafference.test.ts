@@ -114,6 +114,22 @@ describe('ReafferenceEngine — sensory reafference (P5)', () => {
     expect( s.entities.get('intent-say') ).toBeDefined()   // still awaiting
   })
 
+  it('stands down at the timeout boundary — the executor\'s timeout-failure wins, no double-score', async () => {
+    const rep = new SchemaRepertoire()
+    const reaff = new ReafferenceEngine( rep )
+    const s = freshState()
+    // dispatchedAt = 1, echo arrives at tick 16 = 1 + AWAIT_TIMEOUT: the executor
+    // (earlier in this same tick, same frozen snapshot) is writing the timeout
+    // failure — the sensory path must NOT also synthesize a soft success.
+    awaitingIntent( s, 'intent-say', 'reach-out')
+    reafferentPercept( s, 'percept-echo', 'intent-say', 16 )
+    s.tick = 16
+
+    const r = await reaff.react( 0, 16, frozen( s ), CTX )
+    expect( metricVal( r.commands, 'agency.sensory.confirmed') ).toBe( 0 )
+    expect( rep.skills().size ).toBe( 0 )   // nothing scored here; the timeout outcome scores next tick
+  })
+
   it('scores each awaiting intent at most once even with several echoes', async () => {
     const rep = new SchemaRepertoire()
     const reaff = new ReafferenceEngine( rep )

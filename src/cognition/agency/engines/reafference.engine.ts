@@ -29,6 +29,7 @@ import type { CognitiveEngine, EngineResult } from '#cognition/types'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { SchemaRepertoire } from '#agency/schemas/repertoire'
 import { schemaEntityId } from '#agency/schemas/repertoire'
+import { AWAIT_TIMEOUT } from '#agency/engines/motor.schema.executor'
 
 const PROC_THRESHOLD = 0.60   // mirror of repertoire's threshold for the habitual-count metric
 
@@ -113,6 +114,11 @@ export class ReafferenceEngine implements CognitiveEngine {
     for( const [ id, e ] of state.entities ){
       if( e.type !== 'agency.intent' || str( e.metadata?.['status'] ) !== 'awaiting') continue
       const m = ( e.metadata ?? {} ) as Record<string, unknown>
+      // Timeout boundary: at tick - dispatchedAt ≥ AWAIT_TIMEOUT the executor
+      // (which ran earlier this tick, off the same frozen snapshot) is writing
+      // its timeout-failure outcome right now — stand down so one enaction is
+      // never scored twice (soft success here + failure next tick).
+      if( tick - num( m['dispatchedAt'], tick ) >= AWAIT_TIMEOUT ) continue
       awaiting.set( id, {
         schema:           str( m['schema'] ) ?? '',
         predictedReward:  num( m['predictedReward'],  0.5 ),

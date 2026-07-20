@@ -6414,6 +6414,10 @@ declare class ActionSelector implements CognitiveEngine {
     subscribes(): string[];
     onCognitiveEvent(): void;
     snapshot(): Record<string, unknown>;
+    /** FN9: `_lastRevoked` has behavioral effect (the Channel-B `revokedBy` stamp),
+     *  so a restored mind must carry it — a rupture-driven letting-go survives a
+     *  snapshot boundary instead of silently losing its narrative thread. */
+    restore(s: Record<string, unknown>): void;
     react(_delta: Duration, tick: Tick, state: ReadonlySimulationState, _context: SimulationContext): Promise<EngineResult>;
 }
 

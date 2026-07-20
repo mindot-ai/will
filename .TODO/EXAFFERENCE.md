@@ -9,6 +9,8 @@
 > Companion reading: `AGENCY_PIPELINE.md` (the pipeline this extends),
 > `PREDICTIVE_SUBSTRATE.md` (the GenerativeModel this leans on),
 > `PLANNING_AS_PRIOR.md` (plan priors ride the same competition).
+> **The picture:** `docs/graphs/exafference-loop.svg` — the whole arc in one
+> diagram (act → world → split → respond · learn).
 
 ---
 

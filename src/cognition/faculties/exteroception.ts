@@ -57,6 +57,10 @@ interface RawPercept {
   summary: string
   /** Text the corollary-discharge matcher inspects (entity content ≻ description ≻ summary). */
   matchText?: string
+  /** Felt valence carried with the percept (affect→percept seam, registry #5). */
+  valence?: number
+  /** Where that valence came from — per-entity appraisal, or ambient mood. */
+  valenceSource?: 'entity' | 'ambient'
 }
 
 // Skip internal entities — they're not external percepts.
@@ -175,6 +179,8 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
           summary: rp.summary,
           provenance: hit ? 'reafferent' : 'exafferent',
           ...( hit ? { sourceIntentId: hit.intentId } : {} ),
+          // affect→percept seam (registry #5): what this percept FEELS like
+          ...( rp.valence !== undefined ? { valence: rp.valence, valenceSource: rp.valenceSource } : {} ),
           tick,
         },
       }
@@ -258,6 +264,7 @@ private _scanWorld( state: ReadonlySimulationState ): RawPercept[] {
           category: entity.type,
           summary: this._summarizeEntity( entity, 'appeared'),
           matchText: this._matchText( entity ),
+          ...this._valenceOf( id, state ),
         })
       }
       else if( entity.updatedAt > previousVersion ){
@@ -268,6 +275,7 @@ private _scanWorld( state: ReadonlySimulationState ): RawPercept[] {
           category: entity.type,
           summary: this._summarizeEntity( entity, 'modified'),
           matchText: this._matchText( entity ),
+          ...this._valenceOf( id, state ),
         })
       }
 
@@ -312,6 +320,40 @@ private _scanWorld( state: ReadonlySimulationState ): RawPercept[] {
    * content (a message body) over its description over its summary. Where our
    * own delivered words would surface if the world echoes them back.
    */
+  /**
+   * The affect→percept valence seam (registry #5). A percept carries how the
+   * mind *feels* about what it is a percept OF, resolved most-specific-first:
+   *
+   *   1. the KnownEntityTracker's dossier for this entity (`ke-<id>.valence`) —
+   *      a real per-entity felt valence, the honest signal;
+   *   2. otherwise the ambient `affect.valence` — the felt tone at perception
+   *      time. Weaker evidence, so it is tagged `'ambient'` and consumers
+   *      weight it down (mood is context, not appraisal of this thing).
+   *
+   * Absent both, no valence is stamped and every consumer keeps its
+   * pre-seam behaviour.
+   */
+  /** Spread-friendly form of `_valenceFor` for percept construction. */
+  private _valenceOf( entityId: string, state: ReadonlySimulationState ):
+    { valence?: number; valenceSource?: 'entity' | 'ambient' } {
+    const v = this._valenceFor( entityId, state )
+    return v ? { valence: v.valence, valenceSource: v.source } : {}
+  }
+
+  private _valenceFor( entityId: string, state: ReadonlySimulationState ):
+    { valence: number; source: 'entity' | 'ambient' } | undefined {
+    const dossier = state.entities.get(`ke-${ entityId }`)
+    const felt = dossier?.metadata?.['valence']
+    if( typeof felt === 'number' && Number.isFinite( felt ) )
+      return { valence: felt, source: 'entity' }
+
+    const ambient = state.metrics.get('affect.valence')
+    if( typeof ambient === 'number' && Number.isFinite( ambient ) )
+      return { valence: ambient, source: 'ambient' }
+
+    return undefined
+  }
+
   private _matchText( entity: Readonly<SimulationEntity> ): string | undefined {
     const m = entity.metadata as Record<string, unknown> | undefined
     const content     = typeof m?.['content']     === 'string' ? m['content']     as string : undefined

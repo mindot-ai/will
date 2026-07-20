@@ -4591,6 +4591,8 @@ var Exteroception = class {
           summary: rp.summary,
           provenance: hit ? "reafferent" : "exafferent",
           ...hit ? { sourceIntentId: hit.intentId } : {},
+          // affect→percept seam (registry #5): what this percept FEELS like
+          ...rp.valence !== void 0 ? { valence: rp.valence, valenceSource: rp.valenceSource } : {},
           tick
         }
       };
@@ -4650,7 +4652,8 @@ var Exteroception = class {
           salience: this._computeSalience(entity, "appeared", state.time),
           category: entity.type,
           summary: this._summarizeEntity(entity, "appeared"),
-          matchText: this._matchText(entity)
+          matchText: this._matchText(entity),
+          ...this._valenceOf(id, state)
         });
       } else if (entity.updatedAt > previousVersion) {
         percepts.push({
@@ -4659,7 +4662,8 @@ var Exteroception = class {
           salience: this._computeSalience(entity, "modified", state.time),
           category: entity.type,
           summary: this._summarizeEntity(entity, "modified"),
-          matchText: this._matchText(entity)
+          matchText: this._matchText(entity),
+          ...this._valenceOf(id, state)
         });
       }
       this._previousEntityVersions.set(id, entity.updatedAt);
@@ -4690,6 +4694,34 @@ var Exteroception = class {
    * content (a message body) over its description over its summary. Where our
    * own delivered words would surface if the world echoes them back.
    */
+  /**
+   * The affect→percept valence seam (registry #5). A percept carries how the
+   * mind *feels* about what it is a percept OF, resolved most-specific-first:
+   *
+   *   1. the KnownEntityTracker's dossier for this entity (`ke-<id>.valence`) —
+   *      a real per-entity felt valence, the honest signal;
+   *   2. otherwise the ambient `affect.valence` — the felt tone at perception
+   *      time. Weaker evidence, so it is tagged `'ambient'` and consumers
+   *      weight it down (mood is context, not appraisal of this thing).
+   *
+   * Absent both, no valence is stamped and every consumer keeps its
+   * pre-seam behaviour.
+   */
+  /** Spread-friendly form of `_valenceFor` for percept construction. */
+  _valenceOf(entityId, state) {
+    const v = this._valenceFor(entityId, state);
+    return v ? { valence: v.valence, valenceSource: v.source } : {};
+  }
+  _valenceFor(entityId, state) {
+    const dossier = state.entities.get(`ke-${entityId}`);
+    const felt = dossier?.metadata?.["valence"];
+    if (typeof felt === "number" && Number.isFinite(felt))
+      return { valence: felt, source: "entity" };
+    const ambient = state.metrics.get("affect.valence");
+    if (typeof ambient === "number" && Number.isFinite(ambient))
+      return { valence: ambient, source: "ambient" };
+    return void 0;
+  }
   _matchText(entity) {
     const m = entity.metadata;
     const content = typeof m?.["content"] === "string" ? m["content"] : void 0;
@@ -20364,6 +20396,9 @@ function readSchema(m) {
 // src/cognition/agency/engines/reafference.engine.ts
 var PROC_THRESHOLD2 = 0.6;
 var SENSORY_SOFT_QUALITY = 0.6;
+var SENSORY_VALENCE_SPAN_ENTITY = 0.25;
+var SENSORY_VALENCE_SPAN_AMBIENT = 0.1;
+var SENSORY_SUCCESS_FLOOR = 0.5;
 var ReafferenceEngine = class {
   name = "reafference";
   _repertoire;
@@ -20445,18 +20480,23 @@ var ReafferenceEngine = class {
       if (!aw || !aw.schema) continue;
       sensedIntentIds.add(iid);
       sensory++;
+      const feltRaw = m["valence"];
+      const felt = typeof feltRaw === "number" && Number.isFinite(feltRaw) ? feltRaw : void 0;
+      const span = str6(m["valenceSource"]) === "entity" ? SENSORY_VALENCE_SPAN_ENTITY : SENSORY_VALENCE_SPAN_AMBIENT;
+      const quality = felt === void 0 ? SENSORY_SOFT_QUALITY : clamp0111(SENSORY_SOFT_QUALITY + Math.max(-1, Math.min(1, felt)) * span);
       outcomes.push({ id: `agency-outcome-${tick}-${iid}-sensory`, fromState: false, meta: {
         schema: aw.schema,
         intentId: iid,
-        success: true,
-        outcomeQuality: SENSORY_SOFT_QUALITY,
-        valence: aw.predictedValence,
+        success: quality >= SENSORY_SUCCESS_FLOOR,
+        outcomeQuality: quality,
+        valence: felt ?? aw.predictedValence,
         predictedReward: aw.predictedReward,
         predictedValence: aw.predictedValence,
-        surprise: clamp0111(Math.abs(aw.predictedReward - SENSORY_SOFT_QUALITY)),
+        surprise: clamp0111(Math.abs(aw.predictedReward - quality)),
         mode: "external",
         reconciled: true,
         sensory: true,
+        ...felt !== void 0 ? { sensoryValence: felt, valenceSource: str6(m["valenceSource"]) } : {},
         tick
       } });
     }

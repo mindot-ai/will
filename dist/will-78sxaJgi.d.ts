@@ -1915,6 +1915,22 @@ declare class Exteroception implements SimulationEngine, CognitiveEngine {
      * content (a message body) over its description over its summary. Where our
      * own delivered words would surface if the world echoes them back.
      */
+    /**
+     * The affect→percept valence seam (registry #5). A percept carries how the
+     * mind *feels* about what it is a percept OF, resolved most-specific-first:
+     *
+     *   1. the KnownEntityTracker's dossier for this entity (`ke-<id>.valence`) —
+     *      a real per-entity felt valence, the honest signal;
+     *   2. otherwise the ambient `affect.valence` — the felt tone at perception
+     *      time. Weaker evidence, so it is tagged `'ambient'` and consumers
+     *      weight it down (mood is context, not appraisal of this thing).
+     *
+     * Absent both, no valence is stamped and every consumer keeps its
+     * pre-seam behaviour.
+     */
+    /** Spread-friendly form of `_valenceFor` for percept construction. */
+    private _valenceOf;
+    private _valenceFor;
     private _matchText;
     private _summarizeEntity;
     /**
@@ -5934,25 +5950,25 @@ declare class OutboxWriter {
 declare class VisionEngine extends ShellSenseEngine {
     readonly name = "vision-engine";
     readonly domain: "vision";
-    protected readonly acceptedKinds: Set<"text" | "system" | "voice" | "image" | "video" | "webhook" | "ambient" | "background" | "self-eval" | "assessment">;
+    protected readonly acceptedKinds: Set<"text" | "system" | "ambient" | "voice" | "image" | "video" | "webhook" | "background" | "self-eval" | "assessment">;
 }
 
 declare class SomatosensationEngine extends ShellSenseEngine {
     readonly name = "somatosensation-engine";
     readonly domain: "somatosensation";
-    protected readonly acceptedKinds: Set<"text" | "system" | "voice" | "image" | "video" | "webhook" | "ambient" | "background" | "self-eval" | "assessment">;
+    protected readonly acceptedKinds: Set<"text" | "system" | "ambient" | "voice" | "image" | "video" | "webhook" | "background" | "self-eval" | "assessment">;
 }
 
 declare class OlfactionEngine extends ShellSenseEngine {
     readonly name = "olfaction-engine";
     readonly domain: "olfaction";
-    protected readonly acceptedKinds: Set<"text" | "system" | "voice" | "image" | "video" | "webhook" | "ambient" | "background" | "self-eval" | "assessment">;
+    protected readonly acceptedKinds: Set<"text" | "system" | "ambient" | "voice" | "image" | "video" | "webhook" | "background" | "self-eval" | "assessment">;
 }
 
 declare class GustationEngine extends ShellSenseEngine {
     readonly name = "gustation-engine";
     readonly domain: "gustation";
-    protected readonly acceptedKinds: Set<"text" | "system" | "voice" | "image" | "video" | "webhook" | "ambient" | "background" | "self-eval" | "assessment">;
+    protected readonly acceptedKinds: Set<"text" | "system" | "ambient" | "voice" | "image" | "video" | "webhook" | "background" | "self-eval" | "assessment">;
 }
 
 /**
@@ -6122,7 +6138,7 @@ declare class AuditionEngine extends BaseSenseEngine {
     readonly name = "audition-engine";
     readonly domain: "audition";
     /** Audition consumes language input; the base filters every other kind out. */
-    protected readonly acceptedKinds: Set<"text" | "system" | "voice" | "image" | "video" | "webhook" | "ambient" | "background" | "self-eval" | "assessment">;
+    protected readonly acceptedKinds: Set<"text" | "system" | "ambient" | "voice" | "image" | "video" | "webhook" | "background" | "self-eval" | "assessment">;
     /** Inbound is gated on the 'listen' effector — the base enforces it before _perceive(). */
     protected readonly gateEffector = "listen";
     private _executiveEngine;

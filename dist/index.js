@@ -3607,6 +3607,9 @@ var SleepPressureRegulator = class {
   }
 };
 
+// src/cognition/acp.ts
+var ACP_SELF_PRECISION = 0.35;
+
 // src/cognition/persona.prior.ts
 var PERSONA_PRIOR_ID = "persona-prior";
 var PERSONA_PRIOR_TYPE = "persona.prior";
@@ -3717,7 +3720,6 @@ function consolidatePrior(current, adjustments, tick, opts = {}) {
 // src/cognition/faculties/attention.allocator.ts
 var ACP_USAGE_UPLIFT = 0.15;
 var ACP_CONFIDENCE = 0.4;
-var ACP_SELF_PRECISION = 0.35;
 var EFFORT_BASELINE2 = 0.7;
 var EFFORT_MIN = 0.4;
 var EFFORT_MAX = 1;
@@ -6655,6 +6657,8 @@ var MoralEvaluator = class {
 };
 
 // src/cognition/faculties/affective.blender.ts
+var ACP_AROUSAL_UPLIFT = 0.1;
+var ACP_CONFIDENCE2 = 0.4;
 var DOMINANT_EMOTION_CODES = {
   "neutral": 0,
   "fear": 1,
@@ -6755,6 +6759,8 @@ var AffectiveBlender = class {
   _previousPAD = { valence: 0, arousal: 0.3, dominance: 0.5 };
   _emotionHistory = /* @__PURE__ */ new Map();
   _moodBaseline = 0.5;
+  /** ACP-P2: self-caused arousal attenuation armed; react() restores after one observe. */
+  _acpOneShot = false;
   _energyLevel = 100;
   _comfort = 0.5;
   _sleepPressure = 0;
@@ -6788,8 +6794,12 @@ var AffectiveBlender = class {
       "sleep.state.changed",
       "stress.state.changed",
       "executive.prediction.formed",
-      "interaction.occurred"
+      "interaction.occurred",
       // 2.1: social stimuli drive immediate arousal/valence shifts
+      // ACP-P2: our own enactions — the arousal they cause is expected, not surprising
+      "agency.enacted",
+      "agency.communicate",
+      "agency.invocation"
     ];
   }
   publishes() {
@@ -6798,6 +6808,15 @@ var AffectiveBlender = class {
   onCognitiveEvent(e) {
     this._model.observe(e.type, e.salience);
     switch (e.type) {
+      case "agency.enacted":
+      case "agency.communicate":
+      case "agency.invocation": {
+        const arousal = this._model.predict("affect.arousal");
+        this._model.anticipate("affect.arousal", Math.min(1, arousal + ACP_AROUSAL_UPLIFT), ACP_CONFIDENCE2);
+        this._model.setPrecision("affect.arousal", ACP_SELF_PRECISION);
+        this._acpOneShot = true;
+        break;
+      }
       case "circadian.state.changed":
         this._moodBaseline = e.payload["moodBaseline"] ?? this._moodBaseline;
         break;
@@ -6901,8 +6920,14 @@ var AffectiveBlender = class {
     const _bus = this._bus;
     if (_bus)
       _bus.publish({ type: "affect.state.shifted", version: 1, sourceEngine: this.name, salience: Math.min(1, Math.abs(modulatedPAD.valence) + modulatedPAD.arousal * 0.5), payload: { valence: modulatedPAD.valence, arousal: modulatedPAD.arousal, dominantEmotion: dominant } });
-    if (_bus)
-      _bus.publish({ type: "affect.state.changed", version: 1, sourceEngine: this.name, salience: this._model.observe("affect.arousal", modulatedPAD.arousal).salience, payload: { valence: modulatedPAD.valence, arousal: modulatedPAD.arousal, dominance: modulatedPAD.dominance } });
+    if (_bus) {
+      const arousalErr = this._model.observe("affect.arousal", modulatedPAD.arousal);
+      if (this._acpOneShot) {
+        this._model.setPrecision("affect.arousal", 1);
+        this._acpOneShot = false;
+      }
+      _bus.publish({ type: "affect.state.changed", version: 1, sourceEngine: this.name, salience: arousalErr.salience, payload: { valence: modulatedPAD.valence, arousal: modulatedPAD.arousal, dominance: modulatedPAD.dominance } });
+    }
     return { events: events.length > 0 ? events : void 0, commands };
   }
   // ── PAD computation ──────────────────────────────────────

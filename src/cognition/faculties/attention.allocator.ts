@@ -29,6 +29,7 @@ import type { CognitiveEngine, SimulationEngine, EngineResult } from '#cognition
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import { GenerativeModel } from '#cognition/generative.model'
+import { ACP_SELF_PRECISION } from '#cognition/acp'
 import { readEffectiveParams } from '#cognition/persona.prior'
 
 export interface AttentionAllocatorConfig {
@@ -74,7 +75,7 @@ const ACP_CONFIDENCE = 0.4
  * 0.02/observe ≈ 50 ticks — that lingering would suppress genuine world
  * surprise arriving after our action, the exact failure the plan forbids).
  */
-const ACP_SELF_PRECISION = 0.35
+// (moved to #cognition/acp — shared across ACP-P2 consumers)
 
 const EFFORT_BASELINE = 0.7   // homeostatic default utilization of the ceiling
 const EFFORT_MIN      = 0.4   // deepest voluntary stand-down (rest)

@@ -150,9 +150,15 @@ Design (settled here, implementation phased):
          (SocialPerception) moves when *others* appear, not when we act —
          anticipating it on our own enaction would be wrong, not conservative.
          Revisit only if a consumed social stream appears.
-   - [ ] StressRegulator — `stress.load` error gates `stress.state.changed`;
-         precision-only (no directional prior: acting can load OR relieve).
-         The last inventoried consumer with a consumed stream.
+   - [x] **StressRegulator (shipped 2026-07-20)** — `stress.load` error gates
+         `stress.state.changed`; precision-only (no directional prior: acting
+         can load OR relieve, so we don't pretend to know the sign). Shared
+         pattern from `#cognition/acp`; trio tests
+         (`agency.acp-stress.test.ts`). **The ACP-P2 inventoried rollout is
+         COMPLETE** — every engine whose GenerativeModel errors are consumed
+         (allocator, blender, stress) now distinguishes self-caused stream
+         movement from the world's. Registry #6 (the model-error rupture term)
+         is now unblocked.
 4. - [ ] **Eval before rollout:** a scenario where the Will acts and the
          workspace-entry count from self-caused streams drops vs. baseline,
          with world-event detection latency unchanged. Only then widen to

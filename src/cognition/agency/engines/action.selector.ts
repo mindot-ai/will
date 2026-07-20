@@ -36,6 +36,7 @@ import {
   type BiasContext, type ScoreWeights,
 } from '#agency/selection.scoring'
 import { readEffectiveParams, readPersonaPrior } from '#cognition/persona.prior'
+import { RUPTURE_REVOKE_GATE, revocationEntity } from '#agency/revocation'
 
 /**
  * Activation margin (winner − runner-up) below which the choice is "contested" —
@@ -131,6 +132,7 @@ export class ActionSelector implements CognitiveEngine {
       { type: 'agency.selection.ambiguous', version: 1, validate: () => null },
       { type: 'agency.action.preempted',    version: 1, validate: () => null },
       { type: 'agency.situation.rupture',   version: 1, validate: () => null },
+      { type: 'agency.commitment.revoked',  version: 1, validate: () => null },
     ]
   }
   subscribes(): string[] { return [] }
@@ -186,9 +188,10 @@ export class ActionSelector implements CognitiveEngine {
     let blocking = false
     let awaiting:  { id: string; activation: number; schema: string; target: string; dispatchedAt: number } | null = null
     let composite: { id: string; activation: number; schema: string } | null = null
+    let deliberating: { id: string; schema: string } | null = null
 
     for( const it of intents ){
-      if( it.st === 'deliberating') blocking = true
+      if( it.st === 'deliberating'){ blocking = true; deliberating = { id: it.id, schema: it.schema } }
       else if( it.st === 'expanding') composite = { id: it.id, activation: it.activation, schema: it.schema }
       else if( it.st === 'awaiting') awaiting = { id: it.id, activation: it.activation, schema: it.schema, target: it.target, dispatchedAt: it.dispatchedAt }
       else if( it.st === 'selected'){
@@ -228,6 +231,36 @@ export class ActionSelector implements CognitiveEngine {
         ]
       }
     })
+
+    // ── Commitment revocation (EXAFFERENCE P4) ───────────────────
+    // A hard rupture doesn't just soften the switch cost — it lets go of a
+    // commitment still being weighed. We can't delete the `deliberating` intent
+    // here (Deliberation runs after us and would resurrect it set-after-delete),
+    // so we drop a tombstone the Deliberation engine + Executor honor next tick.
+    // No successor is committed — the field re-forms and the next tick selects.
+    if( deliberating && rupture >= RUPTURE_REVOKE_GATE ){
+      if( this._bus ){
+        try {
+          this._bus.publish({
+            type: 'agency.commitment.revoked', version: 1, sourceEngine: this.name,
+            salience: 0.85,
+            payload: { from: deliberating.schema, reason: 'exafferent-rupture', rupture, tick },
+          })
+        }
+        catch( err ){ logger.warn(`[selector] revoked publish failed: ${ err instanceof Error ? err.message : String( err ) }`) }
+      }
+      return {
+        commands: {
+          set: [ revocationEntity( deliberating.id, deliberating.schema, rupture, tick ) ],
+          metrics: [
+            [ 'agency.field.eligible', eligible.length ],
+            [ 'agency.selection.busy', 1 ],
+            [ 'agency.commitment.revoked', 1 ],
+            ...stabMetrics,
+          ],
+        },
+      }
+    }
 
     if( blocking ) return busy( eligible.length )
 

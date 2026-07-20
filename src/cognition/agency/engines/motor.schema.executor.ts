@@ -38,6 +38,7 @@ import type { AccessGrants } from '#agency/access.grants'
 import type { ActionRequest, ActionResult } from '#types'
 import { INNATE_SCHEMAS } from '#agency/schemas/innate'
 import { enact, type Enaction } from '#agency/execution.primitives'
+import { revokedIntentIds, revocationId, staleRevocationIds } from '#agency/revocation'
 import {
   CONSEQUENCE_TYPE, CONSEQUENCE_TTL_TICKS,
   consequenceEntity, fnv1a, paramsKey,
@@ -149,6 +150,14 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       if( tick >= num( e.metadata?.['expiresAt'], 0 ) ) del.push( id )
     }
 
+    // ── Revocation tombstones (EXAFFERENCE P4) ───────────────────
+    // Reap expired tombstones (intent vanished otherwise), and collect live ones
+    // so the selected-processing loop can refuse the half-race case: Deliberation
+    // committed `selected` the same tick the tombstone was written (both read the
+    // pre-tombstone snapshot), so the intent surfaces here still needing to die.
+    del.push( ...staleRevocationIds( state.entities, tick ) )
+    const revoked = revokedIntentIds( state.entities, tick )
+
     // ── Timeout stranded async intents ───────────────────────────
     // An 'awaiting' intent whose host/delivery never returned would block the
     // serial Will forever. After AWAIT_TIMEOUT ticks, abandon it as a failed
@@ -183,6 +192,10 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     let enactedCount = 0
 
     for( const [ id, e ] of selected ){
+      if( revoked.has( id ) ){        // revoked mid-commit → refuse + clean up (P4)
+        del.push( id, revocationId( id ) )
+        continue
+      }
       const intent = readIntent( id, e.metadata )
       const schema = this._resolve( intent.schema )
 

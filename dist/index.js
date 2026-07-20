@@ -4397,6 +4397,13 @@ function matchConsequenceText(descriptors, candidate) {
   }
   return null;
 }
+var CORRESPONDENCE_ATTENUATION = 0.5;
+function matchConsequenceEntity(descriptors, entityId, changeType) {
+  if (changeType !== "modified" || entityId.length === 0) return null;
+  for (const d of descriptors)
+    if (d.mode === "external" && d.targetEntityId === entityId) return d;
+  return null;
+}
 
 // src/cognition/agency/revocation.ts
 var REVOCATION_TYPE = "agency.revocation";
@@ -4517,8 +4524,10 @@ var Exteroception = class {
     const consequences = liveConsequences(state.entities, tick);
     for (let i = 0; i < capped.length; i++) {
       const rp = capped[i];
-      const hit = consequences.length > 0 && rp.matchText ? matchConsequenceText(consequences, rp.matchText) : null;
-      const salience = hit ? rp.salience * ATTENUATION : rp.salience;
+      const textHit = consequences.length > 0 && rp.matchText ? matchConsequenceText(consequences, rp.matchText) : null;
+      const entityHit = !textHit && consequences.length > 0 ? matchConsequenceEntity(consequences, rp.entityId, rp.changeType) : null;
+      const hit = textHit ?? entityHit;
+      const salience = textHit ? rp.salience * ATTENUATION : entityHit ? rp.salience * CORRESPONDENCE_ATTENUATION : rp.salience;
       const perceptEntity = {
         id: `percept-${tick}-${i}`,
         type: "percept",
@@ -18926,6 +18935,9 @@ var ActionSelector = class {
   // interruption in-character ("something changed — I dropped what I was
   // weighing"). Telemetry-grade instance state, mirroring _lastEntropy.
   _lastRevoked = null;
+  // ACP §2b: sense-channel percepts buffered off the bus for the next react's
+  // rupture computation (they never become entities). Cross-tick ⇒ FN9.
+  _senseBuffer = [];
   attachBus(bus) {
     this._bus = bus;
   }
@@ -18939,12 +18951,30 @@ var ActionSelector = class {
     ];
   }
   subscribes() {
-    return [];
+    return ["senses.*"];
   }
-  onCognitiveEvent() {
+  /**
+   * Mostly pull-model — but sense-channel percepts never become entities
+   * (they live on the bus, ACTION_CONDITIONED_PREDICTION §2b), so rupture
+   * would be blind to a sensory shock. Buffer them here (cross-tick: bus
+   * flush at T, consumed by react at T+1 — FN9-snapshotted) and fold into
+   * computeRupture with the echo guard applied at read time.
+   */
+  onCognitiveEvent(e) {
+    if (!e.type.startsWith("senses.") || !e.type.endsWith(".percept")) return;
+    const p = e.payload;
+    this._senseBuffer.push({
+      salience: e.salience,
+      ...typeof p?.content === "string" ? { text: p.content } : {}
+    });
   }
   snapshot() {
-    return { lastEntropy: this._lastEntropy, lastDeliberate: this._lastDeliberate, lastRevoked: this._lastRevoked };
+    return {
+      lastEntropy: this._lastEntropy,
+      lastDeliberate: this._lastDeliberate,
+      lastRevoked: this._lastRevoked,
+      senseBuffer: this._senseBuffer
+    };
   }
   /** FN9: `_lastRevoked` has behavioral effect (the Channel-B `revokedBy` stamp),
    *  so a restored mind must carry it — a rupture-driven letting-go survives a
@@ -18954,6 +18984,8 @@ var ActionSelector = class {
     if (typeof s["lastDeliberate"] === "boolean") this._lastDeliberate = s["lastDeliberate"];
     const lr = s["lastRevoked"];
     this._lastRevoked = lr && typeof lr === "object" && typeof lr.schema === "string" && typeof lr.tick === "number" ? { schema: lr.schema, tick: lr.tick } : null;
+    const sb = s["senseBuffer"];
+    this._senseBuffer = Array.isArray(sb) ? sb.filter((it) => it && typeof it.salience === "number").map((it) => ({ salience: it.salience, ...typeof it.text === "string" ? { text: it.text } : {} })) : [];
   }
   async react(_delta, tick, state, _context) {
     const eligible = [];
@@ -18994,7 +19026,9 @@ var ActionSelector = class {
         if (!activeMacroSub) blocking = true;
       }
     }
-    const rupture = computeRupture(state, tick);
+    const senseEvents = this._senseBuffer;
+    this._senseBuffer = [];
+    const rupture = computeRupture(state, tick, senseEvents);
     const prevStab = metric2(state, "situation.stability", 1);
     const nextStabRaw = clamp017(prevStab + STABILITY_RECOVERY * (1 - prevStab) - rupture);
     const nextStab = 1 - nextStabRaw < STABILITY_EPSILON ? 1 : nextStabRaw;
@@ -19238,7 +19272,7 @@ function effectiveSwitchCost(state) {
   const stability = metric2(state, "situation.stability", 1);
   return base * (1 + focusTicks * FOCUS_GAIN * stability);
 }
-function computeRupture(state, tick) {
+function computeRupture(state, tick, senseEvents = []) {
   let maxSalience = 0;
   for (const e of state.entities.values()) {
     if (e.type !== "percept") continue;
@@ -19248,6 +19282,13 @@ function computeRupture(state, tick) {
     if (pTick < 0 || tick - pTick > RUPTURE_WINDOW_TICKS) continue;
     const s = num2(m?.["salience"], 0);
     if (s > maxSalience) maxSalience = s;
+  }
+  if (senseEvents.length > 0) {
+    const live = liveConsequences(state.entities, tick);
+    for (const ev of senseEvents) {
+      if (ev.text !== void 0 && live.length > 0 && matchConsequenceText(live, ev.text)) continue;
+      if (ev.salience > maxSalience) maxSalience = ev.salience;
+    }
   }
   if (maxSalience <= RUPTURE_SALIENCE_GATE) return 0;
   return clamp017((maxSalience - RUPTURE_SALIENCE_GATE) / (1 - RUPTURE_SALIENCE_GATE));

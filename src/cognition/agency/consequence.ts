@@ -147,3 +147,28 @@ export function matchConsequenceText(
   }
   return null
 }
+
+// ── ACP-P1: entity correspondence (ACTION_CONDITIONED_PREDICTION §2) ─────────
+
+/** Salience multiplier for an entity-correspondence match — gentler than a
+ *  text match (0.25): the change is on our action's target while its
+ *  descriptor lives, but we are less certain it is ours. */
+export const CORRESPONDENCE_ATTENUATION = 0.5
+
+/**
+ * A live **external**-mode descriptor is a standing prediction that its
+ * `targetEntityId` is about to change *because of us*. A `modified` percept on
+ * exactly that entity is claimed as reafference (an `appeared` entity is new
+ * information, not our footprint). Communicate descriptors are excluded — the
+ * text path owns them. First match in stable order; pure.
+ */
+export function matchConsequenceEntity(
+  descriptors: readonly ConsequenceDescriptor[],
+  entityId:    string,
+  changeType:  string,
+): ConsequenceDescriptor | null {
+  if( changeType !== 'modified' || entityId.length === 0 ) return null
+  for( const d of descriptors )
+    if( d.mode === 'external' && d.targetEntityId === entityId ) return d
+  return null
+}

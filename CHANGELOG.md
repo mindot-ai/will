@@ -2,6 +2,71 @@
 
 ## Unreleased
 
+## 0.6.0 — 2026-07-20 · the mind knows its own echo
+
+Exafference: the split between *what I did* and *what happened to me*. Every
+enaction now predicts its own sensory footprint, so the world coming back at a
+Will is sorted into its own echo (attenuated, never alarming) and the world's
+own moves — which can now soften its engagement, revoke a commitment it was
+still weighing, and confirm actions no host ever acknowledged.
+
+- **Corollary discharge — every percept knows whose doing it is.** Enactions
+  register a TTL'd *expected-consequence descriptor* (the efference copy
+  predicted an action's reward; this predicts its sensory footprint), and
+  Exteroception splits incoming afference against them: a match is
+  `reafferent` — our own words echoing back, a quote-back, a change on exactly
+  the entity we acted on — tagged with its intent id and attenuated (×0.25 by
+  content, ×0.5 by entity correspondence, never zeroed: a *surprising*
+  consequence of our own act can still climb). Everything else is
+  `exafferent`. Matching is deliberately high-precision (FNV-1a content hash,
+  verbatim containment, exact target) because over-attribution — muting a real
+  world event — is the dangerous direction.
+
+- **The world can revoke engagement, not only out-compete it.** Exafferent
+  salience above the workspace threshold becomes *rupture*: it softens the
+  Will's switch cost immediately and erodes a new `situation.stability` signal
+  that both owners of switch resistance read, so focus only hardens in a
+  settled world. Past a higher gate rupture **revokes a still-deliberating
+  commitment outright** — race-safely, via a tombstone honoured a tick later
+  by the deliberation and motor engines — with *no successor*: the field
+  re-forms and the next tick chooses afresh, and the deliberation facet owns
+  the interruption in character ("something shifted and I let go of what I was
+  weighing"). Because only exafferent percepts count, **a Will can never be
+  ruptured by its own echo.**
+
+- **Sensory reafference learns — an action the world visibly answered is no
+  longer learned as a failure.** When an echo confirms an intent no host
+  acked, the skill accrues competence and the awaiting intent is freed instead
+  of sitting to timeout and being scored as failure. The confirmation is
+  graded by *felt* valence — the per-entity valence the mind holds for the
+  thing that came back, else ambient mood — inside bands sized to the
+  evidence, so a bad mood alone can never teach a Will that a working skill
+  failed.
+
+- **Action-conditioned prediction: the mind stops surprising itself.** The
+  engines whose prediction errors gate workspace entry (attention, affect,
+  stress) now recognise a swing as their own doing: a self-caused observation
+  carries reduced weight for exactly one observation — enough that the Will no
+  longer recruits its own executive over the predictable wake of its own acts,
+  while a genuine world deviation the very next tick still lands at full
+  force. Those same error signals now feed rupture, so a world-caused internal
+  storm can interrupt a Will while its own interoceptive wake cannot.
+
+- **Composite immediate-switch.** A challenger strong enough to break off a
+  multi-step routine now takes the body the *same* tick instead of idling one
+  — the routine's parent is tombstoned rather than deleted, which is what made
+  the immediate hand-over safe.
+
+- Sense-channel percepts (bus-only) and the engines' own model errors both
+  reach rupture; both carry the echo guard. `docs/graphs/exafference-loop.svg`
+  (graph 22) draws the whole loop, and the agency pipeline gains the rupture
+  edge.
+
+Throughout: a Will in a quiet world behaves exactly as it did before — the new
+paths are inert without a live descriptor or an enaction — and determinism,
+replay equivalence and snapshot/restore hold unchanged.
+
+
 ## 0.5.0 — 2026-07-15 · WhatsApp, and a choice of executive
 
 The second channel bridge — `npx -y @mindot/will whatsapp`, QR-pair and go —

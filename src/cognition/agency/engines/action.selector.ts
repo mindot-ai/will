@@ -362,49 +362,46 @@ export class ActionSelector implements CognitiveEngine {
     const winner = scored[0]
     if( !winner ) return busy( eligible.length )
 
-    // ── Preempt a mid-composite routine (cancel-only) ─────────────
-    // A strong/high-stakes challenger CANCELS the routine: delete the parent so the
-    // executor's `_advance` guard (`if(!parent) return`) stops queueing sub-steps. We
-    // do NOT commit the challenger this tick — that would race the executor's in-tick
-    // macro-advance and double-enact. The current sub drains, then the next free tick
-    // selects. (Immediate-switch composite preemption needs deferred macro-advance.)
+    // ── Preempt a mid-composite routine (IMMEDIATE SWITCH) ────────
+    // A strong/high-stakes challenger cuts the routine off AND takes the body
+    // the same tick. We cannot delete the parent here: the executor runs later
+    // this tick off the pre-delete snapshot, and its macro-advance would
+    // re-`set` the parent (resurrecting it, set-after-delete) and queue the next
+    // sub as 'selected' — two selected intents next tick = double enaction.
+    // So we tombstone the parent instead (the P4 mechanism) and commit the
+    // challenger: next tick the executor honours the tombstone, dropping the
+    // queued sub and the parent, and enacts the challenger alone. One body, one
+    // action, one tick saved over the old cancel-only path.
+    let compositeTombstone: string | undefined
+    let compositeFrom:      string | undefined
     if( composite ){
       const different  = winner.affordance.schema !== composite.schema
       const switchCost = effSwitchCost * ( 1 - stakes( winner.affordance, bias ) )
-      if( different && winner.activation > composite.activation + switchCost ){
-        if( this._bus )
-          try {
-            this._bus.publish({
-              type: 'agency.action.preempted',
-              version: 1,
-              sourceEngine: this.name,
-              salience: 0.8,
-              payload: {
-                from: composite.schema,
-                to: winner.affordance.schema,
-                activation: winner.activation,
-                tick
-              }
-            })
-          }
-          catch( err ){
-            logger.warn(`[selector] preempt publish failed: ${ err instanceof Error ? err.message : String( err ) }`)
-          }
+      if( !different || winner.activation <= composite.activation + switchCost )
+        return busy( eligible.length )   // routine continues
 
-        return {
-          commands: {
-            delete: [ composite.id ],
-            metrics: [
-              [ 'agency.field.eligible', eligible.length ],
-              [ 'agency.selection.busy', 1 ],
-              [ 'agency.selection.preempted', 1 ],
-              ...stabMetrics,
-            ]
-          }
+      if( this._bus )
+        try {
+          this._bus.publish({
+            type: 'agency.action.preempted',
+            version: 1,
+            sourceEngine: this.name,
+            salience: 0.8,
+            payload: {
+              from: composite.schema,
+              to: winner.affordance.schema,
+              activation: winner.activation,
+              tick
+            }
+          })
         }
-      }
+        catch( err ){
+          logger.warn(`[selector] preempt publish failed: ${ err instanceof Error ? err.message : String( err ) }`)
+        }
 
-      return busy( eligible.length )   // routine continues
+      compositeTombstone = composite.id
+      compositeFrom      = composite.schema
+      // fall through to commit the challenger
     }
 
     // ── Preempt an awaiting action (commit the challenger) ────────
@@ -412,8 +409,11 @@ export class ActionSelector implements CognitiveEngine {
     // faces almost none, so salient events interrupt. Deleting an 'awaiting' intent is
     // race-free: the executor never enacts it (only times it out at 15 ticks).
     let preemptDelete: string | undefined
-    let preemptedFrom: string | undefined
-    if( awaiting ){
+    let preemptedFrom: string | undefined = compositeFrom
+    // A composite preemption already claimed the body: its tombstone cancels the
+    // whole macro (parent + any sub, whatever the sub's status), so the awaiting
+    // hysteresis below — which is about a *standalone* awaiting action — is skipped.
+    if( awaiting && !compositeTombstone ){
       const sameAction = winner.affordance.schema === awaiting.schema && ( winner.affordance.targetEntityId ?? '') === awaiting.target
       if( sameAction ) return busy( eligible.length )   // field still favours what we await
 
@@ -548,7 +548,11 @@ export class ActionSelector implements CognitiveEngine {
     }
 
     const commands: StateCommands = {
-      set: [ intent ],
+      // A composite preemption rides along as a tombstone (never a delete — the
+      // executor's in-tick macro-advance would resurrect the parent).
+      set: compositeTombstone
+        ? [ intent, revocationEntity( compositeTombstone, compositeFrom ?? '', rupture, tick ) ]
+        : [ intent ],
       ...( preemptDelete ? { delete: [ preemptDelete ] } : {} ),
       metrics: [
         [ 'agency.field.eligible',       eligible.length ],

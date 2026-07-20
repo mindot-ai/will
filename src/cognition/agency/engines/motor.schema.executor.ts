@@ -160,6 +160,19 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     del.push( ...staleRevocationIds( state.entities, tick ) )
     const revoked = revokedIntentIds( state.entities, tick )
 
+    // A tombstoned intent dies whatever its status — including an 'expanding'
+    // composite parent preempted mid-routine (registry #4) — and takes its
+    // sub-intents with it, in any state ('selected' queued by the executor's
+    // own in-tick advance, or 'awaiting' a host). The selected-loop guard below
+    // additionally prevents enacting any of them this tick.
+    if( revoked.size > 0 )
+      for( const [ id, e ] of state.entities ){
+        if( e.type !== 'agency.intent') continue
+        const parentId = str( e.metadata?.['parentIntentId'] )
+        if( revoked.has( id ) ) del.push( id, revocationId( id ) )
+        else if( parentId && revoked.has( parentId ) ) del.push( id )
+      }
+
     // ── Timeout stranded async intents ───────────────────────────
     // An 'awaiting' intent whose host/delivery never returned would block the
     // serial Will forever. After AWAIT_TIMEOUT ticks, abandon it as a failed
@@ -194,10 +207,11 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     let enactedCount = 0
 
     for( const [ id, e ] of selected ){
-      if( revoked.has( id ) ){        // revoked mid-commit → refuse + clean up (P4)
-        del.push( id, revocationId( id ) )
-        continue
-      }
+      // Revoked mid-commit (P4), or a sub of a preempted composite (#4) — refuse
+      // to enact; the sweep above already queued the deletes.
+      if( revoked.has( id ) ) continue
+      const parentOf = str( e.metadata?.['parentIntentId'] )
+      if( parentOf && revoked.has( parentOf ) ) continue
       const intent = readIntent( id, e.metadata )
       const schema = this._resolve( intent.schema )
 

@@ -14,6 +14,7 @@ import {
   type BiasContext,
 } from '#agency/selection.scoring'
 import type { Affordance } from '#agency/types'
+import { REVOCATION_TYPE, revocationId } from '#agency/revocation'
 
 const CTX = {} as unknown as SimulationContext
 
@@ -191,21 +192,27 @@ describe('ActionSelector — preemption (the smarter serializer)', () => {
     expect( metricVal( res, 'agency.selection.preempted') ).toBe( 1 )
   })
 
-  // ── composite preemption (cancel-only) ──────────────────────
+  // ── composite preemption (immediate switch, registry #4) ────
   const macro = ( activation: number, schema = 'settle-self') => ([
     { id: 'macro', type: 'agency.intent', metadata: { status: 'expanding', activation, schema } },
     { id: 'macro-sub-0', type: 'agency.intent', metadata: { status: 'selected', parentIntentId: 'macro', schema: 'withdraw' } },
   ])
 
-  it('cancels a mid-composite routine for a strong challenger (cancel-only, no immediate commit)', async () => {
+  it('cuts a mid-composite routine AND commits the challenger the same tick (immediate switch)', async () => {
     const res = await new ActionSelector().react( 0, 2, makeState({
       entities: [
         ...macro( 0.2 ),
         aff({ id: 'a1', schema: 'rest', expectedReward: 0.9, cost: 0.0, tags: [ 'regulatory' ] }),
       ],
     }), CTX )
-    expect( res.commands?.delete ).toContain('macro')                              // routine cancelled
-    expect( ( res.commands?.set ?? [] ).find( e => e.type === 'agency.intent') ).toBeUndefined() // no challenger this tick
+    // Tombstoned, never deleted — the executor's in-tick macro-advance would
+    // resurrect a deleted parent (set-after-delete) and double-enact.
+    expect( res.commands?.delete ?? [] ).not.toContain('macro')
+    const tomb = ( res.commands?.set ?? [] ).find( e => e.type === REVOCATION_TYPE )
+    expect( tomb?.id ).toBe( revocationId('macro') )
+    // …and the challenger takes the body immediately (the tick the old
+    // cancel-only path used to waste).
+    expect( intentOf( res.commands?.set )?.metadata?.['schema'] ).toBe('rest')
     expect( metricVal( res, 'agency.selection.preempted') ).toBe( 1 )
   })
 

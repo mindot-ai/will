@@ -124,6 +124,33 @@ describe('MotorSchemaExecutor — refuses a tombstoned selected intent', () => {
     expect( spy.events.some( e => e.type === 'agency.enacted') ).toBe( false )
   })
 
+  it('a preempted composite dies whole: parent + queued sub, neither enacted (registry #4)', async () => {
+    const exec = new MotorSchemaExecutor(); const spy = busSpy(); exec.attachBus( spy.bus as never )
+    let s = makeState( 7, [
+      // The state the executor sees the tick AFTER an immediate-switch preemption:
+      // the parent it advanced in-tick, the sub that advance queued, and the
+      // challenger the selector committed.
+      { id: 'macro', type: 'agency.intent', metadata: { status: 'expanding', schema: 'settle-self', steps: [ 'withdraw', 'rest' ], cursor: 1 } },
+      { id: 'macro-sub-1', type: 'agency.intent', metadata: { status: 'selected', parentIntentId: 'macro', schema: 'rest', parameters: {}, expectedReward: 0.5 } },
+      selectedIntent('intent-challenger', 'rest'),
+    ] )
+    s = withEntity( s, revocationEntity('macro', 'settle-self', 0.9, 6 ) )
+
+    const r = await exec.react( 0, 7, s, CTX )
+
+    // The whole macro is gone — parent, its queued sub, and the tombstone.
+    expect( delOf( r ) ).toContain('macro')
+    expect( delOf( r ) ).toContain('macro-sub-1')
+    expect( delOf( r ) ).toContain( revocationId('macro') )
+    // Exactly ONE enaction this tick: the challenger. The serial body holds.
+    const enacted = spy.events.filter( e => e.type === 'agency.enacted')
+    expect( enacted ).toHaveLength( 1 )
+    expect( enacted[0]!.payload['schema'] ).toBe('rest')
+    const outcomes = setOf( r ).filter( e => e.type === 'agency.outcome')
+    expect( outcomes ).toHaveLength( 1 )
+    expect( ( outcomes[0]!.metadata as Record<string, unknown> )['intentId'] ).toBe('intent-challenger')
+  })
+
   it('reaps an expired orphan tombstone (intent already gone)', async () => {
     const exec = new MotorSchemaExecutor()
     let s = makeState( 20, [] )

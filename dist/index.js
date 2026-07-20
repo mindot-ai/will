@@ -19187,44 +19187,36 @@ var ActionSelector = class {
     const scored = eligible.map((a) => ({ affordance: a, activation: scoreAffordance(a, bias, weights) })).sort((x, y) => y.activation - x.activation);
     const winner = scored[0];
     if (!winner) return busy(eligible.length);
+    let compositeTombstone;
+    let compositeFrom;
     if (composite) {
       const different = winner.affordance.schema !== composite.schema;
       const switchCost = effSwitchCost * (1 - stakes(winner.affordance, bias));
-      if (different && winner.activation > composite.activation + switchCost) {
-        if (this._bus)
-          try {
-            this._bus.publish({
-              type: "agency.action.preempted",
-              version: 1,
-              sourceEngine: this.name,
-              salience: 0.8,
-              payload: {
-                from: composite.schema,
-                to: winner.affordance.schema,
-                activation: winner.activation,
-                tick
-              }
-            });
-          } catch (err) {
-            logger.warn(`[selector] preempt publish failed: ${err instanceof Error ? err.message : String(err)}`);
-          }
-        return {
-          commands: {
-            delete: [composite.id],
-            metrics: [
-              ["agency.field.eligible", eligible.length],
-              ["agency.selection.busy", 1],
-              ["agency.selection.preempted", 1],
-              ...stabMetrics
-            ]
-          }
-        };
-      }
-      return busy(eligible.length);
+      if (!different || winner.activation <= composite.activation + switchCost)
+        return busy(eligible.length);
+      if (this._bus)
+        try {
+          this._bus.publish({
+            type: "agency.action.preempted",
+            version: 1,
+            sourceEngine: this.name,
+            salience: 0.8,
+            payload: {
+              from: composite.schema,
+              to: winner.affordance.schema,
+              activation: winner.activation,
+              tick
+            }
+          });
+        } catch (err) {
+          logger.warn(`[selector] preempt publish failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      compositeTombstone = composite.id;
+      compositeFrom = composite.schema;
     }
     let preemptDelete;
-    let preemptedFrom;
-    if (awaiting) {
+    let preemptedFrom = compositeFrom;
+    if (awaiting && !compositeTombstone) {
       const sameAction = winner.affordance.schema === awaiting.schema && (winner.affordance.targetEntityId ?? "") === awaiting.target;
       if (sameAction) return busy(eligible.length);
       const staleness = Math.min(1, (tick - awaiting.dispatchedAt) / AWAIT_STALE_TICKS);
@@ -19337,7 +19329,9 @@ var ActionSelector = class {
       }
     }
     const commands = {
-      set: [intent],
+      // A composite preemption rides along as a tombstone (never a delete — the
+      // executor's in-tick macro-advance would resurrect the parent).
+      set: compositeTombstone ? [intent, revocationEntity(compositeTombstone, compositeFrom ?? "", rupture, tick)] : [intent],
       ...preemptDelete ? { delete: [preemptDelete] } : {},
       metrics: [
         ["agency.field.eligible", eligible.length],
@@ -19759,6 +19753,13 @@ var MotorSchemaExecutor = class {
     }
     del.push(...staleRevocationIds(state.entities, tick));
     const revoked = revokedIntentIds(state.entities, tick);
+    if (revoked.size > 0)
+      for (const [id, e] of state.entities) {
+        if (e.type !== "agency.intent") continue;
+        const parentId = str5(e.metadata?.["parentIntentId"]);
+        if (revoked.has(id)) del.push(id, revocationId(id));
+        else if (parentId && revoked.has(parentId)) del.push(id);
+      }
     for (const [id, e] of state.entities) {
       if (e.type !== "agency.intent" || str5(e.metadata?.["status"]) !== "awaiting") continue;
       const dispatchedAt = num3(e.metadata?.["dispatchedAt"], tick);
@@ -19785,10 +19786,9 @@ var MotorSchemaExecutor = class {
     const selected = [...state.entities.entries()].filter(([, e]) => e.type === "agency.intent" && str5(e.metadata?.["status"]) === "selected").sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
     let enactedCount = 0;
     for (const [id, e] of selected) {
-      if (revoked.has(id)) {
-        del.push(id, revocationId(id));
-        continue;
-      }
+      if (revoked.has(id)) continue;
+      const parentOf = str5(e.metadata?.["parentIntentId"]);
+      if (parentOf && revoked.has(parentOf)) continue;
       const intent = readIntent(id, e.metadata);
       const schema = this._resolve(intent.schema);
       if (schema?.kind === "composite" && schema.composedOf && schema.composedOf.length > 0) {

@@ -209,24 +209,37 @@ a tick — the race-safe rule is correct); no LLM in any matching path.
       no longer captures; determinism (identical state → identical tagged
       percepts). Full unit suite 936/936; typecheck clean.
 
-### P3 — Rupture + engagement softening (the selector learns to let go of waiting)
-- [ ] Rupture computed pull-style in the selector's `react()` from frozen state:
-      max exafferent percept salience this tick (+ optionally count of `gated`
-      prediction-error crossings) → `rupture ∈ [0,1]` above
-      `RUPTURE_SALIENCE_GATE`.
-- [ ] `effectiveSwitchCost × (1 − rupture)`; awaiting-incumbent hysteresis floored
-      toward 0 at full rupture (composes with the existing stakes scaling —
-      document the composition so it can't double-count stakes).
-- [ ] `situation.stability` EMA metric (knocked down by rupture, mean-reverts;
-      snapshot-safe); TaskSwitcher's focus-hardening reads it (both owners, native
-      scales — mirror the R2 pattern).
-- [ ] Emit `agency.situation.rupture` (telemetry + affect can subscribe; watch
-      double-counting with threat/arousal evaluators — they already see the same
-      percepts; rupture event carries `salience` conservatively).
-- [ ] Tests: no-rupture path **byte-identical** (replay-equivalence guard on a
-      quiet run); rupture softens awaiting preemption (challenger wins where it
-      previously lost); thrash resistance (hysteresis floor > 0 below
-      `RUPTURE_REVOKE_GATE`; stability EMA restores hardening after quiet ticks).
+### P3 — Rupture + engagement softening (the selector learns to let go of waiting) ⟶ done (2026-07-20)
+- [x] `computeRupture(state, tick)` in the selector: max salience among
+      `provenance:'exafferent'` percepts fresh within `RUPTURE_WINDOW_TICKS = 2`
+      (= the percept lifespan), mapped through `RUPTURE_SALIENCE_GATE = 0.4`
+      (= `WORKSPACE_THRESHOLD`) into [0,1]. Pure; reafferent percepts excluded by
+      construction → the mind can't rupture itself. (The optional gated-
+      prediction-error term is deferred; percept salience alone proved
+      sufficient.)
+- [x] Two-timescale softening: **fast** `effectiveSwitchCost × (1 − rupture)` at
+      the call site (same-tick), applied uniformly to both preemption paths;
+      **slow** `situation.stability` scales the focus-hardening term inside
+      `effectiveSwitchCost` (`1 + focusTicks·FOCUS_GAIN·stability`). Documented as
+      orthogonal to the per-challenger stakes scaling (world-instability vs.
+      challenger-quality) so they compose without double-counting.
+- [x] `situation.stability` EMA metric: `clamp01(prev + STABILITY_RECOVERY·(1−prev)
+      − rupture)`, snapped to 1 within `STABILITY_EPSILON` so a never-ruptured mind
+      **stops writing it** → the quiet path has no such metric and stays
+      byte-identical (proven by the replay-equivalence integration test, still
+      green). Metric-only ⇒ snapshot-safe for free. *(Selector is one owner; wiring
+      the TaskSwitcher's own focus-hardening to read `situation.stability` is a
+      clean follow-up — deferred to keep this PR to the agency seam and avoid
+      attention-space recalibration.)*
+- [x] Emits `agency.situation.rupture { rupture, stability, tick }` (salience =
+      rupture) only when rupture > 0.
+- [x] Tests (`agency.rupture.test.ts`, 8 cases): quiet path emits no
+      stability/rupture; **reafferent echo cannot rupture**; strong exafferent
+      fires the event + drops stability; sub-gate + stale-window percepts don't;
+      **the headline** — a challenger pinned via `scoreAffordance` just below the
+      incumbent keeps waiting when calm but preempts under full rupture; stability
+      mean-reverts on a quiet tick. Full unit suite 944/944; replay-equivalence
+      green; typecheck clean.
 
 ### P4 — Commitment revocation (the letting-go)
 - [ ] Above `RUPTURE_REVOKE_GATE`: revoke via **tombstone** (P0 amendment — never

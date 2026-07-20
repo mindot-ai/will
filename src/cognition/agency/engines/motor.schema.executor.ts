@@ -434,6 +434,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         intentId: id, schema: intent.schema, mode: 'communicate', effector,
         ...( intent.targetEntityId ? { targetEntityId: intent.targetEntityId } : {} ),
         textHash: fnv1a( bubbles.join('\n') ),
+        text:     bubbles.join('\n'),
         expiresAt: tick + CONSEQUENCE_TTL_TICKS, tick,
       }) )
     this._emitEnacted( intent, out, predicted, tick )

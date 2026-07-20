@@ -22,6 +22,14 @@ import type { EntityInput, Tick } from '#core/types'
 
 export const CONSEQUENCE_TYPE = 'agency.consequence'
 
+/** Salience multiplier applied to a matched (reafferent) percept — attenuated,
+ *  not zeroed: a *surprising* consequence of our own action can still climb. */
+export const ATTENUATION = 0.25
+
+/** Minimum descriptor-text length for substring matching — below this a
+ *  containment hit is too cheap to mean "these are my own words". */
+export const MIN_TEXT_MATCH_LEN = 12
+
 /**
  * Ticks a descriptor stays live — 2 × the executor's `AWAIT_TIMEOUT`, so a
  * descriptor survives both a stranded await (15 ticks) and the late sensory
@@ -39,6 +47,9 @@ export interface ConsequenceDescriptor {
   targetEntityId?: string
   /** FNV-1a over the authored outbound text (delivered communicate). */
   textHash?:       number
+  /** The authored outbound text itself — enables substring matching on echoes
+   *  that arrive decorated ("Alice said: …"). Internal state, never emitted. */
+  text?:           string
   /** FNV-1a over the canonicalized parameters (async dispatch). */
   paramsHash?:     number
   expiresAt:       Tick
@@ -93,8 +104,46 @@ export function readConsequence(
     effector:       typeof meta['effector']       === 'string' ? meta['effector']       as string : undefined,
     targetEntityId: typeof meta['targetEntityId'] === 'string' ? meta['targetEntityId'] as string : undefined,
     textHash:       typeof meta['textHash']       === 'number' ? meta['textHash']       as number : undefined,
+    text:           typeof meta['text']           === 'string' ? meta['text']           as string : undefined,
     paramsHash:     typeof meta['paramsHash']     === 'number' ? meta['paramsHash']     as number : undefined,
     expiresAt:      typeof meta['expiresAt']      === 'number' ? meta['expiresAt']      as number : 0,
     tick:           typeof meta['tick']           === 'number' ? meta['tick']           as number : 0,
   }
+}
+
+// ── P2: the corollary-discharge matcher ──────────────────────────────────────
+
+/** Collect the live (unexpired) descriptors from frozen state, in stable id order. */
+export function liveConsequences(
+  entities: ReadonlyMap<string, { type: string; metadata?: ReadonlyMap<string, unknown> | Record<string, unknown> }>,
+  tick:     Tick,
+): ConsequenceDescriptor[] {
+  const out: ConsequenceDescriptor[] = []
+  for( const [ , e ] of entities ){
+    if( e.type !== CONSEQUENCE_TYPE ) continue
+    const d = readConsequence( e.metadata )
+    if( d && tick < d.expiresAt ) out.push( d )
+  }
+  return out.sort( ( a, b ) => ( a.intentId < b.intentId ? -1 : a.intentId > b.intentId ? 1 : 0 ) )
+}
+
+/**
+ * High-precision text matching only (P2): a candidate text is *ours* when it
+ * hashes exactly to a descriptor's outbound text, or contains that text
+ * verbatim (echoes arrive decorated — "Alice said: …"). Deliberately NO
+ * entity-correspondence matching for external effectors yet: over-attribution
+ * (muting a genuine world event) is the dangerous direction; under-attribution
+ * is the status quo. Pure, deterministic, first match in stable order wins.
+ */
+export function matchConsequenceText(
+  descriptors: readonly ConsequenceDescriptor[],
+  candidate:   string,
+): ConsequenceDescriptor | null {
+  if( candidate.length === 0 ) return null
+  const candidateHash = fnv1a( candidate )
+  for( const d of descriptors ){
+    if( d.textHash !== undefined && d.textHash === candidateHash ) return d
+    if( d.text !== undefined && d.text.length >= MIN_TEXT_MATCH_LEN && candidate.includes( d.text ) ) return d
+  }
+  return null
 }

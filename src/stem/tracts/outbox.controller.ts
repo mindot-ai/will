@@ -104,6 +104,10 @@ export class OutboxController {
           : `My message failed to reach the recipient.`,
         salience:   delivered ? 0.35 : 0.6,
         changeType: delivered ? 'delivered' : 'failed',
+        // Reafference by construction — this percept describes our own action's
+        // outcome ("ear hears the word"). Tagged, not attenuated: it is the ack
+        // surface, not a content echo (EXAFFERENCE P2).
+        provenance: 'reafferent',
         messageId,
       },
     })

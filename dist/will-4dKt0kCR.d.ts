@@ -1906,6 +1906,12 @@ declare class Exteroception implements SimulationEngine, CognitiveEngine {
      * Generate a meaningful summary for an entity.
      * Instead of "New percept: percept-54-0", produce something useful.
      */
+    /**
+     * The text the corollary-discharge matcher inspects for this entity — its
+     * content (a message body) over its description over its summary. Where our
+     * own delivered words would surface if the world echoes them back.
+     */
+    private _matchText;
     private _summarizeEntity;
     /**
      * Compute salience of a percept based on entity characteristics.

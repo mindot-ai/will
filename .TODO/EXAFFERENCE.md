@@ -177,17 +177,37 @@ a tick — the race-safe rule is correct); no LLM in any matching path.
       sweep, descriptor-outlives-resolution, replay determinism (two identical
       runs → identical entity sets). Full unit suite 925/925.
 
-### P2 — Corollary-discharge matcher (percepts gain provenance)
-- [ ] Deterministic matcher at the percept boundary (extend where percepts are
-      committed — sensory/perceptual layer, *before* the AffordanceSynthesizer's
-      per-tick read): match keys against live descriptors; on match set
-      `provenance:'reafferent'`, `sourceIntentId`, salience ×= `ATTENUATION`; else
-      `provenance:'exafferent'`.
-- [ ] AffordanceSynthesizer + workspace gating read the *attenuated* salience —
-      no other change; the attention budget now naturally favors world over echo.
-- [ ] Tests: echo percept attenuated + tagged; unmatched percept untouched
-      (byte-identical to today); expired descriptor → no match; determinism guard
-      (no wall clock, no RNG in matching).
+### P2 — Corollary-discharge matcher (percepts gain provenance) ⟶ done (2026-07-19)
+- [x] Matching happens **at percept creation** (atomic — a percept never exists
+      untagged): Exteroception computes `matchText` (entity content ≻
+      description ≻ summary) per raw percept and consults
+      `liveConsequences()` + `matchConsequenceText()` (consequence.ts) while
+      building the entity. Match → `provenance:'reafferent'` + `sourceIntentId`
+      + salience ×= `ATTENUATION`; miss → `provenance:'exafferent'`. The
+      OutboxController's delivery percepts ("ear hears the word") are tagged
+      reafferent **by construction**, un-attenuated (they're the ack surface,
+      not a content echo).
+- [x] **P2 scope decisions (recorded):** (a) provenance is set only at
+      world-ingress creators — endogenous percepts (working memory, escalation
+      buffer, wake) stay *untagged*: they are neither, and P3's rupture reads
+      only `provenance:'exafferent'`; (b) **high-precision matchers only** —
+      exact content hash, or verbatim containment of the descriptor's `text`
+      (new field, stored at the delivery site) above `MIN_TEXT_MATCH_LEN = 12`.
+      Entity-correspondence matching for external effectors is deferred
+      (over-attribution mutes genuine world events; under-attribution is the
+      status quo — safe); (c) `agency.consequence` added to Exteroception's
+      `internalTypes` (perceiving our own descriptors was a P1 self-noise
+      loop); (d) sense-engine bus percepts (`senses.<domain>.percept`) are not
+      entities — tagging that path rides P3 if rupture ends up consuming it.
+- [x] Consumers unchanged: AffordanceSynthesizer / AttentionAllocator /
+      workspace read the already-attenuated salience off percept metadata.
+- [x] Tests (`corollary.discharge.test.ts`, 11 cases): hash + containment +
+      length-guard + no-match + stable-order matcher paths; live/expired
+      descriptor filtering; echo tagged + attenuated vs. control (salience ==
+      base × ATTENUATION); unrelated percept byte-equal to a descriptor-free
+      run; own descriptors never perceived (internal type); expired descriptor
+      no longer captures; determinism (identical state → identical tagged
+      percepts). Full unit suite 936/936; typecheck clean.
 
 ### P3 — Rupture + engagement softening (the selector learns to let go of waiting)
 - [ ] Rupture computed pull-style in the selector's `react()` from frozen state:

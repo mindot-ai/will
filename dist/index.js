@@ -4331,6 +4331,73 @@ var CircadianOscillator = class {
   }
 };
 
+// src/cognition/agency/consequence.ts
+var CONSEQUENCE_TYPE = "agency.consequence";
+var ATTENUATION = 0.25;
+var MIN_TEXT_MATCH_LEN = 12;
+var CONSEQUENCE_TTL_TICKS = 30;
+function fnv1a(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+function paramsKey(value) {
+  if (value === null || typeof value !== "object")
+    return typeof value === "string" ? JSON.stringify(value) : String(value);
+  if (Array.isArray(value))
+    return `[${value.map(paramsKey).join(",")}]`;
+  const obj = value;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${k}:${paramsKey(obj[k])}`).join(",")}}`;
+}
+function consequenceEntity(d) {
+  return {
+    id: `agency-consequence-${d.intentId}`,
+    type: CONSEQUENCE_TYPE,
+    metadata: { ...d }
+  };
+}
+function readConsequence(m) {
+  const meta = m ?? {};
+  const intentId = typeof meta["intentId"] === "string" ? meta["intentId"] : void 0;
+  const schema = typeof meta["schema"] === "string" ? meta["schema"] : void 0;
+  const mode = meta["mode"] === "communicate" || meta["mode"] === "external" ? meta["mode"] : void 0;
+  if (!intentId || !schema || !mode) return null;
+  return {
+    intentId,
+    schema,
+    mode,
+    effector: typeof meta["effector"] === "string" ? meta["effector"] : void 0,
+    targetEntityId: typeof meta["targetEntityId"] === "string" ? meta["targetEntityId"] : void 0,
+    textHash: typeof meta["textHash"] === "number" ? meta["textHash"] : void 0,
+    text: typeof meta["text"] === "string" ? meta["text"] : void 0,
+    paramsHash: typeof meta["paramsHash"] === "number" ? meta["paramsHash"] : void 0,
+    expiresAt: typeof meta["expiresAt"] === "number" ? meta["expiresAt"] : 0,
+    tick: typeof meta["tick"] === "number" ? meta["tick"] : 0
+  };
+}
+function liveConsequences(entities, tick) {
+  const out = [];
+  for (const [, e] of entities) {
+    if (e.type !== CONSEQUENCE_TYPE) continue;
+    const d = readConsequence(e.metadata);
+    if (d && tick < d.expiresAt) out.push(d);
+  }
+  return out.sort((a, b) => a.intentId < b.intentId ? -1 : a.intentId > b.intentId ? 1 : 0);
+}
+function matchConsequenceText(descriptors, candidate) {
+  if (candidate.length === 0) return null;
+  const candidateHash = fnv1a(candidate);
+  for (const d of descriptors) {
+    if (d.textHash !== void 0 && d.textHash === candidateHash) return d;
+    if (d.text !== void 0 && d.text.length >= MIN_TEXT_MATCH_LEN && candidate.includes(d.text)) return d;
+  }
+  return null;
+}
+
 // src/cognition/faculties/exteroception.ts
 var internalTypes = /* @__PURE__ */ new Set([
   "percept",
@@ -4356,7 +4423,10 @@ var internalTypes = /* @__PURE__ */ new Set([
   "episodic_memory",
   // Internal state entities written by our own engines — not external events
   "affect.blends",
-  "executive.summary"
+  "executive.summary",
+  // The agency's own forward-model records (EXAFFERENCE P1/P2): perceiving our
+  // expected-consequence descriptors would be a self-noise loop.
+  CONSEQUENCE_TYPE
 ]);
 var Exteroception = class {
   name = "exteroception";
@@ -4406,17 +4476,22 @@ var Exteroception = class {
     const events = [], commands = { set: [], delete: [], metrics: [] };
     const rawPercepts = this._scanWorld(state);
     const capped = rawPercepts.slice(0, this._maxPerceptsPerTick);
+    const consequences = liveConsequences(state.entities, tick);
     for (let i = 0; i < capped.length; i++) {
       const rp = capped[i];
+      const hit = consequences.length > 0 && rp.matchText ? matchConsequenceText(consequences, rp.matchText) : null;
+      const salience = hit ? rp.salience * ATTENUATION : rp.salience;
       const perceptEntity = {
         id: `percept-${tick}-${i}`,
         type: "percept",
         metadata: {
           entityId: rp.entityId,
           changeType: rp.changeType,
-          salience: rp.salience,
+          salience,
           category: rp.category,
           summary: rp.summary,
+          provenance: hit ? "reafferent" : "exafferent",
+          ...hit ? { sourceIntentId: hit.intentId } : {},
           tick
         }
       };
@@ -4427,7 +4502,7 @@ var Exteroception = class {
           source: this.name,
           payload: {
             entityId: rp.entityId,
-            salience: rp.salience,
+            salience,
             category: rp.category,
             summary: rp.summary
           }
@@ -4475,7 +4550,8 @@ var Exteroception = class {
           changeType: "appeared",
           salience: this._computeSalience(entity, "appeared", state.time),
           category: entity.type,
-          summary: this._summarizeEntity(entity, "appeared")
+          summary: this._summarizeEntity(entity, "appeared"),
+          matchText: this._matchText(entity)
         });
       } else if (entity.updatedAt > previousVersion) {
         percepts.push({
@@ -4483,7 +4559,8 @@ var Exteroception = class {
           changeType: "modified",
           salience: this._computeSalience(entity, "modified", state.time),
           category: entity.type,
-          summary: this._summarizeEntity(entity, "modified")
+          summary: this._summarizeEntity(entity, "modified"),
+          matchText: this._matchText(entity)
         });
       }
       this._previousEntityVersions.set(id, entity.updatedAt);
@@ -4509,6 +4586,18 @@ var Exteroception = class {
    * Generate a meaningful summary for an entity.
    * Instead of "New percept: percept-54-0", produce something useful.
    */
+  /**
+   * The text the corollary-discharge matcher inspects for this entity — its
+   * content (a message body) over its description over its summary. Where our
+   * own delivered words would surface if the world echoes them back.
+   */
+  _matchText(entity) {
+    const m = entity.metadata;
+    const content = typeof m?.["content"] === "string" ? m["content"] : void 0;
+    const description = typeof m?.["description"] === "string" ? m["description"] : void 0;
+    const summary = typeof m?.["summary"] === "string" ? m["summary"] : void 0;
+    return content ?? description ?? summary;
+  }
   _summarizeEntity(entity, changeType) {
     const name = entity.metadata?.name;
     const description = entity.metadata?.description;
@@ -19306,34 +19395,6 @@ function clamp018(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
-// src/cognition/agency/consequence.ts
-var CONSEQUENCE_TYPE = "agency.consequence";
-var CONSEQUENCE_TTL_TICKS = 30;
-function fnv1a(text) {
-  let h = 2166136261;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return h >>> 0;
-}
-function paramsKey(value) {
-  if (value === null || typeof value !== "object")
-    return typeof value === "string" ? JSON.stringify(value) : String(value);
-  if (Array.isArray(value))
-    return `[${value.map(paramsKey).join(",")}]`;
-  const obj = value;
-  const keys = Object.keys(obj).sort();
-  return `{${keys.map((k) => `${k}:${paramsKey(obj[k])}`).join(",")}}`;
-}
-function consequenceEntity(d) {
-  return {
-    id: `agency-consequence-${d.intentId}`,
-    type: CONSEQUENCE_TYPE,
-    metadata: { ...d }
-  };
-}
-
 // src/cognition/agency/engines/motor.schema.executor.ts
 var AWAIT_TIMEOUT = 15;
 var COMM_SCHEMA_TO_EFFECTOR = {
@@ -19675,6 +19736,7 @@ var MotorSchemaExecutor = class {
         effector,
         ...intent.targetEntityId ? { targetEntityId: intent.targetEntityId } : {},
         textHash: fnv1a(bubbles.join("\n")),
+        text: bubbles.join("\n"),
         expiresAt: tick + CONSEQUENCE_TTL_TICKS,
         tick
       }));
@@ -24577,6 +24639,10 @@ var OutboxController = class {
         summary: delivered ? `My message was delivered successfully.` : `My message failed to reach the recipient.`,
         salience: delivered ? 0.35 : 0.6,
         changeType: delivered ? "delivered" : "failed",
+        // Reafference by construction — this percept describes our own action's
+        // outcome ("ear hears the word"). Tagged, not attenuated: it is the ack
+        // surface, not a content echo (EXAFFERENCE P2).
+        provenance: "reafferent",
         messageId
       }
     });

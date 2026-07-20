@@ -31,6 +31,7 @@ import type { SimulationEngine, EngineResult, CognitiveEngine } from '#cognition
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import { GenerativeModel } from '#cognition/generative.model'
+import { CONSEQUENCE_TYPE, ATTENUATION, liveConsequences, matchConsequenceText } from '#agency/consequence'
 
 export interface ExteroceptionConfig {
   /** Maximum percepts to produce per tick */
@@ -50,6 +51,8 @@ interface RawPercept {
   salience: number
   category: string
   summary: string
+  /** Text the corollary-discharge matcher inspects (entity content ≻ description ≻ summary). */
+  matchText?: string
 }
 
 // Skip internal entities — they're not external percepts.
@@ -65,6 +68,9 @@ const internalTypes = new Set([
   'theory_of_mind', 'reputation', 'episodic_memory',
   // Internal state entities written by our own engines — not external events
   'affect.blends', 'executive.summary',
+  // The agency's own forward-model records (EXAFFERENCE P1/P2): perceiving our
+  // expected-consequence descriptors would be a self-noise loop.
+  CONSEQUENCE_TYPE,
 ])
 
 export class Exteroception implements SimulationEngine, CognitiveEngine {
@@ -125,9 +131,23 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
     // Cap percepts per tick
     const capped = rawPercepts.slice( 0, this._maxPerceptsPerTick )
 
+    // Corollary discharge (EXAFFERENCE P2): everything this engine perceives is
+    // world-ingress afference — split it. A percept matching a live expected-
+    // consequence descriptor is *reafferent* (our own action's sensory footprint:
+    // the channel echo, a quote-back) and its salience is attenuated, not zeroed;
+    // everything else is *exafferent* — the world moved on its own. Endogenous
+    // percepts (working memory, escalations) are created elsewhere and stay
+    // untagged: they are neither.
+    const consequences = liveConsequences( state.entities, tick )
+
     // Convert raw percepts to entities
     for( let i = 0; i < capped.length; i++ ){
       const rp = capped[i]!
+
+      const hit = consequences.length > 0 && rp.matchText
+        ? matchConsequenceText( consequences, rp.matchText )
+        : null
+      const salience = hit ? rp.salience * ATTENUATION : rp.salience
 
       const perceptEntity = {
         id: `percept-${tick}-${i}`,
@@ -135,9 +155,11 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
         metadata: {
           entityId: rp.entityId,
           changeType: rp.changeType,
-          salience: rp.salience,
+          salience,
           category: rp.category,
           summary: rp.summary,
+          provenance: hit ? 'reafferent' : 'exafferent',
+          ...( hit ? { sourceIntentId: hit.intentId } : {} ),
           tick,
         },
       }
@@ -151,7 +173,7 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
           source: this.name,
           payload: {
             entityId: rp.entityId,
-            salience: rp.salience,
+            salience,
             category: rp.category,
             summary: rp.summary,
           },
@@ -220,6 +242,7 @@ private _scanWorld( state: ReadonlySimulationState ): RawPercept[] {
           salience: this._computeSalience( entity, 'appeared', state.time ),
           category: entity.type,
           summary: this._summarizeEntity( entity, 'appeared'),
+          matchText: this._matchText( entity ),
         })
       }
       else if( entity.updatedAt > previousVersion ){
@@ -229,6 +252,7 @@ private _scanWorld( state: ReadonlySimulationState ): RawPercept[] {
           salience: this._computeSalience( entity, 'modified', state.time ),
           category: entity.type,
           summary: this._summarizeEntity( entity, 'modified'),
+          matchText: this._matchText( entity ),
         })
       }
 
@@ -268,6 +292,19 @@ private _scanWorld( state: ReadonlySimulationState ): RawPercept[] {
    * Generate a meaningful summary for an entity.
    * Instead of "New percept: percept-54-0", produce something useful.
    */
+  /**
+   * The text the corollary-discharge matcher inspects for this entity — its
+   * content (a message body) over its description over its summary. Where our
+   * own delivered words would surface if the world echoes them back.
+   */
+  private _matchText( entity: Readonly<SimulationEntity> ): string | undefined {
+    const m = entity.metadata as Record<string, unknown> | undefined
+    const content     = typeof m?.['content']     === 'string' ? m['content']     as string : undefined
+    const description = typeof m?.['description'] === 'string' ? m['description'] as string : undefined
+    const summary     = typeof m?.['summary']     === 'string' ? m['summary']     as string : undefined
+    return content ?? description ?? summary
+  }
+
   private _summarizeEntity(
     entity: Readonly<SimulationEntity>,
     changeType: string

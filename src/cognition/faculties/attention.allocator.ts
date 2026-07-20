@@ -57,6 +57,25 @@ interface AttentionFocus {
 // a choice it relaxes back to baseline, so focus/rest are transient unless
 // renewed. Effort scales the ceiling, so vitals always win — you cannot focus
 // past exhaustion (a collapsed ceiling leaves nothing to engage).
+// ── ACP-P2 (ACTION_CONDITIONED_PREDICTION §3) — efferent anticipation ────────
+/** Expected attention-usage swing right after our own enaction. */
+const ACP_USAGE_UPLIFT = 0.15
+/** Conservative anticipation confidence (plan of record: 0.3–0.5). */
+const ACP_CONFIDENCE = 0.4
+/**
+ * Self-caused precision: measurement showed that after a stable stretch the
+ * salience denominator (EW variance) collapses, so ANY deviation saturates
+ * salience at 1.0 and a conservative anticipation nudge is invisible there.
+ * The measurable lever at this seam is precision (salience = base × precision,
+ * executive precedent at 'executive.prediction.formed'): our own action's
+ * swing carries reduced attention-grabbing weight — below the workspace gate
+ * (WORKSPACE_THRESHOLD = 0.4) even when the base saturates. Restored
+ * explicitly after ONE observe (GenerativeModel's own mean-reversion is
+ * 0.02/observe ≈ 50 ticks — that lingering would suppress genuine world
+ * surprise arriving after our action, the exact failure the plan forbids).
+ */
+const ACP_SELF_PRECISION = 0.35
+
 const EFFORT_BASELINE = 0.7   // homeostatic default utilization of the ceiling
 const EFFORT_MIN      = 0.4   // deepest voluntary stand-down (rest)
 const EFFORT_MAX      = 1.0   // full mobilization (focus)
@@ -90,6 +109,8 @@ export class AttentionAllocator implements SimulationEngine, CognitiveEngine {
   private _effort: number = EFFORT_BASELINE
   /** A one-shot focus/rest request from the executive, applied next react(). */
   private _effortRequest: number | null = null
+  /** ACP-P2: a self-caused precision attenuation is armed; react() restores after one observe. */
+  private _acpOneShot = false
 
   private _bus: CognitiveBus | null = null
 
@@ -115,6 +136,8 @@ export class AttentionAllocator implements SimulationEngine, CognitiveEngine {
       'executive.prediction.formed',
       'attention.regulate',   // voluntary focus/rest from the executive (Option C)
       'senses.*',   // all sense percepts — salience feeds attention allocation
+      // ACP-P2: our own enactions — anticipate the attention swing they cause
+      'agency.enacted', 'agency.communicate', 'agency.invocation',
     ]
   }
   publishes(): CognitiveEventSchema[] { return [] }
@@ -140,6 +163,29 @@ export class AttentionAllocator implements SimulationEngine, CognitiveEngine {
         const p = e.payload as { predictedDomains: string[]; confidence: number }
         if( p.predictedDomains.includes('attention') )
           this._model.setPrecision('attention.usage', 1.0 + p.confidence * 0.5 )
+        break
+      }
+      case 'agency.enacted':
+      case 'agency.communicate':
+      case 'agency.invocation': {
+        // ACP-P2, first consumer: we just acted — our own attention state is
+        // about to move BECAUSE of it (usage up, free fraction down). Pre-blend
+        // that expectation so the self-caused swing lands with low prediction
+        // error and doesn't fire `attention.state.changed` as surprise; the
+        // world's own deviations still do. One-shot by construction — the
+        // anticipation weight is consumed by each stream's next observe().
+        // Only the two streams whose errors are actually consumed (they gate
+        // the publish) are anticipated; `attention.entity.*` errors are
+        // discarded today, so anticipating them would be theater.
+        const usage = this._model.predict('attention.usage')
+        const free  = this._model.predict('attention.free_fraction')
+        this._model.anticipate('attention.usage',         Math.min( 1, usage + ACP_USAGE_UPLIFT ), ACP_CONFIDENCE )
+        this._model.anticipate('attention.free_fraction', Math.max( 0, free  - ACP_USAGE_UPLIFT ), ACP_CONFIDENCE )
+        // The measurable half (see ACP_SELF_PRECISION): the next observe of
+        // each stream carries self-caused weight; react() restores after one.
+        this._model.setPrecision('attention.usage',         ACP_SELF_PRECISION )
+        this._model.setPrecision('attention.free_fraction', ACP_SELF_PRECISION )
+        this._acpOneShot = true
         break
       }
       default:
@@ -298,6 +344,14 @@ export class AttentionAllocator implements SimulationEngine, CognitiveEngine {
     if( _bus ){
       const usageErr = this._model.observe('attention.usage', attentionUsage )
       const freeErr  = this._model.observe('attention.free_fraction', freeFraction )
+      // ACP-P2: the self-caused observe has happened — restore full precision
+      // immediately so a genuine world surprise NEXT tick is not dampened
+      // (the model's own mean-reversion would take ~50 observes).
+      if( this._acpOneShot ){
+        this._model.setPrecision('attention.usage',         1.0 )
+        this._model.setPrecision('attention.free_fraction', 1.0 )
+        this._acpOneShot = false
+      }
       if( !usageErr.gated || !freeErr.gated )
         _bus.publish({ type: 'attention.state.changed', version: 1, sourceEngine: this.name, salience: Math.max( usageErr.salience, freeErr.salience ), payload: { usage: attentionUsage, focusCount, capacity: effectiveCapacity, freeFraction } })
     }

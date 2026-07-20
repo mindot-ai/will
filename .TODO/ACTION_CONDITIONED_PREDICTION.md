@@ -119,8 +119,25 @@ Design (settled here, implementation phased):
    central registry of stream effects — the engine knows its streams; the
    blend decays after one observe by construction.
 3. **First consumers (one PR each, measure before widening):**
-   - [ ] AttentionAllocator — after any enaction toward a target, anticipate
-         attention-stream movement toward that target.
+   - [x] **AttentionAllocator (shipped 2026-07-20)** — subscribes to the three
+         enaction events; anticipates `attention.usage`/`attention.free_fraction`
+         (the ONLY streams whose errors anything consumes — they gate
+         `attention.state.changed`; `attention.entity.*` errors are discarded,
+         so anticipating them would be theater). **Measured finding that
+         reshaped the design:** after a stable stretch the salience denominator
+         (EW variance) collapses, so any deviation saturates salience at 1.0
+         and a conservative `anticipate()` nudge is behaviorally invisible.
+         The measurable lever is **precision**: `ACP_SELF_PRECISION = 0.35` on
+         both streams (below `WORKSPACE_THRESHOLD = 0.4` even at saturation),
+         restored explicitly after ONE observe — the model's own mean-reversion
+         (0.02/observe ≈ 50 ticks) would dampen genuine world surprise arriving
+         after our action, the exact failure this plan forbids. The
+         `anticipate()` nudge is kept as the directional prior. Tests
+         (`agency.acp-attention.test.ts`): unprompted shift recruits (≥ gate);
+         same shift post-enaction attenuated below the gate; full weight
+         restored the very next tick; wiring pin. *(Observed pre-existing gap,
+         not this arc's: the allocator's `snapshot()` does not carry its
+         GenerativeModel, unlike most engines.)*
    - [ ] Social-drive / attachment stream after `communicate` dispatch.
    - [ ] Arousal/stress evaluator after any enaction (acting is arousing —
          expected, not surprising).

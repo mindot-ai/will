@@ -4763,6 +4763,9 @@ function consolidatePrior(current, adjustments, tick, opts = {}) {
 }
 
 // src/cognition/faculties/attention.allocator.ts
+var ACP_USAGE_UPLIFT = 0.15;
+var ACP_CONFIDENCE = 0.4;
+var ACP_SELF_PRECISION = 0.35;
 var EFFORT_BASELINE2 = 0.7;
 var EFFORT_MIN = 0.4;
 var EFFORT_MAX = 1;
@@ -4784,6 +4787,8 @@ var AttentionAllocator = class {
   _effort = EFFORT_BASELINE2;
   /** A one-shot focus/rest request from the executive, applied next react(). */
   _effortRequest = null;
+  /** ACP-P2: a self-caused precision attenuation is armed; react() restores after one observe. */
+  _acpOneShot = false;
   _bus = null;
   _model = new GenerativeModel();
   constructor(config = {}) {
@@ -4804,8 +4809,12 @@ var AttentionAllocator = class {
       "executive.prediction.formed",
       "attention.regulate",
       // voluntary focus/rest from the executive (Option C)
-      "senses.*"
+      "senses.*",
       // all sense percepts — salience feeds attention allocation
+      // ACP-P2: our own enactions — anticipate the attention swing they cause
+      "agency.enacted",
+      "agency.communicate",
+      "agency.invocation"
     ];
   }
   publishes() {
@@ -4830,6 +4839,18 @@ var AttentionAllocator = class {
         const p = e.payload;
         if (p.predictedDomains.includes("attention"))
           this._model.setPrecision("attention.usage", 1 + p.confidence * 0.5);
+        break;
+      }
+      case "agency.enacted":
+      case "agency.communicate":
+      case "agency.invocation": {
+        const usage = this._model.predict("attention.usage");
+        const free = this._model.predict("attention.free_fraction");
+        this._model.anticipate("attention.usage", Math.min(1, usage + ACP_USAGE_UPLIFT), ACP_CONFIDENCE);
+        this._model.anticipate("attention.free_fraction", Math.max(0, free - ACP_USAGE_UPLIFT), ACP_CONFIDENCE);
+        this._model.setPrecision("attention.usage", ACP_SELF_PRECISION);
+        this._model.setPrecision("attention.free_fraction", ACP_SELF_PRECISION);
+        this._acpOneShot = true;
         break;
       }
       default:
@@ -4915,6 +4936,11 @@ var AttentionAllocator = class {
     if (_bus) {
       const usageErr = this._model.observe("attention.usage", attentionUsage);
       const freeErr = this._model.observe("attention.free_fraction", freeFraction);
+      if (this._acpOneShot) {
+        this._model.setPrecision("attention.usage", 1);
+        this._model.setPrecision("attention.free_fraction", 1);
+        this._acpOneShot = false;
+      }
       if (!usageErr.gated || !freeErr.gated)
         _bus.publish({ type: "attention.state.changed", version: 1, sourceEngine: this.name, salience: Math.max(usageErr.salience, freeErr.salience), payload: { usage: attentionUsage, focusCount, capacity: effectiveCapacity, freeFraction } });
     }

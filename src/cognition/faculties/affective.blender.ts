@@ -36,6 +36,12 @@ import type { CognitiveEngine, SimulationEngine, EngineResult } from '#cognition
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import { GenerativeModel } from '#cognition/generative.model'
+import { ACP_SELF_PRECISION } from '#cognition/acp'
+
+// ACP-P2 (ACTION_CONDITIONED_PREDICTION §3): acting is arousing — the
+// directional prior nudged into the arousal prediction on our own enaction.
+const ACP_AROUSAL_UPLIFT = 0.1
+const ACP_CONFIDENCE     = 0.4
 
 /**
  * Numeric encoding for dominant emotion metric.
@@ -188,6 +194,8 @@ export class AffectiveBlender implements SimulationEngine, CognitiveEngine {
   private _emotionHistory: Map<string, number[]> = new Map()
 
   private _moodBaseline:       number = 0.5
+  /** ACP-P2: self-caused arousal attenuation armed; react() restores after one observe. */
+  private _acpOneShot = false
   private _energyLevel:        number = 100
   private _comfort:            number = 0.5
   private _sleepPressure:      number = 0
@@ -230,6 +238,8 @@ export class AffectiveBlender implements SimulationEngine, CognitiveEngine {
       'stress.state.changed',
       'executive.prediction.formed',
       'interaction.occurred',   // 2.1: social stimuli drive immediate arousal/valence shifts
+      // ACP-P2: our own enactions — the arousal they cause is expected, not surprising
+      'agency.enacted', 'agency.communicate', 'agency.invocation',
     ]
   }
   publishes(): CognitiveEventSchema[] { return [] }
@@ -237,6 +247,20 @@ export class AffectiveBlender implements SimulationEngine, CognitiveEngine {
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
     switch( e.type ){
+      case 'agency.enacted':
+      case 'agency.communicate':
+      case 'agency.invocation': {
+        // ACP-P2: we just acted — the arousal swing that follows is our own
+        // doing. Directional prior (acting is arousing) + self-caused
+        // precision on the ONE stream whose error is consumed (it weights the
+        // `affect.state.changed` publish); react() restores after one observe
+        // so a genuine world jolt next tick lands at full weight.
+        const arousal = this._model.predict('affect.arousal')
+        this._model.anticipate('affect.arousal', Math.min( 1, arousal + ACP_AROUSAL_UPLIFT ), ACP_CONFIDENCE )
+        this._model.setPrecision('affect.arousal', ACP_SELF_PRECISION )
+        this._acpOneShot = true
+        break
+      }
       case 'circadian.state.changed':
         this._moodBaseline = (e.payload as Record<string,number>)['moodBaseline'] ?? this._moodBaseline
         break
@@ -397,8 +421,16 @@ export class AffectiveBlender implements SimulationEngine, CognitiveEngine {
     if( _bus )
       _bus.publish({ type: 'affect.state.shifted', version: 1, sourceEngine: this.name, salience: Math.min(1, Math.abs(modulatedPAD.valence) + modulatedPAD.arousal * 0.5), payload: { valence: modulatedPAD.valence, arousal: modulatedPAD.arousal, dominantEmotion: dominant } })
     // Phase D: rich state-change event
-    if( _bus )
-      _bus.publish({ type: 'affect.state.changed', version: 1, sourceEngine: this.name, salience: this._model.observe('affect.arousal', modulatedPAD.arousal ).salience, payload: { valence: modulatedPAD.valence, arousal: modulatedPAD.arousal, dominance: modulatedPAD.dominance } })
+    if( _bus ){
+      const arousalErr = this._model.observe('affect.arousal', modulatedPAD.arousal )
+      // ACP-P2: the self-caused observe has happened — restore full precision
+      // now so the world's own jolts are never dampened by our lingering act.
+      if( this._acpOneShot ){
+        this._model.setPrecision('affect.arousal', 1.0 )
+        this._acpOneShot = false
+      }
+      _bus.publish({ type: 'affect.state.changed', version: 1, sourceEngine: this.name, salience: arousalErr.salience, payload: { valence: modulatedPAD.valence, arousal: modulatedPAD.arousal, dominance: modulatedPAD.dominance } })
+    }
     return { events: events.length > 0 ? events : undefined, commands }
   }
 

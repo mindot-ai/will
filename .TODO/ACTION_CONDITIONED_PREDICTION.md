@@ -138,9 +138,21 @@ Design (settled here, implementation phased):
          restored the very next tick; wiring pin. *(Observed pre-existing gap,
          not this arc's: the allocator's `snapshot()` does not carry its
          GenerativeModel, unlike most engines.)*
-   - [ ] Social-drive / attachment stream after `communicate` dispatch.
-   - [ ] Arousal/stress evaluator after any enaction (acting is arousing —
-         expected, not surprising).
+   - [x] **AffectiveBlender (shipped 2026-07-20)** — the "arousal post-enaction"
+         consumer: `affect.arousal` (the one stream whose error is consumed —
+         it weights the every-tick `affect.state.changed` publish) gets the
+         shared pattern. Constants consolidated into `#cognition/acp`
+         (`ACP_SELF_PRECISION`) so the safety number can't drift between
+         consumers; the allocator imports it too. Directional prior kept
+         (acting is arousing: +0.1 @ 0.4). Tests mirror the allocator's trio.
+   - [x] **Social-drive: dropped by the honesty rule (inventoried 2026-07-20)**
+         — no consumed social-drive stream exists; `social.agent_count`
+         (SocialPerception) moves when *others* appear, not when we act —
+         anticipating it on our own enaction would be wrong, not conservative.
+         Revisit only if a consumed social stream appears.
+   - [ ] StressRegulator — `stress.load` error gates `stress.state.changed`;
+         precision-only (no directional prior: acting can load OR relieve).
+         The last inventoried consumer with a consumed stream.
 4. - [ ] **Eval before rollout:** a scenario where the Will acts and the
          workspace-entry count from self-caused streams drops vs. baseline,
          with world-event detection latency unchanged. Only then widen to

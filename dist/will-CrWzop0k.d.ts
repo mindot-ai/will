@@ -2628,6 +2628,8 @@ declare class AffectiveBlender implements SimulationEngine, CognitiveEngine {
     private _previousPAD;
     private _emotionHistory;
     private _moodBaseline;
+    /** ACP-P2: self-caused arousal attenuation armed; react() restores after one observe. */
+    private _acpOneShot;
     private _energyLevel;
     private _comfort;
     private _sleepPressure;

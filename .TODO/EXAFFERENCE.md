@@ -227,10 +227,11 @@ a tick — the race-safe rule is correct); no LLM in any matching path.
       − rupture)`, snapped to 1 within `STABILITY_EPSILON` so a never-ruptured mind
       **stops writing it** → the quiet path has no such metric and stays
       byte-identical (proven by the replay-equivalence integration test, still
-      green). Metric-only ⇒ snapshot-safe for free. *(Selector is one owner; wiring
-      the TaskSwitcher's own focus-hardening to read `situation.stability` is a
-      clean follow-up — deferred to keep this PR to the agency seam and avoid
-      attention-space recalibration.)*
+      green). Metric-only ⇒ snapshot-safe for free. *(Follow-up shipped: the
+      **TaskSwitcher** now reads `situation.stability` too — its focus-hardening
+      term `×0.01·stability` mirrors the selector, so both owners of switch
+      resistance loosen focus under a destabilized world at their native scales;
+      absent stability = 1 = byte-identical.)*
 - [x] Emits `agency.situation.rupture { rupture, stability, tick }` (salience =
       rupture) only when rupture > 0.
 - [x] Tests (`agency.rupture.test.ts`, 8 cases): quiet path emits no
@@ -264,13 +265,15 @@ a tick — the race-safe rule is correct); no LLM in any matching path.
       enacting; orphan-tombstone TTL reap. Full unit suite 950/950;
       replay-equivalence green; typecheck clean.
 
-> **Deferred (documented, not blocking):** the Channel-B `revokedBy` in-character
-> hint on the *next* deliberating intent — needs cross-tick selector bookkeeping
-> (snapshot surface); left out to keep determinism simple. The orphan-facet-drop
-> concern from P0 is moot by construction: the Deliberation engine is stateless
-> across ticks (it re-reads frozen state each `react`), so a revoked intent it
-> never picks up produces no dangling handle. Composite immediate-switch remains
-> pre-existing debt (untouched).
+> **Follow-up shipped:** the Channel-B `revokedBy` in-character hint on the *next*
+> deliberating intent now works — the selector keeps a small `_lastRevoked`
+> (snapshot-recorded, telemetry-grade like `_lastEntropy`) set at revocation and
+> consumed once, within `REVOKE_HINT_WINDOW = 8` ticks, when a fresh deliberation
+> forms; the Deliberation engine voices it ("something shifted and I let go of
+> X"). The orphan-facet-drop concern from P0 is moot by construction: the
+> Deliberation engine is stateless across ticks (it re-reads frozen state each
+> `react`), so a revoked intent it never picks up produces no dangling handle.
+> Composite immediate-switch remains pre-existing debt (untouched).
 
 ### P5 — Sensory reafference learns ⟶ done (2026-07-20)
 - [x] The ReafferenceEngine now gathers outcomes from **two** sources: real

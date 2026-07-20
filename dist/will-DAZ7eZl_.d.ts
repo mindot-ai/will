@@ -6408,6 +6408,7 @@ declare class ActionSelector implements CognitiveEngine {
     private _bus;
     private _lastEntropy;
     private _lastDeliberate;
+    private _lastRevoked;
     attachBus(bus: CognitiveBus): void;
     publishes(): CognitiveEventSchema[];
     subscribes(): string[];

@@ -80,6 +80,9 @@
 <path d="M 1208 205 C 1208 165, 418 165, 418 205" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-4ade80)"/>
 <rect x="791.2525000000003" y="165.30000000000004" width="161.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
 <text x="872.0525000000002" y="178.80000000000004" font-size="10" fill="#cbd5e1" text-anchor="middle">proceduralize → composites</text>
+<path d="M 148 428 C 148 548, 420.0205327342484 561.5695561527486, 480 560 C 539.9794672657516 558.4304438472514, 683 509.0189981003799, 683 414" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-38bdf8)"/>
+<rect x="393.6" y="550" width="172.79999999999998" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#38bdf844" stroke-width="0.8"/>
+<text x="480" y="563.5" font-size="10" fill="#cbd5e1" text-anchor="middle">exafferent rupture — lets go</text>
 <g>
 <rect x="62" y="150" width="172" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
 <rect x="62" y="150" width="172" height="54" rx="12" fill="#4ade8012"/>

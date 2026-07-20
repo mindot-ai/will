@@ -56,6 +56,19 @@ describe('Channel-B revocation hint (P4 follow-up)', () => {
     expect( intentOf( r7 )!.metadata?.['revokedBy'] ).toBeUndefined()
   })
 
+  it('the hint survives a snapshot/restore boundary (FN9)', async () => {
+    const sel = new ActionSelector()
+    await sel.react( 0, 5, makeState( 5, [ deliberatingIntent('d', 'ponder'), exafferent('p', 0.95, 5 ) ] ), CTX )
+
+    // Snapshot the ruptured selector, restore into a fresh instance…
+    const restored = new ActionSelector()
+    restored.restore( sel.snapshot() )
+
+    // …and the next deliberation still owns the letting-go.
+    const r = await restored.react( 0, 6, makeState( 6, twinAffordances() ), CTX )
+    expect( intentOf( r )!.metadata?.['revokedBy'] ).toBe('ponder')
+  })
+
   it('a revocation older than the hint window is not stamped', async () => {
     const sel = new ActionSelector()
     await sel.react( 0, 5, makeState( 5, [ deliberatingIntent('d', 'ponder'), exafferent('p', 0.95, 5 ) ], ), CTX )
@@ -98,7 +111,7 @@ describe('TaskSwitcher reads situation.stability (P3 follow-up)', () => {
     const sw = new TaskSwitcher()
     for( let t = 1; t <= 60; t++ )
       await sw.react( 0, t, makeState( t, [ goal('g1', 0.4 ) ] ), CTX )   // long, stable focus
-    const metrics = stability === null ? {} : { 'situation.stability': stability }
+    const metrics: Record<string, number> = stability === null ? {} : { 'situation.stability': stability }
     await sw.react( 0, 61, makeState( 61, [ goal('g1', 0.4 ), goal('g2', 1.0 ) ], metrics ), CTX )
     return sw.getCurrentFocus()
   }

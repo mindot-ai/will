@@ -7,7 +7,7 @@
 
 ## What exists
 
-Twenty-one graphs, one visual language (a category color is the same in every
+Twenty-two graphs, one visual language (a category color is the same in every
 graph — violet is always memory, amber executive, green agency…). Regenerate
 after edits: `bun docs/graphs/generate.ts`. Verify visually: headless-Chrome
 screenshot of the SVG (qlmanage crops to square — don't use it).
@@ -47,6 +47,16 @@ screenshot of the SVG (qlmanage crops to square — don't use it).
 | `proactive-communication` | drives/goals/imagination → reach-out affordance → competition (may lose — silence is normal) → motor communicate → authorOutreach facet → OutboxWriter → host |
 | `competence` | efference copy vs observed outcome → surprise → recordOutcome → valueEstimate/habitStrength/paramPriors → proceduralize (≥0.6) → composites → repertoire → PMA fold |
 | `persona-channels` | lived behavior → consolidator → persona-prior; Channel A (base ⊕ prior read live — continuous subconscious) vs Channel B (banded trait surfacing — thresholded awareness); how each reaches System 1 / System 2 |
+
+**Wave 4 — exafference (2026-07-20):**
+
+| Graph | Covers |
+|---|---|
+| `exafference-loop` | efference copy → consequence descriptors (TTL) → corollary discharge splits percepts (reafferent — ours, ×0.25, can never rupture / exafferent — the world, full salience) → rupture softens switch-cost + erodes `situation.stability` → revocation tombstone → deliberation drops the revoked and voices `revokedBy`; a reafferent echo also confirms an ack-less awaiting intent (sensory learning) — the full `.TODO/EXAFFERENCE.md` arc in one picture |
+
+Wave 4 also touched `agency-pipeline`: a dashed *"exafferent rupture — lets go"*
+edge from percepts into the ActionSelector — the world can now revoke
+engagement, not only field a stronger challenger.
 
 Wave 3 also corrected `meta-cognition`: the IntrospectionEngine is drawn as a
 **satellite** (harvests the executive facet's INTROSPECTION block; heuristic

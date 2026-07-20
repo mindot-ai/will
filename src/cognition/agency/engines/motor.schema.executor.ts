@@ -44,8 +44,10 @@ import {
   consequenceEntity, fnv1a, paramsKey,
 } from '#agency/consequence'
 
-/** Ticks an async (communicate/external) intent may stay 'awaiting' before it is abandoned. */
-const AWAIT_TIMEOUT = 15
+/** Ticks an async (communicate/external) intent may stay 'awaiting' before it is
+ *  abandoned. Exported: the ReafferenceEngine's sensory-confirmation path (P5)
+ *  stands down at this boundary so the executor's timeout-failure wins. */
+export const AWAIT_TIMEOUT = 15
 
 /** Map a communicate schema to the ProactiveCommunicator effector + the permission name. */
 const COMM_SCHEMA_TO_EFFECTOR: Record<string, string> = {

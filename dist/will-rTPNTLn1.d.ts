@@ -1704,6 +1704,8 @@ declare class AttentionAllocator implements SimulationEngine, CognitiveEngine {
     private _effort;
     /** A one-shot focus/rest request from the executive, applied next react(). */
     private _effortRequest;
+    /** ACP-P2: a self-caused precision attenuation is armed; react() restores after one observe. */
+    private _acpOneShot;
     private _bus;
     private readonly _model;
     constructor(config?: AttentionAllocatorConfig);

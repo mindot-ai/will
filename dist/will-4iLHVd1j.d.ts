@@ -6409,10 +6409,18 @@ declare class ActionSelector implements CognitiveEngine {
     private _lastEntropy;
     private _lastDeliberate;
     private _lastRevoked;
+    private _senseBuffer;
     attachBus(bus: CognitiveBus): void;
     publishes(): CognitiveEventSchema[];
     subscribes(): string[];
-    onCognitiveEvent(): void;
+    /**
+     * Mostly pull-model — but sense-channel percepts never become entities
+     * (they live on the bus, ACTION_CONDITIONED_PREDICTION §2b), so rupture
+     * would be blind to a sensory shock. Buffer them here (cross-tick: bus
+     * flush at T, consumed by react at T+1 — FN9-snapshotted) and fold into
+     * computeRupture with the echo guard applied at read time.
+     */
+    onCognitiveEvent(e: CognitiveEvent): void;
     snapshot(): Record<string, unknown>;
     /** FN9: `_lastRevoked` has behavioral effect (the Channel-B `revokedBy` stamp),
      *  so a restored mind must carry it — a rupture-driven letting-go survives a

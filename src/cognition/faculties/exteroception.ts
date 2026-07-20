@@ -31,7 +31,10 @@ import type { SimulationEngine, EngineResult, CognitiveEngine } from '#cognition
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import { GenerativeModel } from '#cognition/generative.model'
-import { CONSEQUENCE_TYPE, ATTENUATION, liveConsequences, matchConsequenceText } from '#agency/consequence'
+import {
+  CONSEQUENCE_TYPE, ATTENUATION, CORRESPONDENCE_ATTENUATION,
+  liveConsequences, matchConsequenceText, matchConsequenceEntity,
+} from '#agency/consequence'
 import { REVOCATION_TYPE } from '#agency/revocation'
 
 export interface ExteroceptionConfig {
@@ -147,10 +150,19 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
     for( let i = 0; i < capped.length; i++ ){
       const rp = capped[i]!
 
-      const hit = consequences.length > 0 && rp.matchText
+      const textHit = consequences.length > 0 && rp.matchText
         ? matchConsequenceText( consequences, rp.matchText )
         : null
-      const salience = hit ? rp.salience * ATTENUATION : rp.salience
+      // ACP-P1 (entity correspondence): when the text path misses, a change on
+      // exactly the entity a live external descriptor targets is still our
+      // footprint — claimed at gentler attenuation (we're less certain).
+      const entityHit = !textHit && consequences.length > 0
+        ? matchConsequenceEntity( consequences, rp.entityId, rp.changeType )
+        : null
+      const hit = textHit ?? entityHit
+      const salience = textHit ? rp.salience * ATTENUATION
+        : entityHit ? rp.salience * CORRESPONDENCE_ATTENUATION
+        : rp.salience
 
       const perceptEntity = {
         id: `percept-${tick}-${i}`,

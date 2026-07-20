@@ -26,7 +26,7 @@ import type {
   Duration, Tick, SimulationContext,
   ReadonlySimulationState, StateCommands, EntityInput,
 } from '#core/types'
-import type { CognitiveBus } from '#cognition/bus'
+import type { CognitiveBus, CognitiveEvent } from '#cognition/bus'
 import type { CognitiveEngine, EngineResult } from '#cognition/types'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { Affordance, AffordanceSource, ScoredAffordance } from '#agency/types'
@@ -37,6 +37,7 @@ import {
 } from '#agency/selection.scoring'
 import { readEffectiveParams, readPersonaPrior } from '#cognition/persona.prior'
 import { RUPTURE_REVOKE_GATE, revocationEntity } from '#agency/revocation'
+import { liveConsequences, matchConsequenceText } from '#agency/consequence'
 
 /**
  * Activation margin (winner − runner-up) below which the choice is "contested" —
@@ -131,6 +132,9 @@ export class ActionSelector implements CognitiveEngine {
   // interruption in-character ("something changed — I dropped what I was
   // weighing"). Telemetry-grade instance state, mirroring _lastEntropy.
   private _lastRevoked: { schema: string; tick: number } | null = null
+  // ACP §2b: sense-channel percepts buffered off the bus for the next react's
+  // rupture computation (they never become entities). Cross-tick ⇒ FN9.
+  private _senseBuffer: Array<{ salience: number; text?: string }> = []
 
   attachBus( bus: CognitiveBus ): void { this._bus = bus }
 
@@ -143,10 +147,27 @@ export class ActionSelector implements CognitiveEngine {
       { type: 'agency.commitment.revoked',  version: 1, validate: () => null },
     ]
   }
-  subscribes(): string[] { return [] }
-  onCognitiveEvent(): void { /* pull model — reads the field from frozen state */ }
+  subscribes(): string[] { return [ 'senses.*' ] }
+  /**
+   * Mostly pull-model — but sense-channel percepts never become entities
+   * (they live on the bus, ACTION_CONDITIONED_PREDICTION §2b), so rupture
+   * would be blind to a sensory shock. Buffer them here (cross-tick: bus
+   * flush at T, consumed by react at T+1 — FN9-snapshotted) and fold into
+   * computeRupture with the echo guard applied at read time.
+   */
+  onCognitiveEvent( e: CognitiveEvent ): void {
+    if( !e.type.startsWith('senses.') || !e.type.endsWith('.percept') ) return
+    const p = e.payload as { content?: unknown } | undefined
+    this._senseBuffer.push({
+      salience: e.salience,
+      ...( typeof p?.content === 'string' ? { text: p.content } : {} ),
+    })
+  }
   snapshot(): Record<string, unknown> {
-    return { lastEntropy: this._lastEntropy, lastDeliberate: this._lastDeliberate, lastRevoked: this._lastRevoked }
+    return {
+      lastEntropy: this._lastEntropy, lastDeliberate: this._lastDeliberate,
+      lastRevoked: this._lastRevoked, senseBuffer: this._senseBuffer,
+    }
   }
   /** FN9: `_lastRevoked` has behavioral effect (the Channel-B `revokedBy` stamp),
    *  so a restored mind must carry it — a rupture-driven letting-go survives a
@@ -158,6 +179,12 @@ export class ActionSelector implements CognitiveEngine {
     this._lastRevoked = lr && typeof lr === 'object' && typeof lr.schema === 'string' && typeof lr.tick === 'number'
       ? { schema: lr.schema, tick: lr.tick }
       : null
+    const sb = s['senseBuffer']
+    this._senseBuffer = Array.isArray( sb )
+      ? ( sb as Array<{ salience?: unknown; text?: unknown }> )
+          .filter( it => it && typeof it.salience === 'number' )
+          .map( it => ({ salience: it.salience as number, ...( typeof it.text === 'string' ? { text: it.text } : {} ) }) )
+      : []
   }
 
   async react(
@@ -224,7 +251,9 @@ export class ActionSelector implements CognitiveEngine {
     // percepts), and the slow-moving `situation.stability` it erodes. Both are
     // pure reads of frozen state; `stabMetrics` is empty on a never-ruptured run
     // so the quiet path stays byte-identical to pre-P3.
-    const rupture     = computeRupture( state, tick )
+    const senseEvents = this._senseBuffer
+    this._senseBuffer = []                           // consumed exactly once
+    const rupture     = computeRupture( state, tick, senseEvents )
     const prevStab    = metric( state, 'situation.stability', 1 )
     const nextStabRaw = clamp01( prevStab + STABILITY_RECOVERY * ( 1 - prevStab ) - rupture )
     const nextStab    = 1 - nextStabRaw < STABILITY_EPSILON ? 1 : nextStabRaw
@@ -554,7 +583,11 @@ function effectiveSwitchCost( state: ReadonlySimulationState ): number {
  * `reafferent` percepts (our own echo, P2) are excluded by construction, so the
  * mind is never ruptured by itself.
  */
-function computeRupture( state: ReadonlySimulationState, tick: Tick ): number {
+function computeRupture(
+  state: ReadonlySimulationState,
+  tick: Tick,
+  senseEvents: ReadonlyArray<{ salience: number; text?: string }> = [],
+): number {
   let maxSalience = 0
   for( const e of state.entities.values() ){
     if( e.type !== 'percept') continue
@@ -565,6 +598,18 @@ function computeRupture( state: ReadonlySimulationState, tick: Tick ): number {
     const s = num( m?.['salience'], 0 )
     if( s > maxSalience ) maxSalience = s
   }
+
+  // ACP §2b — buffered sense-channel percepts (bus-only; never entities). The
+  // echo guard extends to this path: an event whose text matches a live
+  // consequence descriptor is our own action coming back and cannot rupture.
+  if( senseEvents.length > 0 ){
+    const live = liveConsequences( state.entities, tick )
+    for( const ev of senseEvents ){
+      if( ev.text !== undefined && live.length > 0 && matchConsequenceText( live, ev.text ) ) continue
+      if( ev.salience > maxSalience ) maxSalience = ev.salience
+    }
+  }
+
   if( maxSalience <= RUPTURE_SALIENCE_GATE ) return 0
   return clamp01( ( maxSalience - RUPTURE_SALIENCE_GATE ) / ( 1 - RUPTURE_SALIENCE_GATE ) )
 }

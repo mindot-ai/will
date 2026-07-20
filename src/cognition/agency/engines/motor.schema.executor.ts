@@ -252,6 +252,12 @@ export class MotorSchemaExecutor implements CognitiveEngine {
           // EXAFFERENCE P1 — the dispatched action's expected sensory footprint,
           // so the world's answer can be recognized as ours when it arrives
           // through the senses (P2). Host acks correlate by intent id already.
+          // For a communicate whose words are authored, also carry the text so an
+          // echo of them can be matched (P2) and, if the intent is still awaiting,
+          // confirm it through the senses (P5) instead of timing out as a failure.
+          const awaitingText = enaction.mode === 'communicate'
+            ? ( str( intent.parameters['content'] ) ?? firstMessage( intent.parameters['messages'] ) )
+            : undefined
           set.push( consequenceEntity({
             intentId: id, schema: intent.schema,
             mode: enaction.mode === 'communicate' ? 'communicate' : 'external',
@@ -259,6 +265,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
               ? { effector: COMM_SCHEMA_TO_EFFECTOR[ intent.schema ] ?? intent.schema }
               : {} ),
             ...( intent.targetEntityId ? { targetEntityId: intent.targetEntityId } : {} ),
+            ...( awaitingText ? { text: awaitingText, textHash: fnv1a( awaitingText ) } : {} ),
             paramsHash: fnv1a( paramsKey( intent.parameters ) ),
             expiresAt: tick + CONSEQUENCE_TTL_TICKS, tick,
           }) )

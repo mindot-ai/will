@@ -32,6 +32,14 @@ import { schemaEntityId } from '#agency/schemas/repertoire'
 
 const PROC_THRESHOLD = 0.60   // mirror of repertoire's threshold for the habitual-count metric
 
+/**
+ * EXAFFERENCE P5 — soft outcome quality for a purely *sensory* confirmation: the
+ * world echoed our action back (a reafferent percept), but no host ack graded it.
+ * A modest positive — "it manifested" — below a host ack's 0.8, enough to free the
+ * awaiting intent and accrue competence instead of letting it time out as a failure.
+ */
+const SENSORY_SOFT_QUALITY = 0.6
+
 export class ReafferenceEngine implements CognitiveEngine {
   readonly name = 'reafference'
 
@@ -86,14 +94,66 @@ export class ReafferenceEngine implements CognitiveEngine {
     const del:     string[]                = []
     const metrics: Array<[ string, number ]> = []
 
-    // ── 1. Fold each new outcome into its skill ──────────────────
-    let updates    = 0
-    let discovered = 0
+    // ── 0. Gather outcomes: real ones from state + synthesized sensory ones ──
+    // A `reafferent` percept (P2) carrying a `sourceIntentId` is the world echoing
+    // our own action back. If that intent is still `awaiting` and no outcome graded
+    // it this tick (a host ack / sync / timeout — those WIN), synthesize a soft
+    // outcome so the skill learns and the intent is freed through the senses rather
+    // than timing out as a failure (EXAFFERENCE P5). Ack-less awaiting intents only.
+    const outcomes: Array<{ id: string; meta: Record<string, unknown>; fromState: boolean }> = []
+    const gradedIntentIds = new Set<string>()
     for( const [ id, e ] of state.entities ){
       if( e.type !== 'agency.outcome') continue
       const m = ( e.metadata ?? {} ) as Record<string, unknown>
+      outcomes.push({ id, meta: m, fromState: true })
+      const iid = str( m['intentId'] ); if( iid ) gradedIntentIds.add( iid )
+    }
+
+    const awaiting = new Map<string, { schema: string; predictedReward: number; predictedValence: number }>()
+    for( const [ id, e ] of state.entities ){
+      if( e.type !== 'agency.intent' || str( e.metadata?.['status'] ) !== 'awaiting') continue
+      const m = ( e.metadata ?? {} ) as Record<string, unknown>
+      awaiting.set( id, {
+        schema:           str( m['schema'] ) ?? '',
+        predictedReward:  num( m['predictedReward'],  0.5 ),
+        predictedValence: num( m['predictedValence'], 0 ),
+      })
+    }
+
+    let sensory = 0
+    const sensedIntentIds = new Set<string>()
+    for( const [ , e ] of state.entities ){
+      if( e.type !== 'percept') continue
+      const m = ( e.metadata ?? {} ) as Record<string, unknown>
+      if( str( m['provenance'] ) !== 'reafferent') continue
+      const iid = str( m['sourceIntentId'] )
+      if( !iid || gradedIntentIds.has( iid ) || sensedIntentIds.has( iid ) ) continue
+      const aw = awaiting.get( iid )
+      if( !aw || !aw.schema ) continue          // only ack-less awaiting intents
+      sensedIntentIds.add( iid )
+      sensory++
+      outcomes.push({ id: `agency-outcome-${ tick }-${ iid }-sensory`, fromState: false, meta: {
+        schema:           aw.schema,
+        intentId:         iid,
+        success:          true,
+        outcomeQuality:   SENSORY_SOFT_QUALITY,
+        valence:          aw.predictedValence,
+        predictedReward:  aw.predictedReward,
+        predictedValence: aw.predictedValence,
+        surprise:         clamp01( Math.abs( aw.predictedReward - SENSORY_SOFT_QUALITY ) ),
+        mode:             'external',
+        reconciled:       true,
+        sensory:          true,
+        tick,
+      } })
+    }
+
+    // ── 1. Fold each outcome into its skill ──────────────────────
+    let updates    = 0
+    let discovered = 0
+    for( const { id, meta: m, fromState } of outcomes ){
       const schema = str( m['schema'] )
-      if( !schema ){ del.push( id ); continue }
+      if( !schema ){ if( fromState ) del.push( id ); continue }
 
       const { skill, proceduralized } = this._repertoire.recordOutcome({
         schema,
@@ -105,10 +165,11 @@ export class ReafferenceEngine implements CognitiveEngine {
       })
 
       set.push( skillEntity( skill ) )
-      del.push( id )                       // outcome consumed
-      // Host-ack reconciliation: a reconciled outcome carries the awaiting intent's
-      // id — free it so the serial Will can act again. The executor's own sync
-      // outcomes already deleted their intent, so this is a harmless no-op there.
+      if( fromState ) del.push( id )       // real outcome consumed (synthetic ones were never in state)
+      // Host-ack reconciliation OR sensory confirmation: the outcome carries the
+      // awaiting intent's id — free it so the serial Will can act again. The
+      // executor's own sync outcomes already deleted their intent, so this is a
+      // harmless no-op there.
       const intentId = str( m['intentId'] )
       if( intentId ) del.push( intentId )
       updates++
@@ -157,6 +218,7 @@ export class ReafferenceEngine implements CognitiveEngine {
       [ 'agency.discovered.count', discovered ],
       [ 'agency.skill.count',      skills.size ],
       [ 'agency.habitual.count',   habitual ],
+      [ 'agency.sensory.confirmed', sensory ],
     )
 
     return { commands: { set, delete: del, metrics } }
@@ -238,4 +300,7 @@ function str( v: unknown ): string | undefined {
 }
 function num( v: unknown, fallback: number ): number {
   return typeof v === 'number' && Number.isFinite( v ) ? v : fallback
+}
+function clamp01( n: number ): number {
+  return n < 0 ? 0 : n > 1 ? 1 : n
 }

@@ -272,12 +272,35 @@ a tick — the race-safe rule is correct); no LLM in any matching path.
 > never picks up produces no dangling handle. Composite immediate-switch remains
 > pre-existing debt (untouched).
 
-### P5 — Sensory reafference learns (optional follow-up)
-- [ ] Matched (`reafferent`, `sourceIntentId`) percepts route a *soft* outcome to
-      the reconcile/learning path — outcomeQuality from the matched percept's
-      valence — so skills whose effects manifest through the senses (not host acks)
-      still accrue competence. Guard against double-scoring an intent that also
-      received a host ack (ack wins; sensory match only scores ack-less intents).
+### P5 — Sensory reafference learns ⟶ done (2026-07-20)
+- [x] The ReafferenceEngine now gathers outcomes from **two** sources: real
+      `agency.outcome` entities (host ack / sync / timeout) *and* synthesized soft
+      outcomes for `reafferent` percepts carrying a `sourceIntentId` whose intent
+      is still `awaiting` and **un-graded this tick** (`gradedIntentIds` guard ⇒
+      ack wins, never double-scores). The soft outcome is a modest positive
+      (`SENSORY_SOFT_QUALITY = 0.6`, success, valence = the efference copy's
+      predictedValence — "it manifested", not a fabricated felt-quality), folded
+      through the same `recordOutcome` path so the skill accrues competence and the
+      awaiting intent is freed — instead of sitting to `AWAIT_TIMEOUT` and being
+      learned as a *failure*. `agency.sensory.confirmed` metric added; each awaiting
+      intent scores at most once (`sensedIntentIds`).
+- [x] Live path enabled: the executor's awaiting-**communicate** descriptor now
+      carries `text`/`textHash` when the words are authored (`parameters.content`
+      / first message), so an echo of them is P2-matchable. (External effectors
+      still have no text ⇒ no sensory confirmation yet — that awaits the deferred
+      entity-correspondence matcher; over-attribution stays the guarded-against
+      direction.)
+- [x] Tests: `agency.sensory-reafference.test.ts` (5 cases — echo confirms +
+      frees an ack-less awaiting intent; host ack wins/no double-score; non-
+      awaiting no-op; exafferent never confirms; at-most-once per intent) +
+      `agency.consequence.test.ts` (awaiting communicate carries text). Full unit
+      suite 955/955; replay-equivalence green; typecheck clean.
+
+> **Note:** the spec said "outcomeQuality from the matched percept's valence,"
+> but percepts carry no felt valence at the reafference seam (affect writes
+> valence downstream). Deviation recorded: the soft outcome uses a fixed
+> confirmation quality + the efference copy's predicted valence. A valence-driven
+> soft quality is a clean upgrade once affect tags percepts.
 
 ---
 

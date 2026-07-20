@@ -21005,12 +21005,14 @@ var MotorSchemaExecutor = class {
               predictedValence: predicted.expectedValence
             }
           });
+          const awaitingText = enaction.mode === "communicate" ? str5(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]) : void 0;
           set.push(consequenceEntity({
             intentId: id,
             schema: intent.schema,
             mode: enaction.mode === "communicate" ? "communicate" : "external",
             ...enaction.mode === "communicate" ? { effector: COMM_SCHEMA_TO_EFFECTOR[intent.schema] ?? intent.schema } : {},
             ...intent.targetEntityId ? { targetEntityId: intent.targetEntityId } : {},
+            ...awaitingText ? { text: awaitingText, textHash: fnv1a(awaitingText) } : {},
             paramsHash: fnv1a(paramsKey(intent.parameters)),
             expiresAt: tick + CONSEQUENCE_TTL_TICKS,
             tick
@@ -21331,6 +21333,7 @@ function errMsg(err) {
 
 // src/cognition/agency/engines/reafference.engine.ts
 var PROC_THRESHOLD2 = 0.6;
+var SENSORY_SOFT_QUALITY = 0.6;
 var ReafferenceEngine = class {
   name = "reafference";
   _repertoire;
@@ -21380,14 +21383,58 @@ var ReafferenceEngine = class {
     const set = [];
     const del = [];
     const metrics = [];
-    let updates = 0;
-    let discovered = 0;
+    const outcomes = [];
+    const gradedIntentIds = /* @__PURE__ */ new Set();
     for (const [id, e] of state.entities) {
       if (e.type !== "agency.outcome") continue;
       const m = e.metadata ?? {};
+      outcomes.push({ id, meta: m, fromState: true });
+      const iid = str6(m["intentId"]);
+      if (iid) gradedIntentIds.add(iid);
+    }
+    const awaiting = /* @__PURE__ */ new Map();
+    for (const [id, e] of state.entities) {
+      if (e.type !== "agency.intent" || str6(e.metadata?.["status"]) !== "awaiting") continue;
+      const m = e.metadata ?? {};
+      awaiting.set(id, {
+        schema: str6(m["schema"]) ?? "",
+        predictedReward: num4(m["predictedReward"], 0.5),
+        predictedValence: num4(m["predictedValence"], 0)
+      });
+    }
+    let sensory = 0;
+    const sensedIntentIds = /* @__PURE__ */ new Set();
+    for (const [, e] of state.entities) {
+      if (e.type !== "percept") continue;
+      const m = e.metadata ?? {};
+      if (str6(m["provenance"]) !== "reafferent") continue;
+      const iid = str6(m["sourceIntentId"]);
+      if (!iid || gradedIntentIds.has(iid) || sensedIntentIds.has(iid)) continue;
+      const aw = awaiting.get(iid);
+      if (!aw || !aw.schema) continue;
+      sensedIntentIds.add(iid);
+      sensory++;
+      outcomes.push({ id: `agency-outcome-${tick}-${iid}-sensory`, fromState: false, meta: {
+        schema: aw.schema,
+        intentId: iid,
+        success: true,
+        outcomeQuality: SENSORY_SOFT_QUALITY,
+        valence: aw.predictedValence,
+        predictedReward: aw.predictedReward,
+        predictedValence: aw.predictedValence,
+        surprise: clamp0111(Math.abs(aw.predictedReward - SENSORY_SOFT_QUALITY)),
+        mode: "external",
+        reconciled: true,
+        sensory: true,
+        tick
+      } });
+    }
+    let updates = 0;
+    let discovered = 0;
+    for (const { id, meta: m, fromState } of outcomes) {
       const schema = str6(m["schema"]);
       if (!schema) {
-        del.push(id);
+        if (fromState) del.push(id);
         continue;
       }
       const { skill, proceduralized } = this._repertoire.recordOutcome({
@@ -21399,7 +21446,7 @@ var ReafferenceEngine = class {
         tick
       });
       set.push(skillEntity(skill));
-      del.push(id);
+      if (fromState) del.push(id);
       const intentId = str6(m["intentId"]);
       if (intentId) del.push(intentId);
       updates++;
@@ -21427,7 +21474,8 @@ var ReafferenceEngine = class {
       ["agency.learning.updates", updates],
       ["agency.discovered.count", discovered],
       ["agency.skill.count", skills.size],
-      ["agency.habitual.count", habitual]
+      ["agency.habitual.count", habitual],
+      ["agency.sensory.confirmed", sensory]
     );
     return { commands: { set, delete: del, metrics } };
   }
@@ -21510,6 +21558,9 @@ function str6(v) {
 }
 function num4(v, fallback) {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+function clamp0111(n) {
+  return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
 // src/cognition/config.mirror.entities.ts
@@ -24647,7 +24698,7 @@ var InboundQueue = class {
 function reconcileInvocation(intentId, schema, result, tick, predicted = { reward: 0.5, valence: 0 }, provenance = {}) {
   const outcomeQuality = result.outcomeQuality ?? (result.success ? 0.8 : 0.1);
   const valence = result.valence ?? (result.success ? 0.2 : -0.2);
-  const surprise = clamp0111(Math.abs(predicted.reward - outcomeQuality));
+  const surprise = clamp0112(Math.abs(predicted.reward - outcomeQuality));
   return {
     id: `agency-outcome-${tick}-${intentId}`,
     type: "agency.outcome",
@@ -24669,7 +24720,7 @@ function reconcileInvocation(intentId, schema, result, tick, predicted = { rewar
     }
   };
 }
-function clamp0111(n) {
+function clamp0112(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 

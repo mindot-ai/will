@@ -20353,21 +20353,34 @@ var ActionSelector = class {
     ];
   }
   subscribes() {
-    return ["senses.*"];
+    return [
+      "senses.*",
+      // Registry #6 (ACP-P3): the model-error term — each carries its
+      // engine's prediction-error salience, ALREADY precision-attenuated for
+      // self-caused swings by the ACP-P2 consumers, so the echo guard
+      // composes by construction: our own action's interoceptive wake
+      // arrives below the rupture gate.
+      "attention.state.changed",
+      "affect.state.changed",
+      "stress.state.changed"
+    ];
   }
   /**
-   * Mostly pull-model — but sense-channel percepts never become entities
-   * (they live on the bus, ACTION_CONDITIONED_PREDICTION §2b), so rupture
-   * would be blind to a sensory shock. Buffer them here (cross-tick: bus
-   * flush at T, consumed by react at T+1 — FN9-snapshotted) and fold into
-   * computeRupture with the echo guard applied at read time.
+   * Mostly pull-model — but two afferent classes never become entities and
+   * would leave rupture blind: sense-channel percepts
+   * (ACTION_CONDITIONED_PREDICTION §2b) and the model-error state-change
+   * events (registry #6). Buffer both (cross-tick: bus flush at T, consumed
+   * by react at T+1 — FN9-snapshotted); the echo guard is applied at read
+   * time for texts, and at the SOURCE for model errors (ACP-P2 precision).
    */
   onCognitiveEvent(e) {
-    if (!e.type.startsWith("senses.") || !e.type.endsWith(".percept")) return;
+    const isSense = e.type.startsWith("senses.") && e.type.endsWith(".percept");
+    const isModelError = e.type === "attention.state.changed" || e.type === "affect.state.changed" || e.type === "stress.state.changed";
+    if (!isSense && !isModelError) return;
     const p = e.payload;
     this._senseBuffer.push({
       salience: e.salience,
-      ...typeof p?.content === "string" ? { text: p.content } : {}
+      ...isSense && typeof p?.content === "string" ? { text: p.content } : {}
     });
   }
   snapshot() {

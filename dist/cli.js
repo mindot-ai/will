@@ -20199,6 +20199,10 @@ var BASE_SWITCH_COST = 0.15;
 var FOCUS_GAIN = 0.01;
 var AWAIT_STALE_TICKS = 15;
 var STALE_DECAY = 0.5;
+var RUPTURE_SALIENCE_GATE = 0.4;
+var RUPTURE_WINDOW_TICKS = 2;
+var STABILITY_RECOVERY = 0.05;
+var STABILITY_EPSILON = 1e-4;
 var ActionSelector = class {
   name = "action-selector";
   _bus = null;
@@ -20211,7 +20215,8 @@ var ActionSelector = class {
     return [
       { type: "agency.selection.made", version: 1, validate: () => null },
       { type: "agency.selection.ambiguous", version: 1, validate: () => null },
-      { type: "agency.action.preempted", version: 1, validate: () => null }
+      { type: "agency.action.preempted", version: 1, validate: () => null },
+      { type: "agency.situation.rupture", version: 1, validate: () => null }
     ];
   }
   subscribes() {
@@ -20258,11 +20263,30 @@ var ActionSelector = class {
         if (!activeMacroSub) blocking = true;
       }
     }
+    const rupture = computeRupture(state, tick);
+    const prevStab = metric2(state, "situation.stability", 1);
+    const nextStabRaw = clamp018(prevStab + STABILITY_RECOVERY * (1 - prevStab) - rupture);
+    const nextStab = 1 - nextStabRaw < STABILITY_EPSILON ? 1 : nextStabRaw;
+    const stabMetrics = rupture > 0 || prevStab < 1 ? [["situation.stability", nextStab]] : [];
+    if (rupture > 0 && this._bus) {
+      try {
+        this._bus.publish({
+          type: "agency.situation.rupture",
+          version: 1,
+          sourceEngine: this.name,
+          salience: rupture,
+          payload: { rupture, stability: nextStab, tick }
+        });
+      } catch (err) {
+        logger.warn(`[selector] rupture publish failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
     const busy = (n) => ({
       commands: {
         metrics: [
           ["agency.field.eligible", n],
-          ["agency.selection.busy", 1]
+          ["agency.selection.busy", 1],
+          ...stabMetrics
         ]
       }
     });
@@ -20272,12 +20296,13 @@ var ActionSelector = class {
         commands: {
           metrics: [
             ["agency.field.eligible", 0],
-            ["agency.selection.busy", awaiting || composite ? 1 : 0]
+            ["agency.selection.busy", awaiting || composite ? 1 : 0],
+            ...stabMetrics
           ]
         }
       };
     const bias = buildBias(state);
-    const effSwitchCost = effectiveSwitchCost(state);
+    const effSwitchCost = effectiveSwitchCost(state) * (1 - rupture);
     const weights = effectiveWeights(state);
     const scored = eligible.map((a) => ({ affordance: a, activation: scoreAffordance(a, bias, weights) })).sort((x, y) => y.activation - x.activation);
     const winner = scored[0];
@@ -20309,7 +20334,8 @@ var ActionSelector = class {
             metrics: [
               ["agency.field.eligible", eligible.length],
               ["agency.selection.busy", 1],
-              ["agency.selection.preempted", 1]
+              ["agency.selection.preempted", 1],
+              ...stabMetrics
             ]
           }
         };
@@ -20430,7 +20456,8 @@ var ActionSelector = class {
         ["agency.selection.margin", margin],
         ["agency.selection.deliberate", deliberate ? 1 : 0],
         ["agency.selection.preempted", preemptedFrom ? 1 : 0],
-        ["agency.selection.activation", winner.activation]
+        ["agency.selection.activation", winner.activation],
+        ...stabMetrics
       ]
     };
     return { commands };
@@ -20440,7 +20467,22 @@ function effectiveSwitchCost(state) {
   const params = readEffectiveParams(state, "engine-config-action-selector");
   const base = num2(params["switchCost"], BASE_SWITCH_COST);
   const focusTicks = metric2(state, "task_switch.current_focus_ticks", 0);
-  return base * (1 + focusTicks * FOCUS_GAIN);
+  const stability = metric2(state, "situation.stability", 1);
+  return base * (1 + focusTicks * FOCUS_GAIN * stability);
+}
+function computeRupture(state, tick) {
+  let maxSalience = 0;
+  for (const e of state.entities.values()) {
+    if (e.type !== "percept") continue;
+    const m = e.metadata;
+    if (str2(m?.["provenance"]) !== "exafferent") continue;
+    const pTick = num2(m?.["tick"], -1);
+    if (pTick < 0 || tick - pTick > RUPTURE_WINDOW_TICKS) continue;
+    const s = num2(m?.["salience"], 0);
+    if (s > maxSalience) maxSalience = s;
+  }
+  if (maxSalience <= RUPTURE_SALIENCE_GATE) return 0;
+  return clamp018((maxSalience - RUPTURE_SALIENCE_GATE) / (1 - RUPTURE_SALIENCE_GATE));
 }
 function effectiveWeights(state) {
   const p = readEffectiveParams(state, "engine-config-action-selector");

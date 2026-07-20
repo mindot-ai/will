@@ -95,6 +95,27 @@ const AWAIT_STALE_TICKS = 15
 /** How much a fully-stale awaiting incumbent's strength decays (0..1). */
 const STALE_DECAY = 0.5
 
+// ── Exafferent rupture (EXAFFERENCE P3) ────────────────────────
+/**
+ * The world can revoke engagement, not only win it. `rupture` is a scalar in
+ * [0,1] read pull-style from the exafferent percepts P2 tagged: when the world
+ * moves on its own strongly enough to seize attention, it softens the Will's
+ * commitment to what it was doing — "let go of waiting". Gate = WORKSPACE_THRESHOLD
+ * so rupture ≈ "this percept would seize the global workspace". Because only
+ * `provenance:'exafferent'` percepts count, the mind can never be ruptured by the
+ * echo of its own action (P2 tagged those `reafferent` and attenuated them).
+ */
+const RUPTURE_SALIENCE_GATE = 0.4
+/** Count exafferent percepts this fresh — matches the percept lifespan
+ *  (Exteroception cleans up percepts older than 2 ticks), so a shock sustains
+ *  rupture for exactly as long as its percept is alive, then decays. */
+const RUPTURE_WINDOW_TICKS = 2
+/** Per-tick mean-reversion of `situation.stability` back toward 1 (calm). */
+const STABILITY_RECOVERY = 0.05
+/** Snap-to-1 threshold: a settled mind stops re-writing the stability metric,
+ *  so a never-ruptured run is byte-identical to pre-P3 (the metric is absent). */
+const STABILITY_EPSILON = 1e-4
+
 export class ActionSelector implements CognitiveEngine {
   readonly name = 'action-selector'
 
@@ -109,6 +130,7 @@ export class ActionSelector implements CognitiveEngine {
       { type: 'agency.selection.made',      version: 1, validate: () => null },
       { type: 'agency.selection.ambiguous', version: 1, validate: () => null },
       { type: 'agency.action.preempted',    version: 1, validate: () => null },
+      { type: 'agency.situation.rupture',   version: 1, validate: () => null },
     ]
   }
   subscribes(): string[] { return [] }
@@ -175,11 +197,34 @@ export class ActionSelector implements CognitiveEngine {
       }
     }
 
+    // ── Exafferent rupture (EXAFFERENCE P3) ──────────────────────
+    // How hard the world is pulling at us this tick (from P2's exafferent
+    // percepts), and the slow-moving `situation.stability` it erodes. Both are
+    // pure reads of frozen state; `stabMetrics` is empty on a never-ruptured run
+    // so the quiet path stays byte-identical to pre-P3.
+    const rupture     = computeRupture( state, tick )
+    const prevStab    = metric( state, 'situation.stability', 1 )
+    const nextStabRaw = clamp01( prevStab + STABILITY_RECOVERY * ( 1 - prevStab ) - rupture )
+    const nextStab    = 1 - nextStabRaw < STABILITY_EPSILON ? 1 : nextStabRaw
+    const stabMetrics: Array<[ string, number ]> =
+      ( rupture > 0 || prevStab < 1 ) ? [ [ 'situation.stability', nextStab ] ] : []
+
+    if( rupture > 0 && this._bus ){
+      try {
+        this._bus.publish({
+          type: 'agency.situation.rupture', version: 1, sourceEngine: this.name,
+          salience: rupture, payload: { rupture, stability: nextStab, tick },
+        })
+      }
+      catch( err ){ logger.warn(`[selector] rupture publish failed: ${ err instanceof Error ? err.message : String( err ) }`) }
+    }
+
     const busy = ( n: number ): EngineResult => ({
       commands: {
         metrics: [
           [ 'agency.field.eligible', n ],
-          [ 'agency.selection.busy', 1 ]
+          [ 'agency.selection.busy', 1 ],
+          ...stabMetrics,
         ]
       }
     })
@@ -192,7 +237,8 @@ export class ActionSelector implements CognitiveEngine {
         commands: {
           metrics: [
             [ 'agency.field.eligible', 0 ],
-            [ 'agency.selection.busy',( awaiting || composite ) ? 1 : 0 ]
+            [ 'agency.selection.busy',( awaiting || composite ) ? 1 : 0 ],
+            ...stabMetrics,
           ]
         }
       }
@@ -203,7 +249,12 @@ export class ActionSelector implements CognitiveEngine {
     // base (engine-config-action-selector.switchCost ⊕ prior) hardened by how long the
     // Will has been committed (shared task_switch.current_focus_ticks). Computed once;
     // both preemption paths scale it DOWN by the challenger's stakes.
-    const effSwitchCost = effectiveSwitchCost( state )
+    // Rupture softens engagement on top of the persona/focus base: an unstable
+    // situation makes the Will readier to be pulled off what it's doing. This is
+    // ORTHOGONAL to the per-challenger stakes scaling applied at each preemption
+    // site below (world-instability vs. challenger-quality) — the two compose,
+    // they don't double-count.
+    const effSwitchCost = effectiveSwitchCost( state ) * ( 1 - rupture )
     // Competition weights (base ⊕ prior): a steadier Will weighs risk less (bolder), an
     // open Will weighs novelty more (curiosity pulls toward the unpracticed). Other weights
     // stay at DEFAULT_WEIGHTS — only the two with a clean trait owner are developable.
@@ -250,7 +301,8 @@ export class ActionSelector implements CognitiveEngine {
             metrics: [
               [ 'agency.field.eligible', eligible.length ],
               [ 'agency.selection.busy', 1 ],
-              [ 'agency.selection.preempted', 1 ]
+              [ 'agency.selection.preempted', 1 ],
+              ...stabMetrics,
             ]
           }
         }
@@ -396,6 +448,7 @@ export class ActionSelector implements CognitiveEngine {
         [ 'agency.selection.deliberate', deliberate ? 1 : 0 ],
         [ 'agency.selection.preempted',  preemptedFrom ? 1 : 0 ],
         [ 'agency.selection.activation', winner.activation ],
+        ...stabMetrics,
       ],
     }
 
@@ -419,7 +472,34 @@ function effectiveSwitchCost( state: ReadonlySimulationState ): number {
   const params     = readEffectiveParams( state, 'engine-config-action-selector')
   const base       = num( params['switchCost'], BASE_SWITCH_COST )
   const focusTicks = metric( state, 'task_switch.current_focus_ticks', 0 )
-  return base * ( 1 + focusTicks * FOCUS_GAIN )
+  // EXAFFERENCE P3 — focus only hardens under a stable situation. `situation.stability`
+  // (absent ⇒ 1 ⇒ pre-P3 behavior) scales the focus-hardening term, so a Will in a
+  // destabilized world can't cling to a long-held focus. The fast, same-tick softener
+  // is `(1 - rupture)` applied at the call site; this is the slow, persistent one.
+  const stability  = metric( state, 'situation.stability', 1 )
+  return base * ( 1 + focusTicks * FOCUS_GAIN * stability )
+}
+
+/**
+ * EXAFFERENCE P3 — the exafferent-rupture scalar. Max salience among the
+ * `provenance:'exafferent'` percepts fresh within `RUPTURE_WINDOW_TICKS`,
+ * mapped through `RUPTURE_SALIENCE_GATE` into [0,1]. Pure read of frozen state;
+ * `reafferent` percepts (our own echo, P2) are excluded by construction, so the
+ * mind is never ruptured by itself.
+ */
+function computeRupture( state: ReadonlySimulationState, tick: Tick ): number {
+  let maxSalience = 0
+  for( const e of state.entities.values() ){
+    if( e.type !== 'percept') continue
+    const m = e.metadata
+    if( str( m?.['provenance'] ) !== 'exafferent') continue
+    const pTick = num( m?.['tick'], -1 )
+    if( pTick < 0 || tick - pTick > RUPTURE_WINDOW_TICKS ) continue
+    const s = num( m?.['salience'], 0 )
+    if( s > maxSalience ) maxSalience = s
+  }
+  if( maxSalience <= RUPTURE_SALIENCE_GATE ) return 0
+  return clamp01( ( maxSalience - RUPTURE_SALIENCE_GATE ) / ( 1 - RUPTURE_SALIENCE_GATE ) )
 }
 
 /**

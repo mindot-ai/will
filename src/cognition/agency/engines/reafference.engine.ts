@@ -41,6 +41,26 @@ const PROC_THRESHOLD = 0.60   // mirror of repertoire's threshold for the habitu
  */
 const SENSORY_SOFT_QUALITY = 0.6
 
+/**
+ * Registry #5 — the affect→percept valence seam, consumed. The echo now carries
+ * how the mind FEELS about what came back (Exteroception stamps it), so a
+ * sensory confirmation is graded rather than flat: quality = the soft base
+ * shifted by that valence within a bounded band.
+ *
+ * Two spans, because the two valence sources are not equal evidence:
+ *  • `'entity'` — the KnownEntityTracker's felt valence toward this very thing.
+ *    Real appraisal of the outcome ⇒ the wider span.
+ *  • `'ambient'` — the mind's mood at perception time. Weak context, NOT a
+ *    judgement of this action ⇒ a narrow span, so a bad mood cannot teach the
+ *    Will that a working skill failed.
+ *
+ * Neutral (or absent) valence reproduces the pre-seam 0.6 exactly.
+ */
+const SENSORY_VALENCE_SPAN_ENTITY  = 0.25
+const SENSORY_VALENCE_SPAN_AMBIENT = 0.10
+/** Below this the world's reflection reads as a failed outcome, not a success. */
+const SENSORY_SUCCESS_FLOOR = 0.5
+
 export class ReafferenceEngine implements CognitiveEngine {
   readonly name = 'reafference'
 
@@ -138,18 +158,31 @@ export class ReafferenceEngine implements CognitiveEngine {
       if( !aw || !aw.schema ) continue          // only ack-less awaiting intents
       sensedIntentIds.add( iid )
       sensory++
+
+      // Registry #5: grade the confirmation by how the echo FELT, within a band
+      // whose width reflects how much that valence really says about THIS action.
+      const feltRaw = m['valence']
+      const felt    = typeof feltRaw === 'number' && Number.isFinite( feltRaw ) ? feltRaw : undefined
+      const span    = str( m['valenceSource'] ) === 'entity'
+        ? SENSORY_VALENCE_SPAN_ENTITY
+        : SENSORY_VALENCE_SPAN_AMBIENT
+      const quality = felt === undefined
+        ? SENSORY_SOFT_QUALITY
+        : clamp01( SENSORY_SOFT_QUALITY + Math.max( -1, Math.min( 1, felt ) ) * span )
+
       outcomes.push({ id: `agency-outcome-${ tick }-${ iid }-sensory`, fromState: false, meta: {
         schema:           aw.schema,
         intentId:         iid,
-        success:          true,
-        outcomeQuality:   SENSORY_SOFT_QUALITY,
-        valence:          aw.predictedValence,
+        success:          quality >= SENSORY_SUCCESS_FLOOR,
+        outcomeQuality:   quality,
+        valence:          felt ?? aw.predictedValence,
         predictedReward:  aw.predictedReward,
         predictedValence: aw.predictedValence,
-        surprise:         clamp01( Math.abs( aw.predictedReward - SENSORY_SOFT_QUALITY ) ),
+        surprise:         clamp01( Math.abs( aw.predictedReward - quality ) ),
         mode:             'external',
         reconciled:       true,
         sensory:          true,
+        ...( felt !== undefined ? { sensoryValence: felt, valenceSource: str( m['valenceSource'] ) } : {} ),
         tick,
       } })
     }

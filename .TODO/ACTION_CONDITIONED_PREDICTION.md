@@ -20,9 +20,9 @@
 |---|---|---|---|---|---|
 | **1** | **ACP-P1: entity-correspondence via descriptors** — external-effector echoes become matchable; subsumes the old "entity-correspondence matching" deferral | EXAFFERENCE P2 scope decision (b) | nothing (descriptors carry `targetEntityId` since P1) | S | ✅ this file, shipped below |
 | **2** | **Sense-channel rupture coverage** — `senses.*.percept` bus events never become entities ⇒ a sensory shock cannot rupture today; needs the echo guard extended to the bus path | EXAFFERENCE P2 scope decision (d), verified 2026-07-20 (`attention.allocator.ts:117` is the only consumer) | P2 matcher (done) | M | ✅ shipped below |
-| **3** | **ACP-P2: the efferent-anticipation seam** — engines holding a GenerativeModel subscribe to `agency.enacted` / `agency.communicate` / `agency.invocation` and `anticipate()` the streams that action class predictably moves ⇒ self-caused stream movement stops recruiting the workspace | this file | `anticipate()` (exists) | M/L | OPEN — design §3, first consumer TBD |
+| **3** | **ACP-P2: the efferent-anticipation seam** — engines holding a GenerativeModel subscribe to `agency.enacted` / `agency.communicate` / `agency.invocation` and `anticipate()` the streams that action class predictably moves ⇒ self-caused stream movement stops recruiting the workspace | this file | `anticipate()` (exists) | M/L | ✅ shipped 2026-07-20 (all qualifying consumers — see §3 + the cross-check correction) |
 | **4** | **Composite immediate-switch** — a preempting challenger now commits the same tick the routine is cut. Solved with the P4 **tombstone** rather than the "deferred macro-advance" the original comment imagined: deleting the parent is what made immediate commit unsafe (the executor's in-tick advance re-`set`s it — set-after-delete resurrection — and queues a second 'selected' sub ⇒ double enaction). Tombstoning instead lets the challenger commit immediately; next tick the executor drops the parent, its subs (any status), and the tombstone, and enacts the challenger alone | pre-existing debt (selector comment) | independent | M | ✅ shipped 2026-07-20 |
-| **5** | **Valence-driven P5 soft quality** — sensory confirmation quality from the matched percept's *felt* valence instead of the fixed 0.6 | EXAFFERENCE P5 deviation note | affect writing per-percept valence (an appraisal→percept annotation seam — affect-side work) | M | BLOCKED on affect seam |
+| **5** | **Valence-driven P5 soft quality** — UNBLOCKED by building the missing seam rather than waiting for it: Exteroception stamps every percept with a felt valence (KnownEntityTracker's per-entity `ke-<id>.valence` when the thing is known → `'entity'`; else ambient `affect.valence` → `'ambient'`), and the ReafferenceEngine grades the sensory confirmation within a band sized to the evidence (entity ±0.25, ambient ±0.10; neutral/absent = the pre-seam 0.6 exactly, `success` below 0.5). A bad mood alone can therefore never teach the Will that a working skill failed | EXAFFERENCE P5 deviation note | — | M | ✅ shipped 2026-07-20 |
 | **6** | **ACP-P3: model-error rupture term** — the selector buffers `attention/affect/stress.state.changed` (each carries its engine's prediction-error salience) into `computeRupture`. The echo guard composes at the SOURCE: ACP-P2 consumers emit self-caused swings at ≤ 0.35, below the 0.4 rupture gate — an interoceptive wake of our own action cannot rupture, a world-caused internal storm can | EXAFFERENCE P3 deferral | #3 (✅) | S | ✅ shipped 2026-07-20 |
 
 **Adjacent, interrelated, NOT this repo/arc (tracked elsewhere):**
@@ -37,8 +37,12 @@
 entity-correspondence deferral — action-conditioned at the percept level.
 #2 closes a genuine blind spot in rupture with the echo-guard invariant kept.
 #3 is the substrate-wide payoff but needs per-engine stream inventories (M/L).
-#4 is independent debt, tackle when touching the selector next. #5 waits on an
-affect-side seam. #6 must not precede #3.
+#4 is independent debt, tackle when touching the selector next. #5 needed an
+affect-side seam, so we BUILT it (percept valence) rather than waiting. #6 must
+not precede #3.
+
+**Registry status (2026-07-20): every item shipped.** The arc is closed; the
+remaining named work lives in the "adjacent" list above, in other repos.
 
 ---
 
@@ -154,11 +158,25 @@ Design (settled here, implementation phased):
          `stress.state.changed`; precision-only (no directional prior: acting
          can load OR relieve, so we don't pretend to know the sign). Shared
          pattern from `#cognition/acp`; trio tests
-         (`agency.acp-stress.test.ts`). **The ACP-P2 inventoried rollout is
-         COMPLETE** — every engine whose GenerativeModel errors are consumed
-         (allocator, blender, stress) now distinguishes self-caused stream
-         movement from the world's. Registry #6 (the model-error rupture term)
-         is now unblocked.
+         (`agency.acp-stress.test.ts`). Registry #6 (the model-error rupture
+         term) is now unblocked.
+
+> **Correction (cross-check, 2026-07-20).** An earlier note here claimed the
+> rollout covered "every engine whose GenerativeModel errors are consumed".
+> That was overstated: a rigorous sweep finds **44 consumed-error sites** across
+> ~30 engines. The real qualifying filter is BOTH (a) the error is consumed AND
+> (b) **our own enaction predictably moves that stream** — anticipating a stream
+> we don't actually cause suppresses genuine surprise (the over-attribution
+> failure). Under (b) the shipped three are the correct and complete set:
+> attention usage/free (acting shifts attention), `affect.arousal` (acting is
+> arousing), `stress.load` (acting loads or relieves). Audited and rejected:
+> `energy.level` — enactions never move it (`Enaction.metricDeltas` is declared
+> in `execution.primitives.ts` and consumed by the executor but has **zero
+> producers**, a dead surface worth its own cleanup); `circadian.alertness`
+> (time-driven); `novelty.score`, `emotion.*`, `belief.count`, `tom.models`,
+> `reputation.tracked`, `spaced_repetition.*`, `dream.reactivation`,
+> `social.agent_count` (appraisal/memory/other-driven, not action-caused).
+> Revisit only if an enaction begins to move one of them.
 4. - [ ] **Eval before rollout:** a scenario where the Will acts and the
          workspace-entry count from self-caused streams drops vs. baseline,
          with world-event detection latency unchanged. Only then widen to

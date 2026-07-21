@@ -119,7 +119,7 @@ describe('SchemaRepertoire — learning rules', () => {
     rep.recordOutcome({ schema: 'macro', success: true, outcomeQuality: 0.5, predictedReward: 0.5, tick: 1 })
 
     let dropped: string[] = []
-    for( let t = 1000; t < 1012; t++ ) dropped = dropped.concat( rep.decay( t ) )
+    for( let t = 1000; t < 1012; t++ ) dropped = dropped.concat( rep.decay( t ).skills )
 
     expect( dropped ).toContain('macro')
     expect( rep.getSchema('macro') ).toBeUndefined()   // template forgotten too

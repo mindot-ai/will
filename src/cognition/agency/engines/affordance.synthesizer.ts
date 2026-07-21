@@ -103,6 +103,9 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // means the executor, which ticks later in the SAME tick, sees a whole
     // repertoire and can expand a restored mid-flight macro. Idempotent.
     this._repertoire?.restoreComposites( state.entities )
+    // Availability entries (P2) rehydrate the same way, so a restored Will keeps
+    // its learned suppressions instead of re-probing forbidden abilities.
+    this._repertoire?.restoreAvailability( state.entities )
 
     const schemas   = this._repertoire?.schemas() ?? this._schemas
     const skills    = this._skills?.() ?? this._repertoire?.skills() ?? null
@@ -306,6 +309,10 @@ export class AffordanceSynthesizer implements CognitiveEngine {
   ): Affordance {
     const skill = skills?.get( schema.id )
 
+    // Policy availability (P2): omitted when fully available (1), so a never-refused
+    // Will's affordance field is byte-identical. Present only once a refusal dented it.
+    const availability = this._repertoire?.availabilityOf( schema.id ) ?? 1
+
     // Learned value if known, else the schema's intrinsic prior mapped to 0..1.
     const expectedReward = skill?.valueEstimate ?? clamp01( ( ( schema.baseValence ?? 0 ) + 1 ) / 2 )
     const expectedValence = schema.baseValence ?? valence
@@ -333,6 +340,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
       available:       this._available( schema.preconditions, ( k ) => metric( state, k, 0 ) ),
       tags:            schema.tags ?? [],
       ...( schema.description ? { description: schema.description } : {} ),
+      ...( availability < 1 ? { availability } : {} ),
       planBias:        ctx.planBias,
       planId:          ctx.planId,
       stepId:          ctx.stepId,
@@ -357,6 +365,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
         available:       a.available,
         tags:            a.tags,
         description:     a.description,
+        ...( a.availability !== undefined ? { availability: a.availability } : {} ),
         planBias:        a.planBias,
         planId:          a.planId,
         stepId:          a.stepId,

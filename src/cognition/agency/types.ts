@@ -140,6 +140,15 @@ export interface Affordance {
    * competition WITHOUT bypassing it (the plan biases; the field still decides).
    */
   planBias?:       number
+  /**
+   * Policy availability 0..1 (POLICY_REAFFERENCE P2) — learned from refusals,
+   * distinct from `available` (precondition satisfaction) and from competence.
+   * Present only when < 1 (a refusal has dented it); absent ⇒ fully available,
+   * so a never-refused Will's field is byte-identical. Damps positive activation
+   * in the competition without flipping its sign, so a suppressed ability still
+   * gets an occasional re-probe and can climb back as availability recovers.
+   */
+  availability?:   number
   /** Provenance: the plan whose frontier step projected this affordance. */
   planId?:         string
   /** Provenance: the frontier step id — flows through to action.outcome so the plan advances. */

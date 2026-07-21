@@ -24,6 +24,14 @@ export interface HostAckResult {
   /** −1..1 felt valence of the outcome. */
   valence?:       number
   description?:   string
+  /**
+   * POLICY_REAFFERENCE P2 — this ack is a policy REFUSAL, not a world failure.
+   * The ReafferenceEngine routes it to the availability layer (NOT competence):
+   * a refusal must never teach the Will it is unskilled at something it is merely
+   * forbidden to do. `finality` decides how hard availability is cut.
+   */
+  refused?:       boolean
+  finality?:      'class' | 'instance'
 }
 
 /**
@@ -71,6 +79,7 @@ export function reconcileInvocation(
       mode:             'external',
       tick,
       reconciled:       true,
+      ...( result.refused ? { refused: true, finality: result.finality ?? 'instance' } : {} ),
       ...( provenance.planId ? { planId: provenance.planId } : {} ),
       ...( provenance.stepId ? { stepId: provenance.stepId } : {} ),
     },

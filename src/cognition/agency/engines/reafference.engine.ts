@@ -28,7 +28,7 @@ import type { CognitiveBus, CognitiveEvent } from '#cognition/bus'
 import type { CognitiveEngine, EngineResult } from '#cognition/types'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { SchemaRepertoire } from '#agency/schemas/repertoire'
-import { schemaEntityId } from '#agency/schemas/repertoire'
+import { schemaEntityId, availabilityEntityId } from '#agency/schemas/repertoire'
 import { AWAIT_TIMEOUT } from '#agency/engines/motor.schema.executor'
 
 const PROC_THRESHOLD = 0.60   // mirror of repertoire's threshold for the habitual-count metric
@@ -190,9 +190,27 @@ export class ReafferenceEngine implements CognitiveEngine {
     // ── 1. Fold each outcome into its skill ──────────────────────
     let updates    = 0
     let discovered = 0
+    let refused    = 0
     for( const { id, meta: m, fromState } of outcomes ){
       const schema = str( m['schema'] )
       if( !schema ){ if( fromState ) del.push( id ); continue }
+
+      // POLICY_REAFFERENCE P2 — a refusal is NOT a failure. Route it to the
+      // availability layer and stop: it must never touch LearnedSkill (value,
+      // habit, param priors), or the Will learns it is unskilled at something it
+      // is merely forbidden to do. The awaiting intent is still freed, and a
+      // refused plan step is signalled unsuccessful so the plan doesn't hang.
+      if( m['refused'] === true ){
+        const finality = str( m['finality'] ) === 'class' ? 'class' : 'instance'
+        this._repertoire.recordRefusal( schema, finality, tick )
+        if( fromState ) del.push( id )
+        const refusedIntent = str( m['intentId'] )
+        if( refusedIntent ) del.push( refusedIntent )
+        const refusedPlan = str( m['planId'] )
+        if( refusedPlan ) this._emitPlanOutcome( refusedPlan, str( m['stepId'] ), schema, false, 0, 0, tick )
+        refused++
+        continue
+      }
 
       const { skill, proceduralized } = this._repertoire.recordOutcome({
         schema,
@@ -235,19 +253,23 @@ export class ReafferenceEngine implements CognitiveEngine {
       }
     }
 
-    // ── 2. Forgetting curve over the competence layer ────────────
+    // ── 2. Forgetting curve over the competence layer + availability recovery ──
     const dropped = this._repertoire.decay( tick )
-    for( const id of dropped ){
+    for( const id of dropped.skills ){
       del.push(`agency-skill-${ id }`)
       del.push( schemaEntityId( id ) )   // composite mirror (harmless no-op for primitives)
     }
+    for( const id of dropped.availability )
+      del.push( availabilityEntityId( id ) )   // fully-recovered ⇒ remove the mirror
 
-    // ── 3. Mirror learned composite templates ────────────────────
+    // ── 3. Mirror learned composite templates + availability ─────
     // Skills become `agency.skill` (above); the invented composite *definitions*
     // must travel too, or a snapshot/restore brings back a skill whose schema is
     // gone and the executor can't expand it. Idempotent re-write each tick, like
     // GoalManager._persistGoals. Empty until a composite is actually learned.
-    for( const e of this._repertoire.compositeEntities() ) set.push( e )
+    for( const e of this._repertoire.compositeEntities() )   set.push( e )
+    // Availability entries (P2) mirror the same way — empty until a refusal lands.
+    for( const e of this._repertoire.availabilityEntities() ) set.push( e )
 
     // ── 4. Telemetry ─────────────────────────────────────────────
     const skills    = this._repertoire.skills()
@@ -259,6 +281,9 @@ export class ReafferenceEngine implements CognitiveEngine {
       [ 'agency.habitual.count',   habitual ],
       [ 'agency.sensory.confirmed', sensory ],
     )
+    // Only emit the refusal metric when it fired — a never-refused Will writes
+    // nothing here, preserving the byte-identical quiet path (cf. EXAFFERENCE P3).
+    if( refused > 0 ) metrics.push([ 'agency.refused.count', refused ])
 
     return { commands: { set, delete: del, metrics } }
   }

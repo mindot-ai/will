@@ -963,6 +963,11 @@ export class WillStem {
         sensory: this._sensory,
       } )
 
+      // Apply policy refusals queued during the previous step's flush, at the
+      // same boundary and for the same reason (POLICY_REAFFERENCE P1): a denial
+      // reconciles as a host-rejection-shaped failure ack the step then sees.
+      this._effector.applyPolicyOutcomes( instance )
+
       await instance.simulation.step( 1 )
 
       instance.tickCount++

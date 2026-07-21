@@ -23,10 +23,26 @@
 
 import { logger } from '#core/logger'
 import { reconcileInvocation } from '#agency/reconcile.learning'
+import { NULL_ARBITER, isNullArbiter } from '#stem/policy/arbiter'
+import type { PolicyArbiter, PolicyInvocation, Verdict } from '#stem/policy/arbiter'
 import type { effectorInvocation } from '#types'
 import type { WillInstance } from '#stem/index'
 
 export class effectorController {
+  /** The Policy Decision Point consulted before an invocation reaches the world.
+   *  Defaults to the no-op arbiter, so an unconfigured Will is byte-identical. */
+  private _arbiter: PolicyArbiter = NULL_ARBITER
+
+  /**
+   * Install a Policy Decision Point (POLICY_REAFFERENCE P0). Passing null
+   * restores the no-op default. The arbiter sees only the proposed act — never
+   * simulation state — and its verdict decides whether the invocation is
+   * handed to the host at all.
+   */
+  setArbiter( arbiter: PolicyArbiter | null ): void {
+    this._arbiter = arbiter ?? NULL_ARBITER
+  }
+
   /**
    * Update the set of allowed communication effectors at runtime via AccessGrants
    * (the permission / sense gate the senses + reply path read).
@@ -43,6 +59,71 @@ export class effectorController {
    * echoes it on its result-ack, and `confirmExecution` uses it to find the intent.
    */
   bufferInvocation( instance: WillInstance, payload: Record<string, unknown> ): void {
+    // Fast path: no policy configured ⇒ the seam does not exist. No allocation,
+    // no branch taken beyond this one — the byte-identical guarantee.
+    if( isNullArbiter( this._arbiter ) ){
+      this._buffer( instance, payload )
+      return
+    }
+
+    const invocation = toPolicyInvocation( instance, payload )
+    let verdict: Verdict | Promise<Verdict>
+
+    // An arbiter that throws must never become an implicit allow.
+    try { verdict = this._arbiter.evaluate( invocation ) }
+    catch( err ){
+      logger.error(`[policy] arbiter "${this._arbiter.name}" threw for "${invocation.schema}" — failing closed:`, err )
+      return
+    }
+
+    if( verdict instanceof Promise ){
+      // An external PDP resolves out of tick. Safe by construction: the executor
+      // holds the intent 'awaiting' for AWAIT_TIMEOUT (15 ticks), and drain()
+      // runs every tick, so a verdict landing a few ticks late still delivers.
+      void verdict.then(
+        v => this._applyVerdict( instance, payload, invocation, v ),
+        err => logger.error(`[policy] arbiter "${this._arbiter.name}" rejected for "${invocation.schema}" — failing closed:`, err ),
+      )
+      return
+    }
+
+    this._applyVerdict( instance, payload, invocation, verdict )
+  }
+
+  /**
+   * Act on a verdict. P0 enforces only — a refused invocation is simply never
+   * handed to the host, and the executor's 15-tick await timeout eventually
+   * reconciles the intent as a plain failure.
+   *
+   * That is deliberately incomplete: P1 replaces the timeout with an immediate
+   * graded refusal ack, and P2 routes it to affordance AVAILABILITY rather than
+   * to competence (a refusal must not teach the Will it is unskilled at
+   * something it is merely forbidden to do). Until then the behaviour is safe
+   * but crude: the effect does not reach the world, which is the property that
+   * matters.
+   */
+  private _applyVerdict(
+    instance:   WillInstance,
+    payload:    Record<string, unknown>,
+    invocation: PolicyInvocation,
+    verdict:    Verdict,
+  ): void {
+    if( verdict.decision === 'allow'){
+      this._buffer( instance, payload )
+      return
+    }
+
+    const cf = verdict.counterfactual
+    logger.info(
+      `[policy] ${verdict.decision.toUpperCase()} "${invocation.schema}" intent "${invocation.intentId}"` +
+      ` — ${verdict.reasonCode ?? 'no reason code'}` +
+      ( verdict.finality ? ` (${verdict.finality})` : '') +
+      ( cf ? ` [${cf.field}: requested ${JSON.stringify( cf.requested )}, allowed ${JSON.stringify( cf.allowed )}]` : ''),
+    )
+  }
+
+  /** Queue an approved invocation for the delivery layer. */
+  private _buffer( instance: WillInstance, payload: Record<string, unknown> ): void {
     const intentId = ( payload.intentId as string ) ?? ''
     instance.pendingEffectorInvocations.push({
       id:               intentId,
@@ -141,4 +222,20 @@ export class effectorController {
 
 function num( v: unknown, fallback: number ): number {
   return typeof v === 'number' && Number.isFinite( v ) ? v : fallback
+}
+
+/**
+ * Project the `agency.invocation` payload onto the policy boundary's view of a
+ * proposed act. Only the act crosses — no cognitive internals, no state handle.
+ */
+function toPolicyInvocation( instance: WillInstance, payload: Record<string, unknown> ): PolicyInvocation {
+  return {
+    willId:     instance.config.id,
+    intentId:   ( payload.intentId as string ) ?? '',
+    schema:     ( payload.schema as string ) ?? '',
+    parameters: ( payload.parameters as Record<string, unknown> ) ?? {},
+    ...( typeof payload.targetEntityId === 'string' ? { targetEntityId: payload.targetEntityId } : {} ),
+    ...( typeof payload.description    === 'string' ? { description:    payload.description    } : {} ),
+    tick:       ( payload.tick as number ) ?? 0,
+  }
 }

@@ -222,17 +222,53 @@ world) but crude, and it is exactly the wrong learning signal — P1 replaces it
 with an immediate graded refusal ack, P2 routes it to availability instead of
 competence.
 
-### P1 — Verdict → ack, the mechanical half
-- [ ] `DENY` short-circuits dispatch and returns through
-      `confirmEffectorExecution( intentId, { success: false, ... } )` — reusing
-      the existing correlation handle, so the executor's await path is untouched.
-- [ ] Verdict recorded on the tape (determinism rule 1). Replay reads it back.
-- [ ] `ESCALATE` holds the intent `awaiting` without consuming the timeout.
-      (Timeout semantics: an escalation that is never resolved must eventually
-      expire — decide TTL here, likely `AWAIT_TIMEOUT × 2`.)
-- [ ] Tests: deny blocks the host handler; verdict survives snapshot/restore;
-      replay determinism (identical tape → identical run); null adapter
-      byte-identical.
+### P1 — Verdict → ack, the mechanical half ⟶ done (2026-07-21)
+
+**Determinism model, resolved by audit.** The replay-equivalence harness drives
+`simulation.step()` directly — NOT the stem tick loop — so `applyInbound` and all
+effector-ack handling sit *outside* the replayed unit. That is the codebase's
+actual contract: effector acks are external inputs applied by the harness between
+steps, with full deterministic re-execution DEFERRED (see `inbound.recorder.ts`).
+So a policy refusal is treated as **exactly a host rejection ack**: enqueued during
+the step's flush, applied by the harness at the next tick boundary. `bufferInvocation`
+writes only harness state during the step, so `simulation.step` determinism is
+untouched — the byte-identical guarantee holds trivially (replay-equivalence still
+green). The verdict-capture seam ships now; re-execution rides the same deferred
+mechanism as inbound acks, and the source interface is ready for it.
+
+- [x] `DENY` no longer waits for the 15-tick timeout. `_applyVerdict` queues a
+      `PendingRefusal`; `effectorController.applyPolicyOutcomes(instance)` — wired
+      into the stem loop at the `applyInbound` boundary (`stem/index.ts`) — drains
+      it through the existing `confirmExecution(intentId, { success: false, … })`,
+      the unchanged correlation-handle path. A denial reconciles as a
+      host-rejection-shaped `agency.outcome` the following step sees.
+- [x] `src/stem/policy/verdict.recorder.ts` — the verdict tape, mirroring
+      `completion.recorder.ts` / `inbound.recorder.ts`: willId-keyed
+      sink (`recordVerdict`) + strict re-feed source (`RecordedVerdictSource`,
+      keyed by `(tick, intentId)`). `bufferInvocation` checks the **source first**
+      (replay never re-enters the arbiter), else consults the arbiter and records
+      **every** verdict (allow included, so replay reproduces every decision). A
+      source miss reproduces a buffered allow (the live run had no verdict there).
+- [x] `ESCALATE` withholds from the host but does NOT queue a refusal — the intent
+      stays `awaiting`. **P1 deliberately stops here:** it still expires at the
+      executor's `AWAIT_TIMEOUT` (15). The extended-TTL hold + resolution path is
+      P4's speech act, not a mechanical concern.
+- [x] Async arbiters: the `.then` records + applies on resolution; the refusal
+      queue drains each tick, so a late verdict still lands. Fails closed on
+      rejection (unchanged from P0).
+- [x] Tests (`tests/unit/policy.reafference.test.ts`, 12): deny queues → reconciles
+      as a failure outcome at the boundary; queue drains once; escalate withholds
+      without an outcome; allow reaches the host; async deny reconciles on resolve;
+      tape captures deny (with finality + counterfactual) and allow, records nothing
+      under a null arbiter; source re-feeds allow/deny **without consulting a
+      throwing arbiter**, buffers on a miss, and does not double-record. Full suite
+      **1128 passed / 2 skipped (170 files)**, replay-equivalence green. Typecheck clean.
+
+**Still known-incomplete (→ P2):** the refusal reconciles as a plain FAILURE
+(`success: false`), the same signal a host rejection or a timeout produces. That is
+the wrong lesson — forbidden ≠ unskilled. P2 gives the ack a discriminated
+`refused` marker and routes it to affordance AVAILABILITY instead of `LearnedSkill`
+competence.
 
 ### P2 — Refusal teaches availability, not incompetence
 - [ ] ReafferenceEngine distinguishes a refused outcome from a failed one

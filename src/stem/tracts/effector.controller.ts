@@ -25,13 +25,32 @@ import { logger } from '#core/logger'
 import { reconcileInvocation } from '#agency/reconcile.learning'
 import { NULL_ARBITER, isNullArbiter } from '#stem/policy/arbiter'
 import type { PolicyArbiter, PolicyInvocation, Verdict } from '#stem/policy/arbiter'
+import {
+  getVerdictRecorder, getVerdictSource, type PolicyVerdictRecord,
+} from '#stem/policy/verdict.recorder'
 import type { effectorInvocation } from '#types'
 import type { WillInstance } from '#stem/index'
+
+/** A denial awaiting application as a refusal ack at the next tick boundary. */
+interface PendingRefusal {
+  intentId:   string
+  schema:     string
+  reasonCode: string
+  finality:   string
+}
 
 export class effectorController {
   /** The Policy Decision Point consulted before an invocation reaches the world.
    *  Defaults to the no-op arbiter, so an unconfigured Will is byte-identical. */
   private _arbiter: PolicyArbiter = NULL_ARBITER
+
+  /**
+   * Denials queued during a step's flush, drained at the NEXT tick boundary
+   * (POLICY_REAFFERENCE P1). Keyed by willId — harness state, exactly like
+   * `pendingEffectorInvocations`; never simulation state, so it does not touch
+   * `simulation.step` determinism and is regenerated on any re-execution.
+   */
+  private _pendingRefusals = new Map<string, PendingRefusal[]>()
 
   /**
    * Install a Policy Decision Point (POLICY_REAFFERENCE P0). Passing null
@@ -59,8 +78,24 @@ export class effectorController {
    * echoes it on its result-ack, and `confirmExecution` uses it to find the intent.
    */
   bufferInvocation( instance: WillInstance, payload: Record<string, unknown> ): void {
+    const willId = instance.config.id
+
+    // Replay: a registered source re-feeds the recorded verdict instead of
+    // re-consulting a live (or absent) PDP — the arbiter is an external oracle,
+    // exactly like the LLM. Checked FIRST so replay never re-enters the arbiter.
+    const source = getVerdictSource( willId )
+    if( source ){
+      const invocation = toPolicyInvocation( instance, payload )
+      const record     = source.verdictFor( invocation.tick, invocation.intentId )
+      // A miss means the live run had no verdict here (null arbiter at record
+      // time) — the invocation was simply buffered, so reproduce that.
+      if( record ) this._applyVerdict( instance, payload, invocation, recordToVerdict( record ) )
+      else         this._buffer( instance, payload )
+      return
+    }
+
     // Fast path: no policy configured ⇒ the seam does not exist. No allocation,
-    // no branch taken beyond this one — the byte-identical guarantee.
+    // no branch beyond this one — the byte-identical guarantee.
     if( isNullArbiter( this._arbiter ) ){
       this._buffer( instance, payload )
       return
@@ -78,29 +113,56 @@ export class effectorController {
 
     if( verdict instanceof Promise ){
       // An external PDP resolves out of tick. Safe by construction: the executor
-      // holds the intent 'awaiting' for AWAIT_TIMEOUT (15 ticks), and drain()
-      // runs every tick, so a verdict landing a few ticks late still delivers.
+      // holds the intent 'awaiting' for AWAIT_TIMEOUT (15 ticks), and the refusal
+      // queue drains each tick, so a verdict landing a few ticks late still lands.
       void verdict.then(
-        v => this._applyVerdict( instance, payload, invocation, v ),
+        v => this._recordAndApply( instance, payload, invocation, v ),
         err => logger.error(`[policy] arbiter "${this._arbiter.name}" rejected for "${invocation.schema}" — failing closed:`, err ),
       )
       return
     }
 
+    this._recordAndApply( instance, payload, invocation, verdict )
+  }
+
+  /** Capture the verdict on the tape (if a recorder is attached), then enforce it. */
+  private _recordAndApply(
+    instance:   WillInstance,
+    payload:    Record<string, unknown>,
+    invocation: PolicyInvocation,
+    verdict:    Verdict,
+  ): void {
+    const sink = getVerdictRecorder( instance.config.id )
+    sink?.recordVerdict({
+      tick:       invocation.tick,
+      willId:     instance.config.id,
+      intentId:   invocation.intentId,
+      schema:     invocation.schema,
+      arbiter:    this._arbiter.name,
+      decision:   verdict.decision,
+      ...( verdict.reasonCode     ? { reasonCode:     verdict.reasonCode     } : {} ),
+      ...( verdict.finality       ? { finality:       verdict.finality       } : {} ),
+      ...( verdict.counterfactual ? { counterfactual: verdict.counterfactual } : {} ),
+      timestamp:  Date.now(),
+    })
     this._applyVerdict( instance, payload, invocation, verdict )
   }
 
   /**
-   * Act on a verdict. P0 enforces only — a refused invocation is simply never
-   * handed to the host, and the executor's 15-tick await timeout eventually
-   * reconciles the intent as a plain failure.
+   * Enforce a verdict (POLICY_REAFFERENCE P1).
    *
-   * That is deliberately incomplete: P1 replaces the timeout with an immediate
-   * graded refusal ack, and P2 routes it to affordance AVAILABILITY rather than
-   * to competence (a refusal must not teach the Will it is unskilled at
-   * something it is merely forbidden to do). Until then the behaviour is safe
-   * but crude: the effect does not reach the world, which is the property that
-   * matters.
+   *   • allow    → hand the invocation to the world.
+   *   • deny     → queue a refusal ack, applied at the next tick boundary via
+   *                `confirmExecution` — the same lifecycle as a host rejection,
+   *                so the mind meets *world resistance*, not a permission dialog.
+   *   • escalate → withhold, but do NOT refuse: the intent stays 'awaiting'.
+   *                P1 stops here (it still expires at the executor's 15-tick
+   *                timeout); P4 makes escalate a first-person speech act with a
+   *                resolution path and an extended TTL.
+   *
+   * P1's refusal reconciles as a plain FAILURE — safe, but the wrong learning
+   * signal (forbidden ≠ unskilled). P2 routes it to affordance AVAILABILITY
+   * instead of competence.
    */
   private _applyVerdict(
     instance:   WillInstance,
@@ -120,6 +182,36 @@ export class effectorController {
       ( verdict.finality ? ` (${verdict.finality})` : '') +
       ( cf ? ` [${cf.field}: requested ${JSON.stringify( cf.requested )}, allowed ${JSON.stringify( cf.allowed )}]` : ''),
     )
+
+    if( verdict.decision === 'deny'){
+      const queue = this._pendingRefusals.get( instance.config.id ) ?? []
+      queue.push({
+        intentId:   invocation.intentId,
+        schema:     invocation.schema,
+        reasonCode: verdict.reasonCode ?? 'POLICY_DENIED',
+        finality:   verdict.finality ?? 'instance',
+      })
+      this._pendingRefusals.set( instance.config.id, queue )
+    }
+    // 'escalate' falls through: withheld, left awaiting for P4.
+  }
+
+  /**
+   * Apply queued policy refusals as failure acks (POLICY_REAFFERENCE P1).
+   * Called by the tick loop at the same boundary as inbound acks — BEFORE the
+   * step, stamped to this tick — so a denial reconciled here is the exact
+   * lifecycle of a host rejection that arrived between ticks.
+   */
+  applyPolicyOutcomes( instance: WillInstance ): void {
+    const queue = this._pendingRefusals.get( instance.config.id )
+    if( !queue || queue.length === 0 ) return
+    this._pendingRefusals.set( instance.config.id, [] )
+
+    for( const refusal of queue )
+      this.confirmExecution( instance, refusal.intentId, {
+        success:     false,
+        description: `refused by policy: ${refusal.reasonCode} (${refusal.finality})`,
+      } )
   }
 
   /** Queue an approved invocation for the delivery layer. */
@@ -222,6 +314,16 @@ export class effectorController {
 
 function num( v: unknown, fallback: number ): number {
   return typeof v === 'number' && Number.isFinite( v ) ? v : fallback
+}
+
+/** Reconstruct an enforceable Verdict from a recorded verdict (replay path). */
+function recordToVerdict( record: PolicyVerdictRecord ): Verdict {
+  return {
+    decision: record.decision,
+    ...( record.reasonCode     ? { reasonCode:     record.reasonCode     } : {} ),
+    ...( record.finality       ? { finality:       record.finality       } : {} ),
+    ...( record.counterfactual ? { counterfactual: record.counterfactual } : {} ),
+  }
 }
 
 /**

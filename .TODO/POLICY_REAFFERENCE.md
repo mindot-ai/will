@@ -270,17 +270,49 @@ the wrong lesson — forbidden ≠ unskilled. P2 gives the ack a discriminated
 `refused` marker and routes it to affordance AVAILABILITY instead of `LearnedSkill`
 competence.
 
-### P2 — Refusal teaches availability, not incompetence
-- [ ] ReafferenceEngine distinguishes a refused outcome from a failed one
-      (a discriminated field on the ack, not a magic `outcomeQuality`).
-- [ ] Refusal updates a **availability prior** keyed by `(schema, paramsKey)`;
-      it must **not** touch `LearnedSkill` value/habit/param-priors.
-- [ ] AffordanceSynthesizer reads availability when fielding; slow recovery
-      permits re-probe (pick the constant with the same care as
-      `CONSEQUENCE_TTL_TICKS`).
-- [ ] Tests: repeated refusal suppresses fielding; competence for the same
-      schema is unchanged; recovery re-fields after N ticks; a *failure* still
-      moves competence normally (no cross-contamination).
+### P2 — Refusal teaches availability, not incompetence ⟶ done (2026-07-21)
+- [x] Refused outcomes carry a discriminated `refused: true` + `finality`
+      marker (`reconcile.learning.ts` `HostAckResult`; stamped by
+      `reconcileInvocation`; set by `applyPolicyOutcomes`). NOT a magic
+      `outcomeQuality`.
+- [x] The **availability layer** lives in `SchemaRepertoire`, strictly apart from
+      `LearnedSkill`: `_availability` map, `recordRefusal(schema, finality, tick)`,
+      `availabilityOf(schema)`, recovery folded into `decay()`, mirrored to
+      `agency.availability` state entities (`availabilityEntities()` /
+      `restoreAvailability()`). Multiplicative cut — **class 0.50, instance 0.12**
+      — floored at 0.05 (never zero, re-probe always possible); slow recovery
+      (0.02/decay) climbs back and the entry is dropped at full recovery, so a
+      long-ago-refused Will returns to the byte-identical quiet path.
+- [x] `ReafferenceEngine`: a `refused` outcome routes to `recordRefusal` and
+      **stops** — it never touches competence (no `recordOutcome`, no discovery,
+      no proceduralization) — while still freeing the awaiting intent and
+      signalling a refused plan step unsuccessful so the plan doesn't hang. Emits
+      `agency.refused.count` only when it fired (quiet path silent).
+- [x] `scoreAffordance` damps a **positive** activation by `availability` and
+      never flips a negative one — a refused ability competes weakly but is never
+      removed from the field, so re-probe survives and recovers with availability.
+      `AffordanceSynthesizer._build` sets `availability` only when `< 1` (omitted
+      otherwise ⇒ affordance field byte-identical for a never-refused Will);
+      `restoreAvailability` rehydrates it alongside composites.
+- [x] **Scope decision (recorded):** P2 keys availability by **schema**, not
+      `(schema, paramsKey)`. At fielding time the Will hasn't bound params yet, so
+      instance-level *envelope narrowing* can only bite at selection time — a
+      distinct, later mechanism. P2 honours class-vs-instance via cut MAGNITUDE
+      (class suppresses the ability; instance barely dents it and recovers fast),
+      which is the fielding-time-implementable half. Per-params gating is the
+      deferred follow-up.
+- [x] Tests (`tests/unit/policy.availability.test.ts`, 11): class-hard vs
+      instance-light, compounding-but-never-zero, monotone recovery + drop,
+      mirror/restore; refusal dents availability + leaves `LearnedSkill`
+      undefined; a genuine failure still records competence + leaves availability
+      at 1; refusal metric only when fired; activation damped-but-positive,
+      byte-identical when absent, recovered restores full weight. Full suite
+      **1139 passed / 2 skipped (171 files)**, replay-equivalence green. Typecheck clean.
+
+**The three verbs, now demonstrable.** Gated (P0), and a mind that *learns the
+shape of its own permissions* rather than re-probing the wall (P1+P2). What
+remains is refinement, not foundation: P3 (refusal as rupture), P4 (escalate as
+speech act), P5 (HELM adapter), and the deferred per-params envelope narrowing.
 
 ### P3 — Refusal as rupture (reuse P4 machinery)
 - [ ] Map `severity` → rupture. At/above `RUPTURE_REVOKE_GATE` (0.7) write the

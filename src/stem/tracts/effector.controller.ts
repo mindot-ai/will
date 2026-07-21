@@ -210,6 +210,8 @@ export class effectorController {
     for( const refusal of queue )
       this.confirmExecution( instance, refusal.intentId, {
         success:     false,
+        refused:     true,
+        finality:    refusal.finality === 'class' ? 'class' : 'instance',
         description: `refused by policy: ${refusal.reasonCode} (${refusal.finality})`,
       } )
   }
@@ -259,6 +261,10 @@ export class effectorController {
       success:     boolean
       description: string
       metrics?:    Record<string, number>
+      /** POLICY_REAFFERENCE P2 — set when the ack is a policy refusal, so the
+       *  ReafferenceEngine routes it to availability rather than competence. */
+      refused?:    boolean
+      finality?:   'class' | 'instance'
     },
   ): void {
     const tick = instance.tickCount

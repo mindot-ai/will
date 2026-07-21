@@ -39,6 +39,23 @@ const IDLE_TICKS        = 200   // ticks of disuse before forgetting starts
 const DECAY_RATE        = 0.02  // habit lost per decay application
 const DROP_HABIT        = 0.05  // below this (and learned) the skill is forgotten
 
+// ── availability layer (POLICY_REAFFERENCE P2) ────────────────
+// Availability is NOT competence. It answers "may I use this schema", learned
+// from policy refusals, and is kept strictly apart from LearnedSkill so a
+// refusal never teaches the Will it is *unskilled* at something it is merely
+// *forbidden* to do. A `class` refusal ("never, under this policy") drives
+// availability down hard; an `instance` refusal ("not with those parameters")
+// dents it lightly — the Will should keep reaching for the ability, just not
+// that way. Recovery is slow but real, so a policy change is re-discoverable:
+// availability never floors at zero, and it climbs back toward 1 with disuse of
+// the refusal. P2 keys availability by SCHEMA; per-(schema, params) envelope
+// narrowing is a follow-up that belongs at selection time, not fielding time.
+const AVAIL_DROP_CLASS    = 0.50  // multiplicative cut on a class-final refusal
+const AVAIL_DROP_INSTANCE = 0.12  // lighter cut on an instance-final refusal
+const AVAIL_FLOOR         = 0.05  // never zero — re-probe must always be possible
+const AVAIL_RECOVERY      = 0.02  // per-decay climb back toward 1
+const AVAIL_RECOVERED     = 0.999 // at/above this the entry is dropped (quiet path)
+
 export interface OutcomeObservation {
   schema:         string
   success:        boolean
@@ -54,6 +71,9 @@ export class SchemaRepertoire {
   private _skills    = new Map<string, LearnedSkill>()
   /** Tracks which templates were learned at runtime (vs innate) so decay can forget them. */
   private _learned   = new Set<string>()
+  /** Availability layer (P2): schema → { value 0..1, lastRefusedTick }. Empty until
+   *  a refusal lands — a never-refused Will writes nothing here (byte-identical). */
+  private _availability = new Map<string, { value: number; lastRefusedTick: number }>()
 
   constructor( seed: MotorSchema[] = INNATE_SCHEMAS ){
     for( const s of seed ) this._templates.set( s.id, s )
@@ -84,6 +104,32 @@ export class SchemaRepertoire {
   // ── skills ────────────────────────────────────────────────────
   skills(): ReadonlyMap<string, LearnedSkill> { return this._skills }
   getSkill( id: string ): LearnedSkill | undefined { return this._skills.get( id ) }
+
+  // ── availability (P2) ─────────────────────────────────────────
+  availability(): ReadonlyMap<string, { value: number; lastRefusedTick: number }> { return this._availability }
+
+  /**
+   * How available a schema is right now, 0..1. Absent from the ledger ⇒ 1
+   * (fully available — the common case). This is the ONLY value the
+   * AffordanceSynthesizer reads; it never touches competence.
+   */
+  availabilityOf( schema: string ): number {
+    return this._availability.get( schema )?.value ?? 1
+  }
+
+  /**
+   * Fold a policy refusal into the availability layer (NOT competence). A
+   * `class` refusal cuts availability hard; an `instance` refusal dents it
+   * lightly. Multiplicative so repeated refusals compound toward — but never
+   * reach — zero, keeping re-probe alive.
+   */
+  recordRefusal( schema: string, finality: 'class' | 'instance', tick: number ): number {
+    const prev = this._availability.get( schema )?.value ?? 1
+    const drop = finality === 'class' ? AVAIL_DROP_CLASS : AVAIL_DROP_INSTANCE
+    const value = Math.max( AVAIL_FLOOR, prev * ( 1 - drop ) )
+    this._availability.set( schema, { value, lastRefusedTick: tick } )
+    return value
+  }
 
   /**
    * Fold one outcome into the schema's learned skill. Returns the updated skill
@@ -118,12 +164,14 @@ export class SchemaRepertoire {
   }
 
   /**
-   * Forgetting curve over the competence layer. Skills unused for IDLE_TICKS
-   * lose habit; learned composites that fall below DROP_HABIT are dropped
-   * entirely (template + skill). Returns the schema ids that were forgotten.
+   * Forgetting curve over the competence layer, plus availability recovery.
+   * Skills unused for IDLE_TICKS lose habit; learned composites below DROP_HABIT
+   * are dropped entirely (template + skill). Availability entries climb back
+   * toward 1 and are dropped once fully recovered. Returns the ids that were
+   * removed from each layer so their mirrored state entities can be deleted.
    */
-  decay( tick: number ): string[] {
-    const dropped: string[] = []
+  decay( tick: number ): { skills: string[]; availability: string[] } {
+    const skills: string[] = []
     for( const [ id, skill ] of this._skills ){
       if( tick - skill.lastEnactedTick <= IDLE_TICKS ) continue
 
@@ -132,12 +180,23 @@ export class SchemaRepertoire {
         this._skills.delete( id )
         this._templates.delete( id )
         this._learned.delete( id )
-        dropped.push( id )
+        skills.push( id )
         continue
       }
       this._skills.set( id, { ...skill, habitStrength } )
     }
-    return dropped
+
+    // Availability recovery (P2): each entry climbs slowly back toward 1, so a
+    // policy change is re-discoverable. A fully-recovered entry is dropped, so a
+    // Will that was refused long ago returns to the byte-identical quiet path.
+    const availability: string[] = []
+    for( const [ id, avail ] of this._availability ){
+      const value = avail.value + AVAIL_RECOVERY * ( 1 - avail.value )
+      if( value >= AVAIL_RECOVERED ){ this._availability.delete( id ); availability.push( id ) }
+      else this._availability.set( id, { ...avail, value } )
+    }
+
+    return { skills, availability }
   }
 
   // ── PMA portability (Phase 6 reads these) ─────────────────────
@@ -188,6 +247,30 @@ export class SchemaRepertoire {
       this._learned.add( s.id )
     }
   }
+
+  /** Availability ledger encoded as `agency.availability` state entities (P2).
+   *  Empty until a refusal lands, so the quiet path writes nothing. */
+  availabilityEntities(): EntityInput[] {
+    const out: EntityInput[] = []
+    for( const [ schema, a ] of this._availability )
+      out.push( availabilityEntity( schema, a.value, a.lastRefusedTick ) )
+    return out
+  }
+
+  /** Rehydrate the availability ledger from state after a restore. Idempotent;
+   *  keeps whichever value is more restrictive so a concurrent refusal isn't lost. */
+  restoreAvailability( entities: ReadonlySimulationState['entities'] ): void {
+    for( const e of entities.values() ){
+      if( e.type !== AVAILABILITY_ENTITY_TYPE ) continue
+      const m = ( e.metadata ?? {} ) as Record<string, unknown>
+      const schema = typeof m['schema'] === 'string' ? m['schema'] : ''
+      if( !schema ) continue
+      const value = typeof m['value'] === 'number' ? m['value'] : 1
+      const tick  = typeof m['lastRefusedTick'] === 'number' ? m['lastRefusedTick'] : 0
+      const prev  = this._availability.get( schema )
+      if( !prev || value < prev.value ) this._availability.set( schema, { value, lastRefusedTick: tick } )
+    }
+  }
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -207,6 +290,23 @@ function freshSkill( schema: string, value: number, tick: number ): LearnedSkill
 
 function clamp01( n: number ): number {
   return n < 0 ? 0 : n > 1 ? 1 : n
+}
+
+// ─── availability ⇄ state-entity codec (P2) ──────────────────────────────────
+
+/** State-entity type for a mirrored availability entry. */
+export const AVAILABILITY_ENTITY_TYPE = 'agency.availability'
+
+/** Stable entity id for a schema's availability mirror (idempotent re-writes). */
+export function availabilityEntityId( schema: string ): string { return `agency-availability-${ schema }` }
+
+/** Encode one availability entry as a state entity. */
+function availabilityEntity( schema: string, value: number, lastRefusedTick: number ): EntityInput {
+  return {
+    id:   availabilityEntityId( schema ),
+    type: AVAILABILITY_ENTITY_TYPE,
+    metadata: { schema, value, lastRefusedTick },
+  }
 }
 
 // ─── composite ⇄ state-entity codec (snapshot/replay) ────────────────────────

@@ -147,7 +147,7 @@ export function scoreAffordance(
   bias: BiasContext,
   w:    ScoreWeights = DEFAULT_WEIGHTS,
 ): number {
-  return (
+  const raw = (
       w.goal    * goalRelevance( a, bias )
     + w.reward  * a.expectedReward
     + w.novelty * novelty( a )
@@ -158,6 +158,12 @@ export function scoreAffordance(
     - w.inhib   * bias.inhibition
     - w.risk    * risk( a, bias )
   )
+  // POLICY_REAFFERENCE P2 — policy availability damps a POSITIVE activation only,
+  // never flipping its sign: a refused ability competes weakly (so it is rarely
+  // chosen) yet is never removed from the field, keeping re-probe alive as
+  // availability recovers. Absent ⇒ 1 ⇒ no change (byte-identical quiet path).
+  const availability = a.availability ?? 1
+  return raw > 0 ? raw * availability : raw
 }
 
 /**

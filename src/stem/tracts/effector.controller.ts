@@ -39,6 +39,27 @@ interface PendingRefusal {
   finality:   string
 }
 
+/** How long an escalated intent is held awaiting a resolution before it degrades
+ *  to a refusal — 2× the host-ack timeout, so a human has real time to answer. */
+const ESCALATION_TTL_TICKS = 30
+
+/** An escalation the Will has raised: the intent is held, the ask is voiced once,
+ *  and the original payload is kept so an approval can dispatch it to the world. */
+interface Escalation {
+  intentId:   string
+  schema:     string
+  reasonCode: string
+  /** The withheld invocation payload — replayed to the host on approval. */
+  payload:    Record<string, unknown>
+  expiresAt:  number
+}
+
+/** A host's answer to an escalation, applied at the next tick boundary. */
+interface PendingResolution {
+  intentId: string
+  approved: boolean
+}
+
 export class effectorController {
   /** The Policy Decision Point consulted before an invocation reaches the world.
    *  Defaults to the no-op arbiter, so an unconfigured Will is byte-identical. */
@@ -51,6 +72,13 @@ export class effectorController {
    * `simulation.step` determinism and is regenerated on any re-execution.
    */
   private _pendingRefusals = new Map<string, PendingRefusal[]>()
+
+  /** Escalations awaiting their first application (mark intent + voice the ask). */
+  private _newEscalations = new Map<string, Escalation[]>()
+  /** Escalations currently held, keyed by intent id — the resolvable set. */
+  private _activeEscalations = new Map<string, Map<string, Escalation>>()
+  /** Host answers awaiting application at the next tick boundary. */
+  private _pendingResolutions = new Map<string, PendingResolution[]>()
 
   /**
    * Install a Policy Decision Point (POLICY_REAFFERENCE P0). Passing null
@@ -155,10 +183,11 @@ export class effectorController {
    *   • deny     → queue a refusal ack, applied at the next tick boundary via
    *                `confirmExecution` — the same lifecycle as a host rejection,
    *                so the mind meets *world resistance*, not a permission dialog.
-   *   • escalate → withhold, but do NOT refuse: the intent stays 'awaiting'.
-   *                P1 stops here (it still expires at the executor's 15-tick
-   *                timeout); P4 makes escalate a first-person speech act with a
-   *                resolution path and an extended TTL.
+   *   • escalate → raise a held escalation (POLICY_REAFFERENCE P4): the intent is
+   *                held (the executor stops timing it out), the Will voices a
+   *                first-person ask once, and a host resolution later approves
+   *                (dispatch) or denies (refuse). Unresolved, it degrades to a
+   *                refusal at ESCALATION_TTL_TICKS.
    *
    * P1's refusal reconciles as a plain FAILURE — safe, but the wrong learning
    * signal (forbidden ≠ unskilled). P2 routes it to affordance AVAILABILITY
@@ -192,8 +221,31 @@ export class effectorController {
         finality:   verdict.finality ?? 'instance',
       })
       this._pendingRefusals.set( instance.config.id, queue )
+      return
     }
-    // 'escalate' falls through: withheld, left awaiting for P4.
+
+    // 'escalate' — raise a held escalation, applied (marked + voiced) at the boundary.
+    const escalations = this._newEscalations.get( instance.config.id ) ?? []
+    escalations.push({
+      intentId:   invocation.intentId,
+      schema:     invocation.schema,
+      reasonCode: verdict.reasonCode ?? 'APPROVAL_REQUIRED',
+      payload,
+      expiresAt:  0,   // stamped when applied (we don't have the current tick here)
+    })
+    this._newEscalations.set( instance.config.id, escalations )
+  }
+
+  /**
+   * Record a host's answer to an escalation (POLICY_REAFFERENCE P4). Applied at
+   * the next tick boundary so every simulation-state write stays on the boundary:
+   * approve dispatches the held invocation to the world; deny refuses it. A
+   * no-op if the intent id is not (or no longer) an active escalation.
+   */
+  resolveEscalation( instance: WillInstance, intentId: string, approved: boolean ): void {
+    const queue = this._pendingResolutions.get( instance.config.id ) ?? []
+    queue.push({ intentId, approved })
+    this._pendingResolutions.set( instance.config.id, queue )
   }
 
   /**
@@ -203,6 +255,15 @@ export class effectorController {
    * lifecycle of a host rejection that arrived between ticks.
    */
   applyPolicyOutcomes( instance: WillInstance ): void {
+    const tick = instance.tickCount
+    this._applyResolutions( instance )       // host answers land first
+    this._expireEscalations( instance, tick )  // then time out the unanswered
+    this._applyNewEscalations( instance, tick )  // then raise + voice the newest
+    this._applyRefusals( instance )          // then the plain denials
+  }
+
+  /** Drain queued refusals into failure acks (POLICY_REAFFERENCE P1). */
+  private _applyRefusals( instance: WillInstance ): void {
     const queue = this._pendingRefusals.get( instance.config.id )
     if( !queue || queue.length === 0 ) return
     this._pendingRefusals.set( instance.config.id, [] )
@@ -214,6 +275,100 @@ export class effectorController {
         finality:    refusal.finality === 'class' ? 'class' : 'instance',
         description: `refused by policy: ${refusal.reasonCode} (${refusal.finality})`,
       } )
+  }
+
+  /** Raise each newly-escalated intent (POLICY_REAFFERENCE P4): mark it held in
+   *  simulation state, voice the ask ONCE, and move it to the resolvable set. */
+  private _applyNewEscalations( instance: WillInstance, tick: number ): void {
+    const pending = this._newEscalations.get( instance.config.id )
+    if( !pending || pending.length === 0 ) return
+    this._newEscalations.set( instance.config.id, [] )
+
+    const active = this._activeEscalations.get( instance.config.id ) ?? new Map<string, Escalation>()
+    for( const esc of pending ){
+      esc.expiresAt = tick + ESCALATION_TTL_TICKS
+      this._markEscalated( instance, esc.intentId, esc.expiresAt )
+      this._voiceEscalation( instance, esc )
+      active.set( esc.intentId, esc )
+    }
+    this._activeEscalations.set( instance.config.id, active )
+  }
+
+  /** Apply host answers to active escalations (POLICY_REAFFERENCE P4). */
+  private _applyResolutions( instance: WillInstance ): void {
+    const queue = this._pendingResolutions.get( instance.config.id )
+    if( !queue || queue.length === 0 ) return
+    this._pendingResolutions.set( instance.config.id, [] )
+
+    const active = this._activeEscalations.get( instance.config.id )
+    for( const { intentId, approved } of queue ){
+      const esc = active?.get( intentId )
+      if( !esc ) continue                        // unknown / already resolved — ignore
+      active!.delete( intentId )
+      this._clearEscalated( instance, intentId ) // release the executor's hold
+      if( approved ){
+        this._buffer( instance, esc.payload )    // dispatch the held invocation now
+        logger.info(`[policy] escalation APPROVED → dispatching "${esc.schema}" intent "${intentId}"`)
+      }
+      else {
+        this._queueRefusal( instance, esc.intentId, esc.schema, esc.reasonCode, 'class')
+        logger.info(`[policy] escalation DENIED → refusing "${esc.schema}" intent "${intentId}"`)
+      }
+    }
+  }
+
+  /** Degrade escalations no one answered in time into instance-refusals (P4). */
+  private _expireEscalations( instance: WillInstance, tick: number ): void {
+    const active = this._activeEscalations.get( instance.config.id )
+    if( !active || active.size === 0 ) return
+    for( const [ intentId, esc ] of active ){
+      if( tick < esc.expiresAt ) continue
+      active.delete( intentId )
+      this._clearEscalated( instance, intentId )
+      this._queueRefusal( instance, esc.intentId, esc.schema, 'ESCALATION_EXPIRED', 'instance')
+      logger.info(`[policy] escalation EXPIRED → refusing "${esc.schema}" intent "${intentId}"`)
+    }
+  }
+
+  /** Push a refusal onto the queue drained by _applyRefusals this same tick. */
+  private _queueRefusal(
+    instance: WillInstance, intentId: string, schema: string, reasonCode: string, finality: 'class' | 'instance',
+  ): void {
+    const queue = this._pendingRefusals.get( instance.config.id ) ?? []
+    queue.push({ intentId, schema, reasonCode, finality })
+    this._pendingRefusals.set( instance.config.id, queue )
+  }
+
+  /** Mark the awaiting intent held: the executor stops timing it out (P4). */
+  private _markEscalated( instance: WillInstance, intentId: string, expiresAt: number ): void {
+    const intent = instance.simulation.stateManager.snapshot().entities.get( intentId )
+    if( !intent || intent.type !== 'agency.intent') return
+    instance.simulation.stateManager.setEntity({
+      id:       intent.id,
+      type:     intent.type,
+      metadata: { ...( intent.metadata ?? {} ), escalated: true, escalationExpiresAt: expiresAt },
+    })
+  }
+
+  /** Release the hold so the executor resumes normal timeout for this intent. */
+  private _clearEscalated( instance: WillInstance, intentId: string ): void {
+    const intent = instance.simulation.stateManager.snapshot().entities.get( intentId )
+    if( !intent || intent.type !== 'agency.intent') return
+    const meta = { ...( intent.metadata ?? {} ) } as Record<string, unknown>
+    delete meta['escalated']; delete meta['escalationExpiresAt']
+    instance.simulation.stateManager.setEntity({ id: intent.id, type: intent.type, metadata: meta })
+  }
+
+  /** Voice the escalation as a first-person broadcast ask — once, at raise time. */
+  private _voiceEscalation( instance: WillInstance, esc: Escalation ): void {
+    try {
+      instance.cognition.outboxWriter.enqueue({
+        targetEntityId: '*',
+        content:        escalationAsk( esc.schema, esc.reasonCode ),
+        effectorName:    'broadcast',
+      })
+    }
+    catch( err ){ logger.warn(`[policy] escalation voice failed for "${esc.schema}": ${errMsg( err )}`) }
   }
 
   /** Queue an approved invocation for the delivery layer. */
@@ -320,6 +475,25 @@ export class effectorController {
 
 function num( v: unknown, fallback: number ): number {
   return typeof v === 'number' && Number.isFinite( v ) ? v : fallback
+}
+
+/** First-person ask for an escalated action, carrying the reason's MEANING (P4).
+ *  Kept template-simple here; the facet-authored version is a later refinement. */
+function escalationAsk( schema: string, reasonCode: string ): string {
+  const meaning = ESCALATION_MEANINGS[ reasonCode ] ?? 'I need your approval before I can do this'
+  return `I want to ${ schema }, but ${ meaning }. May I go ahead?`
+}
+
+/** reasonCode → human meaning. Unknown codes fall back to a generic phrase. */
+const ESCALATION_MEANINGS: Record<string, string> = {
+  APPROVAL_REQUIRED: 'I need your approval before I can on my own',
+  WRITE_REQUIRES_APPROVAL: "it writes to the world and I shouldn't on my own",
+  PAYMENT_REQUIRES_APPROVAL: 'it moves money and I must not do that unattended',
+  DEPLOY_REQUIRES_APPROVAL: 'it ships something and needs a human to sign off',
+}
+
+function errMsg( err: unknown ): string {
+  return err instanceof Error ? err.message : String( err )
 }
 
 /** Reconstruct an enforceable Verdict from a recorded verdict (replay path). */

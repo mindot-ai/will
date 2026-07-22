@@ -807,6 +807,16 @@ export class WillStem {
     this._effector.confirmExecution( this._get( id ), invocationId, result )
   }
 
+  /**
+   * Resolve a policy escalation the Will raised (POLICY_REAFFERENCE P4).
+   * `approved` dispatches the held invocation to the world; otherwise it is
+   * refused. Applied at the next tick boundary. `invocationId` is the awaiting
+   * `agency.intent` id the escalation ask referenced.
+   */
+  resolveEscalation( id: string, invocationId: string, approved: boolean ): void {
+    this._effector.resolveEscalation( this._get( id ), invocationId, approved )
+  }
+
   // ── Messaging / outbox (11.1) ────────────────────────────────────────────
   // Delegates to OutboxController (R5-c). `_get(id)` validates the Will exists
   // and supplies the WillInstance; the outbox ops touch only instance fields.

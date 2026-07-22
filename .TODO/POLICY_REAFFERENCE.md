@@ -338,13 +338,44 @@ speech act), P5 (HELM adapter), and the deferred per-params envelope narrowing.
       still revokes, labelled distinctly. Full suite **1144 passed / 2 skipped
       (172 files)**, replay-equivalence green. Typecheck clean.
 
-### P4 — ESCALATE is a speech act
-- [ ] ProactiveCommunicator voices the ask in first person, carrying the
-      reason code's *meaning* (not its string) — "I can't send that on my own;
-      I'd need you to allow it."
-- [ ] Resolution path: approval → the held intent proceeds; denial → P1 refusal.
-- [ ] Tests: escalation produces exactly one utterance (not one per tick);
-      approval resumes the *same* intent id; expiry degrades to refusal.
+### P4 — ESCALATE is a speech act ⟶ done (2026-07-21)
+- [x] An `escalate` verdict raises a **held escalation** (`effectorController`):
+      the awaiting intent is marked `escalated` + `escalationExpiresAt` in sim
+      state (at the boundary, like every effector-ack write), the Will voices a
+      first-person ask ONCE, and the payload is kept so an approval can dispatch
+      it. `applyPolicyOutcomes` now orchestrates four boundary steps in order:
+      resolutions → expiry → new escalations → refusals.
+- [x] **The executor holds it** (`motor.schema.executor.ts`, one line): an
+      `escalated` awaiting intent is skipped in the timeout loop, so it is never
+      reconciled as a phantom timeout-failure — the stem owns its lifecycle. Quiet
+      path byte-identical (no intent carries the flag ⇒ the skip never fires).
+- [x] The ask is voiced through `cognition.outboxWriter` as a **broadcast** to
+      `'*'`, carrying the reason code's *meaning* (`escalationAsk` +
+      `ESCALATION_MEANINGS`), not its raw string. Voiced exactly once, at raise
+      time — never per tick.
+- [x] Resolution API `WillStem.resolveEscalation(id, invocationId, approved)` →
+      `effectorController.resolveEscalation`, applied at the next boundary:
+      **approve** re-buffers the held invocation (the SAME intent id resumes to
+      the world) and releases the hold; **deny** refuses it (class). Unknown /
+      already-resolved ids are harmless no-ops.
+- [x] **Expiry degrades to a refusal** (instance finality, `ESCALATION_EXPIRED`)
+      at `ESCALATION_TTL_TICKS = 30` (2× `AWAIT_TIMEOUT`), so a human has real
+      time to answer and an unanswered ask still resolves deterministically.
+- [x] Tests (`tests/unit/policy.escalation.test.ts`, 6): held + voiced-exactly-
+      once + not-per-tick; approval resumes the same intent id and releases the
+      hold; denial writes a refused(class) outcome; unknown-id no-op; expiry at
+      the TTL writes a refused(instance) outcome; and the executor holds an
+      escalated intent past the await window while still timing out a plain one.
+      Full suite **1150 passed / 2 skipped (173 files)**, replay-equivalence
+      green. Typecheck clean.
+
+**Honest scope limits (→ follow-ups):** the ask is a stem-side template
+(broadcast to `'*'`), not yet facet/LLM-authored in the mind's own voice — the
+in-character version is the deferred refinement the phase name aspires to. And
+the held escalation's payload is harness state (like `pendingEffectorInvocations`),
+so it does not survive a snapshot/restore — a restored escalation would expire to
+a refusal rather than resume. Both are acceptable for the mechanism; neither
+changes the lifecycle.
 
 ### P5 — HELM adapter (external PDP) — gated on the collaboration track
 - [ ] Adapter mapping `agency.invocation` → HELM's `WorkstationDecisionRequest`,

@@ -179,6 +179,10 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     // outcome (which also teaches reafference the action is unreliable here).
     for( const [ id, e ] of state.entities ){
       if( e.type !== 'agency.intent' || str( e.metadata?.['status'] ) !== 'awaiting') continue
+      // POLICY_REAFFERENCE P4 — an escalated intent is HELD: the stem owns its
+      // lifecycle (extended TTL → approve/deny/expire), so the executor must not
+      // time it out at AWAIT_TIMEOUT and reconcile it as a phantom failure.
+      if( e.metadata?.['escalated'] === true ) continue
       const dispatchedAt = num( e.metadata?.['dispatchedAt'], tick )
       if( tick - dispatchedAt < AWAIT_TIMEOUT ) continue
 

@@ -35,6 +35,8 @@
 > `EXAFFERENCE.md` (provenance, rupture, revocation — the machinery this reuses),
 > `CUSTOM_ABILITY_WIRING.md` (host-declared effectors — the surface being gated),
 > `RECORD_ANCHORING.md` (the evidence half of the same accountability story).
+> **The picture:** `docs/graphs/policy-reafference-loop.svg` — the whole loop in
+> one diagram (reach → boundary → three fates → may from can → the field re-forms).
 >
 > **Motivating context:** evaluation of `helm-ai-kernel` (Mindburn-Labs,
 > Apache-2.0) as a candidate external Policy Decision Point, and a live

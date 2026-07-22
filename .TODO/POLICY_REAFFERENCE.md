@@ -23,10 +23,13 @@
 >
 > **Open:** **P5** (HELM adapter — gated on the collaboration track; the local
 > `RuleTableArbiter` already exercises the interface). **Deferred refinements:**
-> facet-authored escalation voice (route the ask through `AuditionEngine.
-> authorOutreach`, not the stem template — see the P4 note); per-`(schema, params)`
-> envelope narrowing at *selection* time; escalation-payload persistence across
-> snapshot/restore.
+> facet-authored escalation voice → [[ESCALATION_VOICE]] (`.TODO/ESCALATION_VOICE.md`);
+> counterfactual-driven envelope narrowing → [[ENVELOPE_NARROWING]]
+> (`.TODO/ENVELOPE_NARROWING.md`); escalation-payload persistence across
+> snapshot/restore — **trivial**: the held invocation is fully reconstructable
+> from the escalated intent's own metadata (schema/parameters/target persist in
+> sim state, `escalationExpiresAt` too), so it is a ~20-line `restoreEscalations()`
+> analogous to `restoreAvailability` — fold into the next policy PR.
 >
 > Companion reading: `AGENCY_PIPELINE.md` (the pipeline this extends),
 > `EXAFFERENCE.md` (provenance, rupture, revocation — the machinery this reuses),

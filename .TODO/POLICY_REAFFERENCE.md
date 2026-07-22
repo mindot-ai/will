@@ -1,10 +1,32 @@
 # POLICY_REAFFERENCE — the boundary as a sense: policy verdicts routed through reafference
 
-> **Status:** OPEN — designed 2026-07-21. Goal: give the Will a **body that
-> cannot do forbidden things**, and make the refusal something the mind *learns
-> from* rather than a wall it re-discovers every tick. A policy verdict stops
-> being an exception thrown at the host and becomes **graded reafference**: the
-> world answering "not that", in the same currency as every other outcome.
+> **Status:** P0–P4 SHIPPED (2026-07-21) · P5 + refinements OPEN. Goal: give the
+> Will a **body that cannot do forbidden things**, and make the refusal something
+> the mind *learns from* rather than a wall it re-discovers every tick. A policy
+> verdict stops being an exception thrown at the host and becomes **graded
+> reafference**: the world answering "not that", in the same currency as every
+> other outcome.
+>
+> **Shipped (main):** the three-verb "Gated" story is demonstrable end to end.
+>
+> | Phase | PR | What it delivers |
+> | :--- | :--- | :--- |
+> | **P0** seam | #72 | `PolicyArbiter` interface + local `RuleTableArbiter`; PEP in `effectorController`, fail-closed, byte-identical default. Provider-agnostic — no HELM types. |
+> | **P1** refusal ack + tape | #72 | A denial reconciles as a host-rejection-shaped `agency.outcome` at the next boundary (not a 15-tick timeout); verdicts captured on a willId-keyed tape (`verdict.recorder.ts`). |
+> | **P2** availability | #73 | Refusal → a schema-keyed **availability** layer in the repertoire, strictly apart from `LearnedSkill`; `scoreAffordance` damps a positive activation without removing it (re-probe survives, slow recovery). Forbidden ≠ unskilled. |
+> | **P3** rupture | #74 | A `class` refusal of the schema being deliberated writes an `agency.revocation` tombstone (reuses EXAFFERENCE P4) — the Will lets go. A refusal contributes ZERO exafferent rupture by construction. |
+> | **P4** speech act | #75 | `escalate` HOLDS the intent (executor stops timing it out), voices a first-person ask once, and `WillStem.resolveEscalation` approves (dispatch) / denies (refuse); unanswered → refusal at `ESCALATION_TTL_TICKS = 30`. |
+>
+> Every phase kept `replay.equivalence` green — the no-policy quiet path is
+> byte-identical throughout. Verdict vocabulary (`finality` + `counterfactual`,
+> no numeric severity) is deliberately identical to the HELM RFC's proposal.
+>
+> **Open:** **P5** (HELM adapter — gated on the collaboration track; the local
+> `RuleTableArbiter` already exercises the interface). **Deferred refinements:**
+> facet-authored escalation voice (route the ask through `AuditionEngine.
+> authorOutreach`, not the stem template — see the P4 note); per-`(schema, params)`
+> envelope narrowing at *selection* time; escalation-payload persistence across
+> snapshot/restore.
 >
 > Companion reading: `AGENCY_PIPELINE.md` (the pipeline this extends),
 > `EXAFFERENCE.md` (provenance, rupture, revocation — the machinery this reuses),

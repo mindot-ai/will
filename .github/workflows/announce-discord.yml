@@ -1,0 +1,58 @@
+name: Announce release on Discord
+
+# Posts every published GitHub Release to the Mindot Discord — the community
+# half of the same human gate that publishes to npm (publish.yml): one Release
+# click fans out to both.
+#
+# Setup (one-time, human): in the Discord server, channel settings →
+# Integrations → Webhooks → New Webhook, then store its URL as the repo secret
+#   gh secret set DISCORD_WEBHOOK_URL --repo mindot-ai/will
+# No secret ⇒ the job logs a notice and exits green (never blocks a release).
+#
+# The release body is passed through the environment (never interpolated into
+# the script) and truncated to Discord's embed limit.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post release to Discord
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          REL_NAME:    ${{ github.event.release.name }}
+          REL_TAG:     ${{ github.event.release.tag_name }}
+          REL_URL:     ${{ github.event.release.html_url }}
+          REL_BODY:    ${{ github.event.release.body }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "::notice::DISCORD_WEBHOOK_URL not set — skipping Discord announce."
+            exit 0
+          fi
+
+          # Embed description caps at 4096 chars; keep headroom for safety.
+          jq -n \
+            --arg title "${REL_NAME:-$REL_TAG}" \
+            --arg url   "$REL_URL" \
+            --arg body  "$REL_BODY" \
+            '{
+              username: "Will releases",
+              embeds: [{
+                title:       $title,
+                url:         $url,
+                description: ( $body | .[0:3800] ),
+                color:       5763719,
+                footer:      { text: "npm: @mindot/will" }
+              }]
+            }' > payload.json
+
+          curl -sf -H 'Content-Type: application/json' \
+            -d @payload.json "$WEBHOOK_URL" \
+            && echo "Announced $REL_TAG on Discord."

@@ -26,6 +26,7 @@ jobs:
     steps:
       - name: Post release to Discord
         env:
+          GH_TOKEN:    ${{ github.token }}
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           REL_NAME:    ${{ github.event.release.name }}
           REL_TAG:     ${{ github.event.release.tag_name }}
@@ -35,6 +36,17 @@ jobs:
           if [ -z "$WEBHOOK_URL" ]; then
             echo "::notice::DISCORD_WEBHOOK_URL not set — skipping Discord announce."
             exit 0
+          fi
+
+          # Manual dispatch carries no release context — announce the LATEST
+          # published release instead (lets a release that predates the webhook
+          # be announced after the fact).
+          if [ -z "$REL_TAG" ]; then
+            echo "Manually dispatched — announcing the latest published release."
+            eval "$(gh release view --repo "$GITHUB_REPOSITORY" \
+              --json name,tagName,url \
+              --jq '@sh "REL_NAME=\(.name) REL_TAG=\(.tagName) REL_URL=\(.url)"')"
+            REL_BODY="$(gh release view --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
           fi
 
           # Embed description caps at 4096 chars; keep headroom for safety.

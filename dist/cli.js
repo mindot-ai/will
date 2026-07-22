@@ -3625,11 +3625,19 @@ var PROC_THRESHOLD = 0.6;
 var IDLE_TICKS = 200;
 var DECAY_RATE = 0.02;
 var DROP_HABIT = 0.05;
+var AVAIL_DROP_CLASS = 0.5;
+var AVAIL_DROP_INSTANCE = 0.12;
+var AVAIL_FLOOR = 0.05;
+var AVAIL_RECOVERY = 0.02;
+var AVAIL_RECOVERED = 0.999;
 var SchemaRepertoire = class {
   _templates = /* @__PURE__ */ new Map();
   _skills = /* @__PURE__ */ new Map();
   /** Tracks which templates were learned at runtime (vs innate) so decay can forget them. */
   _learned = /* @__PURE__ */ new Set();
+  /** Availability layer (P2): schema → { value 0..1, lastRefusedTick }. Empty until
+   *  a refusal lands — a never-refused Will writes nothing here (byte-identical). */
+  _availability = /* @__PURE__ */ new Map();
   constructor(seed = INNATE_SCHEMAS) {
     for (const s of seed) this._templates.set(s.id, s);
   }
@@ -3663,6 +3671,31 @@ var SchemaRepertoire = class {
   getSkill(id) {
     return this._skills.get(id);
   }
+  // ── availability (P2) ─────────────────────────────────────────
+  availability() {
+    return this._availability;
+  }
+  /**
+   * How available a schema is right now, 0..1. Absent from the ledger ⇒ 1
+   * (fully available — the common case). This is the ONLY value the
+   * AffordanceSynthesizer reads; it never touches competence.
+   */
+  availabilityOf(schema) {
+    return this._availability.get(schema)?.value ?? 1;
+  }
+  /**
+   * Fold a policy refusal into the availability layer (NOT competence). A
+   * `class` refusal cuts availability hard; an `instance` refusal dents it
+   * lightly. Multiplicative so repeated refusals compound toward — but never
+   * reach — zero, keeping re-probe alive.
+   */
+  recordRefusal(schema, finality, tick) {
+    const prev = this._availability.get(schema)?.value ?? 1;
+    const drop = finality === "class" ? AVAIL_DROP_CLASS : AVAIL_DROP_INSTANCE;
+    const value = Math.max(AVAIL_FLOOR, prev * (1 - drop));
+    this._availability.set(schema, { value, lastRefusedTick: tick });
+    return value;
+  }
   /**
    * Fold one outcome into the schema's learned skill. Returns the updated skill
    * and whether it just crossed the proceduralization threshold this update.
@@ -3689,12 +3722,14 @@ var SchemaRepertoire = class {
     return { skill, proceduralized: !wasProceduralized && habitStrength >= PROC_THRESHOLD };
   }
   /**
-   * Forgetting curve over the competence layer. Skills unused for IDLE_TICKS
-   * lose habit; learned composites that fall below DROP_HABIT are dropped
-   * entirely (template + skill). Returns the schema ids that were forgotten.
+   * Forgetting curve over the competence layer, plus availability recovery.
+   * Skills unused for IDLE_TICKS lose habit; learned composites below DROP_HABIT
+   * are dropped entirely (template + skill). Availability entries climb back
+   * toward 1 and are dropped once fully recovered. Returns the ids that were
+   * removed from each layer so their mirrored state entities can be deleted.
    */
   decay(tick) {
-    const dropped = [];
+    const skills = [];
     for (const [id, skill] of this._skills) {
       if (tick - skill.lastEnactedTick <= IDLE_TICKS) continue;
       const habitStrength = clamp01(skill.habitStrength - DECAY_RATE);
@@ -3702,12 +3737,20 @@ var SchemaRepertoire = class {
         this._skills.delete(id);
         this._templates.delete(id);
         this._learned.delete(id);
-        dropped.push(id);
+        skills.push(id);
         continue;
       }
       this._skills.set(id, { ...skill, habitStrength });
     }
-    return dropped;
+    const availability = [];
+    for (const [id, avail] of this._availability) {
+      const value = avail.value + AVAIL_RECOVERY * (1 - avail.value);
+      if (value >= AVAIL_RECOVERED) {
+        this._availability.delete(id);
+        availability.push(id);
+      } else this._availability.set(id, { ...avail, value });
+    }
+    return { skills, availability };
   }
   // ── PMA portability (Phase 6 reads these) ─────────────────────
   /** Learned composite templates + all skills above a confidence floor. */
@@ -3756,6 +3799,28 @@ var SchemaRepertoire = class {
       this._learned.add(s.id);
     }
   }
+  /** Availability ledger encoded as `agency.availability` state entities (P2).
+   *  Empty until a refusal lands, so the quiet path writes nothing. */
+  availabilityEntities() {
+    const out = [];
+    for (const [schema, a] of this._availability)
+      out.push(availabilityEntity(schema, a.value, a.lastRefusedTick));
+    return out;
+  }
+  /** Rehydrate the availability ledger from state after a restore. Idempotent;
+   *  keeps whichever value is more restrictive so a concurrent refusal isn't lost. */
+  restoreAvailability(entities) {
+    for (const e of entities.values()) {
+      if (e.type !== AVAILABILITY_ENTITY_TYPE) continue;
+      const m = e.metadata ?? {};
+      const schema = typeof m["schema"] === "string" ? m["schema"] : "";
+      if (!schema) continue;
+      const value = typeof m["value"] === "number" ? m["value"] : 1;
+      const tick = typeof m["lastRefusedTick"] === "number" ? m["lastRefusedTick"] : 0;
+      const prev = this._availability.get(schema);
+      if (!prev || value < prev.value) this._availability.set(schema, { value, lastRefusedTick: tick });
+    }
+  }
 };
 function freshSkill(schema, value, tick) {
   return {
@@ -3771,6 +3836,17 @@ function freshSkill(schema, value, tick) {
 }
 function clamp01(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
+}
+var AVAILABILITY_ENTITY_TYPE = "agency.availability";
+function availabilityEntityId(schema) {
+  return `agency-availability-${schema}`;
+}
+function availabilityEntity(schema, value, lastRefusedTick) {
+  return {
+    id: availabilityEntityId(schema),
+    type: AVAILABILITY_ENTITY_TYPE,
+    metadata: { schema, value, lastRefusedTick }
+  };
 }
 var SCHEMA_ENTITY_TYPE = "agency.schema";
 function schemaEntityId(schemaId) {
@@ -20051,7 +20127,9 @@ function risk(a, bias) {
   return clamp016(Math.max(0, -a.expectedValence) * 0.5 + bias.threat * 0.5);
 }
 function scoreAffordance(a, bias, w = DEFAULT_WEIGHTS) {
-  return w.goal * goalRelevance(a, bias) + w.reward * a.expectedReward + w.novelty * novelty(a) + w.drive * driveUrgency(a, bias) + w.habit * a.habitStrength + w.plan * (a.planBias ?? 0) - w.cost * a.cost - w.inhib * bias.inhibition - w.risk * risk(a, bias);
+  const raw = w.goal * goalRelevance(a, bias) + w.reward * a.expectedReward + w.novelty * novelty(a) + w.drive * driveUrgency(a, bias) + w.habit * a.habitStrength + w.plan * (a.planBias ?? 0) - w.cost * a.cost - w.inhib * bias.inhibition - w.risk * risk(a, bias);
+  const availability = a.availability ?? 1;
+  return raw > 0 ? raw * availability : raw;
 }
 function stakes(winner, bias) {
   return clamp016(Math.max(
@@ -20130,6 +20208,7 @@ var AffordanceSynthesizer = class {
   // ── react ─────────────────────────────────────────────────────
   async react(_delta, tick, state, _context) {
     this._repertoire?.restoreComposites(state.entities);
+    this._repertoire?.restoreAvailability(state.entities);
     const schemas = this._repertoire?.schemas() ?? this._schemas;
     const skills = this._skills?.() ?? this._repertoire?.skills() ?? null;
     const valence = metric(state, "affect.valence", 0);
@@ -20255,6 +20334,7 @@ var AffordanceSynthesizer = class {
   /** Compose an Affordance from a schema + the evoking context, folding in learned priors. */
   _build(schema, tick, state, valence, energyLow, skills, ctx) {
     const skill = skills?.get(schema.id);
+    const availability = this._repertoire?.availabilityOf(schema.id) ?? 1;
     const expectedReward = skill?.valueEstimate ?? clamp017(((schema.baseValence ?? 0) + 1) / 2);
     const expectedValence = schema.baseValence ?? valence;
     const habitStrength = skill?.habitStrength ?? 0;
@@ -20276,6 +20356,7 @@ var AffordanceSynthesizer = class {
       available: this._available(schema.preconditions, (k) => metric(state, k, 0)),
       tags: schema.tags ?? [],
       ...schema.description ? { description: schema.description } : {},
+      ...availability < 1 ? { availability } : {},
       planBias: ctx.planBias,
       planId: ctx.planId,
       stepId: ctx.stepId,
@@ -20299,6 +20380,7 @@ var AffordanceSynthesizer = class {
         available: a.available,
         tags: a.tags,
         description: a.description,
+        ...a.availability !== void 0 ? { availability: a.availability } : {},
         planBias: a.planBias,
         planId: a.planId,
         stepId: a.stepId,
@@ -20502,7 +20584,10 @@ var ActionSelector = class {
         ]
       }
     });
-    if (deliberating && rupture >= RUPTURE_REVOKE_GATE) {
+    const policyRevoke = !!deliberating && refusedClassSchemas(state).has(deliberating.schema);
+    if (deliberating && (rupture >= RUPTURE_REVOKE_GATE || policyRevoke)) {
+      const reason = policyRevoke ? "policy-refusal" : "exafferent-rupture";
+      const revRupture = policyRevoke ? Math.max(rupture, RUPTURE_REVOKE_GATE) : rupture;
       if (this._bus) {
         try {
           this._bus.publish({
@@ -20510,7 +20595,7 @@ var ActionSelector = class {
             version: 1,
             sourceEngine: this.name,
             salience: 0.85,
-            payload: { from: deliberating.schema, reason: "exafferent-rupture", rupture, tick }
+            payload: { from: deliberating.schema, reason, rupture: revRupture, tick }
           });
         } catch (err) {
           logger.warn(`[selector] revoked publish failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -20519,11 +20604,12 @@ var ActionSelector = class {
       this._lastRevoked = { schema: deliberating.schema, tick };
       return {
         commands: {
-          set: [revocationEntity(deliberating.id, deliberating.schema, rupture, tick)],
+          set: [revocationEntity(deliberating.id, deliberating.schema, revRupture, tick)],
           metrics: [
             ["agency.field.eligible", eligible.length],
             ["agency.selection.busy", 1],
             ["agency.commitment.revoked", 1],
+            ...policyRevoke ? [["agency.policy.revoked", 1]] : [],
             ...stabMetrics
           ]
         }
@@ -20733,6 +20819,17 @@ function computeRupture(state, tick, senseEvents = []) {
   }
   if (maxSalience <= RUPTURE_SALIENCE_GATE) return 0;
   return clamp018((maxSalience - RUPTURE_SALIENCE_GATE) / (1 - RUPTURE_SALIENCE_GATE));
+}
+function refusedClassSchemas(state) {
+  const out = /* @__PURE__ */ new Set();
+  for (const e of state.entities.values()) {
+    if (e.type !== "agency.outcome") continue;
+    const m = e.metadata;
+    if (m?.["refused"] !== true || str2(m?.["finality"]) !== "class") continue;
+    const schema = str2(m?.["schema"]);
+    if (schema) out.add(schema);
+  }
+  return out;
 }
 function effectiveWeights(state) {
   const p = readEffectiveParams(state, "engine-config-action-selector");
@@ -21121,6 +21218,7 @@ var MotorSchemaExecutor = class {
       }
     for (const [id, e] of state.entities) {
       if (e.type !== "agency.intent" || str5(e.metadata?.["status"]) !== "awaiting") continue;
+      if (e.metadata?.["escalated"] === true) continue;
       const dispatchedAt = num3(e.metadata?.["dispatchedAt"], tick);
       if (tick - dispatchedAt < AWAIT_TIMEOUT) continue;
       const intent = readIntent(id, e.metadata);
@@ -21631,10 +21729,22 @@ var ReafferenceEngine = class {
     }
     let updates = 0;
     let discovered = 0;
+    let refused = 0;
     for (const { id, meta: m, fromState } of outcomes) {
       const schema = str6(m["schema"]);
       if (!schema) {
         if (fromState) del.push(id);
+        continue;
+      }
+      if (m["refused"] === true) {
+        const finality = str6(m["finality"]) === "class" ? "class" : "instance";
+        this._repertoire.recordRefusal(schema, finality, tick);
+        if (fromState) del.push(id);
+        const refusedIntent = str6(m["intentId"]);
+        if (refusedIntent) del.push(refusedIntent);
+        const refusedPlan = str6(m["planId"]);
+        if (refusedPlan) this._emitPlanOutcome(refusedPlan, str6(m["stepId"]), schema, false, 0, 0, tick);
+        refused++;
         continue;
       }
       const { skill, proceduralized } = this._repertoire.recordOutcome({
@@ -21663,11 +21773,14 @@ var ReafferenceEngine = class {
       }
     }
     const dropped = this._repertoire.decay(tick);
-    for (const id of dropped) {
+    for (const id of dropped.skills) {
       del.push(`agency-skill-${id}`);
       del.push(schemaEntityId(id));
     }
+    for (const id of dropped.availability)
+      del.push(availabilityEntityId(id));
     for (const e of this._repertoire.compositeEntities()) set.push(e);
+    for (const e of this._repertoire.availabilityEntities()) set.push(e);
     const skills = this._repertoire.skills();
     const habitual = [...skills.values()].filter((s) => s.habitStrength >= PROC_THRESHOLD2).length;
     metrics.push(
@@ -21677,6 +21790,7 @@ var ReafferenceEngine = class {
       ["agency.habitual.count", habitual],
       ["agency.sensory.confirmed", sensory]
     );
+    if (refused > 0) metrics.push(["agency.refused.count", refused]);
     return { commands: { set, delete: del, metrics } };
   }
   _emitProceduralized(skill, tick) {
@@ -24915,6 +25029,7 @@ function reconcileInvocation(intentId, schema, result, tick, predicted = { rewar
       mode: "external",
       tick,
       reconciled: true,
+      ...result.refused ? { refused: true, finality: result.finality ?? "instance" } : {},
       ...provenance.planId ? { planId: provenance.planId } : {},
       ...provenance.stepId ? { stepId: provenance.stepId } : {}
     }
@@ -24924,8 +25039,56 @@ function clamp0112(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
+// src/stem/policy/arbiter.ts
+var ALLOW = Object.freeze({ decision: "allow" });
+var NULL_ARBITER = {
+  name: "null",
+  evaluate() {
+    return ALLOW;
+  }
+};
+function isNullArbiter(arbiter) {
+  return !arbiter || arbiter === NULL_ARBITER;
+}
+
+// src/stem/policy/verdict.recorder.ts
+var _sinks3 = /* @__PURE__ */ new Map();
+function getVerdictRecorder(willId) {
+  return _sinks3.get(willId);
+}
+var _sources3 = /* @__PURE__ */ new Map();
+function getVerdictSource(willId) {
+  return _sources3.get(willId);
+}
+
 // src/stem/tracts/effector.controller.ts
+var ESCALATION_TTL_TICKS = 30;
 var effectorController = class {
+  /** The Policy Decision Point consulted before an invocation reaches the world.
+   *  Defaults to the no-op arbiter, so an unconfigured Will is byte-identical. */
+  _arbiter = NULL_ARBITER;
+  /**
+   * Denials queued during a step's flush, drained at the NEXT tick boundary
+   * (POLICY_REAFFERENCE P1). Keyed by willId — harness state, exactly like
+   * `pendingEffectorInvocations`; never simulation state, so it does not touch
+   * `simulation.step` determinism and is regenerated on any re-execution.
+   */
+  _pendingRefusals = /* @__PURE__ */ new Map();
+  /** Escalations awaiting their first application (mark intent + voice the ask). */
+  _newEscalations = /* @__PURE__ */ new Map();
+  /** Escalations currently held, keyed by intent id — the resolvable set. */
+  _activeEscalations = /* @__PURE__ */ new Map();
+  /** Host answers awaiting application at the next tick boundary. */
+  _pendingResolutions = /* @__PURE__ */ new Map();
+  /**
+   * Install a Policy Decision Point (POLICY_REAFFERENCE P0). Passing null
+   * restores the no-op default. The arbiter sees only the proposed act — never
+   * simulation state — and its verdict decides whether the invocation is
+   * handed to the host at all.
+   */
+  setArbiter(arbiter) {
+    this._arbiter = arbiter ?? NULL_ARBITER;
+  }
   /**
    * Update the set of allowed communication effectors at runtime via AccessGrants
    * (the permission / sense gate the senses + reply path read).
@@ -24941,6 +25104,224 @@ var effectorController = class {
    * echoes it on its result-ack, and `confirmExecution` uses it to find the intent.
    */
   bufferInvocation(instance, payload) {
+    const willId = instance.config.id;
+    const source = getVerdictSource(willId);
+    if (source) {
+      const invocation2 = toPolicyInvocation(instance, payload);
+      const record = source.verdictFor(invocation2.tick, invocation2.intentId);
+      if (record) this._applyVerdict(instance, payload, invocation2, recordToVerdict(record));
+      else this._buffer(instance, payload);
+      return;
+    }
+    if (isNullArbiter(this._arbiter)) {
+      this._buffer(instance, payload);
+      return;
+    }
+    const invocation = toPolicyInvocation(instance, payload);
+    let verdict;
+    try {
+      verdict = this._arbiter.evaluate(invocation);
+    } catch (err) {
+      logger.error(`[policy] arbiter "${this._arbiter.name}" threw for "${invocation.schema}" \u2014 failing closed:`, err);
+      return;
+    }
+    if (verdict instanceof Promise) {
+      void verdict.then(
+        (v) => this._recordAndApply(instance, payload, invocation, v),
+        (err) => logger.error(`[policy] arbiter "${this._arbiter.name}" rejected for "${invocation.schema}" \u2014 failing closed:`, err)
+      );
+      return;
+    }
+    this._recordAndApply(instance, payload, invocation, verdict);
+  }
+  /** Capture the verdict on the tape (if a recorder is attached), then enforce it. */
+  _recordAndApply(instance, payload, invocation, verdict) {
+    const sink = getVerdictRecorder(instance.config.id);
+    sink?.recordVerdict({
+      tick: invocation.tick,
+      willId: instance.config.id,
+      intentId: invocation.intentId,
+      schema: invocation.schema,
+      arbiter: this._arbiter.name,
+      decision: verdict.decision,
+      ...verdict.reasonCode ? { reasonCode: verdict.reasonCode } : {},
+      ...verdict.finality ? { finality: verdict.finality } : {},
+      ...verdict.counterfactual ? { counterfactual: verdict.counterfactual } : {},
+      timestamp: Date.now()
+    });
+    this._applyVerdict(instance, payload, invocation, verdict);
+  }
+  /**
+   * Enforce a verdict (POLICY_REAFFERENCE P1).
+   *
+   *   • allow    → hand the invocation to the world.
+   *   • deny     → queue a refusal ack, applied at the next tick boundary via
+   *                `confirmExecution` — the same lifecycle as a host rejection,
+   *                so the mind meets *world resistance*, not a permission dialog.
+   *   • escalate → raise a held escalation (POLICY_REAFFERENCE P4): the intent is
+   *                held (the executor stops timing it out), the Will voices a
+   *                first-person ask once, and a host resolution later approves
+   *                (dispatch) or denies (refuse). Unresolved, it degrades to a
+   *                refusal at ESCALATION_TTL_TICKS.
+   *
+   * P1's refusal reconciles as a plain FAILURE — safe, but the wrong learning
+   * signal (forbidden ≠ unskilled). P2 routes it to affordance AVAILABILITY
+   * instead of competence.
+   */
+  _applyVerdict(instance, payload, invocation, verdict) {
+    if (verdict.decision === "allow") {
+      this._buffer(instance, payload);
+      return;
+    }
+    const cf = verdict.counterfactual;
+    logger.info(
+      `[policy] ${verdict.decision.toUpperCase()} "${invocation.schema}" intent "${invocation.intentId}" \u2014 ${verdict.reasonCode ?? "no reason code"}` + (verdict.finality ? ` (${verdict.finality})` : "") + (cf ? ` [${cf.field}: requested ${JSON.stringify(cf.requested)}, allowed ${JSON.stringify(cf.allowed)}]` : "")
+    );
+    if (verdict.decision === "deny") {
+      const queue = this._pendingRefusals.get(instance.config.id) ?? [];
+      queue.push({
+        intentId: invocation.intentId,
+        schema: invocation.schema,
+        reasonCode: verdict.reasonCode ?? "POLICY_DENIED",
+        finality: verdict.finality ?? "instance"
+      });
+      this._pendingRefusals.set(instance.config.id, queue);
+      return;
+    }
+    const escalations = this._newEscalations.get(instance.config.id) ?? [];
+    escalations.push({
+      intentId: invocation.intentId,
+      schema: invocation.schema,
+      reasonCode: verdict.reasonCode ?? "APPROVAL_REQUIRED",
+      payload,
+      expiresAt: 0
+      // stamped when applied (we don't have the current tick here)
+    });
+    this._newEscalations.set(instance.config.id, escalations);
+  }
+  /**
+   * Record a host's answer to an escalation (POLICY_REAFFERENCE P4). Applied at
+   * the next tick boundary so every simulation-state write stays on the boundary:
+   * approve dispatches the held invocation to the world; deny refuses it. A
+   * no-op if the intent id is not (or no longer) an active escalation.
+   */
+  resolveEscalation(instance, intentId, approved) {
+    const queue = this._pendingResolutions.get(instance.config.id) ?? [];
+    queue.push({ intentId, approved });
+    this._pendingResolutions.set(instance.config.id, queue);
+  }
+  /**
+   * Apply queued policy refusals as failure acks (POLICY_REAFFERENCE P1).
+   * Called by the tick loop at the same boundary as inbound acks — BEFORE the
+   * step, stamped to this tick — so a denial reconciled here is the exact
+   * lifecycle of a host rejection that arrived between ticks.
+   */
+  applyPolicyOutcomes(instance) {
+    const tick = instance.tickCount;
+    this._applyResolutions(instance);
+    this._expireEscalations(instance, tick);
+    this._applyNewEscalations(instance, tick);
+    this._applyRefusals(instance);
+  }
+  /** Drain queued refusals into failure acks (POLICY_REAFFERENCE P1). */
+  _applyRefusals(instance) {
+    const queue = this._pendingRefusals.get(instance.config.id);
+    if (!queue || queue.length === 0) return;
+    this._pendingRefusals.set(instance.config.id, []);
+    for (const refusal of queue)
+      this.confirmExecution(instance, refusal.intentId, {
+        success: false,
+        refused: true,
+        finality: refusal.finality === "class" ? "class" : "instance",
+        description: `refused by policy: ${refusal.reasonCode} (${refusal.finality})`
+      });
+  }
+  /** Raise each newly-escalated intent (POLICY_REAFFERENCE P4): mark it held in
+   *  simulation state, voice the ask ONCE, and move it to the resolvable set. */
+  _applyNewEscalations(instance, tick) {
+    const pending = this._newEscalations.get(instance.config.id);
+    if (!pending || pending.length === 0) return;
+    this._newEscalations.set(instance.config.id, []);
+    const active = this._activeEscalations.get(instance.config.id) ?? /* @__PURE__ */ new Map();
+    for (const esc of pending) {
+      esc.expiresAt = tick + ESCALATION_TTL_TICKS;
+      this._markEscalated(instance, esc.intentId, esc.expiresAt);
+      this._voiceEscalation(instance, esc);
+      active.set(esc.intentId, esc);
+    }
+    this._activeEscalations.set(instance.config.id, active);
+  }
+  /** Apply host answers to active escalations (POLICY_REAFFERENCE P4). */
+  _applyResolutions(instance) {
+    const queue = this._pendingResolutions.get(instance.config.id);
+    if (!queue || queue.length === 0) return;
+    this._pendingResolutions.set(instance.config.id, []);
+    const active = this._activeEscalations.get(instance.config.id);
+    for (const { intentId, approved } of queue) {
+      const esc = active?.get(intentId);
+      if (!esc) continue;
+      active.delete(intentId);
+      this._clearEscalated(instance, intentId);
+      if (approved) {
+        this._buffer(instance, esc.payload);
+        logger.info(`[policy] escalation APPROVED \u2192 dispatching "${esc.schema}" intent "${intentId}"`);
+      } else {
+        this._queueRefusal(instance, esc.intentId, esc.schema, esc.reasonCode, "class");
+        logger.info(`[policy] escalation DENIED \u2192 refusing "${esc.schema}" intent "${intentId}"`);
+      }
+    }
+  }
+  /** Degrade escalations no one answered in time into instance-refusals (P4). */
+  _expireEscalations(instance, tick) {
+    const active = this._activeEscalations.get(instance.config.id);
+    if (!active || active.size === 0) return;
+    for (const [intentId, esc] of active) {
+      if (tick < esc.expiresAt) continue;
+      active.delete(intentId);
+      this._clearEscalated(instance, intentId);
+      this._queueRefusal(instance, esc.intentId, esc.schema, "ESCALATION_EXPIRED", "instance");
+      logger.info(`[policy] escalation EXPIRED \u2192 refusing "${esc.schema}" intent "${intentId}"`);
+    }
+  }
+  /** Push a refusal onto the queue drained by _applyRefusals this same tick. */
+  _queueRefusal(instance, intentId, schema, reasonCode, finality) {
+    const queue = this._pendingRefusals.get(instance.config.id) ?? [];
+    queue.push({ intentId, schema, reasonCode, finality });
+    this._pendingRefusals.set(instance.config.id, queue);
+  }
+  /** Mark the awaiting intent held: the executor stops timing it out (P4). */
+  _markEscalated(instance, intentId, expiresAt) {
+    const intent = instance.simulation.stateManager.snapshot().entities.get(intentId);
+    if (!intent || intent.type !== "agency.intent") return;
+    instance.simulation.stateManager.setEntity({
+      id: intent.id,
+      type: intent.type,
+      metadata: { ...intent.metadata ?? {}, escalated: true, escalationExpiresAt: expiresAt }
+    });
+  }
+  /** Release the hold so the executor resumes normal timeout for this intent. */
+  _clearEscalated(instance, intentId) {
+    const intent = instance.simulation.stateManager.snapshot().entities.get(intentId);
+    if (!intent || intent.type !== "agency.intent") return;
+    const meta = { ...intent.metadata ?? {} };
+    delete meta["escalated"];
+    delete meta["escalationExpiresAt"];
+    instance.simulation.stateManager.setEntity({ id: intent.id, type: intent.type, metadata: meta });
+  }
+  /** Voice the escalation as a first-person broadcast ask — once, at raise time. */
+  _voiceEscalation(instance, esc) {
+    try {
+      instance.cognition.outboxWriter.enqueue({
+        targetEntityId: "*",
+        content: escalationAsk(esc.schema, esc.reasonCode),
+        effectorName: "broadcast"
+      });
+    } catch (err) {
+      logger.warn(`[policy] escalation voice failed for "${esc.schema}": ${errMsg2(err)}`);
+    }
+  }
+  /** Queue an approved invocation for the delivery layer. */
+  _buffer(instance, payload) {
     const intentId = payload.intentId ?? "";
     instance.pendingEffectorInvocations.push({
       id: intentId,
@@ -25014,6 +25395,38 @@ var effectorController = class {
 };
 function num5(v, fallback) {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+function escalationAsk(schema, reasonCode) {
+  const meaning = ESCALATION_MEANINGS[reasonCode] ?? "I need your approval before I can do this";
+  return `I want to ${schema}, but ${meaning}. May I go ahead?`;
+}
+var ESCALATION_MEANINGS = {
+  APPROVAL_REQUIRED: "I need your approval before I can on my own",
+  WRITE_REQUIRES_APPROVAL: "it writes to the world and I shouldn't on my own",
+  PAYMENT_REQUIRES_APPROVAL: "it moves money and I must not do that unattended",
+  DEPLOY_REQUIRES_APPROVAL: "it ships something and needs a human to sign off"
+};
+function errMsg2(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+function recordToVerdict(record) {
+  return {
+    decision: record.decision,
+    ...record.reasonCode ? { reasonCode: record.reasonCode } : {},
+    ...record.finality ? { finality: record.finality } : {},
+    ...record.counterfactual ? { counterfactual: record.counterfactual } : {}
+  };
+}
+function toPolicyInvocation(instance, payload) {
+  return {
+    willId: instance.config.id,
+    intentId: payload.intentId ?? "",
+    schema: payload.schema ?? "",
+    parameters: payload.parameters ?? {},
+    ...typeof payload.targetEntityId === "string" ? { targetEntityId: payload.targetEntityId } : {},
+    ...typeof payload.description === "string" ? { description: payload.description } : {},
+    tick: payload.tick ?? 0
+  };
 }
 
 // src/stem/tracts/sensory.controller.ts
@@ -25817,6 +26230,15 @@ var WillStem = class {
   confirmEffectorExecution(id, invocationId, result) {
     this._effector.confirmExecution(this._get(id), invocationId, result);
   }
+  /**
+   * Resolve a policy escalation the Will raised (POLICY_REAFFERENCE P4).
+   * `approved` dispatches the held invocation to the world; otherwise it is
+   * refused. Applied at the next tick boundary. `invocationId` is the awaiting
+   * `agency.intent` id the escalation ask referenced.
+   */
+  resolveEscalation(id, invocationId, approved) {
+    this._effector.resolveEscalation(this._get(id), invocationId, approved);
+  }
   // ── Messaging / outbox (11.1) ────────────────────────────────────────────
   // Delegates to OutboxController (R5-c). `_get(id)` validates the Will exists
   // and supplies the WillInstance; the outbox ops touch only instance fields.
@@ -25947,6 +26369,7 @@ var WillStem = class {
         outbox: this._outbox,
         sensory: this._sensory
       });
+      this._effector.applyPolicyOutcomes(instance);
       await instance.simulation.step(1);
       instance.tickCount++;
       instance.lastTickAt = /* @__PURE__ */ new Date();

@@ -5721,6 +5721,9 @@ declare class SchemaRepertoire {
     private _skills;
     /** Tracks which templates were learned at runtime (vs innate) so decay can forget them. */
     private _learned;
+    /** Availability layer (P2): schema → { value 0..1, lastRefusedTick }. Empty until
+     *  a refusal lands — a never-refused Will writes nothing here (byte-identical). */
+    private _availability;
     constructor(seed?: MotorSchema[]);
     schemas(): MotorSchema[];
     getSchema(id: string): MotorSchema | undefined;
@@ -5735,6 +5738,23 @@ declare class SchemaRepertoire {
     registerExternal(schema: MotorSchema): void;
     skills(): ReadonlyMap<string, LearnedSkill>;
     getSkill(id: string): LearnedSkill | undefined;
+    availability(): ReadonlyMap<string, {
+        value: number;
+        lastRefusedTick: number;
+    }>;
+    /**
+     * How available a schema is right now, 0..1. Absent from the ledger ⇒ 1
+     * (fully available — the common case). This is the ONLY value the
+     * AffordanceSynthesizer reads; it never touches competence.
+     */
+    availabilityOf(schema: string): number;
+    /**
+     * Fold a policy refusal into the availability layer (NOT competence). A
+     * `class` refusal cuts availability hard; an `instance` refusal dents it
+     * lightly. Multiplicative so repeated refusals compound toward — but never
+     * reach — zero, keeping re-probe alive.
+     */
+    recordRefusal(schema: string, finality: 'class' | 'instance', tick: number): number;
     /**
      * Fold one outcome into the schema's learned skill. Returns the updated skill
      * and whether it just crossed the proceduralization threshold this update.
@@ -5744,11 +5764,16 @@ declare class SchemaRepertoire {
         proceduralized: boolean;
     };
     /**
-     * Forgetting curve over the competence layer. Skills unused for IDLE_TICKS
-     * lose habit; learned composites that fall below DROP_HABIT are dropped
-     * entirely (template + skill). Returns the schema ids that were forgotten.
+     * Forgetting curve over the competence layer, plus availability recovery.
+     * Skills unused for IDLE_TICKS lose habit; learned composites below DROP_HABIT
+     * are dropped entirely (template + skill). Availability entries climb back
+     * toward 1 and are dropped once fully recovered. Returns the ids that were
+     * removed from each layer so their mirrored state entities can be deleted.
      */
-    decay(tick: number): string[];
+    decay(tick: number): {
+        skills: string[];
+        availability: string[];
+    };
     /** Learned composite templates + all skills above a confidence floor. */
     export(minHabit?: number): {
         composites: MotorSchema[];
@@ -5768,6 +5793,12 @@ declare class SchemaRepertoire {
      * Mirrors GoalManager._syncFromStateGoals.
      */
     restoreComposites(entities: ReadonlySimulationState['entities']): void;
+    /** Availability ledger encoded as `agency.availability` state entities (P2).
+     *  Empty until a refusal lands, so the quiet path writes nothing. */
+    availabilityEntities(): EntityInput[];
+    /** Rehydrate the availability ledger from state after a restore. Idempotent;
+     *  keeps whichever value is more restrictive so a concurrent refusal isn't lost. */
+    restoreAvailability(entities: ReadonlySimulationState['entities']): void;
 }
 
 declare class AccessGrants {
@@ -7695,6 +7726,13 @@ declare class WillStem {
         description: string;
         metrics?: Record<string, number>;
     }): void;
+    /**
+     * Resolve a policy escalation the Will raised (POLICY_REAFFERENCE P4).
+     * `approved` dispatches the held invocation to the world; otherwise it is
+     * refused. Applied at the next tick boundary. `invocationId` is the awaiting
+     * `agency.intent` id the escalation ask referenced.
+     */
+    resolveEscalation(id: string, invocationId: string, approved: boolean): void;
     /**
      * Confirm a message was received by the target entity. Writes a
      * message.delivery percept ("ear hears the word you spoke") and updates the

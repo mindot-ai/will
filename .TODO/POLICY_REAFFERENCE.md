@@ -314,15 +314,29 @@ shape of its own permissions* rather than re-probing the wall (P1+P2). What
 remains is refinement, not foundation: P3 (refusal as rupture), P4 (escalate as
 speech act), P5 (HELM adapter), and the deferred per-params envelope narrowing.
 
-### P3 — Refusal as rupture (reuse P4 machinery)
-- [ ] Map `severity` → rupture. At/above `RUPTURE_REVOKE_GATE` (0.7) write the
-      existing `agency.revocation` tombstone: the Will **lets go** of a
-      commitment it was still deliberating, no successor committed.
-- [ ] Provenance: a refusal is self-caused (carries `intentId`) ⇒ **reafferent by
-      construction**. Assert it can never be counted as exafferent salience —
-      the mind must not be able to rupture itself with its own boundary.
-- [ ] Tests: high-severity refusal revokes a `deliberating` intent T+1;
-      low-severity does not; refusal contributes zero exafferent rupture.
+### P3 — Refusal as rupture (reuse P4 machinery) ⟶ done (2026-07-21)
+- [x] **`finality` IS the severity signal** (no separate numeric field — keeps the
+      vocabulary identical to the HELM proposal). A `class` refusal of the schema
+      the Will is currently `deliberating` writes the existing `agency.revocation`
+      tombstone (`ActionSelector`, extended P4 block): the Will lets go, no
+      successor committed. An `instance` refusal ("not with those params") never
+      revokes — a still-deliberating attempt may yet succeed.
+- [x] **The invariant, by construction.** A refusal is an `agency.outcome`, never a
+      `percept`; `computeRupture` reads only `provenance:'exafferent'` percepts, so
+      a refusal contributes ZERO exafferent rupture — the mind cannot rupture
+      itself with its own boundary. Policy revocation is a SEPARATE, explicit
+      trigger (`refusedClassSchemas`) with its own reason code `'policy-refusal'`
+      (vs `'exafferent-rupture'`) and its own metric `agency.policy.revoked`; the
+      exafferent scalar, switch-cost softening, and `situation.stability` are all
+      untouched. Quiet path (no refusal) is byte-identical — the scan runs only
+      when an intent is deliberating and writes nothing when the set is empty.
+- [x] Tests (`tests/unit/policy.rupture.test.ts`, 5): a class refusal of the
+      deliberating schema tombstones it + emits `agency.policy.revoked` + labels
+      the event `policy-refusal`; an instance refusal does not; a class refusal of
+      a *different* schema does not; a refused outcome erodes no stability and
+      fires no rupture event (zero exafferent contribution); the exafferent path
+      still revokes, labelled distinctly. Full suite **1144 passed / 2 skipped
+      (172 files)**, replay-equivalence green. Typecheck clean.
 
 ### P4 — ESCALATE is a speech act
 - [ ] ProactiveCommunicator voices the ask in first person, carrying the

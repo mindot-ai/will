@@ -294,19 +294,26 @@ export class ActionSelector implements CognitiveEngine {
       }
     })
 
-    // ── Commitment revocation (EXAFFERENCE P4) ───────────────────
-    // A hard rupture doesn't just soften the switch cost — it lets go of a
-    // commitment still being weighed. We can't delete the `deliberating` intent
-    // here (Deliberation runs after us and would resurrect it set-after-delete),
-    // so we drop a tombstone the Deliberation engine + Executor honor next tick.
-    // No successor is committed — the field re-forms and the next tick selects.
-    if( deliberating && rupture >= RUPTURE_REVOKE_GATE ){
+    // ── Commitment revocation (EXAFFERENCE P4 · POLICY_REAFFERENCE P3) ──
+    // A commitment still being weighed is let go for either of two DISTINCT
+    // reasons: a hard exafferent rupture (the world surprised us), or a class
+    // policy refusal of the very schema we're deliberating (the boundary just
+    // declared it forbidden — deliberating our way into it is wasted). The two
+    // never mix: the refusal is an outcome, not a percept, so it contributes
+    // ZERO to the exafferent scalar. Either way we can't delete the
+    // `deliberating` intent here (Deliberation runs after us and would resurrect
+    // it set-after-delete), so we drop a tombstone the Deliberation engine +
+    // Executor honor next tick. No successor is committed — the field re-forms.
+    const policyRevoke = !!deliberating && refusedClassSchemas( state ).has( deliberating.schema )
+    if( deliberating && ( rupture >= RUPTURE_REVOKE_GATE || policyRevoke ) ){
+      const reason     = policyRevoke ? 'policy-refusal' : 'exafferent-rupture'
+      const revRupture = policyRevoke ? Math.max( rupture, RUPTURE_REVOKE_GATE ) : rupture
       if( this._bus ){
         try {
           this._bus.publish({
             type: 'agency.commitment.revoked', version: 1, sourceEngine: this.name,
             salience: 0.85,
-            payload: { from: deliberating.schema, reason: 'exafferent-rupture', rupture, tick },
+            payload: { from: deliberating.schema, reason, rupture: revRupture, tick },
           })
         }
         catch( err ){ logger.warn(`[selector] revoked publish failed: ${ err instanceof Error ? err.message : String( err ) }`) }
@@ -314,11 +321,12 @@ export class ActionSelector implements CognitiveEngine {
       this._lastRevoked = { schema: deliberating.schema, tick }   // Channel-B: flavor the next deliberation
       return {
         commands: {
-          set: [ revocationEntity( deliberating.id, deliberating.schema, rupture, tick ) ],
+          set: [ revocationEntity( deliberating.id, deliberating.schema, revRupture, tick ) ],
           metrics: [
             [ 'agency.field.eligible', eligible.length ],
             [ 'agency.selection.busy', 1 ],
             [ 'agency.commitment.revoked', 1 ],
+            ...( policyRevoke ? [ [ 'agency.policy.revoked', 1 ] as [ string, number ] ] : [] ),
             ...stabMetrics,
           ],
         },
@@ -630,6 +638,30 @@ function computeRupture(
 
   if( maxSalience <= RUPTURE_SALIENCE_GATE ) return 0
   return clamp01( ( maxSalience - RUPTURE_SALIENCE_GATE ) / ( 1 - RUPTURE_SALIENCE_GATE ) )
+}
+
+/**
+ * POLICY_REAFFERENCE P3 — schemas hit by a CLASS-final policy refusal visible in
+ * frozen state this tick (a refused `agency.outcome` lives exactly one tick).
+ *
+ * A refusal is an `agency.outcome`, never a `percept`, so it can NEVER feed
+ * computeRupture: the mind cannot rupture itself with its own boundary. This is
+ * a SEPARATE, explicit trigger — "the boundary just declared this forbidden, let
+ * go of any commitment I'm still weighing toward it" — distinct from a
+ * world-surprise exafferent rupture, and it carries its own revocation reason.
+ * Only `class` finality qualifies: an `instance` refusal means "not with those
+ * parameters", not "never", so a still-deliberating attempt may yet succeed.
+ */
+function refusedClassSchemas( state: ReadonlySimulationState ): Set<string> {
+  const out = new Set<string>()
+  for( const e of state.entities.values() ){
+    if( e.type !== 'agency.outcome') continue
+    const m = e.metadata
+    if( m?.['refused'] !== true || str( m?.['finality'] ) !== 'class') continue
+    const schema = str( m?.['schema'] )
+    if( schema ) out.add( schema )
+  }
+  return out
 }
 
 /**

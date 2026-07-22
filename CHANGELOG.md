@@ -2,6 +2,61 @@
 
 ## Unreleased
 
+## 0.7.0 — 2026-07-22 · the mind learns may from can
+
+Policy reafference: a Will can now be given a boundary — a policy deciding what
+it may enact — and the boundary is *felt*, never announced. A refusal arrives
+through the same channel as every other consequence of acting, so the mind that
+meets it does what minds do with consequences: it learns. What it may not do
+fades from its reach without touching what it knows how to do; a hard "never"
+makes it let go of what it was still weighing; and when the answer is "not
+without asking," it holds the act and asks. The distinction every mind acquires
+early — *can* is ability, *may* is permission — now grows the same way
+everything else in a Will grows: by living it.
+
+- **The boundary is met as world resistance, never as a dialog.** Enforcement
+  lives in the stem, below the SDK, at the one tract every outward effect
+  already crosses: a Policy Decision Point (any provider — a local declarative
+  rule table ships; the seam is provider-agnostic) judges each host-bound
+  invocation, and a denial returns as a host-rejection-shaped outcome at the
+  next tick boundary — the exact lifecycle of a world that said no. The mind
+  never sees a permission prompt; it experiences a body that cannot do the
+  thing. Every verdict is captured on a willId-keyed tape, so replay never
+  re-consults a live (or absent) policy engine.
+
+- **Refusal teaches availability, never incompetence.** A refused action does
+  not touch the skill: value, habit, and parameter priors stay exactly as
+  earned, because *forbidden* must not be learned as *unskilled*. Instead a new
+  availability layer — kept strictly apart from competence — absorbs the
+  refusal: the ability competes more weakly for the body (a `class` "never"
+  cuts hard, an `instance` "not like that" barely dents), yet is never removed
+  from the field, so the mind still occasionally reaches — and a policy that
+  has since relaxed is re-discovered. Left unrefused, availability quietly
+  climbs back to open.
+
+- **A hard "never" is let go, not argued with.** When the boundary declares the
+  very schema the mind is deliberating forbidden outright, the deliberation is
+  released — the same tombstone machinery the world's own ruptures use, with
+  its own reason (`policy-refusal`) and no successor committed: the field
+  re-forms and the next tick chooses afresh. And by construction a refusal
+  contributes nothing to exafferent rupture — **a mind cannot be shaken by its
+  own boundary**, only informed by it.
+
+- **When the answer is "ask first," the mind asks.** An escalated action is
+  held — the executor stops the clock on it — while the Will voices a
+  first-person ask, once. An approval releases the very same intent to the
+  world; a denial refuses it; silence degrades to a refusal after a window
+  sized for a human to answer. The ask is a plain voice for now (the mind's own
+  authored voice is designed in `.TODO/ESCALATION_VOICE.md`); the holding, the
+  asking, and the learning from the answer are all real.
+
+Throughout: a Will with no policy configured is byte-identical to one built
+before the boundary existed — the seam ships dark, and every phase kept replay
+equivalence, determinism, and snapshot/restore green. The verdict vocabulary
+(`finality`, `counterfactual`) deliberately matches the receipt-field proposal
+made upstream to external policy engines, so one contract serves both sides of
+the collaboration.
+
 ## 0.6.0 — 2026-07-20 · the mind knows its own echo
 
 Exafference: the split between *what I did* and *what happened to me*. Every

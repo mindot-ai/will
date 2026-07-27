@@ -1120,6 +1120,77 @@ const graphs: Graph[] = [
       { from: 'select', to: 'revoke', label: 'honored next tick' },
     ],
   },
+
+  // ═══ 24 · THE JOINT RFC (HELM × Will) ═════════════════════
+  {
+    file: 'policy-joint-rfc.svg',
+    title: 'Denials that teach — the HELM × Will seam',
+    subtitle: 'The joint RFC in one picture: a denial carries WHY it is final and WHAT would have worked; four receipt values become four distinct fates in the mind — and competence is never one of them',
+    width: 1360, height: 880,
+    legend: [ 'world', 'infra', 'agency' ],
+    groups: [
+      { x: 44,   y: 118, w: 236,  h: 460, label: 'producer — HELM',   cat: 'world' },
+      { x: 300,  y: 118, w: 236,  h: 460, label: 'the wire',          cat: 'infra' },
+      { x: 556,  y: 118, w: 250,  h: 460, label: 'the seam — will',   cat: 'infra' },
+      { x: 826,  y: 118, w: 250,  h: 560, label: 'four fates — 3 deny · 1 ask',       cat: 'infra' },
+      { x: 1096, y: 118, w: 224,  h: 560, label: 'what the mind learns',              cat: 'agency' },
+      { x: 44,   y: 700, w: 1276, h: 120, label: 'the invariants — what a refusal can never do', cat: 'agency' },
+    ],
+    nodes: [
+      // producer
+      { id: 'rule',     x: 62,   y: 190, w: 200, label: 'The rule that fired',  sub: 'one frozen policy snapshot',        cat: 'world' },
+      { id: 'receipt',  x: 62,   y: 340, w: 200, label: 'Signed receipt',       sub: 'the decision, with evidence',       cat: 'world' },
+      { id: 'profile',  x: 62,   y: 490, w: 200, label: 'Opt-in per profile',   sub: 'absent when off — presence speaks', cat: 'world' },
+      // the wire
+      { id: 'finality', x: 318,  y: 190, w: 200, label: 'finality',             sub: 'WHY it is final — four values',     cat: 'infra' },
+      { id: 'counter',  x: 318,  y: 340, w: 200, label: 'counterfactual',       sub: 'WHAT would have worked',            cat: 'infra' },
+      { id: 'never',    x: 318,  y: 490, w: 200, label: 'never enumerations',   sub: 'an allowlist is an infra map',      cat: 'infra' },
+      // the seam
+      { id: 'adapter',  x: 576,  y: 190, w: 210, label: 'HELM adapter',         sub: 'receipt → Verdict · four arms',     cat: 'infra' },
+      { id: 'pep',      x: 576,  y: 340, w: 210, label: 'effectorController — PEP', sub: 'the one tract every effect crosses', cat: 'infra' },
+      { id: 'tape',     x: 576,  y: 490, w: 210, label: 'Verdict tape',         sub: 'recorded at the tick it arrived',   cat: 'infra' },
+      // four fates
+      { id: 'forbid',   x: 846,  y: 160, w: 210, label: 'class_forbidden',      sub: 'this act, never — let go of it',    cat: 'infra' },
+      { id: 'ungrant',  x: 846,  y: 300, w: 210, label: 'ungranted',            sub: 'no grant — held, not denied',       cat: 'infra' },
+      { id: 'param',    x: 846,  y: 440, w: 210, label: 'instance_parameter',   sub: 'not that much — this much',         cat: 'infra' },
+      { id: 'context',  x: 846,  y: 580, w: 210, label: 'instance_context',     sub: 'not about the act at all',          cat: 'infra' },
+      // what the mind learns
+      { id: 'avail',    x: 1112, y: 160, w: 192, label: 'Availability — may',   sub: 'cut hard · envelopes erased',       cat: 'agency' },
+      { id: 'voice',    x: 1112, y: 300, w: 192, label: 'The ask — voiced once', sub: 'approve ⇒ the same intent resumes', cat: 'agency' },
+      { id: 'envelope', x: 1112, y: 440, w: 192, label: 'Envelope — how much',  sub: 'clamps habit · informs thought',    cat: 'agency' },
+      { id: 'nodelta',  x: 1112, y: 580, w: 192, label: 'No delta at all',      sub: 'record it · free it · touch nothing', cat: 'agency' },
+      // the invariants
+      { id: 'outcome',  x: 62,   y: 730, w: 200, label: 'Real outcomes',        sub: 'the world actually ran it',         cat: 'world' },
+      { id: 'skill',    x: 330,  y: 730, w: 210, label: 'LearnedSkill — can',   sub: 'only these ever write here',        cat: 'agency', glow: true },
+      { id: 'replay',   x: 596,  y: 730, w: 210, label: 'Byte-identical replay', sub: 'tape re-fed · PDP never re-asked', cat: 'infra' },
+      { id: 'probe',    x: 846,  y: 730, w: 210, label: 'Re-probe survives',    sub: 'a relaxed policy is rediscovered',  cat: 'agency' },
+      { id: 'quiet',    x: 1112, y: 730, w: 192, label: 'No policy ⇒ no trace', sub: 'identical to a pre-policy mind',    cat: 'infra' },
+    ],
+    edges: [
+      { from: 'rule',     to: 'receipt' },
+      { from: 'profile',  to: 'receipt',  dash: true, label: 'discloses', fromSide: 't', toSide: 'b' },
+      { from: 'receipt',  to: 'finality', fromSide: 'r', toSide: 'l' },
+      { from: 'receipt',  to: 'counter',  fromSide: 'r', toSide: 'l' },
+      { from: 'never',    to: 'counter',  dash: true, label: 'constrains', fromSide: 't', toSide: 'b' },
+      { from: 'finality', to: 'adapter' },
+      { from: 'counter',  to: 'adapter',  dash: true, at: 0.35 },
+      { from: 'adapter',  to: 'pep',      label: 'Verdict' },
+      { from: 'pep',      to: 'tape',     dash: true, label: 'every verdict' },
+      // The axis collapse: HELM sends four finality values; only `ungranted`
+      // becomes a third DECISION here (held, not denied) — so it is the one
+      // arm worth labelling. The group title carries the 3-deny/1-ask split.
+      { from: 'pep',      to: 'forbid',   fromSide: 'r', toSide: 'l' },
+      { from: 'pep',      to: 'ungrant',  fromSide: 'r', toSide: 'l' },
+      { from: 'pep',      to: 'param',    fromSide: 'r', toSide: 'l' },
+      { from: 'pep',      to: 'context',  fromSide: 'r', toSide: 'l' },
+      { from: 'forbid',   to: 'avail',    fromSide: 'r', toSide: 'l' },
+      { from: 'ungrant',  to: 'voice',    fromSide: 'r', toSide: 'l' },
+      { from: 'param',    to: 'envelope', fromSide: 'r', toSide: 'l' },
+      { from: 'context',  to: 'nodelta',  fromSide: 'r', toSide: 'l' },
+      { from: 'outcome',  to: 'skill' },
+      { from: 'tape',     to: 'replay',   label: 'recorded', fromSide: 'b', toSide: 't' },
+    ],
+  },
 ]
 
 for( const g of graphs ){

@@ -13,6 +13,34 @@
 >
 > Companion reading: `POLICY_REAFFERENCE.md` (P2 — the availability layer this
 > refines; the scope decision it defers to here is recorded there).
+>
+> ---
+>
+> **UPDATE 2026-07-27 — the upstream proposal was ACCEPTED**, returned as the
+> bilateral joint RFC *"Denials That Teach"* (HELM × Will v0.1). HELM ships
+> `counterfactual` on denial receipts, opt-in per policy profile. This item is no
+> longer speculative: it is **the consumer half of a shipped wire field**, and
+> Will is named the reference consumer in HELM's conformance packs. Three
+> consequences for the design below:
+>
+> 1. **`oneOf` is dropped from the HELM path.** Counterfactuals carry *scalar
+>    bounds and required-capability names only — never enumerations*, because an
+>    allowlist is an infrastructure map and a denial that returns it is an
+>    exfiltration primitive. `oneOf` survives only for the local
+>    `RuleTableArbiter`, which is trusted and in-process. The HELM-sourced
+>    envelope is effectively `{ max?, min? }`.
+> 2. **Only `instance_parameter` feeds this layer.** Under the four-value enum
+>    ([[POLICY_REAFFERENCE]] P5), `instance_context` must touch nothing and
+>    `class_forbidden` **erases** stored envelopes — which settles the open
+>    question at the bottom of this file. A required-capability counterfactual is
+>    not envelope knowledge at all; it rides `ungranted` and makes the escalation
+>    ask *specific* ("I need `fs:write`") rather than generic.
+> 3. **Direction is an open upstream ask.** A scalar `allowed` alone cannot
+>    distinguish a ceiling from a floor; a learner that guesses wrong clamps the
+>    wrong way, which is worse than not learning. We asked for either a
+>    `relation: 'max'|'min'|'eq'` field or a guarantee that `requested` is always
+>    present (so direction is recoverable by comparison). **P1 below must not be
+>    implemented until this is settled** — it decides the fold.
 
 ---
 
@@ -75,7 +103,9 @@ it (the world just proved the bound moved).
 
 - **Store:** per-`(schema, field)` bounds in the repertoire —
   `{ max?, min?, oneOf?, lastRefusedTick }` — folded from counterfactuals
-  (numeric `allowed` ⇒ max/min by comparison with `requested`; array ⇒ oneOf).
+  (numeric `allowed` ⇒ max/min by `relation` if upstream supplies it, else by
+  comparison with `requested`; array ⇒ oneOf, **local arbiter only** — HELM never
+  sends enumerations, see the 2026-07-27 update).
   Same lifecycle discipline as availability: empty until fed (byte-identical
   quiet path), slow decay toward open so a relaxed policy is re-discoverable,
   entry dropped when fully open, mirror + restore entities.
@@ -117,9 +147,13 @@ it (the world just proved the bound moved).
 
 - **NOT in scope:** local pre-refusal (the arbiter remains the law); per-target
   envelopes (field-level only, first); surfacing envelopes in Studio.
-- **Open question:** should a `class` refusal also *erase* stored envelopes for
-  the schema (a "never" makes bounds moot), or leave them to decay? Leaning
-  erase — cheaper than carrying dead knowledge.
+- ~~**Open question:** should a `class` refusal also *erase* stored envelopes?~~
+  **SETTLED 2026-07-27 — erase.** The joint RFC's §4 makes it normative
+  consumer behavior for `class_forbidden` ("erase stored envelopes; stop
+  probing"), which matches where we were leaning anyway.
+- **Prerequisite:** [[POLICY_REAFFERENCE]] **P5** (the four-value taxonomy)
+  lands first — this layer must be fed by `instance_parameter` alone, and that
+  value does not exist until P5 widens the enum.
 
 ## Related
 

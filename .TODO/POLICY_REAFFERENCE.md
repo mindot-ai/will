@@ -21,8 +21,9 @@
 > byte-identical throughout. Verdict vocabulary (`finality` + `counterfactual`,
 > no numeric severity) is deliberately identical to the HELM RFC's proposal.
 >
-> **Open:** **P5** (HELM adapter — gated on the collaboration track; the local
-> `RuleTableArbiter` already exercises the interface). **Deferred refinements:**
+> **Open:** **P5** (the four-value finality taxonomy — *unblocked*, no HELM
+> dependency) and **P6** (HELM transport adapter — gated on the schema diff).
+> **Deferred refinements:**
 > facet-authored escalation voice → [[ESCALATION_VOICE]] (`.TODO/ESCALATION_VOICE.md`);
 > counterfactual-driven envelope narrowing → [[ENVELOPE_NARROWING]]
 > (`.TODO/ENVELOPE_NARROWING.md`); escalation-payload persistence across
@@ -43,6 +44,29 @@
 > collaboration track with its builders. **Nothing here hard-depends on HELM** —
 > the seam is provider-agnostic by construction (§P0). HELM is the first adapter,
 > not the interface.
+>
+> **Collaboration status (2026-07-27): the proposal was accepted and returned as
+> a bilateral joint RFC** — *"Denials That Teach"* (HELM × Will v0.1, Ivan /
+> Fabrice). HELM ships the **producer** half (both receipt fields, opt-in per
+> policy profile, absent when disabled); Will is named the **reference consumer**
+> in HELM's conformance packs. Two things land on us, and both are recorded
+> below as **P5**:
+>
+> 1. **`finality` widens 2 → 4 values**, mechanically derived from the rule that
+>    fired: `class_forbidden` · `ungranted` · `instance_parameter` ·
+>    `instance_context`. Three map onto paths we already shipped; the fourth is
+>    new (see below).
+> 2. **`counterfactual` carries scalar bounds and required-capability names
+>    ONLY — never enumerations**, because an allowlist is an infrastructure map
+>    and a denial that returns it is an exfiltration primitive. This deletes the
+>    `oneOf` branch from [[ENVELOPE_NARROWING]]'s HELM-sourced path.
+>
+> Reply drafted at `Will-HELM/WILL_REPLY_TO_HELM.md` (answers their §7; asks back
+> for counterfactual *direction* — a `relation` field or a `requested` guarantee
+> — since a scalar bound alone cannot distinguish a ceiling from a floor, and a
+> learner that guesses wrong clamps the wrong way).
+> **The picture:** `docs/graphs/policy-joint-rfc.svg` — producer, seam, and the
+> four consumer fates in one diagram.
 
 ---
 
@@ -404,16 +428,65 @@ so it does not survive a snapshot/restore — a restored escalation would expire
 a refusal rather than resume. Both are acceptable for the mechanism; neither
 changes the lifecycle.
 
-### P5 — HELM adapter (external PDP) — gated on the collaboration track
+### P5 — The four-value finality taxonomy — UNBLOCKED (no HELM dependency)
+
+The joint RFC's enum is a **vocabulary**, not a transport. It can be adopted
+entirely against the local `RuleTableArbiter`, and it should be — it is what
+makes the P6 adapter a four-arm switch instead of a semantic negotiation.
+
+- [ ] **Widen `DenialFinality`** to HELM's spelling on the deny branch:
+      `'class_forbidden' | 'instance_parameter' | 'instance_context'`.
+      `ungranted` does **not** join it — it maps to our existing
+      `decision: 'escalate'` (see the axis note below). `finalityOf()`'s
+      conservative default becomes `'instance_parameter'`.
+- [ ] **`instance_context` — the new fate: touch NOTHING.** A context/taint
+      refusal is not about the ability, so denting its availability teaches a
+      lesson the policy never taught. Record the verdict, free the awaiting
+      intent, signal the plan step, and stop — no availability delta, no
+      envelope, no competence. This is a fourth branch in the ReafferenceEngine's
+      refused path, and it **corrects current behaviour**: today every instance
+      denial dents availability by 0.12 regardless of cause.
+- [ ] **Fix the arbiter-fault path (conformance S9 — we currently fail it).**
+      A sync throw / async rejection fails closed correctly (the effect is
+      withheld, `effector.controller.ts:137`) but queues no refusal, so the held
+      intent expires at `AWAIT_TIMEOUT` and reconciles as a **plain failure** —
+      landing on competence. A PDP outage must never teach a mind it is
+      unskilled. Queue an `instance_context`-shaped refusal instead (touch
+      nothing), reason code `ARBITER_UNAVAILABLE`.
+- [ ] Tests: each of the four values drives exactly its own fate and no other
+      (the S1–S9 matrix, minus the transport-dependent ones); `instance_context`
+      leaves availability, envelopes and `LearnedSkill` all provably untouched;
+      an arbiter fault records no competence; quiet path still byte-identical.
+
+**The axis note (recorded, because it will come up again).** HELM is fail-closed,
+so every receipt is allow-or-deny and `ungranted` is a *denial shape* meaning "a
+human could grant this." Will keeps a third **decision** because an escalation is
+not a denial here: the intent is HELD, the timeout clock stops, and an approval
+dispatches **the same intent id** — it is the original reach resumed, not a
+retry. Three of HELM's values are `<scope>_<reason>`; `ungranted` is neither, and
+that asymmetry is the tell that it lives on a different axis. We proposed a
+`resolvable: true` flag orthogonal to a three-value enum (it would also express
+"bound exceeded, but an operator could raise it" — inexpressible today); if
+upstream declines, the four-arm mapping works unchanged.
+
+### P6 — HELM adapter (external PDP) — gated on the schema diff
 - [ ] Adapter mapping `agency.invocation` → HELM's `WorkstationDecisionRequest`,
-      and `WorkstationPolicyDecisionReceipt` → `Verdict`.
+      and `WorkstationPolicyDecisionReceipt` → `Verdict`. With P5 done this is a
+      four-arm switch plus transport.
 - [ ] Transport decision (subprocess CLI vs. `helm-ai-kernel serve` HTTP).
       **Must stay optional** — the OSS engine never hard-depends on a Go binary.
 - [ ] Receipts flow to the record stream, not to cognition (determinism rule 4);
       this is where this document meets `RECORD_ANCHORING.md`.
-- [ ] Upstream asks tracked separately (async correlated verdicts, graded +
-      counterfactual denials, a non-workstation effect taxonomy, a documented
-      deterministic mode). See the collaboration notes, not this file.
+- [ ] **Bilateral-determinism demo** (the joint RFC's §5 centerpiece): a seeded
+      Will against a frozen policy snapshot, replayed tick-for-tick. Our half
+      already holds — verdicts are taped and re-fed, the arbiter is never
+      re-consulted on replay; HELM commits to computing the counterfactual from
+      the same snapshot as the verdict.
+- [ ] **Conformance fixtures S1–S9** contributed upstream (seeded mind + frozen
+      policy snapshot + expected state deltas). S6 (*a relaxed policy is
+      rediscovered without a restart*) is the one worth arguing hardest for: a
+      consumer that zeroes a forbidden ability permanently degenerates back into
+      a static blocklist.
 
 ---
 

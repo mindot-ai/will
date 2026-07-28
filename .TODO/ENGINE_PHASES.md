@@ -1,4 +1,10 @@
-# Roadmap: Self-Aware Simulated Mind Framework
+# Engine Phases: Self-Aware Simulated Mind Framework
+
+> **Internal engineering history.** The phase-by-phase build record of the
+> engine, kept for provenance. The forward-looking, community-facing roadmap is
+> [ROADMAP.md](../ROADMAP.md). Commercial phases — billing, pricing, margins,
+> enterprise packaging — are tracked outside this repository and must not be
+> re-added here: `.TODO/` is fully git-tracked and therefore public.
 
 ## Overview
 
@@ -35,9 +41,8 @@ entity that persists across time.
 | 13.6 | MCP + A2A | **0%** | Not started. |
 | 13.7 | Comm-layer hardening | **~50%** | ack + delivered endpoints exist; ChannelRouter partial. |
 | 13.8 | 5 Senses | **~85%** | Audition full; 4 shells; conversation pipeline rebuilt; API live. |
-| 14 | Billing & monetization | **~80%** | LemonSqueezy + credits + ledger live. Paystack deferred. |
-| 15 | Self-hosted LLM | **~5%** | Tracker prices DeepSeek; no GPU deploy. |
-| 16 / 17 | Research / Enterprise | **0%** | Correctly post-revenue. |
+| 14 / 15 / 17 | Commercial phases | — | Tracked outside this repository. |
+| 16 | Research platform | **0%** | Publication + community commitments; correctly post-revenue. |
 | 18 | Cognitive quality | **~15%** | pgvector (3.2) landed early; rest deferred. |
 | 19 | Architecture evolution (event bus, GWT, active inference) | **~35%, built early** | See callout below. |
 
@@ -553,7 +558,7 @@ The fitness function is derived from the agent's identity values:
 - [ ] `POST /wills/:id/tune` — manually adjust engine parameters (admin)
 
 ### 13.2 API Infrastructure
-- [ ] Authentication via API keys (Stripe integration)
+- [ ] Authentication via API keys (issued on subscription activation)
 - [ ] Rate limiting per key per tier
 - [ ] Usage metering (ticks, tokens, storage, API calls)
 - [ ] Webhook events: `will.created`, `will.tick_completed`, `will.cost_threshold`
@@ -880,78 +885,20 @@ matching, no session continuity, zero durability.
 
 ---
 
-## Phase 14: Billing & Monetization 🔄 ~80%
+## Phases 14–15: Commercial
 
-> See `MONETIZATION.md` for full pricing strategy. **Plans re-baselined to v3
-> (2026-06-20): Starter $19 / Pro $199 / Enterprise $1,500+ — no free plan.**
-
-### 14.1 Billing Provider Strategy 🔄
-- [x] **Primary: Lemon Squeezy** — Merchant of Record for global customers
-  - Handles VAT/GST, sales tax, chargebacks, invoicing
-  - Pays out via bank transfer to Wise multi-currency account
-  - 5% + $0.50/transaction
-- [ ] **Secondary: Paystack** — African payment methods (deferred to v1.1)
-  - Nigeria, Ghana, South Africa, Kenya coverage
-  - 1.5% + local fees
-- [x] **Payout**: Lemon Squeezy → Wise (USD) → local currency at interbank rates
-
-### 14.2 Stripe Alternative Implementation ✅
-- [x] Lemon Squeezy product catalog: **Starter, Pro, Enterprise** (v3)
-- [x] Subscription lifecycle webhooks: created, updated, cancelled, refunded
-- [x] API key generation on subscription activation (own keys, not provider keys)
-- [x] API key revocation on subscription cancellation
-- [ ] Usage-based overage tracking (`whOverageCents` seeded; metering job pending)
-
-### 14.3 Customer Portal ✅
-- [x] Usage dashboard: Wills created, ticks processed, tokens consumed, costs
-- [x] API key management (create, rotate, revoke)
-- [x] Plan comparison and upgrade flow via Lemon Squeezy checkout
-- [x] Billing history and invoice download
-
-### 14.4 Internal Cost Monitoring
-- [ ] Per-customer profitability: revenue - (LLM costs + infra costs)
-- [ ] Cost anomaly detection: sudden spikes trigger investigation
-- [ ] Model cost arbitrage tracking: when to route to cheaper models
-- [ ] Margin dashboard: gross margin per tier, per customer, per model
-- [ ] Regional payout reconciliation: Lemon Squeezy → Wise → Local
-
----
-
-## Phase 15: Self-Hosted LLM Infrastructure
-
-> Migration from external API providers to self-hosted models for
-> margin expansion and control.
-
-### 15.1 Stage 1: Evaluation
-- [ ] Benchmark DeepSeek V3, Llama 4, Qwen 3 on structured output tasks
-- [ ] Compare token costs vs GPT-4o/Claude at current usage patterns
-- [ ] Evaluate fine-tuning potential on custom schemas
-
-### 15.2 Stage 2: Hybrid Deployment
-- [ ] Deploy selected model on 1-2 GPUs (RunPod, Vast.ai, or dedicated)
-- [ ] Route simple queries to self-hosted, complex/novel to external
-- [ ] A/B test: self-hosted vs external quality for each engine
-- [ ] Gross margin target: 80% (up from ~73%)
-
-### 15.3 Stage 3: Self-Sufficient
-- [ ] Dedicated GPU cluster for production inference
-- [ ] Fine-tuned models on structured output schemas
-- [ ] Speculative decoding optimized for cognitive engine prompts
-- [ ] External providers as overflow/fallback only
-- [ ] Gross margin target: 90%+
+> **Billing & monetization** (14) and **self-hosted LLM infrastructure** (15)
+> are commercial phases. They are tracked outside this repository, with the
+> rest of the business material. The numbers are kept here so the phase
+> sequence stays stable across the documents that reference it.
 
 ---
 
 ## Phase 16: Research Platform
 
-> Open the architecture to academic researchers. Runs in parallel with
-> commercial API — same infrastructure, different pricing model.
-
-### 16.1 Academic Access
-- [ ] Free tier for verified .edu emails (limited agents, public data only)
-- [ ] Grant-funded bulk pricing for large-scale simulations
-- [ ] Dataset export: anonymized agent behavior traces for analysis
-- [ ] Collaboration pipeline: researchers submit engine configs, run experiments
+> Open the architecture to academic researchers. Runs on the same
+> infrastructure as the hosted API. Access terms and academic pricing (16.1)
+> are tracked outside this repository; the public commitments are below.
 
 ### 16.2 Publication Support
 - [ ] White paper: "A 36-Engine Cognitive Architecture for Persistent AI Agents"
@@ -968,20 +915,8 @@ matching, no session continuity, zero durability.
 
 ## Phase 17: Enterprise & Vertical SaaS
 
-> White-label and industry-specific deployments.
-
-### 17.1 Enterprise Features
-- [ ] SSO (SAML/OIDC), RBAC, audit logs
-- [ ] On-premise deployment option
-- [ ] Custom model fine-tuning per customer
-- [ ] SLA (99.9% uptime for Shards 0-2, 99.5% for LLM shards)
-- [ ] Dedicated support and onboarding
-
-### 17.2 Vertical Packages
-- [ ] **Gaming**: Unity/Unreal SDK, NPC behavior packs, world integration docs
-- [ ] **Healthcare**: HIPAA-compliant deployment, companion agent templates
-- [ ] **Education**: Tutor agent with curriculum tracking, SIS integration
-- [ ] **Elder Care**: Companionship agent with family alerting, mood tracking
+> Enterprise packaging and industry-specific deployments. Commercial phase —
+> tracked outside this repository.
 
 ---
 
@@ -1269,10 +1204,8 @@ Social (Shard 1)
 | 13.6 | Platform Interoperability (MCP + A2A) | 📋 0% | Phase 13 |
 | 13.7 | Communication Layer Hardening | 🔄 ~50% | Phase 13 |
 | 13.8 | Perceptual Tier — 5 Senses Architecture | ✅ ~85% | Phase 13, 13.7 |
-| 14 | Billing & Monetization | 🔄 ~80% | Phase 13 |
-| 15 | Self-Hosted LLM | 📋 ~5% | Phase 11 |
+| 14 / 15 / 17 | Commercial phases | — | Tracked outside this repository |
 | 16 | Research Platform | 📋 Planned | Parallel with 13-15 |
-| 17 | Enterprise & Vertical SaaS | 📋 Planned | Post-revenue |
 | 18 | Cognitive Quality Improvements | 🔄 ~15% | Phase 11+ |
 | 19-A | Event Bus & Schema Registry | 🔄 partial (publishes/subscribes) | Phase 10 |
 | 19-B | DAG Scheduler | 📋 Post-revenue | Phase 19-A |
@@ -1296,9 +1229,6 @@ before the architecture and market signal are clear enough to justify them.
 | Hard memory deletion (GDPR) | Required before any EU deployment — track separately as a legal/infrastructure item, not a cognitive feature |
 | Google OAuth | v1.1 |
 | Teams / organisations / multi-user accounts | v1.1 |
-| Paystack (African payment methods) | v1.1 |
-| Self-hosted LLM infrastructure | After first revenue (Phase 15) |
-| On-premise / enterprise deployment | Phase 17 |
 | Self-fine-tuning / ParameterOptimizer | Phase 12 — after 50+ customers with real usage data |
 | Multi-node distributed Will execution | Phase 9 multi-node staging — infrastructure exists, not yet plumbed |
 

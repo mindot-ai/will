@@ -359,17 +359,17 @@ export interface MindAssembly {
   outbox:               OutboxMessage[]
 }
 
-// ── Cadence defaults per tier ─────────────────────────────────
+// ── Named executive cadences ──────────────────────────────────
 
 /**
  * Named executive cadences — ticks between LLM calls. Lower = reasons more often
- * (more responsive, higher COGS). Customers pick via `config.executiveInterval`
- * (clamped to `minExecutiveInterval`). See monetization.md "Cost Per Will-Hour".
+ * (more responsive, more tokens per Will-hour). Callers pick via
+ * `config.executiveInterval` (clamped to `minExecutiveInterval`).
  */
 export const EXECUTIVE_CADENCE = {
-  responsive: 30,  // Sonnet — premium/Enterprise; opt in via executiveInterval
-  balanced:   60,  // Sonnet — Pro default
-  economy:    90,  // Haiku  — Starter default
+  responsive: 30,  // most attentive, highest spend — opt in via executiveInterval
+  balanced:   60,  // default
+  economy:    90,  // least attentive, lowest spend
 } as const
 
 

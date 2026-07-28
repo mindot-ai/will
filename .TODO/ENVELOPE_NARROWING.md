@@ -1,6 +1,8 @@
 # ENVELOPE_NARROWING — the counterfactual, consumed: refusals narrow reach, not ability
 
-> **Status:** OPEN — designed 2026-07-22. Goal: make an *instance* refusal teach
+> **Status:** **P0 SHIPPED (2026-07-28)** · P1–P2 OPEN, and P1 is **blocked
+> upstream** on counterfactual direction (see the 2026-07-27 update below).
+> Designed 2026-07-22. Goal: make an *instance* refusal teach
 > the Will **how much of an ability it may use** — "not 500; up to 100" — instead
 > of lightly denting the whole schema. The counterfactual a policy denial already
 > carries (`{ field, requested, allowed }`) is today recorded on the verdict tape
@@ -121,10 +123,33 @@ it (the world just proved the bound moved).
 
 ## Phases
 
-### P0 — Thread the counterfactual through the ack (it is dropped today)
-- [ ] `PendingRefusal` carries `counterfactual?`; `applyPolicyOutcomes` forwards
-      it; `HostAckResult` + `reconcileInvocation` stamp it onto the refused
-      `agency.outcome`. Tape ↔ outcome now agree.
+### P0 — Thread the counterfactual through the ack ⟶ done (2026-07-28)
+- [x] `PendingRefusal` carries `counterfactual?`; `_applyVerdict` fills it from
+      the verdict; `_applyRefusals` forwards it; `HostAckResult` +
+      `reconcileInvocation` stamp it onto the refused `agency.outcome`. **Tape ↔
+      outcome now agree** — previously the bound reached the verdict tape and
+      the `[policy] DENY` log line but was dropped before the thing the mind
+      actually learns from.
+- [x] Written **only when the arbiter reported a bound**, so a refusal without
+      one adds no key and the quiet path is untouched.
+- [x] Tests (3, in `policy.reafference.test.ts`): stamped onto the outcome; no
+      key when absent; and it survives the **replay** path, since a re-fed
+      verdict must carry the same bound a live one did.
+
+**Nothing reads it yet** — that is P1, and P1 stays blocked upstream until a
+scalar `allowed` can be told from a ceiling or a floor. P0 was worth doing
+anyway: it is pure internal plumbing with no dependency, it fixes a real
+tape-vs-outcome disagreement today, and it means the moment the direction
+question is answered the fold is the only thing left to write.
+
+**Found while threading it:** `reconcileInvocation` still defaulted to the
+pre-P5 spelling (`result.finality ?? 'instance'`). It typechecked because the
+value is spread into a `Record<string, unknown>`, so no contextual type
+constrained the literal — and behaviour was accidentally correct, since
+`asFinality('instance')` normalizes to `'parameter'`. But it would have written
+a dead spelling into every snapshot. **Lesson: the compile-error safety net that
+made P5's split safe stops at the metadata boundary; literals headed into entity
+metadata need grepping, not just typechecking.**
 
 ### P1 — The envelope layer in the repertoire
 - [ ] `recordEnvelope`, `envelopeOf(schema)`, decay-toward-open in `decay()`,

@@ -313,3 +313,56 @@ describe('P5 — an arbiter FAULT fails closed without teaching incompetence', (
       .toMatchObject({ refused: true, finality: 'context' })
   })
 })
+
+// ── the counterfactual reaches the outcome (ENVELOPE_NARROWING P0) ────────────
+
+describe('ENVELOPE_NARROWING P0 — the counterfactual survives the ack', () => {
+  const bounded: Verdict = {
+    decision: 'deny', reasonCode: 'BOUND', finality: 'parameter',
+    counterfactual: { field: 'amount', requested: 500, allowed: 100 },
+  }
+
+  it('stamps it onto the refused outcome, so tape and outcome agree', () => {
+    // It reached the verdict tape and the log line before; the outcome — the
+    // thing the mind actually learns from — dropped it.
+    const { instance, entities } = stateStub('agency-intent-1')
+    const c = new effectorController()
+    c.setArbiter( fixed( bounded ) )
+
+    c.bufferInvocation( asInstance( instance ), payload({ intentId: 'agency-intent-1' }) )
+    c.applyPolicyOutcomes( asInstance( instance ) )
+
+    expect( entities.get('agency-outcome-8-agency-intent-1')!.metadata )
+      .toMatchObject({ refused: true, finality: 'parameter',
+                       counterfactual: { field: 'amount', requested: 500, allowed: 100 } })
+  })
+
+  it('writes NO counterfactual key when the arbiter reported no bound', () => {
+    const { instance, entities } = stateStub('agency-intent-1')
+    const c = new effectorController()
+    c.setArbiter( fixed({ decision: 'deny', reasonCode: 'NO_TRADE', finality: 'class' }) )
+
+    c.bufferInvocation( asInstance( instance ), payload({ intentId: 'agency-intent-1' }) )
+    c.applyPolicyOutcomes( asInstance( instance ) )
+
+    const meta = entities.get('agency-outcome-8-agency-intent-1')!.metadata!
+    expect( meta ).toMatchObject({ refused: true })
+    expect('counterfactual' in meta ).toBe( false )   // quiet path unchanged
+  })
+
+  it('survives the replay path too — a re-fed verdict carries it', () => {
+    setVerdictSource( WILL_ID, new RecordedVerdictSource([ record({
+      decision: 'deny', reasonCode: 'BOUND', finality: 'parameter',
+      counterfactual: { field: 'amount', requested: 500, allowed: 100 },
+    }) ]) )
+    const { instance, entities } = stateStub('agency-intent-1')
+    const c = new effectorController()
+    c.setArbiter( fixed({ decision: 'allow' }) )   // must not be consulted
+
+    c.bufferInvocation( asInstance( instance ), payload({ intentId: 'agency-intent-1' }) )
+    c.applyPolicyOutcomes( asInstance( instance ) )
+
+    expect( entities.get('agency-outcome-8-agency-intent-1')!.metadata!['counterfactual'] )
+      .toMatchObject({ field: 'amount', allowed: 100 })
+  })
+})

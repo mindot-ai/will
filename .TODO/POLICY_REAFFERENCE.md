@@ -52,10 +52,12 @@
 > in HELM's conformance packs. Two things land on us, and both are recorded
 > below as **P5**:
 >
-> 1. **`finality` widens 2 → 4 values**, mechanically derived from the rule that
->    fired: `class_forbidden` · `ungranted` · `instance_parameter` ·
->    `instance_context`. Three map onto paths we already shipped; the fourth is
->    new (see below).
+> 1. **`finality` widens 2 → 4 values on the wire**, mechanically derived from
+>    the rule that fired: `class_forbidden` · `ungranted` · `instance_parameter`
+>    · `instance_context`. Three map onto paths we already shipped; the fourth is
+>    new (see below). **We adopt the distinctions, not the spellings** — our
+>    enum goes `'class' | 'parameter' | 'context'` and HELM's names live in the
+>    P6 adapter alone (P5's naming-boundary note has the full argument).
 > 2. **`counterfactual` carries scalar bounds and required-capability names
 >    ONLY — never enumerations**, because an allowlist is an infrastructure map
 >    and a denial that returns it is an exfiltration primitive. This deletes the
@@ -428,35 +430,86 @@ so it does not survive a snapshot/restore — a restored escalation would expire
 a refusal rather than resume. Both are acceptable for the mechanism; neither
 changes the lifecycle.
 
-### P5 — The four-value finality taxonomy — UNBLOCKED (no HELM dependency)
+### P5 — The finality taxonomy, provider-neutral — UNBLOCKED (no HELM dependency)
 
-The joint RFC's enum is a **vocabulary**, not a transport. It can be adopted
-entirely against the local `RuleTableArbiter`, and it should be — it is what
-makes the P6 adapter a four-arm switch instead of a semantic negotiation.
+The joint RFC's enum is a **vocabulary**, not a transport, so it can be adopted
+entirely against the local `RuleTableArbiter`. **We adopt HELM's DISTINCTIONS,
+not HELM's SPELLINGS** — see the naming-boundary note below, which is the
+load-bearing decision of this phase.
 
-- [ ] **Widen `DenialFinality`** to HELM's spelling on the deny branch:
-      `'class_forbidden' | 'instance_parameter' | 'instance_context'`.
-      `ungranted` does **not** join it — it maps to our existing
-      `decision: 'escalate'` (see the axis note below). `finalityOf()`'s
-      conservative default becomes `'instance_parameter'`.
-- [ ] **`instance_context` — the new fate: touch NOTHING.** A context/taint
-      refusal is not about the ability, so denting its availability teaches a
-      lesson the policy never taught. Record the verdict, free the awaiting
-      intent, signal the plan step, and stop — no availability delta, no
-      envelope, no competence. This is a fourth branch in the ReafferenceEngine's
-      refused path, and it **corrects current behaviour**: today every instance
-      denial dents availability by 0.12 regardless of cause.
+- [ ] **Centralize first.** The literal `'class' | 'instance'` is hand-written
+      in six places instead of importing `DenialFinality`
+      (`reconcile.learning.ts:34`, `repertoire.ts:126`,
+      `effector.controller.ts:335` + `:422`, plus string compares in
+      `reafference.engine.ts:204` and `action.selector.ts:660`). Import the type
+      everywhere **before** widening it — that turns the split below into a
+      compile error at every site that needs attention, instead of six silent
+      mis-routes.
+- [ ] **Split `DenialFinality`** `'class' | 'instance'` →
+      `'class' | 'parameter' | 'context'`. `'class'` is UNCHANGED, so all of
+      P0–P4's code and tests keep working; only `'instance'` splits in two.
+      `ungranted` does not join the enum at all — it maps to our existing
+      `decision: 'escalate'` (see the axis note).
+- [ ] **`context` — the new fate: touch NOTHING.** A context/taint refusal is
+      not about the ability, so denting its availability teaches a lesson the
+      policy never taught. Record the verdict, free the awaiting intent, signal
+      the plan step, and stop — no availability delta, no envelope, no
+      competence. A fourth branch in the ReafferenceEngine's refused path, and
+      it **corrects current behaviour**: today every instance denial dents
+      availability by 0.12 regardless of cause.
+- [ ] **`finalityOf()`'s default stays at `'parameter'` — NEVER `'context'`.**
+      The intuitive read (default to the fate that does least) is wrong here.
+      `context` means *the mind learns nothing from this denial*, so it
+      re-probes the wall forever — the exact failure this epoch exists to fix,
+      silently re-enabled for any provider that doesn't tag. `context` is a
+      claim only a provider that actually knows can make: **assert it, never
+      default to it.** `parameter` (light dent, fast recovery) preserves today's
+      unlabelled-denial behaviour exactly.
 - [ ] **Fix the arbiter-fault path (conformance S9 — we currently fail it).**
       A sync throw / async rejection fails closed correctly (the effect is
       withheld, `effector.controller.ts:137`) but queues no refusal, so the held
       intent expires at `AWAIT_TIMEOUT` and reconciles as a **plain failure** —
       landing on competence. A PDP outage must never teach a mind it is
-      unskilled. Queue an `instance_context`-shaped refusal instead (touch
-      nothing), reason code `ARBITER_UNAVAILABLE`.
-- [ ] Tests: each of the four values drives exactly its own fate and no other
-      (the S1–S9 matrix, minus the transport-dependent ones); `instance_context`
-      leaves availability, envelopes and `LearnedSkill` all provably untouched;
-      an arbiter fault records no competence; quiet path still byte-identical.
+      unskilled. Queue a `context`-shaped refusal instead (touch nothing),
+      reason code `ARBITER_UNAVAILABLE`.
+- [ ] Tests: each value drives exactly its own fate and no other (the S1–S9
+      matrix, minus the transport-dependent ones); `context` leaves
+      availability, envelopes and `LearnedSkill` all provably untouched; an
+      unlabelled denial still behaves exactly as `'instance'` did; an arbiter
+      fault records no competence; quiet path still byte-identical.
+
+**The naming-boundary note (the decision of this phase).** HELM's spellings
+(`class_forbidden` · `ungranted` · `instance_parameter` · `instance_context`)
+live in the **P6 adapter and nowhere else**. `stem/policy/arbiter.ts` is the
+interface EVERY provider implements — its own header promises "no vendor types"
+— and a partner's vocabulary in our published API would make their schema churn
+our breaking change. Three reasons this is not a retreat from the collaboration:
+
+1. **Conformance is behavioural, not nominal.** Their §4 is *value | meaning |
+   consumer behavior*; §5 certifies a mind that *learns* from a denial. We
+   consume their values **verbatim on the wire** and satisfy the behaviour
+   table. Nothing in the RFC asks a consumer how to spell its internal types.
+2. **Our independence is what makes the certification mean anything.** A
+   consumer that mirrors the producer's vocabulary proves the standard works
+   for producer-shaped consumers — nearly circular. An independently-designed
+   mind whose two-axis model *predates* the RFC satisfying the table is
+   evidence the standard is portable. Mirroring would spend that evidence.
+3. **We are consumer #1, so we set the template.** "Map at your boundary,
+   satisfy the table" is cheap to adopt; "adopt our enum into your core types"
+   is not. The cheap pattern is in HELM's interest.
+
+Mitigations, all cheap and all owed: the map is **total and exhaustive** (a new
+HELM value must be a compile error, never a silent fallthrough — that is the
+real failure mode); the map is **published as normative in the joint RFC**, not
+a private detail; and the S1–S9 fixtures assert on **observable state deltas**,
+never on our type names.
+
+**The asymmetry that decides it:** their §7 open item #1 is *"Enum naming"* —
+the names are not final, and we ourselves proposed deleting one. Neutral-now is
+reversible (alias in later at no cost if the names settle and mirroring proves
+worth it); vendor-names-now is not (un-baking a partner's spelling from a
+published Apache-2.0 API breaks every host). Take the reversible path while the
+other side's schema is still moving.
 
 **The axis note (recorded, because it will come up again).** HELM is fail-closed,
 so every receipt is allow-or-deny and `ungranted` is a *denial shape* meaning "a
@@ -472,7 +525,9 @@ upstream declines, the four-arm mapping works unchanged.
 ### P6 — HELM adapter (external PDP) — gated on the schema diff
 - [ ] Adapter mapping `agency.invocation` → HELM's `WorkstationDecisionRequest`,
       and `WorkstationPolicyDecisionReceipt` → `Verdict`. With P5 done this is a
-      four-arm switch plus transport.
+      four-arm switch plus transport. **This file is the ONLY place HELM's enum
+      spellings appear** — total and exhaustive, so a new upstream value is a
+      compile error rather than a silent fallthrough.
 - [ ] Transport decision (subprocess CLI vs. `helm-ai-kernel serve` HTTP).
       **Must stay optional** — the OSS engine never hard-depends on a Go binary.
 - [ ] Receipts flow to the record stream, not to cognition (determinism rule 4);

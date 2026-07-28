@@ -25,7 +25,7 @@
 <rect x="556" y="118" width="250" height="460" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
 <text x="572" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">THE SEAM — WILL</text>
 <rect x="826" y="118" width="250" height="560" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
-<text x="842" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">FOUR FATES — 3 DENY · 1 ASK</text>
+<text x="842" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">WIRE VALUE → OUR FATE</text>
 <rect x="1096" y="118" width="224" height="560" rx="16" fill="#4ade8007" stroke="#4ade802e" stroke-width="1" stroke-dasharray="5 4"/>
 <text x="1112" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#4ade80bb">WHAT THE MIND LEARNS</text>
 <rect x="44" y="700" width="1276" height="120" rx="16" fill="#4ade8007" stroke="#4ade802e" stroke-width="1" stroke-dasharray="5 4"/>
@@ -106,7 +106,7 @@
 <rect x="576" y="190" width="210" height="54" rx="12" fill="#94a3b812"/>
 <rect x="577.2" y="199" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
 <text x="681" y="214" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">HELM adapter</text>
-<text x="681" y="230.5" font-size="10" fill="#8b93a7" text-anchor="middle">receipt → Verdict · four arms</text>
+<text x="681" y="230.5" font-size="10" fill="#8b93a7" text-anchor="middle">the only place HELM names live</text>
 </g>
 <g>
 <rect x="576" y="340" width="210" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
@@ -127,28 +127,28 @@
 <rect x="846" y="160" width="210" height="54" rx="12" fill="#94a3b812"/>
 <rect x="847.2" y="169" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
 <text x="951" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">class_forbidden</text>
-<text x="951" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">this act, never — let go of it</text>
+<text x="951" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">→ class · let go of it</text>
 </g>
 <g>
 <rect x="846" y="300" width="210" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
 <rect x="846" y="300" width="210" height="54" rx="12" fill="#94a3b812"/>
 <rect x="847.2" y="309" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
 <text x="951" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">ungranted</text>
-<text x="951" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">no grant — held, not denied</text>
+<text x="951" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">→ escalate · held, not denied</text>
 </g>
 <g>
 <rect x="846" y="440" width="210" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
 <rect x="846" y="440" width="210" height="54" rx="12" fill="#94a3b812"/>
 <rect x="847.2" y="449" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
 <text x="951" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">instance_parameter</text>
-<text x="951" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">not that much — this much</text>
+<text x="951" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">→ parameter · not that, this much</text>
 </g>
 <g>
 <rect x="846" y="580" width="210" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
 <rect x="846" y="580" width="210" height="54" rx="12" fill="#94a3b812"/>
 <rect x="847.2" y="589" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
 <text x="951" y="604" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">instance_context</text>
-<text x="951" y="620.5" font-size="10" fill="#8b93a7" text-anchor="middle">not about the act at all</text>
+<text x="951" y="620.5" font-size="10" fill="#8b93a7" text-anchor="middle">→ context · not about the act</text>
 </g>
 <g>
 <rect x="1112" y="160" width="192" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>

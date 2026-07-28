@@ -23294,7 +23294,7 @@ function resolveModelRoles(model) {
   };
 }
 var EXECUTIVE_CADENCE = {
-  // Sonnet — premium/Enterprise; opt in via executiveInterval
+  // most attentive, highest spend — opt in via executiveInterval
   balanced: 60};
 function _resolveVectorMemory(willId, seed, overrideAdapter, disable, tokenTracker, testMode, embeddingModel) {
   if (overrideAdapter) return { embedder: null, vectorMemory: overrideAdapter };

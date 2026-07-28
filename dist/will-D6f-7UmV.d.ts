@@ -2853,7 +2853,7 @@ declare class OpenAICompatibleEmbedder implements EmbeddingProvider {
         /**
          * Per-Will token tracker. When provided, each embedding call records its
          * input-token usage under the 'embedding' category so memory-vector spend is
-         * visible alongside LLM spend instead of being a silent COGS leak.
+         * visible alongside LLM spend instead of being a silent cost leak.
          */
         tokenTracker?: TokenTracker | null;
     });

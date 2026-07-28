@@ -16,7 +16,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { EntityInput, Tick } from '#core/types'
-import type { DenialFinality } from '#stem/policy/arbiter'
+import type { DenialFinality, PolicyCounterfactual } from '#stem/policy/arbiter'
 
 export interface HostAckResult {
   success:        boolean
@@ -33,6 +33,16 @@ export interface HostAckResult {
    */
   refused?:       boolean
   finality?:      DenialFinality
+  /**
+   * ENVELOPE_NARROWING P0 — what WOULD have been permitted, e.g.
+   * `{ field: 'amount', requested: 500, allowed: 100 }`.
+   *
+   * Carried onto the outcome so the tape and the thing the mind actually learns
+   * from agree about what happened. Until ENVELOPE_NARROWING P1 lands nothing
+   * READS it — that fold is blocked upstream on whether a scalar `allowed` is a
+   * ceiling or a floor — but dropping it here is what made the two disagree.
+   */
+  counterfactual?: PolicyCounterfactual
 }
 
 /**
@@ -80,7 +90,10 @@ export function reconcileInvocation(
       mode:             'external',
       tick,
       reconciled:       true,
-      ...( result.refused ? { refused: true, finality: result.finality ?? 'instance' } : {} ),
+      ...( result.refused ? { refused: true, finality: result.finality ?? 'parameter' } : {} ),
+      // Only when the arbiter actually reported a bound — a refusal without one
+      // writes no key at all, so the quiet path is unchanged.
+      ...( result.refused && result.counterfactual ? { counterfactual: result.counterfactual } : {} ),
       ...( provenance.planId ? { planId: provenance.planId } : {} ),
       ...( provenance.stepId ? { stepId: provenance.stepId } : {} ),
     },

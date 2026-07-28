@@ -24,7 +24,7 @@
 import { logger } from '#core/logger'
 import { reconcileInvocation } from '#agency/reconcile.learning'
 import { NULL_ARBITER, isNullArbiter } from '#stem/policy/arbiter'
-import type { PolicyArbiter, PolicyInvocation, Verdict, DenialFinality } from '#stem/policy/arbiter'
+import type { PolicyArbiter, PolicyInvocation, Verdict, DenialFinality, PolicyCounterfactual } from '#stem/policy/arbiter'
 import { finalityOf, asFinality } from '#stem/policy/arbiter'
 import {
   getVerdictRecorder, getVerdictSource, type PolicyVerdictRecord,
@@ -38,6 +38,10 @@ interface PendingRefusal {
   schema:     string
   reasonCode: string
   finality:   DenialFinality
+  /** ENVELOPE_NARROWING P0 — what WOULD have been allowed, carried through to
+   *  the outcome the mind learns from. Absent on refusals that have no bound to
+   *  report (a flat ban, a fault, an unanswered escalation). */
+  counterfactual?: PolicyCounterfactual
 }
 
 /**
@@ -249,6 +253,7 @@ export class effectorController {
         schema:     invocation.schema,
         reasonCode: verdict.reasonCode ?? 'POLICY_DENIED',
         finality:   finalityOf( verdict ),
+        ...( verdict.counterfactual ? { counterfactual: verdict.counterfactual } : {} ),
       })
       this._pendingRefusals.set( instance.config.id, queue )
       return
@@ -303,6 +308,7 @@ export class effectorController {
         success:     false,
         refused:     true,
         finality:    refusal.finality,
+        ...( refusal.counterfactual ? { counterfactual: refusal.counterfactual } : {} ),
         description: `refused by policy: ${refusal.reasonCode} (${refusal.finality})`,
       } )
   }
@@ -459,6 +465,8 @@ export class effectorController {
        *  ReafferenceEngine routes it to availability rather than competence. */
       refused?:    boolean
       finality?:   DenialFinality
+      /** ENVELOPE_NARROWING P0 — the bound that was exceeded, if the arbiter said. */
+      counterfactual?: PolicyCounterfactual
     },
   ): void {
     const tick = instance.tickCount

@@ -25577,7 +25577,10 @@ function reconcileInvocation(intentId, schema, result, tick, predicted = { rewar
       mode: "external",
       tick,
       reconciled: true,
-      ...result.refused ? { refused: true, finality: result.finality ?? "instance" } : {},
+      ...result.refused ? { refused: true, finality: result.finality ?? "parameter" } : {},
+      // Only when the arbiter actually reported a bound — a refusal without one
+      // writes no key at all, so the quiet path is unchanged.
+      ...result.refused && result.counterfactual ? { counterfactual: result.counterfactual } : {},
       ...provenance.planId ? { planId: provenance.planId } : {},
       ...provenance.stepId ? { stepId: provenance.stepId } : {}
     }
@@ -25728,7 +25731,8 @@ var effectorController = class {
         intentId: invocation.intentId,
         schema: invocation.schema,
         reasonCode: verdict.reasonCode ?? "POLICY_DENIED",
-        finality: finalityOf(verdict)
+        finality: finalityOf(verdict),
+        ...verdict.counterfactual ? { counterfactual: verdict.counterfactual } : {}
       });
       this._pendingRefusals.set(instance.config.id, queue);
       return;
@@ -25778,6 +25782,7 @@ var effectorController = class {
         success: false,
         refused: true,
         finality: refusal.finality,
+        ...refusal.counterfactual ? { counterfactual: refusal.counterfactual } : {},
         description: `refused by policy: ${refusal.reasonCode} (${refusal.finality})`
       });
   }

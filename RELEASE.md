@@ -5,6 +5,66 @@ A release is the end of an **epoch** — a coherent arc of the mind's evolution
 epoch leaves the same four artifacts behind: a story, a picture, a version, and
 an announcement. Follow it in order; each step feeds the next.
 
+## When to cut
+
+**The trigger is an epoch CLOSING — not a date, not a commit count.** Nothing in
+this repo prompts you, deliberately: the judgment is semantic and a mechanical
+nag would train you to ignore it. What follows is how to make that judgment.
+
+**Cut when all three hold:**
+
+1. **The arc answers its own question.** The epoch's `.TODO` has a story a
+   person can read end to end: *the mind can now do X, which it couldn't.*
+2. **Something a consumer can actually reach.** Check the new capability is
+   exported from `dist/index.d.ts`. Internal-only work — refactors, type splits,
+   fixes to an unwired seam — delivers a package consumer *nothing*, however
+   much engineering it took.
+3. **What's left is genuinely other work**, not the rest of this sentence.
+
+**Do NOT cut when:**
+
+- **The epoch is mid-sentence.** Remaining phases that belong to the same story
+  — especially ones blocked on an external party — mean releasing a half-answered
+  question and needing another release the moment it resolves.
+- **Only internal surfaces moved.** See (2). A `feat:` commit is not evidence;
+  check the export surface, not the prefix.
+- **You're cutting to move code somewhere.** Workspace consumers (backend) read
+  the *committed* `dist/` via the submodule pointer, not npm. That's a pointer
+  bump, not a release.
+
+**Why the bar is this high.** The ritual is expensive — graph, story, publish
+fan-out, LinkedIn — and it is a *signal*. Spend it on internal refinement and
+you teach people a Will release doesn't mean much. Every tag so far has meant
+something; keep it that way.
+
+### Checking drift
+
+Drift is not a trigger, but it is worth knowing. Nothing surfaces it for you:
+
+```bash
+git log --oneline "$( git describe --tags --abbrev=0 )"..HEAD
+```
+
+Compare against `package.json` (which stays at the last released version until
+the release PR bumps it). Accumulation is normal and healthy — the tail of an
+epoch often sits on main for a while waiting for the arc to close.
+
+### The patch clause
+
+`patch` exists in the convention and has **never fired** — every tag is a minor
+(`v0.3.0` … `v0.7.0`), because we ship epochs. It is for a defect in *released,
+publicly reachable* behaviour that can't wait for the next epoch. If the broken
+thing isn't exported, it isn't a patch; it's just a fix riding the next release.
+
+### Worked example (2026-07-28)
+
+Ten commits sat on main after `v0.7.0` — P5's taxonomy split, the conformance
+pack, ENVELOPE_NARROWING P0, the release tooling. Held, not cut, on all three
+tests: P5 changed no public surface (the policy seam has no exported
+`setArbiter`, so no consumer could use any of it); the epoch was mid-sentence
+with P6 and ENVELOPE_NARROWING P1 both waiting on an upstream answer; and the
+whole tail will ride the release that follows, whichever of those lands first.
+
 ## 0 · Pre-flight
 
 - Full suite green (`bun run test`), typecheck clean, **replay-equivalence
@@ -45,8 +105,9 @@ underneath; a closing *"Throughout:"* paragraph states the quiet-path guarantee
 ## 3 · The version
 
 Bump `package.json` — it is the version that ships (`VERSION` is unused).
-Pre-1.0 convention: **minor per epoch**, patch for fixes. A public-surface break
-would force the discussion; additive never does.
+Pre-1.0 convention: **minor per epoch**, patch for fixes (see *When to cut* —
+the patch clause has never fired). A public-surface break would force the
+discussion; additive never does.
 
 ## 4 · The release PR
 

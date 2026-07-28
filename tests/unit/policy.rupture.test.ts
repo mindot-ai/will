@@ -27,7 +27,7 @@ const deliberating = ( id: string, schema: string ): Ent =>
   ({ id, type: 'agency.intent', metadata: { status: 'deliberating', schema, candidates: [ { schema } ] } })
 
 /** A refused agency.outcome as applyPolicyOutcomes → reconcileInvocation writes it. */
-const refused = ( id: string, schema: string, finality: 'class' | 'instance' ): Ent =>
+const refused = ( id: string, schema: string, finality: 'class' | 'parameter' | 'context' ): Ent =>
   ({ id, type: 'agency.outcome', metadata: { schema, intentId: `i-${ schema }`, success: false, refused: true, finality } })
 
 /** A strong exafferent percept — the world-surprise path, for contrast. */
@@ -66,7 +66,7 @@ describe('P3 — a class refusal revokes an in-flight deliberation of the same s
   })
 
   it('an INSTANCE refusal does not revoke (not with those params ≠ never)', async () => {
-    const s = makeState( 5, [ deliberating('intent-d', 'trade'), refused('o', 'trade', 'instance') ] )
+    const s = makeState( 5, [ deliberating('intent-d', 'trade'), refused('o', 'trade', 'parameter') ] )
     const { res, events } = await run( s )
     expect( setOf( res ).some( e => e.type === REVOCATION_TYPE ) ).toBe( false )
     expect( metricVal( res, 'agency.policy.revoked') ).toBeUndefined()

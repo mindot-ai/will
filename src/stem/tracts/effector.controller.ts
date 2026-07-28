@@ -24,7 +24,8 @@
 import { logger } from '#core/logger'
 import { reconcileInvocation } from '#agency/reconcile.learning'
 import { NULL_ARBITER, isNullArbiter } from '#stem/policy/arbiter'
-import type { PolicyArbiter, PolicyInvocation, Verdict } from '#stem/policy/arbiter'
+import type { PolicyArbiter, PolicyInvocation, Verdict, DenialFinality } from '#stem/policy/arbiter'
+import { finalityOf, asFinality } from '#stem/policy/arbiter'
 import {
   getVerdictRecorder, getVerdictSource, type PolicyVerdictRecord,
 } from '#stem/policy/verdict.recorder'
@@ -36,8 +37,33 @@ interface PendingRefusal {
   intentId:   string
   schema:     string
   reasonCode: string
-  finality:   string
+  finality:   DenialFinality
 }
+
+/**
+ * The verdict a fault produces (POLICY_REAFFERENCE P5, conformance S9).
+ *
+ * An arbiter that throws or rejects has always failed CLOSED — the effect is
+ * withheld — but it used to withhold *silently*, queueing no refusal. The held
+ * intent then expired at the executor's AWAIT_TIMEOUT and reconciled as a plain
+ * failure, landing on COMPETENCE: a PDP outage taught the mind it was unskilled
+ * at something it is perfectly capable of. So a fault now yields a real verdict:
+ *
+ *   • 'deny'    — still fail-closed, unchanged. The effect never reaches the world.
+ *   • 'context' — but it teaches NOTHING. The arbiter being unreachable is not a
+ *                 fact about the ability, so nothing about the ability may move.
+ *
+ * It goes through `_recordAndApply` rather than straight to the refusal queue so
+ * the fault lands on the VERDICT TAPE too. That closes a replay hole: an
+ * unrecorded fault left the source with nothing to re-feed, and a source miss
+ * reproduces a buffered ALLOW — so a live run that withheld the effect would
+ * have replayed as one that dispatched it.
+ */
+const ARBITER_FAULT_VERDICT: Readonly<Verdict> = Object.freeze({
+  decision:   'deny' as const,
+  reasonCode: 'ARBITER_UNAVAILABLE',
+  finality:   'context' as const,
+})
 
 /** How long an escalated intent is held awaiting a resolution before it degrades
  *  to a refusal — 2× the host-ack timeout, so a human has real time to answer. */
@@ -136,6 +162,7 @@ export class effectorController {
     try { verdict = this._arbiter.evaluate( invocation ) }
     catch( err ){
       logger.error(`[policy] arbiter "${this._arbiter.name}" threw for "${invocation.schema}" — failing closed:`, err )
+      this._recordAndApply( instance, payload, invocation, ARBITER_FAULT_VERDICT )
       return
     }
 
@@ -145,7 +172,10 @@ export class effectorController {
       // queue drains each tick, so a verdict landing a few ticks late still lands.
       void verdict.then(
         v => this._recordAndApply( instance, payload, invocation, v ),
-        err => logger.error(`[policy] arbiter "${this._arbiter.name}" rejected for "${invocation.schema}" — failing closed:`, err ),
+        err => {
+          logger.error(`[policy] arbiter "${this._arbiter.name}" rejected for "${invocation.schema}" — failing closed:`, err )
+          this._recordAndApply( instance, payload, invocation, ARBITER_FAULT_VERDICT )
+        },
       )
       return
     }
@@ -218,7 +248,7 @@ export class effectorController {
         intentId:   invocation.intentId,
         schema:     invocation.schema,
         reasonCode: verdict.reasonCode ?? 'POLICY_DENIED',
-        finality:   verdict.finality ?? 'instance',
+        finality:   finalityOf( verdict ),
       })
       this._pendingRefusals.set( instance.config.id, queue )
       return
@@ -272,7 +302,7 @@ export class effectorController {
       this.confirmExecution( instance, refusal.intentId, {
         success:     false,
         refused:     true,
-        finality:    refusal.finality === 'class' ? 'class' : 'instance',
+        finality:    refusal.finality,
         description: `refused by policy: ${refusal.reasonCode} (${refusal.finality})`,
       } )
   }
@@ -317,7 +347,16 @@ export class effectorController {
     }
   }
 
-  /** Degrade escalations no one answered in time into instance-refusals (P4). */
+  /**
+   * Degrade escalations no one answered in time into light refusals (P4).
+   *
+   * Finality 'parameter' is chosen for its BEHAVIOUR, not its name: silence is
+   * not literally an argument problem, but the light-dent-with-recovery it
+   * produces is exactly right — a Will whose asks go unanswered should ask
+   * progressively less, and should resume asking if someone starts answering.
+   * 'class' would be a lie (nobody said never) and 'context' would teach
+   * nothing, leaving the mind to escalate forever into an empty room.
+   */
   private _expireEscalations( instance: WillInstance, tick: number ): void {
     const active = this._activeEscalations.get( instance.config.id )
     if( !active || active.size === 0 ) return
@@ -325,14 +364,14 @@ export class effectorController {
       if( tick < esc.expiresAt ) continue
       active.delete( intentId )
       this._clearEscalated( instance, intentId )
-      this._queueRefusal( instance, esc.intentId, esc.schema, 'ESCALATION_EXPIRED', 'instance')
+      this._queueRefusal( instance, esc.intentId, esc.schema, 'ESCALATION_EXPIRED', 'parameter')
       logger.info(`[policy] escalation EXPIRED → refusing "${esc.schema}" intent "${intentId}"`)
     }
   }
 
   /** Push a refusal onto the queue drained by _applyRefusals this same tick. */
   private _queueRefusal(
-    instance: WillInstance, intentId: string, schema: string, reasonCode: string, finality: 'class' | 'instance',
+    instance: WillInstance, intentId: string, schema: string, reasonCode: string, finality: DenialFinality,
   ): void {
     const queue = this._pendingRefusals.get( instance.config.id ) ?? []
     queue.push({ intentId, schema, reasonCode, finality })
@@ -419,7 +458,7 @@ export class effectorController {
       /** POLICY_REAFFERENCE P2 — set when the ack is a policy refusal, so the
        *  ReafferenceEngine routes it to availability rather than competence. */
       refused?:    boolean
-      finality?:   'class' | 'instance'
+      finality?:   DenialFinality
     },
   ): void {
     const tick = instance.tickCount

@@ -5707,6 +5707,30 @@ interface LearnedSkill {
     lastEnactedTick: number;
 }
 
+/**
+ * WHY this denial is final — the distinction that makes a refusal learnable
+ * rather than a wall to re-probe forever. Each value selects a different
+ * cognitive fate; they are not degrees of one severity.
+ *
+ *   • 'class'     — the ACTION ITSELF is never permitted. Suppress the
+ *                   affordance hard, erase any learned envelope, and let go of
+ *                   a commitment currently deliberating toward it.
+ *   • 'parameter' — the action is fine; THESE ARGUMENTS were not (bound
+ *                   exceeded, wrong target). Narrow the envelope the Will
+ *                   reaches for; the ability stays.
+ *   • 'context'   — the refusal was NOT ABOUT THE ACTION at all (tainted
+ *                   context, unavailable dependency). Touch nothing: no
+ *                   availability delta, no envelope, no competence.
+ *
+ * POLICY_REAFFERENCE P5 widened this from 'class' | 'instance' after the HELM
+ * joint RFC ("Denials That Teach") identified that an instance-scoped refusal
+ * splits in two, and that the two halves demand opposite responses. These are
+ * OUR names for the distinctions, deliberately not HELM's wire spellings — see
+ * the naming-boundary note in .TODO/POLICY_REAFFERENCE.md. A provider adapter
+ * translates; this interface stays vendor-neutral.
+ */
+type DenialFinality = 'class' | 'parameter' | 'context';
+
 interface OutcomeObservation {
     schema: string;
     success: boolean;
@@ -5750,11 +5774,17 @@ declare class SchemaRepertoire {
     availabilityOf(schema: string): number;
     /**
      * Fold a policy refusal into the availability layer (NOT competence). A
-     * `class` refusal cuts availability hard; an `instance` refusal dents it
+     * `class` refusal cuts availability hard; a `parameter` refusal dents it
      * lightly. Multiplicative so repeated refusals compound toward — but never
      * reach — zero, keeping re-probe alive.
+     *
+     * `context` is EXCLUDED FROM THE SIGNATURE, not handled inside: a refusal
+     * that was not about the action must never reach the availability layer at
+     * all, and making that a type error rather than a convention means a future
+     * caller cannot quietly re-introduce the dent. The routing decision lives in
+     * the ReafferenceEngine's refused branch (P5).
      */
-    recordRefusal(schema: string, finality: 'class' | 'instance', tick: number): number;
+    recordRefusal(schema: string, finality: Exclude<DenialFinality, 'context'>, tick: number): number;
     /**
      * Fold one outcome into the schema's learned skill. Returns the updated skill
      * and whether it just crossed the proceduralization threshold this update.

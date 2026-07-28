@@ -38,6 +38,7 @@ import {
 import { readEffectiveParams, readPersonaPrior } from '#cognition/persona.prior'
 import { RUPTURE_REVOKE_GATE, revocationEntity } from '#agency/revocation'
 import { liveConsequences, matchConsequenceText } from '#agency/consequence'
+import { asFinality } from '#stem/policy/arbiter'
 
 /**
  * Activation margin (winner − runner-up) below which the choice is "contested" —
@@ -657,7 +658,7 @@ function refusedClassSchemas( state: ReadonlySimulationState ): Set<string> {
   for( const e of state.entities.values() ){
     if( e.type !== 'agency.outcome') continue
     const m = e.metadata
-    if( m?.['refused'] !== true || str( m?.['finality'] ) !== 'class') continue
+    if( m?.['refused'] !== true || asFinality( m?.['finality'] ) !== 'class') continue
     const schema = str( m?.['schema'] )
     if( schema ) out.add( schema )
   }

@@ -150,14 +150,14 @@ describe('P1 — verdict tape (capture)', () => {
     const { sink, records } = collectingSink()
     setVerdictRecorder( WILL_ID, sink )
     const c = new effectorController()
-    c.setArbiter( fixed({ decision: 'deny', reasonCode: 'CAP', finality: 'instance',
+    c.setArbiter( fixed({ decision: 'deny', reasonCode: 'CAP', finality: 'parameter',
       counterfactual: { field: 'amount', requested: 500, allowed: 100 } }) )
     c.bufferInvocation( asInstance( lightStub() ), payload() )
 
     expect( records ).toHaveLength( 1 )
     expect( records[0] ).toMatchObject({
       tick: 7, willId: WILL_ID, intentId: 'agency-intent-1', schema: 'trade', arbiter: 'fixed',
-      decision: 'deny', reasonCode: 'CAP', finality: 'instance',
+      decision: 'deny', reasonCode: 'CAP', finality: 'parameter',
       counterfactual: { field: 'amount', requested: 500, allowed: 100 },
     })
   })
@@ -232,5 +232,84 @@ describe('P1 — verdict source (replay)', () => {
     const c = new effectorController()
     c.bufferInvocation( asInstance( lightStub() ), payload() )
     expect( records ).toHaveLength( 0 )   // the source path is upstream of the sink
+  })
+})
+
+// ── the arbiter-fault path (P5 · conformance S9) ──────────────────────────────
+
+describe('P5 — an arbiter FAULT fails closed without teaching incompetence', () => {
+  const throwing: PolicyArbiter = {
+    name: 'throwing',
+    evaluate: () => { throw new Error('PDP unreachable') },
+  }
+  const rejecting: PolicyArbiter = {
+    name: 'rejecting',
+    evaluate: () => Promise.reject( new Error('PDP unreachable') ),
+  }
+
+  it('still withholds the effect — fail-closed is unchanged', () => {
+    const s = lightStub()
+    const c = new effectorController()
+    c.setArbiter( throwing )
+    c.bufferInvocation( asInstance( s ), payload() )
+    expect( s.pendingEffectorInvocations ).toHaveLength( 0 )
+  })
+
+  it('reconciles as a REFUSAL, not the silent timeout that landed on competence', () => {
+    // Before P5 the fault queued nothing, so the held intent expired at
+    // AWAIT_TIMEOUT and reconciled as a plain failure — teaching the mind it was
+    // unskilled at something a PDP outage merely prevented.
+    const { instance, entities } = stateStub('agency-intent-1')
+    const c = new effectorController()
+    c.setArbiter( throwing )
+
+    c.bufferInvocation( asInstance( instance ), payload({ intentId: 'agency-intent-1' }) )
+    c.applyPolicyOutcomes( asInstance( instance ) )
+
+    const outcome = entities.get('agency-outcome-8-agency-intent-1')
+    expect( outcome ).toBeDefined()
+    expect( outcome!.metadata ).toMatchObject({ refused: true, finality: 'context' })
+    expect( String( outcome!.metadata!['description'] ) ).toContain('ARBITER_UNAVAILABLE')
+  })
+
+  it('marks it "context" so nothing about the ability moves — the outage is not a fact about the act', () => {
+    const { instance, entities } = stateStub('agency-intent-1')
+    const c = new effectorController()
+    c.setArbiter( throwing )
+    c.bufferInvocation( asInstance( instance ), payload({ intentId: 'agency-intent-1' }) )
+    c.applyPolicyOutcomes( asInstance( instance ) )
+
+    // 'context' is what the ReafferenceEngine routes to the no-op branch
+    // (proved in policy.taxonomy.test.ts) — assert the tag, which is the contract.
+    expect( entities.get('agency-outcome-8-agency-intent-1')!.metadata!['finality'] ).toBe('context')
+  })
+
+  it('records the fault on the tape, so replay reproduces the withholding', () => {
+    // Without this the source has nothing to re-feed, and a source MISS
+    // reproduces a buffered ALLOW: the live run withheld, the replay dispatched.
+    const { sink, records } = collectingSink()
+    setVerdictRecorder( WILL_ID, sink )
+    const c = new effectorController()
+    c.setArbiter( throwing )
+    c.bufferInvocation( asInstance( lightStub() ), payload() )
+
+    expect( records ).toHaveLength( 1 )
+    expect( records[0] ).toMatchObject({
+      decision: 'deny', reasonCode: 'ARBITER_UNAVAILABLE', finality: 'context', arbiter: 'throwing',
+    })
+  })
+
+  it('handles an async REJECTION the same way as a sync throw', async () => {
+    const { instance, entities } = stateStub('agency-intent-1')
+    const c = new effectorController()
+    c.setArbiter( rejecting )
+
+    c.bufferInvocation( asInstance( instance ), payload({ intentId: 'agency-intent-1' }) )
+    await flush()
+    c.applyPolicyOutcomes( asInstance( instance ) )
+
+    expect( instance.pendingEffectorInvocations ).toHaveLength( 0 )
+    expect( entities.get('agency-outcome-8-agency-intent-1')!.metadata )
+      .toMatchObject({ refused: true, finality: 'context' })
   })
 })

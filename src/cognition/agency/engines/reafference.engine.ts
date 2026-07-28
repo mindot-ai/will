@@ -29,6 +29,7 @@ import type { CognitiveEngine, EngineResult } from '#cognition/types'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { SchemaRepertoire } from '#agency/schemas/repertoire'
 import { schemaEntityId, availabilityEntityId } from '#agency/schemas/repertoire'
+import { asFinality } from '#stem/policy/arbiter'
 import { AWAIT_TIMEOUT } from '#agency/engines/motor.schema.executor'
 
 const PROC_THRESHOLD = 0.60   // mirror of repertoire's threshold for the habitual-count metric
@@ -201,8 +202,17 @@ export class ReafferenceEngine implements CognitiveEngine {
       // is merely forbidden to do. The awaiting intent is still freed, and a
       // refused plan step is signalled unsuccessful so the plan doesn't hang.
       if( m['refused'] === true ){
-        const finality = str( m['finality'] ) === 'class' ? 'class' : 'instance'
-        this._repertoire.recordRefusal( schema, finality, tick )
+        const finality = asFinality( m['finality'] )
+
+        // P5 — 'context' means the refusal was NOT ABOUT THE ACTION (tainted
+        // context, an unavailable dependency, the arbiter itself down). Denting
+        // availability here would teach a lesson the policy never taught:
+        // "reach for this less", when nothing about the ability was the problem.
+        // So the intent is freed and the plan step signalled — the mind must not
+        // hang — and NOTHING else is written. Not competence, not availability.
+        if( finality !== 'context')
+          this._repertoire.recordRefusal( schema, finality, tick )
+
         if( fromState ) del.push( id )
         const refusedIntent = str( m['intentId'] )
         if( refusedIntent ) del.push( refusedIntent )

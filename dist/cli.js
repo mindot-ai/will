@@ -3626,7 +3626,7 @@ var IDLE_TICKS = 200;
 var DECAY_RATE = 0.02;
 var DROP_HABIT = 0.05;
 var AVAIL_DROP_CLASS = 0.5;
-var AVAIL_DROP_INSTANCE = 0.12;
+var AVAIL_DROP_PARAMETER = 0.12;
 var AVAIL_FLOOR = 0.05;
 var AVAIL_RECOVERY = 0.02;
 var AVAIL_RECOVERED = 0.999;
@@ -3685,13 +3685,19 @@ var SchemaRepertoire = class {
   }
   /**
    * Fold a policy refusal into the availability layer (NOT competence). A
-   * `class` refusal cuts availability hard; an `instance` refusal dents it
+   * `class` refusal cuts availability hard; a `parameter` refusal dents it
    * lightly. Multiplicative so repeated refusals compound toward — but never
    * reach — zero, keeping re-probe alive.
+   *
+   * `context` is EXCLUDED FROM THE SIGNATURE, not handled inside: a refusal
+   * that was not about the action must never reach the availability layer at
+   * all, and making that a type error rather than a convention means a future
+   * caller cannot quietly re-introduce the dent. The routing decision lives in
+   * the ReafferenceEngine's refused branch (P5).
    */
   recordRefusal(schema, finality, tick) {
     const prev = this._availability.get(schema)?.value ?? 1;
-    const drop = finality === "class" ? AVAIL_DROP_CLASS : AVAIL_DROP_INSTANCE;
+    const drop = finality === "class" ? AVAIL_DROP_CLASS : AVAIL_DROP_PARAMETER;
     const value = Math.max(AVAIL_FLOOR, prev * (1 - drop));
     this._availability.set(schema, { value, lastRefusedTick: tick });
     return value;
@@ -20426,6 +20432,24 @@ function clamp017(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
+// src/stem/policy/arbiter.ts
+var ALLOW = Object.freeze({ decision: "allow" });
+var NULL_ARBITER = {
+  name: "null",
+  evaluate() {
+    return ALLOW;
+  }
+};
+function isNullArbiter(arbiter) {
+  return !arbiter || arbiter === NULL_ARBITER;
+}
+function finalityOf(verdict) {
+  return asFinality(verdict.finality);
+}
+function asFinality(raw) {
+  return raw === "class" ? "class" : raw === "context" ? "context" : "parameter";
+}
+
 // src/cognition/agency/engines/action.selector.ts
 var MARGIN_THRESHOLD = 0.06;
 var BASE_STAKES_THRESHOLD = 0.6;
@@ -20825,7 +20849,7 @@ function refusedClassSchemas(state) {
   for (const e of state.entities.values()) {
     if (e.type !== "agency.outcome") continue;
     const m = e.metadata;
-    if (m?.["refused"] !== true || str2(m?.["finality"]) !== "class") continue;
+    if (m?.["refused"] !== true || asFinality(m?.["finality"]) !== "class") continue;
     const schema = str2(m?.["schema"]);
     if (schema) out.add(schema);
   }
@@ -21737,8 +21761,9 @@ var ReafferenceEngine = class {
         continue;
       }
       if (m["refused"] === true) {
-        const finality = str6(m["finality"]) === "class" ? "class" : "instance";
-        this._repertoire.recordRefusal(schema, finality, tick);
+        const finality = asFinality(m["finality"]);
+        if (finality !== "context")
+          this._repertoire.recordRefusal(schema, finality, tick);
         if (fromState) del.push(id);
         const refusedIntent = str6(m["intentId"]);
         if (refusedIntent) del.push(refusedIntent);
@@ -25039,18 +25064,6 @@ function clamp0112(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
-// src/stem/policy/arbiter.ts
-var ALLOW = Object.freeze({ decision: "allow" });
-var NULL_ARBITER = {
-  name: "null",
-  evaluate() {
-    return ALLOW;
-  }
-};
-function isNullArbiter(arbiter) {
-  return !arbiter || arbiter === NULL_ARBITER;
-}
-
 // src/stem/policy/verdict.recorder.ts
 var _sinks3 = /* @__PURE__ */ new Map();
 function getVerdictRecorder(willId) {
@@ -25062,6 +25075,11 @@ function getVerdictSource(willId) {
 }
 
 // src/stem/tracts/effector.controller.ts
+var ARBITER_FAULT_VERDICT = Object.freeze({
+  decision: "deny",
+  reasonCode: "ARBITER_UNAVAILABLE",
+  finality: "context"
+});
 var ESCALATION_TTL_TICKS = 30;
 var effectorController = class {
   /** The Policy Decision Point consulted before an invocation reaches the world.
@@ -25123,12 +25141,16 @@ var effectorController = class {
       verdict = this._arbiter.evaluate(invocation);
     } catch (err) {
       logger.error(`[policy] arbiter "${this._arbiter.name}" threw for "${invocation.schema}" \u2014 failing closed:`, err);
+      this._recordAndApply(instance, payload, invocation, ARBITER_FAULT_VERDICT);
       return;
     }
     if (verdict instanceof Promise) {
       void verdict.then(
         (v) => this._recordAndApply(instance, payload, invocation, v),
-        (err) => logger.error(`[policy] arbiter "${this._arbiter.name}" rejected for "${invocation.schema}" \u2014 failing closed:`, err)
+        (err) => {
+          logger.error(`[policy] arbiter "${this._arbiter.name}" rejected for "${invocation.schema}" \u2014 failing closed:`, err);
+          this._recordAndApply(instance, payload, invocation, ARBITER_FAULT_VERDICT);
+        }
       );
       return;
     }
@@ -25183,7 +25205,7 @@ var effectorController = class {
         intentId: invocation.intentId,
         schema: invocation.schema,
         reasonCode: verdict.reasonCode ?? "POLICY_DENIED",
-        finality: verdict.finality ?? "instance"
+        finality: finalityOf(verdict)
       });
       this._pendingRefusals.set(instance.config.id, queue);
       return;
@@ -25232,7 +25254,7 @@ var effectorController = class {
       this.confirmExecution(instance, refusal.intentId, {
         success: false,
         refused: true,
-        finality: refusal.finality === "class" ? "class" : "instance",
+        finality: refusal.finality,
         description: `refused by policy: ${refusal.reasonCode} (${refusal.finality})`
       });
   }
@@ -25271,7 +25293,16 @@ var effectorController = class {
       }
     }
   }
-  /** Degrade escalations no one answered in time into instance-refusals (P4). */
+  /**
+   * Degrade escalations no one answered in time into light refusals (P4).
+   *
+   * Finality 'parameter' is chosen for its BEHAVIOUR, not its name: silence is
+   * not literally an argument problem, but the light-dent-with-recovery it
+   * produces is exactly right — a Will whose asks go unanswered should ask
+   * progressively less, and should resume asking if someone starts answering.
+   * 'class' would be a lie (nobody said never) and 'context' would teach
+   * nothing, leaving the mind to escalate forever into an empty room.
+   */
   _expireEscalations(instance, tick) {
     const active = this._activeEscalations.get(instance.config.id);
     if (!active || active.size === 0) return;
@@ -25279,7 +25310,7 @@ var effectorController = class {
       if (tick < esc.expiresAt) continue;
       active.delete(intentId);
       this._clearEscalated(instance, intentId);
-      this._queueRefusal(instance, esc.intentId, esc.schema, "ESCALATION_EXPIRED", "instance");
+      this._queueRefusal(instance, esc.intentId, esc.schema, "ESCALATION_EXPIRED", "parameter");
       logger.info(`[policy] escalation EXPIRED \u2192 refusing "${esc.schema}" intent "${intentId}"`);
     }
   }

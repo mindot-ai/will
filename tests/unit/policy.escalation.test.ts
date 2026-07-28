@@ -123,7 +123,7 @@ describe('P4 — expiry degrades to a refusal', () => {
     c.applyPolicyOutcomes( asInstance( instance ) )
     const outcome = entities.get('agency-outcome-38-i-1')
     expect( outcome ).toBeDefined()
-    expect( outcome!.metadata ).toMatchObject({ refused: true, finality: 'instance' })
+    expect( outcome!.metadata ).toMatchObject({ refused: true, finality: 'parameter' })
   })
 })
 

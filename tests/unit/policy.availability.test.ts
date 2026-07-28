@@ -43,10 +43,10 @@ describe('P2 — availability layer', () => {
     expect( rep.availability().size ).toBe( 0 )       // quiet path writes nothing
   })
 
-  it('cuts availability HARD on a class refusal, LIGHTLY on an instance refusal', () => {
+  it('cuts availability HARD on a class refusal, LIGHTLY on a parameter refusal', () => {
     const rep = new SchemaRepertoire()
     rep.recordRefusal('trade', 'class', 1 )
-    rep.recordRefusal('move',  'instance', 1 )
+    rep.recordRefusal('move',  'parameter', 1 )
     expect( rep.availabilityOf('trade') ).toBeLessThan( rep.availabilityOf('move') )
     expect( rep.availabilityOf('move') ).toBeGreaterThan( 0.8 )   // barely dented
   })
@@ -131,7 +131,7 @@ describe('P2 — refusal routes to availability, not competence', () => {
     const quiet = await reaff.react( 0, 1, frozen( s ), CTX )
     expect( ( quiet.commands?.metrics ?? [] ).find( m => m[0] === 'agency.refused.count') ).toBeUndefined()
 
-    outcome( s, 'o-1', { schema: 'trade', intentId: 'i-1', success: false, refused: true, finality: 'instance' } )
+    outcome( s, 'o-1', { schema: 'trade', intentId: 'i-1', success: false, refused: true, finality: 'parameter' } )
     const loud = await reaff.react( 0, 2, frozen( s ), CTX )
     expect( ( loud.commands?.metrics ?? [] ).find( m => m[0] === 'agency.refused.count')?.[1] ).toBe( 1 )
   })

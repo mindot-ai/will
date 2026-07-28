@@ -26,6 +26,7 @@
 
 import type { MotorSchema, LearnedSkill } from '#agency/types'
 import type { EntityInput, ReadonlySimulationState } from '#core/types'
+import type { DenialFinality } from '#stem/policy/arbiter'
 import { INNATE_SCHEMAS } from '#agency/schemas/innate'
 
 const VALUE_ALPHA       = 0.2   // value EMA rate
@@ -50,8 +51,8 @@ const DROP_HABIT        = 0.05  // below this (and learned) the skill is forgott
 // availability never floors at zero, and it climbs back toward 1 with disuse of
 // the refusal. P2 keys availability by SCHEMA; per-(schema, params) envelope
 // narrowing is a follow-up that belongs at selection time, not fielding time.
-const AVAIL_DROP_CLASS    = 0.50  // multiplicative cut on a class-final refusal
-const AVAIL_DROP_INSTANCE = 0.12  // lighter cut on an instance-final refusal
+const AVAIL_DROP_CLASS     = 0.50  // multiplicative cut on a class-final refusal
+const AVAIL_DROP_PARAMETER = 0.12  // lighter cut when only the arguments were refused
 const AVAIL_FLOOR         = 0.05  // never zero — re-probe must always be possible
 const AVAIL_RECOVERY      = 0.02  // per-decay climb back toward 1
 const AVAIL_RECOVERED     = 0.999 // at/above this the entry is dropped (quiet path)
@@ -119,13 +120,19 @@ export class SchemaRepertoire {
 
   /**
    * Fold a policy refusal into the availability layer (NOT competence). A
-   * `class` refusal cuts availability hard; an `instance` refusal dents it
+   * `class` refusal cuts availability hard; a `parameter` refusal dents it
    * lightly. Multiplicative so repeated refusals compound toward — but never
    * reach — zero, keeping re-probe alive.
+   *
+   * `context` is EXCLUDED FROM THE SIGNATURE, not handled inside: a refusal
+   * that was not about the action must never reach the availability layer at
+   * all, and making that a type error rather than a convention means a future
+   * caller cannot quietly re-introduce the dent. The routing decision lives in
+   * the ReafferenceEngine's refused branch (P5).
    */
-  recordRefusal( schema: string, finality: 'class' | 'instance', tick: number ): number {
+  recordRefusal( schema: string, finality: Exclude<DenialFinality, 'context'>, tick: number ): number {
     const prev = this._availability.get( schema )?.value ?? 1
-    const drop = finality === 'class' ? AVAIL_DROP_CLASS : AVAIL_DROP_INSTANCE
+    const drop = finality === 'class' ? AVAIL_DROP_CLASS : AVAIL_DROP_PARAMETER
     const value = Math.max( AVAIL_FLOOR, prev * ( 1 - drop ) )
     this._availability.set( schema, { value, lastRefusedTick: tick } )
     return value

@@ -187,7 +187,7 @@ describe('RuleTableArbiter', () => {
     expect( a.evaluate( inv({ parameters: { amount: 500 } }) ) ).toEqual({
       decision:       'deny',
       reasonCode:     'PARAM_ABOVE_MAX',
-      finality:       'instance',
+      finality:       'parameter',
       counterfactual: { field: 'amount', requested: 500, allowed: 100 },
     })
   })
@@ -198,7 +198,7 @@ describe('RuleTableArbiter', () => {
       rules: [ { schema: 'trade', decision: 'allow', require: { amount: { max: 10 } } } ], fallthrough: 'deny',
     })
     expect( banned.evaluate( inv() ).finality ).toBe('class')
-    expect( bounded.evaluate( inv({ parameters: { amount: 99 } }) ).finality ).toBe('instance')
+    expect( bounded.evaluate( inv({ parameters: { amount: 99 } }) ).finality ).toBe('parameter')
   })
 
   it('treats an absent required parameter as a violation', () => {
@@ -248,7 +248,7 @@ describe('arbiter helpers', () => {
   })
 
   it('finalityOf defaults an unlabelled denial to the conservative reading', () => {
-    expect( finalityOf({ decision: 'deny' }) ).toBe('instance')
+    expect( finalityOf({ decision: 'deny' }) ).toBe('parameter')
     expect( finalityOf({ decision: 'deny', finality: 'class' }) ).toBe('class')
   })
 })

@@ -1,6 +1,7 @@
 # POLICY_REAFFERENCE — the boundary as a sense: policy verdicts routed through reafference
 
-> **Status:** P0–P4 SHIPPED (2026-07-21) · P5 + refinements OPEN. Goal: give the
+> **Status:** P0–P5 SHIPPED (P0–P4 2026-07-21, P5 2026-07-28) · P6 + refinements
+> OPEN. Goal: give the
 > Will a **body that cannot do forbidden things**, and make the refusal something
 > the mind *learns from* rather than a wall it re-discovers every tick. A policy
 > verdict stops being an exception thrown at the host and becomes **graded
@@ -16,13 +17,13 @@
 > | **P2** availability | #73 | Refusal → a schema-keyed **availability** layer in the repertoire, strictly apart from `LearnedSkill`; `scoreAffordance` damps a positive activation without removing it (re-probe survives, slow recovery). Forbidden ≠ unskilled. |
 > | **P3** rupture | #74 | A `class` refusal of the schema being deliberated writes an `agency.revocation` tombstone (reuses EXAFFERENCE P4) — the Will lets go. A refusal contributes ZERO exafferent rupture by construction. |
 > | **P4** speech act | #75 | `escalate` HOLDS the intent (executor stops timing it out), voices a first-person ask once, and `WillStem.resolveEscalation` approves (dispatch) / denies (refuse); unanswered → refusal at `ESCALATION_TTL_TICKS = 30`. |
+> | **P5** taxonomy | #87 | `finality` splits `'class' \| 'instance'` → **`'class' \| 'parameter' \| 'context'`** (provider-neutral — HELM's spellings live in the P6 adapter alone). `context` is a fourth fate that touches NOTHING, and an arbiter fault now refuses as `context` instead of decaying into a competence-scarring timeout. |
 >
 > Every phase kept `replay.equivalence` green — the no-policy quiet path is
 > byte-identical throughout. Verdict vocabulary (`finality` + `counterfactual`,
 > no numeric severity) is deliberately identical to the HELM RFC's proposal.
 >
-> **Open:** **P5** (the four-value finality taxonomy — *unblocked*, no HELM
-> dependency) and **P6** (HELM transport adapter — gated on the schema diff).
+> **Open:** **P6** (HELM transport adapter — gated on the schema diff).
 > **Deferred refinements:**
 > facet-authored escalation voice → [[ESCALATION_VOICE]] (`.TODO/ESCALATION_VOICE.md`);
 > counterfactual-driven envelope narrowing → [[ENVELOPE_NARROWING]]
@@ -430,14 +431,14 @@ so it does not survive a snapshot/restore — a restored escalation would expire
 a refusal rather than resume. Both are acceptable for the mechanism; neither
 changes the lifecycle.
 
-### P5 — The finality taxonomy, provider-neutral — UNBLOCKED (no HELM dependency)
+### P5 — The finality taxonomy, provider-neutral ⟶ done (2026-07-28)
 
 The joint RFC's enum is a **vocabulary**, not a transport, so it can be adopted
 entirely against the local `RuleTableArbiter`. **We adopt HELM's DISTINCTIONS,
 not HELM's SPELLINGS** — see the naming-boundary note below, which is the
 load-bearing decision of this phase.
 
-- [ ] **Centralize first.** The literal `'class' | 'instance'` is hand-written
+- [x] **Centralize first.** The literal `'class' | 'instance'` is hand-written
       in six places instead of importing `DenialFinality`
       (`reconcile.learning.ts:34`, `repertoire.ts:126`,
       `effector.controller.ts:335` + `:422`, plus string compares in
@@ -445,19 +446,19 @@ load-bearing decision of this phase.
       everywhere **before** widening it — that turns the split below into a
       compile error at every site that needs attention, instead of six silent
       mis-routes.
-- [ ] **Split `DenialFinality`** `'class' | 'instance'` →
+- [x] **Split `DenialFinality`** `'class' | 'instance'` →
       `'class' | 'parameter' | 'context'`. `'class'` is UNCHANGED, so all of
       P0–P4's code and tests keep working; only `'instance'` splits in two.
       `ungranted` does not join the enum at all — it maps to our existing
       `decision: 'escalate'` (see the axis note).
-- [ ] **`context` — the new fate: touch NOTHING.** A context/taint refusal is
+- [x] **`context` — the new fate: touch NOTHING.** A context/taint refusal is
       not about the ability, so denting its availability teaches a lesson the
       policy never taught. Record the verdict, free the awaiting intent, signal
       the plan step, and stop — no availability delta, no envelope, no
       competence. A fourth branch in the ReafferenceEngine's refused path, and
       it **corrects current behaviour**: today every instance denial dents
       availability by 0.12 regardless of cause.
-- [ ] **`finalityOf()`'s default stays at `'parameter'` — NEVER `'context'`.**
+- [x] **`finalityOf()`'s default stays at `'parameter'` — NEVER `'context'`.**
       The intuitive read (default to the fate that does least) is wrong here.
       `context` means *the mind learns nothing from this denial*, so it
       re-probes the wall forever — the exact failure this epoch exists to fix,
@@ -465,18 +466,35 @@ load-bearing decision of this phase.
       claim only a provider that actually knows can make: **assert it, never
       default to it.** `parameter` (light dent, fast recovery) preserves today's
       unlabelled-denial behaviour exactly.
-- [ ] **Fix the arbiter-fault path (conformance S9 — we currently fail it).**
+- [x] **Fix the arbiter-fault path (conformance S9 — we currently fail it).**
       A sync throw / async rejection fails closed correctly (the effect is
       withheld, `effector.controller.ts:137`) but queues no refusal, so the held
       intent expires at `AWAIT_TIMEOUT` and reconciles as a **plain failure** —
       landing on competence. A PDP outage must never teach a mind it is
       unskilled. Queue a `context`-shaped refusal instead (touch nothing),
       reason code `ARBITER_UNAVAILABLE`.
-- [ ] Tests: each value drives exactly its own fate and no other (the S1–S9
-      matrix, minus the transport-dependent ones); `context` leaves
-      availability, envelopes and `LearnedSkill` all provably untouched; an
-      unlabelled denial still behaves exactly as `'instance'` did; an arbiter
-      fault records no competence; quiet path still byte-identical.
+- [x] Tests: `tests/unit/policy.taxonomy.test.ts` (13 new) — normalization and
+      the never-guess-context rule, the rule table emitting the split
+      vocabulary, and the `context` fate proved inert four ways (availability,
+      competence, mirror entity, and *still frees the intent* — touching nothing
+      must not mean hanging); plus 5 in `policy.reafference.test.ts` for the
+      fault path. Full suite **1168 passed / 2 skipped (174 files)**,
+      `replay.equivalence` green, typecheck clean.
+
+**Two things found while implementing, both worth keeping in mind:**
+
+1. **The fault path also broke REPLAY**, not just learning. An unrecorded fault
+   left the verdict source with nothing to re-feed, and a source miss reproduces
+   a *buffered allow* — so a live run that withheld the effect would have
+   replayed as one that dispatched it. Routing the synthesized fault verdict
+   through `_recordAndApply` (rather than straight onto the refusal queue) fixes
+   both halves at once, which is why it is written that way.
+2. **`context` is excluded from `recordRefusal`'s SIGNATURE**
+   (`Exclude<DenialFinality, 'context'>`), not handled inside it. The invariant
+   "a refusal that was not about the action never reaches the availability
+   layer" is then a compile error rather than a convention a future caller can
+   quietly undo. The routing decision stays in the ReafferenceEngine where it
+   belongs; the type just makes the mistake unexpressible.
 
 **The naming-boundary note (the decision of this phase).** HELM's spellings
 (`class_forbidden` · `ungranted` · `instance_parameter` · `instance_context`)
@@ -489,11 +507,18 @@ our breaking change. Three reasons this is not a retreat from the collaboration:
    consumer behavior*; §5 certifies a mind that *learns* from a denial. We
    consume their values **verbatim on the wire** and satisfy the behaviour
    table. Nothing in the RFC asks a consumer how to spell its internal types.
-2. **Our independence is what makes the certification mean anything.** A
-   consumer that mirrors the producer's vocabulary proves the standard works
-   for producer-shaped consumers — nearly circular. An independently-designed
-   mind whose two-axis model *predates* the RFC satisfying the table is
-   evidence the standard is portable. Mirroring would spend that evidence.
+2. **A reference consumer is worth having because it is structurally unlike the
+   producer.** Be accurate about lineage here (checked against git, 2026-07-28):
+   Will had **no policy layer at all** before the HELM evaluation — `finality`
+   first appears 2026-07-21 in `c57cd0c`, the same commit that created this
+   file, and the `allow|deny|escalate` shape is **HELM's**. The class/instance
+   split was ours, but invented *for* the upstream proposal, not before it. Do
+   NOT claim the model "predates the RFC" — technically true by five days, and
+   misleading. What is genuinely Will-native is the **consumer side**: refusal
+   routing to an availability layer strictly apart from competence, which has no
+   counterpart in a policy kernel. *That* is the portability evidence — their
+   vocabulary survives contact with an architecture unlike a PDP — and mirroring
+   our internals to match would demonstrate rather less.
 3. **We are consumer #1, so we set the template.** "Map at your boundary,
    satisfy the table" is cheap to adopt; "adopt our enum into your core types"
    is not. The cheap pattern is in HELM's interest.

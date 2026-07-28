@@ -33,15 +33,28 @@
 export type PolicyDecision = 'allow' | 'deny' | 'escalate'
 
 /**
- * Is this denial a property of the ACTION CLASS (never permitted under the
- * active policy) or of THIS INSTANCE (wrong target, exceeded bound)?
+ * WHY this denial is final — the distinction that makes a refusal learnable
+ * rather than a wall to re-probe forever. Each value selects a different
+ * cognitive fate; they are not degrees of one severity.
  *
- * This is the distinction that makes a refusal learnable rather than a wall to
- * re-probe forever, and it is the field we are proposing upstream to HELM. A
- * 'class' denial should suppress the affordance; an 'instance' denial should
- * only narrow the parameter envelope the Will reaches for.
+ *   • 'class'     — the ACTION ITSELF is never permitted. Suppress the
+ *                   affordance hard, erase any learned envelope, and let go of
+ *                   a commitment currently deliberating toward it.
+ *   • 'parameter' — the action is fine; THESE ARGUMENTS were not (bound
+ *                   exceeded, wrong target). Narrow the envelope the Will
+ *                   reaches for; the ability stays.
+ *   • 'context'   — the refusal was NOT ABOUT THE ACTION at all (tainted
+ *                   context, unavailable dependency). Touch nothing: no
+ *                   availability delta, no envelope, no competence.
+ *
+ * POLICY_REAFFERENCE P5 widened this from 'class' | 'instance' after the HELM
+ * joint RFC ("Denials That Teach") identified that an instance-scoped refusal
+ * splits in two, and that the two halves demand opposite responses. These are
+ * OUR names for the distinctions, deliberately not HELM's wire spellings — see
+ * the naming-boundary note in .TODO/POLICY_REAFFERENCE.md. A provider adapter
+ * translates; this interface stays vendor-neutral.
  */
-export type DenialFinality = 'class' | 'instance'
+export type DenialFinality = 'class' | 'parameter' | 'context'
 
 /**
  * The nearest allowed envelope — what WOULD have been permitted. Structured so
@@ -64,9 +77,8 @@ export interface Verdict {
   decision:        PolicyDecision
   /** Stable machine-readable code, e.g. 'TARGET_NOT_ALLOWED'. Never prose. */
   reasonCode?:     string
-  /** Meaningful on 'deny' only. Absent ⇒ treat as 'instance' (the safe default:
-   *  it narrows rather than suppresses, so a mis-tagged denial cannot silently
-   *  delete an ability from the Will's reach). */
+  /** Meaningful on 'deny' only. Absent ⇒ treat as 'parameter' — see
+   *  `asFinality` for why that, and not 'context', is the safe default. */
   finality?:       DenialFinality
   counterfactual?: PolicyCounterfactual
   /** Free-text for logs and host UX. NEVER parsed by cognition. */
@@ -127,10 +139,33 @@ export function isNullArbiter( arbiter: PolicyArbiter | null | undefined ): bool
   return !arbiter || arbiter === NULL_ARBITER
 }
 
-/**
- * Normalize a denial's finality. Absent ⇒ 'instance', the conservative reading:
- * an unlabelled refusal narrows the envelope but never removes the ability.
- */
+/** Normalize a denial's finality. Absent ⇒ 'parameter' (see `asFinality`). */
 export function finalityOf( verdict: Verdict ): DenialFinality {
-  return verdict.finality === 'class' ? 'class' : 'instance'
+  return asFinality( verdict.finality )
+}
+
+/**
+ * Normalize an UNTYPED finality — one read back off entity metadata, a verdict
+ * tape, or a host ack, where the type system cannot help.
+ *
+ * Every such read goes through here rather than comparing string literals at
+ * the call site: the enum is a moving target (it widened once for the HELM
+ * joint RFC and may again), and a hand-written `=== 'class'` scattered through
+ * cognition is a mis-route that still typechecks.
+ *
+ * THE DEFAULT IS 'parameter', AND NEVER 'context'. The intuitive reading — an
+ * unlabelled denial should do the LEAST, so default to the fate that touches
+ * nothing — is wrong, and dangerously so. 'context' means *the mind learns
+ * nothing from this denial*, so it re-probes the same wall forever: the exact
+ * failure this whole epoch exists to fix, silently re-enabled for any provider
+ * that doesn't tag its refusals. 'context' is a claim only a provider that
+ * actually knows can make — it must be ASSERTED, never defaulted to.
+ * 'parameter' narrows without deleting, which is the honest conservative
+ * reading and preserves pre-P5 behaviour for an untagged denial exactly.
+ *
+ * Legacy 'instance' (the pre-P5 spelling) normalizes to 'parameter' by the same
+ * fallback, so tapes and snapshots written before the split replay unchanged.
+ */
+export function asFinality( raw: unknown ): DenialFinality {
+  return raw === 'class' ? 'class' : raw === 'context' ? 'context' : 'parameter'
 }

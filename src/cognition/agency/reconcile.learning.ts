@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { EntityInput, Tick } from '#core/types'
+import type { DenialFinality } from '#stem/policy/arbiter'
 
 export interface HostAckResult {
   success:        boolean
@@ -31,7 +32,7 @@ export interface HostAckResult {
    * forbidden to do. `finality` decides how hard availability is cut.
    */
   refused?:       boolean
-  finality?:      'class' | 'instance'
+  finality?:      DenialFinality
 }
 
 /**

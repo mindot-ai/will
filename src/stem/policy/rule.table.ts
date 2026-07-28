@@ -37,7 +37,7 @@ export interface ParamConstraint {
  *
  * `require` is meaningful with `decision: 'allow'` only: the scope matched, and
  * these constraints must hold for the allow to stand. A violation flips the
- * verdict to deny — carrying the counterfactual — with finality 'instance',
+ * verdict to deny — carrying the counterfactual — with finality 'parameter',
  * because the ability itself was permitted and only these arguments were not.
  *
  * A rule with `decision: 'deny'` and no `require` is a flat class-level ban;
@@ -94,7 +94,7 @@ export class RuleTableArbiter implements PolicyArbiter {
         return {
           decision:       'deny',
           reasonCode:     rule.reasonCode ?? violation.reasonCode,
-          finality:       rule.finality ?? 'instance',
+          finality:       rule.finality ?? 'parameter',
           counterfactual: violation.counterfactual,
         }
 

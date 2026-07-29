@@ -63,7 +63,7 @@ Most of the substrate is here. This is a wiring job, not a build.
 | **`effortScore`** — physiology-derived demand (uncertainty, prior confidence, novelty, pending reply, stress), pure + deterministic, computed **before** the call | `faculties/executive.engine/effort.gate.ts` | ✅ already consumed by master + facets |
 | **`stakes( winner, bias )`** — consequence of the leading choice (threat, affective charge, novelty) | `agency/selection.scoring.ts` | ✅ computed; not yet carried to the deliberation call |
 | **Completion tape records `provider` + `model`** per call; replay re-feeds recorded completions | `core/completion.recorder.ts` | ✅ **replay determinism under routing is already solved** |
-| **Multi-provider wire** — 5 providers, wire detection, per-provider base URLs, `baseUrl` override | `llm/index.ts` | ✅ |
+| **Multi-provider wire** — 12 providers with built-in wire + base URL, any other name once it declares its own | `llm/index.ts` | ✅ widened in W10 (was 5) |
 | **Public list prices** + date-insensitive normalisation | `cognition/utilities/token.tracker.ts` | ✅ |
 | **The seam pattern to copy** — interface + null default that ships dark + reference impl | `stem/policy/arbiter.ts` | ✅ proven in 0.7.0 |
 
@@ -199,7 +199,7 @@ router?.route( meta )                    // null / absent ⇒ skip
 | # | Work | Depends on | Notes |
 | :--- | :--- | :--- | :--- |
 | **W0** | `demand` field on `LLMCallMeta`; forward `effortScore` at master + facet sites; constants at the background sites | — | Additive optional field; byte-identical |
-| **W1** | Carry agency `stakes` onto the deliberating intent so an agency-driven facet reports the stakes of *that choice* rather than the tick's general effort | W0 | Refinement, not a gap — the facet already forwards `effortScore`. Optional |
+| **W1** | Carry agency `stakes` onto the deliberating intent so an agency-driven facet reports the stakes of *that choice* rather than the tick's general effort | W0 | Refinement, not a gap — the facet already forwards `effortScore`. **Now measurable, not yet motivated** — see §7 |
 | **W2** | `routing.ts`: `ModelRoute`, `ModelRouter`, `NULL_ROUTER`, `TableRouter` + tests | — | Pure module, no wiring |
 | **W3** | `LLMDirector` resolves route per call; credential set; fallbacks | W2 | The behavioural change |
 | **W4** | Byte-identity + replay-equivalence tests under a routing config | W3 | The gate |
@@ -410,6 +410,17 @@ one. Now exported. A seam nobody can import is not a seam.
 
 ## 7. Open questions
 
+- **W1 is now decidable — and currently unmotivated.** `demand` is persisted on
+  the cost ledger (will#101 + backend#35), so "is deliberation being rated by the
+  tick's mood rather than the stakes of its own choice?" is a query rather than an
+  argument. Two things to weigh before spending the change:
+  1. The demand distribution per `function`, from real rows. If deliberation's
+     demand is indistinguishable from the master's, it is tracking the mood.
+  2. **Nothing routes on it today.** The host escalation rule is bounded to
+     `attribute: 'master', function: 'decision'`, so the deliberation facet hits
+     no demand-bounded rule at all — improving its accuracy would change no
+     routing. W1 needs a rule that reads it *and* evidence the current signal is
+     wrong. Neither exists yet, so the case is weaker than at W0, not stronger.
 - **W1 shape:** carry `stakes` as a field on the deliberating intent entity, or
   recompute from the affordance at the deliberation site? Field is cheaper and
   honest to the moment the choice was made; recomputation avoids widening the

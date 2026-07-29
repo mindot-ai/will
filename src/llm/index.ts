@@ -284,13 +284,23 @@ export interface LLMCallMeta {
    * How much this call demands, 0..1 — MODEL_ROUTING W0.
    *
    * A *cognitive* measure, never a commercial one: it says how consequential or
-   * uncertain this moment is, never who is paying for it. Two faculties already
-   * compute it and simply forward what they have — the master and its facets
-   * pass `effortScore` (the a-priori effort gate: uncertainty, prior
-   * confidence, novelty, a pending reply, stress load), and deliberation passes
-   * the agency stakes of the choice under consideration. Structurally
-   * background work (summarising, guarding, embedding, delivery) reports a low
-   * constant, because it is background whether the mind is calm or in crisis.
+   * uncertain this moment is, never who is paying for it.
+   *
+   * What actually reports it today:
+   *   · the master and every facet — including the deliberation facet — forward
+   *     `effortScore`, the a-priori effort gate (uncertainty, prior confidence,
+   *     novelty, a pending reply, stress load);
+   *   · structurally background work (summarising, the identity guard) reports a
+   *     low constant, because it is background whether the mind is calm or in
+   *     crisis.
+   *
+   * Note what is NOT here: agency's `stakes( winner, bias )` — the consequence
+   * of the specific choice under contest — is computed in
+   * `agency/selection.scoring.ts` and never reaches a call. So a deliberation
+   * facet currently reports the tick's general effort, not the stakes of the
+   * choice it is deliberating. Carrying it is MODEL_ROUTING W1, still open.
+   * This comment previously claimed deliberation passed those stakes; it does
+   * not, and a doc comment that ships to npm is a bad place to be aspirational.
    *
    * Absent means UNKNOWN, not zero: a consumer must fall back to its default
    * rather than treat a missing value as "cheapest possible".

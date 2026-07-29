@@ -184,11 +184,20 @@ export interface CreateWillOptions {
    *
    *   anthropic  ANTHROPIC_API_KEY   Claude, native Messages wire
    *   glm        ZAI_API_KEY         Z.ai GLM, Anthropic-compatible wire
+   *   openai     OPENAI_API_KEY      OpenAI wire
+   *   google     GOOGLE_API_KEY | GEMINI_API_KEY   native Gemini wire
    *   deepseek   DEEPSEEK_API_KEY    OpenAI wire
-   *   openai     OPENAI_API_KEY      OpenAI wire — also any OpenAI-compatible
-   *                                  server (Ollama, vLLM, Together, OpenRouter,
-   *                                  Kimi, Qwen…) via `llmConfig.baseUrl`
-   *   google     GOOGLE_API_KEY | GEMINI_API_KEY
+   *   moonshot   MOONSHOT_API_KEY    Kimi — OpenAI wire
+   *   qwen       DASHSCOPE_API_KEY   Alibaba Model Studio — OpenAI wire
+   *   xai        XAI_API_KEY         Grok — OpenAI wire
+   *   minimax    MINIMAX_API_KEY     OpenAI wire
+   *   mistral    MISTRAL_API_KEY     OpenAI wire
+   *   ollama · vllm                  local; no key, set `llm` explicitly
+   *
+   * Any other string works too — it just has to declare its `wire` and
+   * `baseUrl` on `llmConfig.providers`. Naming the vendor rather than
+   * borrowing `openai` because it speaks that wire is what keeps the
+   * completion tape and the cost breakdown honest.
    *
    * Omit to auto-detect from whichever key is set.
    */
@@ -251,11 +260,18 @@ function detectProvider(): 'mock' | LLMProvider {
     return provider as LLMProvider
   }
   // A provider-specific key IS the explicit statement — no guess involved.
+  // Order is precedence when several are present, and is append-only: moving an
+  // entry silently changes which vendor an existing environment talks to.
   if( process.env.ANTHROPIC_API_KEY ) return 'anthropic'
   if( process.env.ZAI_API_KEY ) return 'glm'
   if( process.env.DEEPSEEK_API_KEY ) return 'deepseek'
   if( process.env.OPENAI_API_KEY ) return 'openai'
   if( process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY ) return 'google'
+  if( process.env.MOONSHOT_API_KEY ) return 'moonshot'
+  if( process.env.DASHSCOPE_API_KEY ) return 'qwen'
+  if( process.env.XAI_API_KEY ) return 'xai'
+  if( process.env.MINIMAX_API_KEY ) return 'minimax'
+  if( process.env.MISTRAL_API_KEY ) return 'mistral'
   return 'mock'
 }
 

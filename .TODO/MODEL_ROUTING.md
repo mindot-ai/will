@@ -200,7 +200,10 @@ router?.route( meta )                    // null / absent ⇒ skip
 | **W2** | `routing.ts`: `ModelRoute`, `ModelRouter`, `NULL_ROUTER`, `TableRouter` + tests | — | Pure module, no wiring |
 | **W3** | `LLMDirector` resolves route per call; credential set; fallbacks | W2 | The behavioural change |
 | **W4** | Byte-identity + replay-equivalence tests under a routing config | W3 | The gate |
-| **W5** | Docs: routing guide in `docs/`, README note, `ROADMAP.md` entry | W3 | Public-facing |
+| **W5** | Docs: routing guide in `docs/`, README note, `ROADMAP.md` entry | W3 | README + `.env.example` done; the standalone `docs/` guide waits for the backend table, so it documents a real setup |
+| **W6** | Thread `router` from `WillConfig` → stem → every director; typed attribution axes | W3 | ✅ Shipped |
+| **W7** | Desugar the per-role model map into the router; delete the director cache | W6 | ✅ Shipped — see §5d |
+| **W10** | Every provider the cost model names; provider-scoped key env; export the seam | W9 | ✅ Shipped — see §5e |
 
 ---
 
@@ -306,6 +309,81 @@ resolved `wire` and the provider name is free.
 network — demanding credentials from either would break the no-key quickstart
 and re-feeding alike. Both resolve a `mock` sentinel that the tape records
 plainly.
+
+---
+
+## 5d. W6/W7 — one mechanism, not two
+
+The seam shipped in W2/W3 but nothing threaded it from `WillConfig`, so a host
+using the SDK could not route at all (**W6**). Fixing that exposed the deeper
+problem: the engine already had a second, older answer to "which model serves
+this call?" — the per-role model map, implemented as a **cache of directors**
+keyed by model.
+
+Two mechanisms, one question, and they disagreed about *when*:
+
+| | decided at | follows |
+| :--- | :--- | :--- |
+| role map | facet **spawn** | the role the facet was created under |
+| router | each **call** | the work the call is actually doing |
+
+A facet held its spawn-time model for life. The router could still override per
+call, so the role map was never authoritative either — it was a *default* with
+extra machinery.
+
+**W7 makes the map sugar.** `compileRoleRouter()` desugars it into rules, which
+chain behind the host's own router (`chainRouters`, host first — the precedence
+the two already had). `_directorFor` and its cache are gone; a Will builds one
+director.
+
+The desugaring is exact because every role's call sites already tag themselves
+with the matching axis — `summarizer` → `category`, `deliberation` and
+`conversation`/`outreach` → `function`. The master's own deliberate pass is
+tagged `ideation`, so a `deliberation` rule does not capture it, exactly as
+before. Roles equal to `executive` emit no rule at all, so a single-model Will
+keeps an empty chain and stays byte-identical.
+
+Two supporting changes fell out:
+
+- **`ModelRoute.provider` is now optional** — "same vendor, different model",
+  which is the only thing a role has ever meant.
+- **`chainRouters` isolates a throwing link.** A broken host router must not
+  take the compiled role map down with it; that failure would look like nothing
+  at all, silently demoting every role-mapped call to the default.
+
+---
+
+## 5e. W10 — the providers the cost model actually names
+
+`KNOWN_PROVIDERS` held five. The routing table in
+`executive/WILL_PRICING_STRATEGY_ECONOMY.md` builds on ten, plus local
+runtimes. Every missing one had to be reached by declaring `wire` + `baseUrl` by
+hand — or, far more likely, by calling it `openai` because it speaks that wire,
+which puts a false vendor on the completion tape and in the per-provider cost
+breakdown.
+
+Added: `moonshot` · `qwen` · `xai` · `minimax` · `mistral` · `ollama` · `vllm`.
+Each entry is wire + base URL, verified against the vendor's own docs.
+
+**Why a URL table survives when the price table did not.** A stale price is
+invisible — a confident wrong number nobody doubts. A stale base URL fails on
+the first call, loudly, with the endpoint in the message. They also move on
+different clocks: vendors reprice quarterly and change an API host about once a
+decade. Convenience is worth it when being wrong announces itself.
+
+**One regression fixed here.** W9 removed the key fallback that ended at
+`ANTHROPIC_API_KEY` for every provider — correctly, since it handed one vendor's
+secret to another. But removing it outright left `ANTHROPIC_API_KEY=… npx
+@mindot/will` (the documented quickstart) building a director with an *empty*
+key, while the host's preflight check still validated the key it found. Preflight
+said yes; the first real call 401'd. `providerKeyFromEnv()` restores the path
+without the bug: the lookup is keyed by the **resolved provider**, so it can only
+ever read the key belonging to the provider actually configured.
+
+**Public surface.** None of `TableRouter`, `NULL_ROUTER`, `ModelRouter`,
+`RoutingRule` or `KNOWN_PROVIDERS` was exported from the package index — the
+reference implementation that ships *for hosts to copy* could not be imported by
+one. Now exported. A seam nobody can import is not a seam.
 
 ---
 

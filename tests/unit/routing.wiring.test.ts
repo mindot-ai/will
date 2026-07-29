@@ -43,6 +43,32 @@ async function tickUntilCall(
   }
 }
 
+/**
+ * Spawn a conversation facet off a live mind and make it reason once.
+ *
+ * The master's call is tagged `{ category:'executive', attribute:'master',
+ * function:'decision' }` — which is precisely the tagging no compiled role rule
+ * claims, since the executive role *is* the default. So any assertion about a
+ * role model has to come from a facet.
+ */
+async function driveConversationFacet(
+  cognition: ReturnType<typeof assembleMind>['cognition'],
+  simulation: ReturnType<typeof assembleMind>['simulation'],
+): Promise<void> {
+  const { handle } = cognition.executiveEngine.spawnFacet('conversation')
+  if( !handle ) throw new Error('facet budget full — cannot drive the probe')
+
+  handle.setFocus( {
+    title:    'Active Conversation',
+    function: 'conversation',
+    content:  'Someone said hello.',
+  } )
+  await handle.report( { type: 'message', payload: { content: 'hello' } } as never )
+  // The facet reasons off the tick pump, not the report itself.
+  await simulation.step( 1 )
+  handle.destroy()
+}
+
 describe('router reaches the engine from WillConfig (W6)', () => {
 
   let recorded: LLMCompletionRecord[] = []
@@ -122,10 +148,10 @@ describe('router reaches the engine from WillConfig (W6)', () => {
   })
 
   it('routes role-configured facets too — a role model cannot bypass the router', async () => {
-    // Regression guard: role models are served by a separate cached director
-    // (`_directorFor`). Before W6 that cache was built without a router, so a
-    // Will configuring `model.summarizer` would silently opt that work out of
-    // routing entirely.
+    // Regression guard: role models used to be served by a separate cached
+    // director. Before W6 that cache was built without a router, so a Will
+    // configuring `model.summarizer` silently opted that work out of routing.
+    // W7 removed the cache outright, which is the permanent fix.
     const { simulation } = assembleMind( WILL, config( WILL, {
       provider: 'anthropic', apiKey: 'k',
       model: { executive: 'exec-model', summarizer: 'sum-model' },
@@ -137,5 +163,68 @@ describe('router reaches the engine from WillConfig (W6)', () => {
     await tickUntilCall( simulation, recorded )
 
     expect( recorded.some( r => r.model === 'routed-model' ) ).toBe( true )
+  })
+
+  it('serves a role map with no router at all — the map compiles into one (W7)', async () => {
+    // The whole point of W7: a host that only ever set `model.summarizer` still
+    // gets that model, through the same mechanism as everyone else. Executive
+    // work keeps the executive model — a compiled rule must not over-claim.
+    const { simulation } = assembleMind( WILL, config( WILL, {
+      provider: 'anthropic', apiKey: 'k',
+      model: { executive: 'exec-model', summarizer: 'sum-model' },
+      // no `router`
+    } ) )
+    await tickUntilCall( simulation, recorded )
+
+    expect( recorded.length ).toBeGreaterThan( 0 )
+    expect( recorded.every( r => r.model === 'exec-model' ),
+      `executive work left its model (models seen: ${[ ...new Set( recorded.map( r => r.model ) ) ].join(', ')})`
+    ).toBe( true )
+    // Every call carries the Will's own provider — a provider-less compiled
+    // route must never fall through to some other vendor.
+    expect( recorded.every( r => r.provider === 'anthropic' ) ).toBe( true )
+  })
+
+  it('gives a conversation facet the role model — the path that lost its director', async () => {
+    // A conversation facet used to be handed a *separate* director built for the
+    // conversation model. That director is gone; the facet shares the Will's one
+    // director and reaches its model through the compiled rule instead. Driving
+    // a real facet is the only way to assert that, because the master's own call
+    // is the one call no compiled rule ever claims.
+    const { simulation, cognition } = assembleMind( WILL, config( WILL, {
+      provider: 'anthropic', apiKey: 'k',
+      model: { executive: 'exec-model', conversation: 'chatty-model' },
+    } ) )
+    await tickUntilCall( simulation, recorded )
+    recorded.length = 0
+
+    await driveConversationFacet( cognition, simulation )
+
+    expect( recorded.length, 'no facet call was made — the probe itself is broken').toBeGreaterThan( 0 )
+    expect( recorded.every( r => r.model === 'chatty-model' ),
+      `facet did not take the conversation model (models seen: ${[ ...new Set( recorded.map( r => r.model ) ) ].join(', ')})`
+    ).toBe( true )
+  })
+
+  it('the host router outranks the role map on a call both claim', async () => {
+    // Precedence is inherited, not invented: a router already overrode the
+    // role-cached director per call, because the director only supplied the
+    // *default* endpoint that the router then got to replace.
+    const { simulation, cognition } = assembleMind( WILL, config( WILL, {
+      provider: 'anthropic', apiKey: 'k',
+      model: { executive: 'exec-model', conversation: 'role-model' },
+      router: new TableRouter( [
+        { function: 'conversation', route: { model: 'host-model' } },
+      ] ),
+    } ) )
+    await tickUntilCall( simulation, recorded )
+    recorded.length = 0
+
+    await driveConversationFacet( cognition, simulation )
+
+    expect( recorded.length ).toBeGreaterThan( 0 )
+    expect( recorded.every( r => r.model === 'host-model' ),
+      `role map beat the host router (models seen: ${[ ...new Set( recorded.map( r => r.model ) ) ].join(', ')})`
+    ).toBe( true )
   })
 })

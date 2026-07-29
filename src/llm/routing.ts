@@ -29,14 +29,22 @@
 // routing from becoming a hidden input to the mind.
 // ─────────────────────────────────────────────────────────────
 
+import { logger } from '#core/logger'
 import type { LLMProvider, LLMCallMeta } from '#llm/index'
 
 /**
- * Where a single call should go. Every field except `provider`/`model` falls
- * back to the Will's default when omitted.
+ * Where a single call should go. Every field except `model` falls back to the
+ * Will's default when omitted.
  */
 export interface ModelRoute {
-  provider: LLMProvider
+  /**
+   * Omit to keep the Will's default provider and change only the model — the
+   * common "same vendor, different model for this kind of work" route, and what
+   * the per-role model map compiles to (a role has never had a provider of its
+   * own). Name a provider to cross vendors; it must appear in `llm.providers`
+   * or the route falls back to the default.
+   */
+  provider?: LLMProvider
   model: string
   /** Override the provider's API base (self-hosted / OpenAI-compatible servers). */
   baseUrl?: string
@@ -81,12 +89,18 @@ export function isNullRouter( router: ModelRouter | null | undefined ): boolean 
  * (logical AND); an absent condition matches anything.
  */
 export interface RoutingRule {
-  /** Match `LLMCallMeta.category` exactly (e.g. 'executive', 'summarizer'). */
-  category?: string
+  /**
+   * Match `LLMCallMeta.category` exactly (e.g. 'executive', 'summarizer').
+   *
+   * The axes are typed rather than free strings so a rule that names a bucket
+   * the engine never emits fails to compile instead of silently never matching
+   * — a routing table's worst failure is the rule that looks right and is dead.
+   */
+  category?: LLMCallMeta['category']
   /** Match `LLMCallMeta.attribute` exactly (e.g. 'master', 'facet', 'guard'). */
-  attribute?: string
+  attribute?: LLMCallMeta['attribute']
   /** Match `LLMCallMeta.function` exactly (e.g. 'decision', 'consolidation'). */
-  function?: string
+  function?: LLMCallMeta['function']
   /**
    * Inclusive lower bound on `LLMCallMeta.demand`. A call with no demand
    * reported never matches a rule that sets this — absent means unknown, and
@@ -123,6 +137,45 @@ export class TableRouter implements ModelRouter {
       if( matches( rule, meta ) ) return rule.route
     }
     return null
+  }
+}
+
+/**
+ * Ask each router in turn; the first with an opinion wins.
+ *
+ * This exists because a Will can have two sources of routing at once: the
+ * host's own router, and the one compiled from its per-role model map. Order
+ * expresses precedence — an explicit router is consulted before the role map,
+ * which is the precedence those two mechanisms already had when roles were
+ * served by separate directors.
+ *
+ * A throwing link is skipped, not propagated. The links are independent
+ * decisions, and one broken router must not take a working one down with it —
+ * that would silently demote every role-mapped call to the default model.
+ */
+export function chainRouters( ...routers: ( ModelRouter | null | undefined )[] ): ModelRouter {
+  const chain = routers.filter( ( r ): r is ModelRouter => !isNullRouter( r ) )
+  if( chain.length === 0 ) return NULL_ROUTER
+  if( chain.length === 1 ) return chain[ 0 ]!
+
+  const warned = new Set<string>()
+  return {
+    name: chain.map( r => r.name ).join('>'),
+    route( meta: LLMCallMeta ): ModelRoute | null {
+      for( const router of chain ){
+        try {
+          const hit = router.route( meta )
+          if( hit ) return hit
+        }
+        catch( err ){
+          if( !warned.has( router.name ) ){
+            warned.add( router.name )
+            logger.warn(`[llm.routing] router "${router.name}" threw — skipping it: ${( err as Error ).message}`)
+          }
+        }
+      }
+      return null
+    },
   }
 }
 

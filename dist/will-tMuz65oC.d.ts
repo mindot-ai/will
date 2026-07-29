@@ -3916,11 +3916,18 @@ declare class CompletionInbox {
 }
 
 /**
- * Where a single call should go. Every field except `provider`/`model` falls
- * back to the Will's default when omitted.
+ * Where a single call should go. Every field except `model` falls back to the
+ * Will's default when omitted.
  */
 interface ModelRoute {
-    provider: LLMProvider;
+    /**
+     * Omit to keep the Will's default provider and change only the model — the
+     * common "same vendor, different model for this kind of work" route, and what
+     * the per-role model map compiles to (a role has never had a provider of its
+     * own). Name a provider to cross vendors; it must appear in `llm.providers`
+     * or the route falls back to the default.
+     */
+    provider?: LLMProvider;
     model: string;
     /** Override the provider's API base (self-hosted / OpenAI-compatible servers). */
     baseUrl?: string;
@@ -3939,6 +3946,74 @@ interface ModelRouter {
     readonly name: string;
     route(meta: LLMCallMeta): ModelRoute | null;
 }
+/**
+ * The default. Has no opinion about anything, allocates nothing.
+ *
+ * A Will running this must be byte-identical to one built before the routing
+ * seam existed — that property is asserted by test, and it is what lets this
+ * ship dark.
+ */
+declare const NULL_ROUTER: ModelRouter;
+/** True when the router is the no-op default (used to skip the seam entirely). */
+declare function isNullRouter(router: ModelRouter | null | undefined): boolean;
+/**
+ * One entry in a {@link TableRouter}'s table. All present conditions must match
+ * (logical AND); an absent condition matches anything.
+ */
+interface RoutingRule {
+    /**
+     * Match `LLMCallMeta.category` exactly (e.g. 'executive', 'summarizer').
+     *
+     * The axes are typed rather than free strings so a rule that names a bucket
+     * the engine never emits fails to compile instead of silently never matching
+     * — a routing table's worst failure is the rule that looks right and is dead.
+     */
+    category?: LLMCallMeta['category'];
+    /** Match `LLMCallMeta.attribute` exactly (e.g. 'master', 'facet', 'guard'). */
+    attribute?: LLMCallMeta['attribute'];
+    /** Match `LLMCallMeta.function` exactly (e.g. 'decision', 'consolidation'). */
+    function?: LLMCallMeta['function'];
+    /**
+     * Inclusive lower bound on `LLMCallMeta.demand`. A call with no demand
+     * reported never matches a rule that sets this — absent means unknown, and
+     * unknown must not be treated as zero.
+     */
+    minDemand?: number;
+    /** Exclusive upper bound on `LLMCallMeta.demand`. Same absence rule. */
+    maxDemand?: number;
+    /** Where a matching call goes. */
+    route: ModelRoute;
+}
+/**
+ * A worked example of the seam: first matching rule wins, otherwise no opinion.
+ *
+ * This ships so that the interface has a reference implementation and so that
+ * hosts have something to copy — it is deliberately dumb. It is not a routing
+ * strategy, and the engine ships no table of its own: what belongs where is the
+ * host's decision, expressed as configuration.
+ *
+ * Rules are evaluated in order, so put specific rules before general ones.
+ */
+declare class TableRouter implements ModelRouter {
+    readonly name: string;
+    private readonly _rules;
+    constructor(rules: readonly RoutingRule[], name?: string);
+    route(meta: LLMCallMeta): ModelRoute | null;
+}
+/**
+ * Ask each router in turn; the first with an opinion wins.
+ *
+ * This exists because a Will can have two sources of routing at once: the
+ * host's own router, and the one compiled from its per-role model map. Order
+ * expresses precedence — an explicit router is consulted before the role map,
+ * which is the precedence those two mechanisms already had when roles were
+ * served by separate directors.
+ *
+ * A throwing link is skipped, not propagated. The links are independent
+ * decisions, and one broken router must not take a working one down with it —
+ * that would silently demote every role-mapped call to the default model.
+ */
+declare function chainRouters(...routers: (ModelRouter | null | undefined)[]): ModelRouter;
 
 /**
  * The request/response dialect an endpoint speaks. This — not the provider's
@@ -3946,7 +4021,7 @@ interface ModelRouter {
  */
 type LLMWire = 'anthropic' | 'openai' | 'google';
 /** Providers with built-in defaults. Any other string is equally valid. */
-type KnownProvider = 'anthropic' | 'glm' | 'deepseek' | 'openai' | 'google';
+type KnownProvider = 'anthropic' | 'glm' | 'openai' | 'google' | 'deepseek' | 'moonshot' | 'qwen' | 'xai' | 'minimax' | 'mistral' | 'ollama' | 'vllm';
 /**
  * A provider name. Deliberately open: the field of providers changes monthly,
  * and a closed union meant a host reaching Kimi or Qwen had to masquerade as
@@ -3957,6 +4032,33 @@ type KnownProvider = 'anthropic' | 'glm' | 'deepseek' | 'openai' | 'google';
  * `wire` and `baseUrl` — see `WillLLMConfig.providers`.
  */
 type LLMProvider = KnownProvider | (string & {});
+/**
+ * Built-in wire + base URL per provider. This is *data*, not support: it saves
+ * a host from looking up an endpoint, and nothing more. Any provider absent
+ * from this table works identically once the host declares `wire` + `baseUrl`
+ * on its `llm.providers` entry.
+ *
+ * WHY THIS TABLE SURVIVES WHEN THE PRICE TABLE DID NOT. A stale price is
+ * invisible: it produces a confident wrong number nobody doubts. A stale base
+ * URL fails on the first call, loudly, with the endpoint in the message. They
+ * also move on completely different clocks — vendors reprice quarterly, and
+ * change an API host about once a decade. Convenience is worth it when being
+ * wrong is self-announcing.
+ *
+ * REGIONAL ENDPOINTS. `moonshot`, `qwen` and `minimax` all run separate
+ * mainland-China hosts (`api.moonshot.cn`, `dashscope.aliyuncs.com`,
+ * `api.minimaxi.com`). The international host is the default here; a key issued
+ * on the other one authenticates nowhere, so a host on a China account must set
+ * `baseUrl` explicitly.
+ */
+declare const KNOWN_PROVIDERS: Record<string, {
+    wire: LLMWire;
+    baseUrl: string;
+}>;
+/** Built-in wire for a known provider, or undefined — the host must declare it. */
+declare function knownWireFor(provider: LLMProvider): LLMWire | undefined;
+/** Built-in base URL for a known provider, or undefined — the host must declare it. */
+declare function defaultBaseFor(provider: LLMProvider): string | undefined;
 interface LLMDirectorConfig {
     willId: string;
     model: string;
@@ -4066,6 +4168,13 @@ interface LLMCallMeta {
      */
     demand?: number;
 }
+/** Structurally background work — see `LLMCallMeta.demand`. */
+declare const BACKGROUND_DEMAND = 0.1;
+/**
+ * Escalation is elevated by construction: the buffer only fires once something
+ * has already failed to resolve on its own.
+ */
+declare const ESCALATION_DEMAND = 0.7;
 declare class LLMDirector {
     private _willId;
     private _model;
@@ -4567,13 +4676,14 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     private _lastExecutiveOutput;
     private _lastExecutiveTick;
     private _willId;
-    /** Per-Will, per-role model ids (config.model, resolved in mind.ts). */
-    private _models;
+    /**
+     * The Will's default model (config.model's `executive` role, resolved in
+     * mind.ts). Every other role reaches its model through the router — see
+     * `compileRoleRouter`.
+     */
+    private _modelId;
     /** Per-Will LLM transport overrides (config.llm) — env fallbacks apply per field. */
     private _llm;
-    /** One director per distinct model — same config, different model. Shared
-     *  tracker/recorder/willId, so ledger attribution and replay hold per role. */
-    private _directorCache;
     private _workingMemory;
     private _goalManager;
     private _episodicConsolidator;
@@ -4616,19 +4726,15 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      */
     attachCompletionInbox(inbox: CompletionInbox): void;
     set willId(willId: string);
-    /** Per-Will role models (config.model, resolved). Set before the first tick. */
-    set models(m: {
-        executive: string | null;
-        summarizer: string | null;
-        deliberation: string | null;
-        conversation: string | null;
-    });
-    get models(): {
-        executive: string | null;
-        summarizer: string | null;
-        deliberation: string | null;
-        conversation: string | null;
-    };
+    /**
+     * The Will's default model. Set before the first tick.
+     *
+     * This replaced a four-role map (W7): the other roles are routing rules now,
+     * compiled in mind.ts, so the engine holds one model and one router rather
+     * than a model per role plus a router.
+     */
+    set modelId(id: string | null);
+    get modelId(): string | null;
     /** Per-Will LLM transport overrides (config.llm). Set before the first tick. */
     set llm(c: {
         provider?: string;
@@ -4640,8 +4746,6 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         router?: ModelRouter | null;
         wire?: LLMWire;
     } | null);
-    /** The executive-role model id (back-compat read). */
-    get modelId(): string | null;
     get latestOutput(): ExecutiveOutputFull | null;
     isFresh(currentTick: Tick): boolean;
     /**
@@ -4670,7 +4774,27 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * required: mock mode, or a replay re-feeding recorded completions.
      */
     private _noLiveCalls;
-    private _directorFor;
+    /**
+     * Build this Will's one and only director.
+     *
+     * There used to be a cache of them, keyed by model, because the per-role
+     * model map had no other way to make a role use a different model. Routing
+     * gave it one — the role map now compiles to rules (see `compileRoleRouter`)
+     * and a single director resolves every call's endpoint per call. That is also
+     * strictly more faithful: a facet follows the work it is doing rather than
+     * whatever role it happened to be spawned under.
+     */
+    private _buildDirector;
+    /**
+     * Spawn a facet.
+     *
+     * `role` declares the facet's intent at the call site. It no longer selects a
+     * model: that used to happen here, pinning a facet for life to whatever role
+     * it was spawned under, and it now happens per call from the focus function
+     * the caller sets immediately afterwards (W7). The two always agreed — every
+     * spawn site sets a focus whose `function` matches its role — so the routed
+     * answer is the same one, decided later and from the work itself.
+     */
     spawnFacet(role?: 'deliberation' | 'conversation' | 'outreach' | 'supervision'): {
         attention: 'available' | 'full';
         handle?: ExecutiveFacetHandle;
@@ -8169,11 +8293,20 @@ interface CreateWillOptions {
     *
     *   anthropic  ANTHROPIC_API_KEY   Claude, native Messages wire
     *   glm        ZAI_API_KEY         Z.ai GLM, Anthropic-compatible wire
+    *   openai     OPENAI_API_KEY      OpenAI wire
+    *   google     GOOGLE_API_KEY | GEMINI_API_KEY   native Gemini wire
     *   deepseek   DEEPSEEK_API_KEY    OpenAI wire
-    *   openai     OPENAI_API_KEY      OpenAI wire — also any OpenAI-compatible
-    *                                  server (Ollama, vLLM, Together, OpenRouter,
-    *                                  Kimi, Qwen…) via `llmConfig.baseUrl`
-    *   google     GOOGLE_API_KEY | GEMINI_API_KEY
+    *   moonshot   MOONSHOT_API_KEY    Kimi — OpenAI wire
+    *   qwen       DASHSCOPE_API_KEY   Alibaba Model Studio — OpenAI wire
+    *   xai        XAI_API_KEY         Grok — OpenAI wire
+    *   minimax    MINIMAX_API_KEY     OpenAI wire
+    *   mistral    MISTRAL_API_KEY     OpenAI wire
+    *   ollama · vllm                  local; no key, set `llm` explicitly
+    *
+    * Any other string works too — it just has to declare its `wire` and
+    * `baseUrl` on `llmConfig.providers`. Naming the vendor rather than
+    * borrowing `openai` because it speaks that wire is what keeps the
+    * completion tape and the cost breakdown honest.
     *
     * Omit to auto-detect from whichever key is set.
     */
@@ -8300,4 +8433,4 @@ declare class Will {
     private _emitError;
 }
 
-export { DreamSimulator as $, type AckEnvelope as A, type BehavioralProbeResult as B, type ChunkEnvelope as C, type ClockConfig as D, type Cognition as E, type CognitiveHealth as F, ConfidenceCalibrator as G, type ConfidenceCalibratorConfig as H, type ConflictReport as I, type ConflictResolution as J, type ConflictStrategy as K, type Coordinates as L, type CreateWillOptions as M, DefaultEventBus as N, DefaultMetricCollector as O, DefaultOrchestrator as P, DefaultReplayRecorder as Q, DefaultReplaySession as R, DefaultScenario as S, DefaultSerializer as T, DefaultSimulation as U, DefaultSimulationClock as V, DefaultStateManager as W, DefaultVectorMemoryAdapter as X, DeliberationEngine as Y, DeltaEncoder as Z, type DeltaSnapshot as _, type AckResult as a, type OrchestratorConfig as a$, type DreamSimulatorConfig as a0, type Duration as a1, type EffectorDeclaration as a2, type EffectorEntry as a3, type EffectorHandler as a4, type EffectorResult as a5, type EffectorSpec as a6, type EmbeddingProvider as a7, EmpathySimulator as a8, type EmpathySimulatorConfig as a9, type InboundPerceptEnvelope as aA, InhibitionController as aB, type InhibitionControllerConfig as aC, Interoception as aD, type InteroceptionConfig as aE, IntrospectionEngine as aF, type IntrospectionEngineConfig as aG, KnownEntityTracker as aH, type KnownEntityTrackerConfig as aI, type LLMCompletionRecord as aJ, type LLMCompletionSink as aK, LossEvaluator as aL, type LossEvaluatorConfig as aM, type MessageEnvelope as aN, type MetricCollector as aO, type MetricPoint as aP, type MinimalContext as aQ, MockEmbedder as aR, type ModelPrice as aS, MoralEvaluator as aT, type MoralEvaluatorConfig as aU, MotorSchemaExecutor as aV, NoveltyDetector as aW, type NoveltyDetectorConfig as aX, OlfactionEngine as aY, OpenAICompatibleEmbedder as aZ, type Orchestrator as a_, EnergyRegulator as aa, type EnergyRegulatorConfig as ab, type EngineRegistry as ac, type EngineResult as ad, type Envelope as ae, EpisodicConsolidator as af, type EpisodicConsolidatorConfig as ag, type EventBus as ah, type EventBusConfig as ai, type EventFilter as aj, type EventHandler as ak, type EventPayload as al, ExecutiveEngine as am, type ExecutiveEngineConfig$1 as an, type ExternalTransport as ao, Exteroception as ap, type ExteroceptionConfig as aq, ForgettingCurve as ar, type ForgettingCurveConfig as as, FrustrationEvaluator as at, type FrustrationEvaluatorConfig as au, GoalManager as av, type GoalManagerConfig as aw, GustationEngine as ax, type InboundEnvelope as ay, type InboundMessageEnvelope as az, type ActionRequest as b, SleepPressureRegulator as b$, type OutboundEnvelope as b0, type OutboxMessage as b1, type PMABehavioral as b2, type PMABelief as b3, type PMAEmotionalBaseline as b4, PMAEvalHarness as b5, type PMAGoal as b6, type PMAIdentity as b7, type PMAProbe as b8, type PMASnapshot as b9, type Scenario as bA, type ScenarioConfig as bB, type ScenarioValidationResult as bC, type SchemaPrecondition as bD, type SeededPRNG as bE, SelfModelUpdater as bF, type SelfModelUpdaterConfig as bG, SemanticIntegrator as bH, type SemanticIntegratorConfig as bI, type SensoryInput as bJ, type SerializationConfig as bK, type SerializationFormat as bL, type SerializedEntity as bM, type SerializedState as bN, type Serializer as bO, type SessionLogEnvelope as bP, type Simulation as bQ, type SimulationClock as bR, type SimulationConfig as bS, type SimulationContext as bT, type SimulationEngine as bU, type SimulationEntity as bV, type SimulationEvent as bW, type SimulationEventBase as bX, type SimulationEventListener as bY, type SimulationState as bZ, type SleepPressureConfig as b_, type PerceptEnvelope as ba, PersonaConsolidator as bb, type PersonaConsolidatorConfig as bc, PlanningEngine as bd, type PlanningEngineConfig as be, type PriceTable as bf, type ReadonlySimulationState as bg, ReafferenceEngine as bh, type ReasoningFootprint as bi, type ReconstructionFidelityReport as bj, type ReconstructionFidelityScores as bk, type RecordUsageInput as bl, type ReplayComparison as bm, type ReplayConfig as bn, type ReplayDifference as bo, ReplayManager as bp, type ReplayMetadata as bq, type ReplayRecord as br, type ReplayRecorder as bs, type ReplaySession as bt, type ReplyEnvelope as bu, ReputationTracker as bv, type ReputationTrackerConfig as bw, type RestoreOptions as bx, RewardEvaluator as by, type RewardEvaluatorConfig as bz, type ActionResult as c, SocialPerception as c0, type SocialPerceptionConfig as c1, SomatosensationEngine as c2, SpacedRepetition as c3, type SpacedRepetitionConfig as c4, type StateCommands as c5, type StateManager as c6, type StateSnapshot as c7, type Stimulus as c8, type StorageAdapter as c9, Will as cA, type WillAffect as cB, type WillConfig as cC, type WillEffectorAct as cD, type WillInstance as cE, type WillMessage as cF, type WillStateSummary as cG, type WillStatus as cH, WillStem as cI, type WillSummary as cJ, WorkingMemory as cK, type WorkingMemoryConfig as cL, type WorldEntity as cM, type WorldInterface as cN, assembleMind as cO, clearCompletionRecorder as cP, type effectorInvocation as cQ, type effectorInvocationEnvelope as cR, getCompletionRecorder as cS, resolvePricing as cT, setCompletionRecorder as cU, StressRegulator as ca, type StressRegulatorConfig as cb, TaskSwitcher as cc, type TaskSwitcherConfig as cd, type TextMessage as ce, TheoryOfMind as cf, type TheoryOfMindConfig as cg, ThreatEvaluator as ch, type ThreatEvaluatorConfig as ci, type Tick as cj, type TickListener as ck, type Timestamp as cl, type TokenLedgerRecord as cm, type TokenReportEnvelope as cn, TokenTracker as co, type TokenTrackerConfig as cp, type TokenUsage as cq, type TransportStatus as cr, type VectorIndex as cs, type VectorMemoryAdapter as ct, type VectorMemoryConfig as cu, type VectorQueryFilter as cv, type VectorQueryResult as cw, type VectorRecord as cx, VisionEngine as cy, type VoiceChunk as cz, ActionSelector as d, type ActivityEnvelope as e, type ActivityEvent as f, type ActivityEventHandler as g, AestheticEvaluator as h, type AestheticEvaluatorConfig as i, AffectiveBlender as j, type AffectiveBlenderConfig as k, AffordanceSynthesizer as l, AsyncEngine as m, type AsyncEngineConfig as n, AttachmentEvaluator as o, type AttachmentEvaluatorConfig as p, AttentionAllocator as q, type AttentionAllocatorConfig as r, AuditionEngine as s, AutobiographicalNarrator as t, type AutobiographicalNarratorConfig as u, BiasDetector as v, type BiasDetectorConfig as w, BunStorageAdapter as x, type CircadianConfig as y, CircadianOscillator as z };
+export { type DeltaSnapshot as $, type AckEnvelope as A, BACKGROUND_DEMAND as B, type ChunkEnvelope as C, CircadianOscillator as D, type ClockConfig as E, type Cognition as F, type CognitiveHealth as G, ConfidenceCalibrator as H, type ConfidenceCalibratorConfig as I, type ConflictReport as J, type ConflictResolution as K, type ConflictStrategy as L, type Coordinates as M, type CreateWillOptions as N, DefaultEventBus as O, DefaultMetricCollector as P, DefaultOrchestrator as Q, DefaultReplayRecorder as R, DefaultReplaySession as S, DefaultScenario as T, DefaultSerializer as U, DefaultSimulation as V, DefaultSimulationClock as W, DefaultStateManager as X, DefaultVectorMemoryAdapter as Y, DeliberationEngine as Z, DeltaEncoder as _, type AckResult as a, type ModelRouter as a$, DreamSimulator as a0, type DreamSimulatorConfig as a1, type Duration as a2, ESCALATION_DEMAND as a3, type EffectorDeclaration as a4, type EffectorEntry as a5, type EffectorHandler as a6, type EffectorResult as a7, type EffectorSpec as a8, type EmbeddingProvider as a9, type InboundEnvelope as aA, type InboundMessageEnvelope as aB, type InboundPerceptEnvelope as aC, InhibitionController as aD, type InhibitionControllerConfig as aE, Interoception as aF, type InteroceptionConfig as aG, IntrospectionEngine as aH, type IntrospectionEngineConfig as aI, KNOWN_PROVIDERS as aJ, KnownEntityTracker as aK, type KnownEntityTrackerConfig as aL, type KnownProvider as aM, type LLMCallMeta as aN, type LLMCompletionRecord as aO, type LLMCompletionSink as aP, type LLMProvider as aQ, type LLMWire as aR, LossEvaluator as aS, type LossEvaluatorConfig as aT, type MessageEnvelope as aU, type MetricCollector as aV, type MetricPoint as aW, type MinimalContext as aX, MockEmbedder as aY, type ModelPrice as aZ, type ModelRoute as a_, EmpathySimulator as aa, type EmpathySimulatorConfig as ab, EnergyRegulator as ac, type EnergyRegulatorConfig as ad, type EngineRegistry as ae, type EngineResult as af, type Envelope as ag, EpisodicConsolidator as ah, type EpisodicConsolidatorConfig as ai, type EventBus as aj, type EventBusConfig as ak, type EventFilter as al, type EventHandler as am, type EventPayload as an, ExecutiveEngine as ao, type ExecutiveEngineConfig$1 as ap, type ExternalTransport as aq, Exteroception as ar, type ExteroceptionConfig as as, ForgettingCurve as at, type ForgettingCurveConfig as au, FrustrationEvaluator as av, type FrustrationEvaluatorConfig as aw, GoalManager as ax, type GoalManagerConfig as ay, GustationEngine as az, type ActionRequest as b, type SessionLogEnvelope as b$, MoralEvaluator as b0, type MoralEvaluatorConfig as b1, MotorSchemaExecutor as b2, NULL_ROUTER as b3, NoveltyDetector as b4, type NoveltyDetectorConfig as b5, OlfactionEngine as b6, OpenAICompatibleEmbedder as b7, type Orchestrator as b8, type OrchestratorConfig as b9, ReplayManager as bA, type ReplayMetadata as bB, type ReplayRecord as bC, type ReplayRecorder as bD, type ReplaySession as bE, type ReplyEnvelope as bF, ReputationTracker as bG, type ReputationTrackerConfig as bH, type RestoreOptions as bI, RewardEvaluator as bJ, type RewardEvaluatorConfig as bK, type RoutingRule as bL, type Scenario as bM, type ScenarioConfig as bN, type ScenarioValidationResult as bO, type SchemaPrecondition as bP, type SeededPRNG as bQ, SelfModelUpdater as bR, type SelfModelUpdaterConfig as bS, SemanticIntegrator as bT, type SemanticIntegratorConfig as bU, type SensoryInput as bV, type SerializationConfig as bW, type SerializationFormat as bX, type SerializedEntity as bY, type SerializedState as bZ, type Serializer as b_, type OutboundEnvelope as ba, type OutboxMessage as bb, type PMABehavioral as bc, type PMABelief as bd, type PMAEmotionalBaseline as be, PMAEvalHarness as bf, type PMAGoal as bg, type PMAIdentity as bh, type PMAProbe as bi, type PMASnapshot as bj, type PerceptEnvelope as bk, PersonaConsolidator as bl, type PersonaConsolidatorConfig as bm, PlanningEngine as bn, type PlanningEngineConfig as bo, type PriceTable as bp, type ProviderCredential as bq, type ReadonlySimulationState as br, ReafferenceEngine as bs, type ReasoningFootprint as bt, type ReconstructionFidelityReport as bu, type ReconstructionFidelityScores as bv, type RecordUsageInput as bw, type ReplayComparison as bx, type ReplayConfig as by, type ReplayDifference as bz, type ActionResult as c, assembleMind as c$, type Simulation as c0, type SimulationClock as c1, type SimulationConfig as c2, type SimulationContext as c3, type SimulationEngine as c4, type SimulationEntity as c5, type SimulationEvent as c6, type SimulationEventBase as c7, type SimulationEventListener as c8, type SimulationState as c9, type TokenReportEnvelope as cA, TokenTracker as cB, type TokenTrackerConfig as cC, type TokenUsage as cD, type TransportStatus as cE, type VectorIndex as cF, type VectorMemoryAdapter as cG, type VectorMemoryConfig as cH, type VectorQueryFilter as cI, type VectorQueryResult as cJ, type VectorRecord as cK, VisionEngine as cL, type VoiceChunk as cM, Will as cN, type WillAffect as cO, type WillConfig as cP, type WillEffectorAct as cQ, type WillInstance as cR, type WillMessage as cS, type WillStateSummary as cT, type WillStatus as cU, WillStem as cV, type WillSummary as cW, WorkingMemory as cX, type WorkingMemoryConfig as cY, type WorldEntity as cZ, type WorldInterface as c_, type SleepPressureConfig as ca, SleepPressureRegulator as cb, SocialPerception as cc, type SocialPerceptionConfig as cd, SomatosensationEngine as ce, SpacedRepetition as cf, type SpacedRepetitionConfig as cg, type StateCommands as ch, type StateManager as ci, type StateSnapshot as cj, type Stimulus as ck, type StorageAdapter as cl, StressRegulator as cm, type StressRegulatorConfig as cn, TableRouter as co, TaskSwitcher as cp, type TaskSwitcherConfig as cq, type TextMessage as cr, TheoryOfMind as cs, type TheoryOfMindConfig as ct, ThreatEvaluator as cu, type ThreatEvaluatorConfig as cv, type Tick as cw, type TickListener as cx, type Timestamp as cy, type TokenLedgerRecord as cz, ActionSelector as d, chainRouters as d0, clearCompletionRecorder as d1, defaultBaseFor as d2, type effectorInvocation as d3, type effectorInvocationEnvelope as d4, getCompletionRecorder as d5, isNullRouter as d6, knownWireFor as d7, resolvePricing as d8, setCompletionRecorder as d9, type ActivityEnvelope as e, type ActivityEvent as f, type ActivityEventHandler as g, AestheticEvaluator as h, type AestheticEvaluatorConfig as i, AffectiveBlender as j, type AffectiveBlenderConfig as k, AffordanceSynthesizer as l, AsyncEngine as m, type AsyncEngineConfig as n, AttachmentEvaluator as o, type AttachmentEvaluatorConfig as p, AttentionAllocator as q, type AttentionAllocatorConfig as r, AuditionEngine as s, AutobiographicalNarrator as t, type AutobiographicalNarratorConfig as u, type BehavioralProbeResult as v, BiasDetector as w, type BiasDetectorConfig as x, BunStorageAdapter as y, type CircadianConfig as z };

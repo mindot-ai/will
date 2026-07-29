@@ -26,6 +26,41 @@ export {
 
 export { assembleMind, type WillConfig } from '#stem/mind'
 
+// Model routing — which model serves which call.
+//
+// These were reachable only through `WillConfig.llm.router`'s structural type,
+// which meant the reference implementation this ships *for* hosts to use could
+// not be imported by one. A seam nobody can import is not a seam.
+//
+// The engine carries mechanism only: a router sees what kind of work a call is
+// and how much the moment demands, never who is paying or what anything costs.
+// The table itself is the host's.
+export {
+  NULL_ROUTER,
+  TableRouter,
+  chainRouters,
+  isNullRouter,
+  type ModelRouter,
+  type ModelRoute,
+  type RoutingRule,
+} from '#llm/routing'
+
+// Provider vocabulary — the wire each known provider speaks and where it lives.
+// A provider outside this table works identically once the host declares its
+// `wire` and `baseUrl` on the `llm.providers` entry.
+export {
+  KNOWN_PROVIDERS,
+  knownWireFor,
+  defaultBaseFor,
+  BACKGROUND_DEMAND,
+  ESCALATION_DEMAND,
+  type LLMProvider,
+  type KnownProvider,
+  type LLMWire,
+  type LLMCallMeta,
+  type ProviderCredential,
+} from '#llm/index'
+
 // External transport — the unified bidirectional envelope channel between a Will
 // and its host peer (backend). Exposes the transport interface, every envelope
 // type, and the three implementations:

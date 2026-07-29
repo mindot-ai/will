@@ -16,9 +16,10 @@ import {
   type LLMCallMeta, type LLMDirectorConfig,
 } from '#llm/index'
 import {
-  NULL_ROUTER, TableRouter, isNullRouter,
+  NULL_ROUTER, TableRouter, isNullRouter, chainRouters,
   type ModelRouter, type ModelRoute,
 } from '#llm/routing'
+import { compileRoleRouter } from '#stem/mind'
 import {
   setCompletionRecorder, clearCompletionRecorder,
   type LLMCompletionRecord,
@@ -218,5 +219,123 @@ describe('LLMDirector endpoint resolution', () => {
 
     const models = recorded.map( r => r.model ).sort()
     expect( models ).toEqual( [ 'cheap', 'cheap', 'rich' ] )
+  })
+
+  // ── Provider-less routes (W7) ───────────────────────────────
+
+  it('keeps the default provider when a route names only a model', async () => {
+    // What a per-role model map means: same vendor, different model. Before W7
+    // a route had to repeat the provider, which a role map has no way to know.
+    const d = director({
+      router: new TableRouter( [ { category: 'summarizer', route: { model: 'small-model' } } ] ),
+    })
+    await d.call('sys', 'msg', 1, undefined, meta({ category: 'summarizer' }) )
+    expect( recorded[0]!.provider ).toBe('anthropic')
+    expect( recorded[0]!.model ).toBe('small-model')
+  })
+
+  it('a provider-less route needs no credentials map', async () => {
+    // It reuses the default provider's credential — otherwise every role-mapped
+    // Will would have to declare `providers` for a vendor it already configured.
+    const d = director({
+      provider: 'glm', apiKey: 'zai-key',
+      router: new TableRouter( [ { route: { model: 'glm-5' } } ] ),
+    })
+    await d.call('sys', 'msg', 1, undefined, meta() )
+    expect( recorded[0]!.provider ).toBe('glm')
+    expect( recorded[0]!.model ).toBe('glm-5')
+  })
+})
+
+// ── chainRouters (W7) ─────────────────────────────────────────
+
+describe('chainRouters', () => {
+
+  const routerNaming = ( name: string, model: string ): ModelRouter => ( {
+    name, route: () => ( { model } ),
+  } )
+
+  it('collapses to NULL_ROUTER when every link is empty', () => {
+    expect( isNullRouter( chainRouters() ) ).toBe( true )
+    expect( isNullRouter( chainRouters( null, undefined, NULL_ROUTER ) ) ).toBe( true )
+  })
+
+  it('returns the single link unwrapped — no chain where there is nothing to chain', () => {
+    const only = routerNaming('only', 'm')
+    expect( chainRouters( null, only, NULL_ROUTER ) ).toBe( only )
+  })
+
+  it('gives the first link with an opinion the last word', () => {
+    const chain = chainRouters( routerNaming('first', 'first-model'), routerNaming('second', 'second-model') )
+    expect( chain.route( meta() )?.model ).toBe('first-model')
+  })
+
+  it('falls through to the next link when the first abstains', () => {
+    const abstains: ModelRouter = { name: 'abstains', route: () => null }
+    const chain = chainRouters( abstains, routerNaming('second', 'second-model') )
+    expect( chain.route( meta() )?.model ).toBe('second-model')
+  })
+
+  it('skips a throwing link instead of losing the whole chain', () => {
+    // The links are independent decisions. If a broken host router took the
+    // compiled role map down with it, every role-mapped call would silently
+    // demote to the default model — the failure would look like nothing.
+    const exploding: ModelRouter = { name: 'exploding', route(){ throw new Error('boom') } }
+    const chain = chainRouters( exploding, routerNaming('roles', 'role-model') )
+    expect( chain.route( meta() )?.model ).toBe('role-model')
+  })
+})
+
+// ── compileRoleRouter (W7) ────────────────────────────────────
+//
+// The per-role model map is sugar over the router. These pin the desugaring to
+// the axes the call sites actually tag themselves with — if a call site ever
+// stops matching, a configured role silently stops applying, and that is the
+// one failure this compiler can have.
+
+describe('compileRoleRouter', () => {
+
+  it('emits nothing when every role shares the executive model', () => {
+    // The single-model case must stay byte-identical to a Will built before the
+    // seam existed — no router, no chain, no rules.
+    expect( compileRoleRouter( {
+      executive: 'one-model', summarizer: 'one-model', deliberation: 'one-model', conversation: 'one-model',
+    } ) ).toBeNull()
+    expect( compileRoleRouter( {
+      executive: null, summarizer: null, deliberation: null, conversation: null,
+    } ) ).toBeNull()
+  })
+
+  it('routes the summariser by category — the axis its call site tags', () => {
+    const r = compileRoleRouter( {
+      executive: 'big', summarizer: 'small', deliberation: 'big', conversation: 'big',
+    } )!
+    expect( r.route( { category: 'summarizer', attribute: 'memory', function: 'consolidation' } )?.model ).toBe('small')
+    expect( r.route( meta() ) ).toBeNull()     // master keeps the default
+  })
+
+  it('routes deliberation by function, including its propose pass', () => {
+    const r = compileRoleRouter( {
+      executive: 'big', summarizer: 'big', deliberation: 'thinky', conversation: 'big',
+    } )!
+    expect( r.route( meta({ attribute: 'facet', function: 'deliberation' }) )?.model ).toBe('thinky')
+    // The master's own deliberate pass is tagged 'ideation', not 'deliberation',
+    // so it stays on the executive model — as it did with per-role directors.
+    expect( r.route( meta({ function: 'ideation' }) ) ).toBeNull()
+  })
+
+  it('gives outreach the conversation voice', () => {
+    const r = compileRoleRouter( {
+      executive: 'big', summarizer: 'big', deliberation: 'big', conversation: 'chatty',
+    } )!
+    expect( r.route( meta({ attribute: 'facet', function: 'conversation' }) )?.model ).toBe('chatty')
+    expect( r.route( meta({ attribute: 'facet', function: 'outreach'     }) )?.model ).toBe('chatty')
+  })
+
+  it('names no provider — a role inherits the Will\'s vendor', () => {
+    const r = compileRoleRouter( {
+      executive: 'big', summarizer: 'small', deliberation: 'big', conversation: 'big',
+    } )!
+    expect( r.route( { category: 'summarizer', attribute: 'memory', function: 'consolidation' } )?.provider ).toBeUndefined()
   })
 })

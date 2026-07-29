@@ -779,17 +779,16 @@ cd will && bun run build
 
 | Variable | Default | Description |
 |---|---|---|
-| `WILL_LLM_PROVIDER` | `anthropic` | `anthropic` · `glm` supported today; `openai` · `deepseek` · `google` scaffolded |
-| `WILL_LLM_MODEL` | *(provider default)* | Model id for the chosen provider (`claude-sonnet-4-5-20250929` / `glm-5.2`) |
-| `WILL_LLM_API_KEY` | — | API key for the chosen provider. Falls back to `ANTHROPIC_API_KEY` (or `ZAI_API_KEY` on `glm`) |
-| `ZAI_API_KEY` | — | Z.ai key. Its presence alone selects the `glm` provider when `WILL_LLM` is unset |
+| `WILL_LLM_PROVIDER` | **required** | Which provider to speak to — see [the table below](#llm-provider). No default: a guess here sends your key to the wrong vendor |
+| `WILL_LLM_MODEL` | **required** | Concrete model id (`claude-sonnet-4-5-20250929` / `glm-5.2`). No default — pins *every* thinking role, so set it only for single-model deployments |
+| `WILL_LLM_API_KEY` | — | Provider-agnostic key. Wins over the provider's own env var below. Setting it without `WILL_LLM_PROVIDER` is an error, not a guess |
+| `ANTHROPIC_API_KEY` · `ZAI_API_KEY` · `OPENAI_API_KEY` · … | — | The provider's own key. Its presence alone selects that provider. Only ever read for the provider it belongs to |
 | `WILL_LLM_BASE_URL` | *(provider default)* | Override the provider API base URL (e.g. a self-hosted GLM at `http://localhost:8000/anthropic`). Falls back to `OPENAI_BASE_URL` |
 | `WILL_LLM_TIMEOUT_MS` | `90000` | LLM timeout. On the Anthropic-wire providers (`anthropic`, `glm` — both streaming) this is a *first-byte*/TTFT deadline — long completions aren't aborted mid-generation |
 | `WILL_LLM_CONCURRENCY` | `3` | Max concurrent LLM calls (min 3: executive + conversation + summary) |
 | `WILL_TICK_MS` | `1000` | Milliseconds between ticks |
 | `WILL_MAX_TICKS` | `0` | Stop after N ticks. `0` = run forever |
 | `WILL_LOG_INTERVAL` | `10` | Print status to console every N ticks |
-| `WILL_MODEL_TIER` | `sonnet` | Which model the executive recruits: `haiku` · `sonnet` · `opus` |
 | `WILL_EXECUTIVE_INTERVAL` | *(cadence preset)* | Ticks between executive (LLM) calls — responsive 30 / balanced 60 / economy 90 |
 | `WILL_THREAD_HISTORY` | `2` | `lastMessages` for the executive conversation thread |
 | `WILL_CONVERSATION_HISTORY` | `50` | `lastMessages` for entity conversation threads |
@@ -815,13 +814,62 @@ cd will && bun run build
 
 ## LLM provider
 
-**Two providers are supported today** — Anthropic and Z.ai's GLM. Both speak the Anthropic Messages wire, so both get the full path: token streaming, the first-byte (TTFT) deadline, prompt-cache breakpoints, and the structured-output contract.
+A provider is named, never guessed. The engine has no default vendor, no default model, and no key fallback that crosses vendors — every one of those was a way for a Will to talk to someone you did not configure.
 
-| Provider | `WILL_LLM_PROVIDER` | Key | Status |
+What the engine branches on is the **wire** (the request dialect), not the provider. So the table below is convenience data — base URLs you would otherwise look up — and *any* provider works once it declares its own:
+
+```ts
+llm: {
+  provider: 'together', model: 'Qwen/Qwen3-235B',
+  providers: { together: { apiKey, wire: 'openai', baseUrl: 'https://api.together.xyz/v1' } },
+}
+```
+
+| Provider | `WILL_LLM_PROVIDER` | Key env | Wire |
 |---|---|---|---|
-| Anthropic | `anthropic` | `ANTHROPIC_API_KEY` | ✅ Supported — streaming, structured output |
-| **Z.ai — GLM** | `glm` | `ZAI_API_KEY` | ✅ Supported — streaming, structured output (via Z.ai's Anthropic-compatible endpoint) |
-| OpenAI · DeepSeek · Google | `openai` · `deepseek` · `google` | `WILL_LLM_API_KEY` | ⚠️ Scaffolded — code paths exist (non-streaming), not yet production-ready |
+| Anthropic | `anthropic` | `ANTHROPIC_API_KEY` | Anthropic — streaming, prompt cache, TTFT deadline |
+| **Z.ai — GLM** | `glm` | `ZAI_API_KEY` | Anthropic — full path, via Z.ai's compatible endpoint |
+| OpenAI | `openai` | `OPENAI_API_KEY` | OpenAI |
+| Google — Gemini | `google` | `GOOGLE_API_KEY` · `GEMINI_API_KEY` | Google (native) |
+| DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` | OpenAI |
+| Moonshot — Kimi | `moonshot` | `MOONSHOT_API_KEY` | OpenAI |
+| Alibaba — Qwen | `qwen` | `DASHSCOPE_API_KEY` | OpenAI |
+| xAI — Grok | `xai` | `XAI_API_KEY` | OpenAI |
+| MiniMax | `minimax` | `MINIMAX_API_KEY` | OpenAI |
+| Mistral | `mistral` | `MISTRAL_API_KEY` | OpenAI |
+| Ollama · vLLM (local) | `ollama` · `vllm` | *(none)* | OpenAI — `localhost` defaults, override with `WILL_LLM_BASE_URL` |
+
+The two Anthropic-wire providers get token streaming, prompt-cache breakpoints and the first-byte (TTFT) deadline; the OpenAI wire is non-streaming today. **Name your actual vendor** even when it speaks a borrowed wire — calling Kimi `openai` because it talks that dialect puts a false provider on the completion tape and in the cost breakdown.
+
+`moonshot`, `qwen` and `minimax` also run separate mainland-China hosts. The international endpoint is the default; a key issued on the other one authenticates nowhere, so set `baseUrl` explicitly.
+
+### Different models for different thinking
+
+A mind does several kinds of work, and they do not all deserve the same model. Give roles their own:
+
+```ts
+llm: { provider: 'glm', model: { executive: 'glm-5.2', summarizer: 'glm-5' } }
+```
+
+For anything finer, supply a router — it sees what *kind* of call this is and how much the moment demands, and answers with a model:
+
+```ts
+import { TableRouter } from '@mindot/will'
+
+llm: {
+  provider: 'anthropic', model: 'claude-sonnet-4-5-20250929',
+  providers: { deepseek: { apiKey: process.env.DEEPSEEK_API_KEY! } },
+  router: new TableRouter( [
+    { category: 'summarizer',            route: { model: 'claude-haiku-4-5' } },
+    { function: 'deliberation', minDemand: 0.7, route: { model: 'claude-opus-4-1' } },
+    { attribute: 'guard',                route: { provider: 'deepseek', model: 'deepseek-v4-flash' } },
+  ] ),
+}
+```
+
+The role map is sugar for exactly this — it compiles into rules and joins your router in one chain, yours first. A router that throws, or names a provider you hold no credential for, falls back to the default model: a routing mistake never kills a running mind.
+
+The engine carries the mechanism and none of the policy. A router sees the call's attribution and its `demand` — a *cognitive* measure of how consequential the moment is — and never who is paying or what anything costs. Prices, if you want costed telemetry, are yours to supply per provider (`providers.<name>.prices`); the engine ships none, because a price table inside an npm release is stale the week after it publishes.
 
 ### Running a mind on GLM
 

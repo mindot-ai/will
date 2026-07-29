@@ -237,7 +237,20 @@ const AFFECT_EPSILON = 0.02
  * it is not a ranking, and no provider here is more supported than another.
  */
 function detectProvider(): 'mock' | LLMProvider {
-  if( process.env.WILL_LLM_API_KEY ) return ( process.env.WILL_LLM_PROVIDER as LLMProvider ) ?? 'anthropic'
+  // A provider-agnostic key says nothing about who to send it to. Guessing
+  // here is how a key meant for one vendor ends up at another; the guess used
+  // to be 'anthropic' unconditionally.
+  if( process.env.WILL_LLM_API_KEY ){
+    const provider = process.env.WILL_LLM_PROVIDER
+    if( !provider )
+      throw new Error(
+        'WILL_LLM_API_KEY is set but WILL_LLM_PROVIDER is not — there is no way ' +
+        'to tell which provider that key belongs to. Set WILL_LLM_PROVIDER, or ' +
+        'use a provider-specific key (ANTHROPIC_API_KEY, ZAI_API_KEY, …).'
+      )
+    return provider as LLMProvider
+  }
+  // A provider-specific key IS the explicit statement — no guess involved.
   if( process.env.ANTHROPIC_API_KEY ) return 'anthropic'
   if( process.env.ZAI_API_KEY ) return 'glm'
   if( process.env.DEEPSEEK_API_KEY ) return 'deepseek'

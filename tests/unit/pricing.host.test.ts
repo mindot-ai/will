@@ -52,7 +52,7 @@ describe('dollars are not simulation state (W8c)', () => {
   })
 
   it('still exposes cost in-process, for the host that wants it', () => {
-    const t = new TokenTracker()
+    const t = new TokenTracker({ prices: { 'claude-haiku-4-5': { input: 1, output: 5 } } })
     t.recordUsage( usage() )
     expect( t.totalCostUsd ).toBeGreaterThan( 0 )
   })
@@ -100,7 +100,7 @@ describe('unpriced is visible, never a silent default (W8b)', () => {
   })
 
   it('marks priced:true when a price was actually found', () => {
-    const t = new TokenTracker()
+    const t = new TokenTracker({ prices: { 'claude-haiku-4-5': { input: 1, output: 5 } } })
     let record: { priced: boolean } | null = null
     t.onRecord( r => { record = r as never } )
     t.recordUsage( usage() )

@@ -14,7 +14,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest'
 import {
-  LLMDirector, speaksAnthropicWire, defaultBaseFor, defaultModelFor, anthropicWireHeaders,
+  LLMDirector, knownWireFor, defaultBaseFor, anthropicWireHeaders,
 } from '#llm/index'
 import { resolvePricing } from '#cognition/utilities/token.tracker'
 
@@ -55,11 +55,18 @@ function glmDirector( extra: Partial<{ baseUrl: string }> = {} ){
 
 describe('GLM — wire selection', () => {
   it('speaks the Anthropic wire (so it streams, not the OpenAI scaffold)', () => {
-    expect( speaksAnthropicWire('glm') ).toBe( true )
-    expect( speaksAnthropicWire('anthropic') ).toBe( true )
-    expect( speaksAnthropicWire('openai') ).toBe( false )
-    expect( speaksAnthropicWire('deepseek') ).toBe( false )
-    expect( speaksAnthropicWire('google') ).toBe( false )
+    expect( knownWireFor('glm') ).toBe('anthropic')
+    expect( knownWireFor('anthropic') ).toBe('anthropic')
+    expect( knownWireFor('openai') ).toBe('openai')
+    expect( knownWireFor('deepseek') ).toBe('openai')
+    expect( knownWireFor('google') ).toBe('google')
+  } )
+
+  it('has no opinion about a provider it has never heard of', () => {
+    // The host declares the wire for anything outside the known set, rather
+    // than the engine guessing (and previously guessing "Anthropic").
+    expect( knownWireFor('moonshot') ).toBeUndefined()
+    expect( defaultBaseFor('moonshot') ).toBeUndefined()
   } )
 
   it( "defaults to Z.ai's Anthropic-compatible endpoint, version segment included", () => {
@@ -70,10 +77,11 @@ describe('GLM — wire selection', () => {
     expect( defaultBaseFor('anthropic') ).toBe('https://api.anthropic.com/v1')
   } )
 
-  it('defaults to a GLM model — never a Claude id pointed at Z.ai', () => {
-    expect( defaultModelFor('glm') ).toBe('glm-5.2')
-    expect( defaultModelFor('anthropic') ).toMatch( /^claude-/ )
-  } )
+  // BEHAVIOUR CHANGE: `defaultModelFor()` is gone. It existed to stop a GLM
+  // Will asking Z.ai for a Claude id, but it solved that by guessing — and for
+  // every provider other than glm the guess *was* a Claude id. A model is now
+  // required from config or WILL_LLM_MODEL, and an unset one is an error with a
+  // sentence rather than a 404 at the first tick.
 } )
 
 describe('GLM — auth headers', () => {
@@ -94,15 +102,23 @@ describe('GLM — auth headers', () => {
   } )
 } )
 
-describe('GLM — pricing', () => {
-  it('prices glm-5.2 at Z.ai rates — bare, 1M-context, and provider-prefixed', () => {
-    expect( resolvePricing('glm-5.2') ).toEqual( { input: 1.40, output: 4.40 } )
-    expect( resolvePricing('glm-5.2[1m]') ).toEqual( { input: 1.40, output: 4.40 } )
-    expect( resolvePricing('glm/glm-5.2') ).toEqual( { input: 1.40, output: 4.40 } )
+describe('GLM — pricing comes from the host', () => {
+  // BEHAVIOUR CHANGE: the engine no longer ships a price table. It was stale
+  // for almost every model in current use, and a partial table is worse than
+  // none — some models report plausible-but-wrong numbers while others honestly
+  // report nothing. What still matters is that a host's table resolves through
+  // the same id normalization, including GLM's 1M-context spelling.
+  const host = { 'glm-5.2': { input: 1.40, output: 4.40 } }
+
+  it('resolves a host price bare, 1M-context, and provider-prefixed', () => {
+    expect( resolvePricing('glm-5.2', host ) ).toEqual( { input: 1.40, output: 4.40 } )
+    expect( resolvePricing('glm-5.2[1m]', host ) ).toEqual( { input: 1.40, output: 4.40 } )
+    expect( resolvePricing('glm/glm-5.2', host ) ).toEqual( { input: 1.40, output: 4.40 } )
   } )
 
-  it('does not silently fall through to the $3/$15 default', () => {
-    expect( resolvePricing('glm-5.2') ).not.toEqual( resolvePricing('some-unknown-model') )
+  it('reports unknown rather than guessing, with or without a host table', () => {
+    expect( resolvePricing('some-unknown-model', host ) ).toBeNull()
+    expect( resolvePricing('glm-5.2') ).toBeNull()
   } )
 } )
 

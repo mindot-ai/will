@@ -84,8 +84,15 @@ describe('Per-Will token tracker isolation (R4-a)', () => {
   })
 
   it('does not conflate usage/cost across Wills', () => {
-    const a = assembleMind('will-iso-c', makeConfig('will-iso-c') )
-    const b = assembleMind('will-iso-d', makeConfig('will-iso-d') )
+    // Prices come from the host now (the engine ships none), so A is given one
+    // — which also keeps this asserting cost isolation rather than just tokens.
+    const withPrices = ( id: string ) => ( {
+      ...makeConfig( id ),
+      llm: { providers: { anthropic: { prices: { 'claude-haiku-4-5': { input: 1, output: 5 } } } } },
+    } )
+
+    const a = assembleMind('will-iso-c', withPrices('will-iso-c') )
+    const b = assembleMind('will-iso-d', withPrices('will-iso-d') )
 
     // Both start empty.
     expect( a.cognition.tokenTracker.totalCostUsd ).toBe( 0 )

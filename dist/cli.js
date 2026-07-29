@@ -2572,40 +2572,57 @@ function matchConversationFocus(userMessage) {
 }
 
 // src/llm/index.ts
-var ANTHROPIC_WIRE = /* @__PURE__ */ new Set(["anthropic", "glm"]);
-function speaksAnthropicWire(provider) {
-  return ANTHROPIC_WIRE.has(provider);
+var MOCK_PROVIDER = "mock";
+var MOCK_MODEL = "mock";
+var KNOWN_PROVIDERS = {
+  // Never dialled — present so a test-mode Will resolves an endpoint without
+  // demanding a provider the run will never use.
+  [MOCK_PROVIDER]: { wire: "anthropic", baseUrl: "http://mock.invalid/v1" },
+  anthropic: { wire: "anthropic", baseUrl: "https://api.anthropic.com/v1" },
+  // Z.ai documents the base as `…/api/anthropic` because the Anthropic SDK
+  // appends `/v1/messages`; this client appends `/messages`, so the version
+  // segment belongs here — verified against the live endpoint.
+  glm: { wire: "anthropic", baseUrl: "https://api.z.ai/api/anthropic/v1" },
+  openai: { wire: "openai", baseUrl: "https://api.openai.com/v1" },
+  deepseek: { wire: "openai", baseUrl: "https://api.deepseek.com/v1" },
+  google: { wire: "google", baseUrl: "https://generativelanguage.googleapis.com/v1beta" }
+};
+function knownWireFor(provider) {
+  return KNOWN_PROVIDERS[provider]?.wire;
 }
 function defaultBaseFor(provider) {
-  switch (provider) {
-    case "anthropic":
-      return "https://api.anthropic.com/v1";
-    // Z.ai documents the base as `…/api/anthropic` because the Anthropic SDK
-    // appends `/v1/messages`; this client appends `/messages`, so the version
-    // segment belongs here — verified against the live endpoint.
-    case "glm":
-      return "https://api.z.ai/api/anthropic/v1";
-    case "openai":
-      return "https://api.openai.com/v1";
-    case "deepseek":
-      return "https://api.deepseek.com/v1";
-    case "google":
-      return "https://generativelanguage.googleapis.com/v1beta";
-  }
-}
-function defaultModelFor(provider) {
-  return provider === "glm" ? "glm-5.2" : "claude-sonnet-4-5-20250929";
+  return KNOWN_PROVIDERS[provider]?.baseUrl;
 }
 function anthropicWireHeaders(provider, apiKey) {
   return {
     "Content-Type": "application/json",
     "anthropic-version": "2023-06-01",
     "x-api-key": apiKey,
-    ...provider === "glm" ? { Authorization: `Bearer ${apiKey}` } : {}
+    ...provider === "anthropic" ? {} : { Authorization: `Bearer ${apiKey}` }
   };
 }
 var BACKGROUND_DEMAND = 0.1;
 var DEFAULT_CALL_META = { category: "executive", attribute: "master", function: "decision" };
+function resolveEndpoint(spec) {
+  const wire = spec.wire ?? knownWireFor(spec.provider);
+  if (!wire)
+    throw new Error(
+      `LLM provider "${spec.provider}" has no known wire. Declare it: llm.providers['${spec.provider}'].wire = 'anthropic' | 'openai' | 'google'.`
+    );
+  const baseUrl = spec.baseUrl ?? defaultBaseFor(spec.provider);
+  if (!baseUrl)
+    throw new Error(
+      `LLM provider "${spec.provider}" has no known base URL. Declare it: llm.providers['${spec.provider}'].baseUrl.`
+    );
+  return {
+    provider: spec.provider,
+    wire,
+    model: spec.model,
+    apiKey: spec.apiKey,
+    baseUrl,
+    maxOutputTokens: spec.maxOutputTokens
+  };
+}
 var LLMDirector = class {
   _willId;
   _model;
@@ -2636,13 +2653,14 @@ var LLMDirector = class {
     this._tokenTracker = config.tokenTracker ?? null;
     this._router = config.router ?? null;
     this._credentials = config.credentials ?? {};
-    this._defaultEndpoint = {
+    this._defaultEndpoint = resolveEndpoint({
       provider: this._provider,
       model: this._model,
       apiKey: this._apiKey,
-      baseUrl: this._baseUrl,
+      baseUrl: this._baseUrl ?? void 0,
+      wire: config.wire,
       maxOutputTokens: this._maxOutputTokens
-    };
+    });
   }
   /**
    * Resolve which model serves this call. Falls back to the default endpoint
@@ -2663,7 +2681,7 @@ var LLMDirector = class {
       return this._defaultEndpoint;
     }
     if (!route) return this._defaultEndpoint;
-    const cred = route.provider === this._defaultEndpoint.provider ? { apiKey: this._defaultEndpoint.apiKey, baseUrl: this._defaultEndpoint.baseUrl ?? void 0 } : this._credentials[route.provider];
+    const cred = route.provider === this._defaultEndpoint.provider ? { apiKey: this._defaultEndpoint.apiKey, baseUrl: this._defaultEndpoint.baseUrl, wire: this._defaultEndpoint.wire } : this._credentials[route.provider];
     if (!cred?.apiKey) {
       this._warnRouteOnce(
         `cred:${route.provider}`,
@@ -2671,13 +2689,23 @@ var LLMDirector = class {
       );
       return this._defaultEndpoint;
     }
-    return {
-      provider: route.provider,
-      model: route.model,
-      apiKey: cred.apiKey,
-      baseUrl: route.baseUrl ?? cred.baseUrl ?? null,
-      maxOutputTokens: route.maxOutputTokens ?? this._defaultEndpoint.maxOutputTokens
-    };
+    try {
+      return resolveEndpoint({
+        provider: route.provider,
+        model: route.model,
+        apiKey: cred.apiKey,
+        baseUrl: route.baseUrl ?? cred.baseUrl,
+        wire: cred.wire,
+        maxOutputTokens: route.maxOutputTokens ?? this._defaultEndpoint.maxOutputTokens
+      });
+    } catch (err) {
+      this._warnRouteOnce(
+        `resolve:${route.provider}`,
+        `cannot reach routed provider "${route.provider}" \u2014 using the default model`,
+        err
+      );
+      return this._defaultEndpoint;
+    }
   }
   _warnRouteOnce(key, message, err) {
     if (this._routeWarned.has(key)) return;
@@ -2763,7 +2791,7 @@ var LLMDirector = class {
       this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - start, true, ep);
       return result2;
     }
-    const result = speaksAnthropicWire(ep.provider) ? await this._callAnthropicStream(ep, systemPrompt, userMessage, onChunk, temperature) : await (async () => {
+    const result = ep.wire === "anthropic" ? await this._callAnthropicStream(ep, systemPrompt, userMessage, onChunk, temperature) : await (async () => {
       const r = await this._callProvider(ep, systemPrompt, userMessage, temperature);
       onChunk(r.text);
       return r;
@@ -2923,7 +2951,7 @@ var LLMDirector = class {
       return result2;
     }
     const result = await withGate(
-      () => speaksAnthropicWire(ep.provider) ? this._callAnthropicStream(ep, systemPrompt, userMessage, () => {
+      () => ep.wire === "anthropic" ? this._callAnthropicStream(ep, systemPrompt, userMessage, () => {
       }, temperature) : this._callProvider(ep, systemPrompt, userMessage, temperature),
       "executive/direct"
     );
@@ -2932,28 +2960,20 @@ var LLMDirector = class {
     return result;
   }
   _callProvider(ep, systemPrompt, userMessage, temperature) {
-    switch (ep.provider) {
+    switch (ep.wire) {
       case "anthropic":
         return this._callAnthropic(ep, systemPrompt, userMessage, temperature);
-      case "glm":
-        return this._callAnthropic(ep, systemPrompt, userMessage, temperature);
-      case "deepseek":
-        return this._callOpenAI(ep, systemPrompt, userMessage, temperature);
       case "openai":
         return this._callOpenAI(ep, systemPrompt, userMessage, temperature);
       case "google":
         return this._callGoogle(ep, systemPrompt, userMessage, temperature);
       default:
-        throw new Error(`Unknown LLM provider: ${ep.provider}`);
+        throw new Error(`Unknown LLM wire: ${ep.wire}`);
     }
-  }
-  /** Default API base URL (including version segment) for a provider. */
-  _baseFor(provider) {
-    return defaultBaseFor(provider);
   }
   /** Resolved API base: explicit override wins, else the provider default. */
   _resolvedBase(ep) {
-    return ep.baseUrl ?? this._baseFor(ep.provider);
+    return ep.baseUrl;
   }
   /**
    * fetch() with a hard per-request deadline. A hung connection is aborted
@@ -4594,68 +4614,26 @@ function externalSchemas(effectors) {
 function effectorName(d) {
   return typeof d === "string" ? d : d.name;
 }
-var MODEL_PRICING = {
-  // OpenAI
-  "openai/gpt-4o": { input: 2.5, output: 10 },
-  "openai/gpt-4o-mini": { input: 0.15, output: 0.6 },
-  "openai/gpt-4-turbo": { input: 10, output: 30 },
-  "openai/gpt-3.5-turbo": { input: 0.5, output: 1.5 },
-  // Anthropic (Claude 4.x family — prices per 1M tokens)
-  "anthropic/claude-haiku-4-5": { input: 1, output: 5 },
-  "anthropic/claude-sonnet-4-5": { input: 3, output: 15 },
-  "anthropic/claude-sonnet-4-6": { input: 3, output: 15 },
-  "anthropic/claude-opus-4-7": { input: 5, output: 25 },
-  // Legacy aliases kept for backward compat
-  "anthropic/claude-haiku-4": { input: 1, output: 5 },
-  "anthropic/claude-opus-4": { input: 5, output: 25 },
-  // Z.ai (GLM-5 family). `glm-5.2[1m]` is the same model asking for its 1M
-  // context window — same rate, so it gets its own row rather than relying on
-  // the normalizer (a future long-context tier would price differently).
-  "glm/glm-5.2": { input: 1.4, output: 4.4 },
-  "glm/glm-5.2[1m]": { input: 1.4, output: 4.4 },
-  // Google
-  "google/gemini-2.0-flash": { input: 0.1, output: 0.4 },
-  "google/gemini-2.0-pro": { input: 1.25, output: 5 },
-  // Meta (via Groq/Replicate)
-  "meta/llama-3.3-70b": { input: 0.59, output: 0.79 },
-  "meta/llama-4-maverick": { input: 0.2, output: 0.6 },
-  // DeepSeek
-  "deepseek/deepseek-v3": { input: 0.27, output: 1.1 },
-  "deepseek/deepseek-r1": { input: 0.55, output: 2.19 },
-  // Embeddings (input-only — no completion tokens). Priced per 1M input tokens.
-  "openai/text-embedding-3-small": { input: 0.02, output: 0 },
-  "openai/text-embedding-3-large": { input: 0.13, output: 0 },
-  "google/text-embedding-004": { input: 0, output: 0 },
-  // free tier
-  "google/gemini-embedding-001": { input: 0, output: 0 }
-  // free tier
-};
 var CACHE_READ_MULT = 0.1;
 var CACHE_WRITE_MULT = 1.25;
 function normalizeModelKey(model) {
   let m = model.toLowerCase().trim();
   const slash = m.lastIndexOf("/");
   if (slash >= 0) m = m.slice(slash + 1);
+  m = m.replace(/\[[^\]]*\]$/, "");
   return m.replace(/[-@]\d{6,8}$/, "");
 }
-var PRICING_BY_NORM = (() => {
-  const out = {};
-  for (const [key, price] of Object.entries(MODEL_PRICING)) {
-    out[normalizeModelKey(key)] = price;
-  }
-  return out;
-})();
 var _unpricedWarned = /* @__PURE__ */ new Set();
 function resolvePricing(model, hostPrices) {
+  if (!hostPrices) return null;
+  const exact = hostPrices[model];
+  if (exact) return exact;
   const norm = normalizeModelKey(model);
-  if (hostPrices) {
-    const hit = hostPrices[model] ?? hostPrices[norm];
-    if (hit) return hit;
-    for (const [key, price] of Object.entries(hostPrices)) {
-      if (normalizeModelKey(key) === norm) return price;
-    }
+  if (hostPrices[norm]) return hostPrices[norm];
+  for (const [key, price] of Object.entries(hostPrices)) {
+    if (normalizeModelKey(key) === norm) return price;
   }
-  return PRICING_BY_NORM[norm] ?? MODEL_PRICING[model] ?? null;
+  return null;
 }
 function composeLabel(m) {
   const base = `${m.category}/${m.attribute}/${m.function}`;
@@ -14614,6 +14592,28 @@ var ExecutiveEngine = class extends AsyncEngine {
    * and subscribe() to receive facet decisions.
    */
   /** Get-or-create the director for a model id (shared config, per-Will). */
+  /**
+   * The provider, from config or environment — never guessed.
+   *
+   * This used to default to 'anthropic', which is how a Will configured for one
+   * vendor could quietly talk to another. An unset provider is a configuration
+   * error, and saying so at construction is far cheaper than a 401 mid-tick.
+   */
+  _requireProvider() {
+    const provider = this._llm?.provider ?? process.env.WILL_LLM_PROVIDER ?? (this._noLiveCalls() ? MOCK_PROVIDER : void 0);
+    if (!provider)
+      throw new Error(
+        "No LLM provider configured. Set one on the Will (llm.provider) or in the environment (WILL_LLM_PROVIDER) \u2014 the engine carries no default."
+      );
+    return provider;
+  }
+  /**
+   * True when this Will cannot make a live call, so provider/model are not
+   * required: mock mode, or a replay re-feeding recorded completions.
+   */
+  _noLiveCalls() {
+    return this._testMode || !!this._willId && !!getCompletionSource(this._willId);
+  }
   _directorFor(model) {
     let d = this._directorCache.get(model);
     if (!d) {
@@ -14622,8 +14622,11 @@ var ExecutiveEngine = class extends AsyncEngine {
         model,
         maxOutputTokens: this._llm?.maxOutputTokens ?? parseInt(process.env.WILL_MAX_OUTPUT_TOKENS ?? "8096"),
         // Provider-agnostic key; falls back to ANTHROPIC_API_KEY for back-compat.
-        apiKey: this._llm?.apiKey ?? process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? "",
-        provider: this._llm?.provider ?? process.env.WILL_LLM_PROVIDER ?? "anthropic",
+        // Provider-agnostic key only. The old chain ended at ANTHROPIC_API_KEY,
+        // so a Will pointed at another vendor would silently send an Anthropic
+        // key to it.
+        apiKey: this._llm?.apiKey ?? process.env.WILL_LLM_API_KEY ?? "",
+        provider: this._requireProvider(),
         // Optional base-URL override (e.g. Ollama / Azure / self-hosted). Unset →
         // the director uses the provider's official endpoint.
         baseUrl: this._llm?.baseUrl ?? process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
@@ -14642,7 +14645,10 @@ var ExecutiveEngine = class extends AsyncEngine {
         // Per-call model selection. Every director this Will builds — the
         // primary and each role-cached one — carries the same router, so a
         // role-configured facet cannot silently bypass routing.
-        ...this._llm?.router ? { router: this._llm.router } : {}
+        ...this._llm?.router ? { router: this._llm.router } : {},
+        // Dialect for the default provider — required for anything outside the
+        // known set, so the engine never guesses how to talk to an endpoint.
+        ...this._llm?.wire ? { wire: this._llm.wire } : {}
       });
       this._directorCache.set(model, d);
     }
@@ -14719,7 +14725,11 @@ var ExecutiveEngine = class extends AsyncEngine {
     this._gatingState.executiveInterval = rtConfig.executiveInterval;
     this._gatingState.cooldownTicks = rtConfig.cooldownTicks;
     if (!this._llmDirector && this._willId) {
-      const execModel = this._models.executive ?? process.env.WILL_LLM_MODEL ?? defaultModelFor(this._llm?.provider ?? process.env.WILL_LLM_PROVIDER ?? "anthropic");
+      const execModel = this._models.executive ?? process.env.WILL_LLM_MODEL ?? (this._noLiveCalls() ? MOCK_MODEL : void 0);
+      if (!execModel)
+        throw new Error(
+          "No LLM model configured. Set one on the Will (llm.model) or in the environment (WILL_LLM_MODEL) \u2014 the engine carries no default."
+        );
       this._llmDirector = this._directorFor(execModel);
       this._summarizer?.attachLLMDirector(this._directorFor(this._models.summarizer ?? execModel));
     }
@@ -22996,12 +23006,17 @@ async function checkIdentityCoherence(input, reviewer) {
   return { ok: !issues.some((i) => i.severity === "error"), ran: true, issues, raw: text };
 }
 async function reviewIdentityCoherence(input, opts = {}) {
-  const provider = process.env.WILL_LLM_PROVIDER ?? "anthropic";
+  const provider = process.env.WILL_LLM_PROVIDER;
+  const model = process.env.WILL_LLM_MODEL;
+  if (!provider || !model)
+    return { ok: true, ran: false, issues: [], raw: "review skipped: WILL_LLM_PROVIDER / WILL_LLM_MODEL not set" };
   const director = new LLMDirector({
     willId: opts.willId ?? "identity-coherence",
-    model: process.env.WILL_LLM_MODEL ?? defaultModelFor(provider),
+    model,
     maxOutputTokens: 512,
-    apiKey: process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? "",
+    // Provider-agnostic key only — the old chain ended at ANTHROPIC_API_KEY,
+    // so a Will pointed at another vendor would have sent it an Anthropic key.
+    apiKey: process.env.WILL_LLM_API_KEY ?? "",
     provider,
     sessionLogger: null,
     baseUrl: process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
@@ -26661,7 +26676,14 @@ function _sleep(ms) {
 // src/sdk/will.ts
 var AFFECT_EPSILON = 0.02;
 function detectProvider() {
-  if (process.env.WILL_LLM_API_KEY) return process.env.WILL_LLM_PROVIDER ?? "anthropic";
+  if (process.env.WILL_LLM_API_KEY) {
+    const provider = process.env.WILL_LLM_PROVIDER;
+    if (!provider)
+      throw new Error(
+        "WILL_LLM_API_KEY is set but WILL_LLM_PROVIDER is not \u2014 there is no way to tell which provider that key belongs to. Set WILL_LLM_PROVIDER, or use a provider-specific key (ANTHROPIC_API_KEY, ZAI_API_KEY, \u2026)."
+      );
+    return provider;
+  }
   if (process.env.ANTHROPIC_API_KEY) return "anthropic";
   if (process.env.ZAI_API_KEY) return "glm";
   if (process.env.DEEPSEEK_API_KEY) return "deepseek";
@@ -27113,7 +27135,16 @@ async function preflightLLM(anatomy) {
     process.exit(2);
   }
   const base = process.env.WILL_LLM_BASE_URL ?? defaultBaseFor(mode);
-  const model = process.env.WILL_LLM_MODEL ?? (mode === "glm" ? defaultModelFor("glm") : "claude-haiku-4-5-20251001");
+  if (!base) {
+    console.error(`[will] WILL_LLM=${mode} has no known base URL \u2014 set WILL_LLM_BASE_URL.`);
+    process.exit(2);
+  }
+  const model = process.env.WILL_LLM_MODEL;
+  if (!model) {
+    console.error(`[will] WILL_LLM_MODEL is not set. The engine has no default model \u2014`);
+    console.error("[will] pick one for your provider (e.g. WILL_LLM_MODEL=claude-sonnet-4-5-20250929).");
+    process.exit(2);
+  }
   try {
     const res = await fetch(`${base}/messages`, {
       method: "POST",

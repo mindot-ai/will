@@ -281,7 +281,31 @@ a starting point, not a source of truth.
 | **W8a** | `providers` map on `WillLLMConfig`; thread prices → `TokenTracker`, credentials → `LLMDirector` |
 | **W8b** | Host prices win; unpriced ⇒ cost 0 + `priced:false` + warn-once; delete `__default__` |
 | **W8c** | Dollars out of `commands.metrics`; keep token metrics; move `thin-shim` to read the tracker |
-| **W8d** | Refresh the built-in fallback table + `as of` date |
+| **W8d** | ~~Refresh the built-in fallback table~~ — **superseded**: the table was dropped entirely (W9). A partial stale table is the same failure as `__default__`, one model at a time. |
+
+---
+
+## 5c. W9 — the host declares its providers, explicitly
+
+Three defaults removed, for one reason: **the engine guessed, and a wrong guess
+about who you are talking to is expensive.**
+
+| Removed | Was | Now |
+| :--- | :--- | :--- |
+| `MODEL_PRICING` | 22 stale rows; ~20 of the models in current use missing | The engine ships no prices. Host-owned, `null` when unknown. |
+| Closed `LLMProvider` union | 5 names; anything else had to masquerade as `openai`, lying on the tape and in attribution | Any string. Known names keep built-in base URLs as *data*; anything else declares `wire` + `baseUrl`. |
+| `defaultModelFor()` | A Claude id for every provider but GLM | Required from `llm.model` or `WILL_LLM_MODEL`. |
+| `?? 'anthropic'` provider | Silent | Required from `llm.provider` or `WILL_LLM_PROVIDER`. |
+| `?? ANTHROPIC_API_KEY` | A Will pointed elsewhere still sent an Anthropic key | `WILL_LLM_API_KEY` only. |
+
+**Wire, not provider, is what the transport branches on.** Every switch in the
+LLM layer was really asking "which dialect?", so `CallEndpoint` carries a
+resolved `wire` and the provider name is free.
+
+**Two exemptions, deliberately:** a **mock** Will and a **replay** never reach a
+network — demanding credentials from either would break the no-key quickstart
+and re-feeding alike. Both resolve a `mock` sentinel that the tape records
+plainly.
 
 ---
 

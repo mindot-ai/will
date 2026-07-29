@@ -72,50 +72,6 @@ export type LLMCallFunction =
 export type TokenLedgerRecord = Record<string, unknown>
 export type TokenRecordListener = ( record: TokenLedgerRecord ) => void
 
-// ── Pricing table (USD per 1M tokens) ─────────────────────
-
-const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-  // OpenAI
-  'openai/gpt-4o':              { input: 2.50,  output: 10.00 },
-  'openai/gpt-4o-mini':         { input: 0.15,  output: 0.60  },
-  'openai/gpt-4-turbo':         { input: 10.00, output: 30.00 },
-  'openai/gpt-3.5-turbo':       { input: 0.50,  output: 1.50  },
-  
-  // Anthropic (Claude 4.x family — prices per 1M tokens)
-  'anthropic/claude-haiku-4-5':  { input: 1.00,  output: 5.00  },
-  'anthropic/claude-sonnet-4-5': { input: 3.00,  output: 15.00 },
-  'anthropic/claude-sonnet-4-6': { input: 3.00,  output: 15.00 },
-  'anthropic/claude-opus-4-7':   { input: 5.00,  output: 25.00 },
-  // Legacy aliases kept for backward compat
-  'anthropic/claude-haiku-4':    { input: 1.00,  output: 5.00  },
-  'anthropic/claude-opus-4':     { input: 5.00,  output: 25.00 },
-  
-  // Z.ai (GLM-5 family). `glm-5.2[1m]` is the same model asking for its 1M
-  // context window — same rate, so it gets its own row rather than relying on
-  // the normalizer (a future long-context tier would price differently).
-  'glm/glm-5.2':                { input: 1.40,  output: 4.40  },
-  'glm/glm-5.2[1m]':            { input: 1.40,  output: 4.40  },
-
-  // Google
-  'google/gemini-2.0-flash':    { input: 0.10,  output: 0.40  },
-  'google/gemini-2.0-pro':      { input: 1.25,  output: 5.00  },
-  
-  // Meta (via Groq/Replicate)
-  'meta/llama-3.3-70b':         { input: 0.59,  output: 0.79  },
-  'meta/llama-4-maverick':      { input: 0.20,  output: 0.60  },
-  
-  // DeepSeek
-  'deepseek/deepseek-v3':       { input: 0.27,  output: 1.10  },
-  'deepseek/deepseek-r1':       { input: 0.55,  output: 2.19  },
-
-  // Embeddings (input-only — no completion tokens). Priced per 1M input tokens.
-  'openai/text-embedding-3-small': { input: 0.02, output: 0 },
-  'openai/text-embedding-3-large': { input: 0.13, output: 0 },
-  'google/text-embedding-004':     { input: 0,    output: 0 },  // free tier
-  'google/gemini-embedding-001':   { input: 0,    output: 0 },  // free tier
-
-}
-
 // ── Prompt-cache pricing (Anthropic) ──────────────────────
 // `input_tokens` in the API usage already EXCLUDES cached tokens, so the full
 // input cost is: fresh input ×1 + cache reads ×0.1 + cache writes ×1.25.
@@ -123,40 +79,29 @@ const CACHE_READ_MULT  = 0.1
 const CACHE_WRITE_MULT = 1.25
 
 /**
- * Normalize a model id to its bare, dateless form so a raw provider model string
- * ("claude-sonnet-4-5-20250929", "anthropic/claude-haiku-4-5") resolves to the
- * right pricing row. Without this, every non-default id missed the `provider/model`
- * keys and silently fell through to a default rate — pricing Haiku ~3× and
- * DeepSeek ~11× too high, and breaking per-model cost telemetry entirely.
+ * Normalize a model id to its bare form so a raw provider string
+ * ("claude-sonnet-5-20260114", "anthropic/claude-haiku-4-5", "glm-5.2[1m]")
+ * matches a host price keyed plainly — and vice versa. Exact keys are tried
+ * first, so a host that prices a long-context variant differently just lists it
+ * verbatim and that wins.
  */
 function normalizeModelKey( model: string ): string {
   let m = model.toLowerCase().trim()
   const slash = m.lastIndexOf('/')
-  if( slash >= 0 ) m = m.slice( slash + 1 )   // drop "provider/" prefix
-  return m.replace( /[-@]\d{6,8}$/, '')        // drop trailing -YYYYMMDD date stamp
+  if( slash >= 0 ) m = m.slice( slash + 1 )    // drop "provider/" prefix
+  m = m.replace( /\[[^\]]*\]$/, '')             // drop a trailing qualifier, e.g. "[1m]"
+  return m.replace( /[-@]\d{6,8}$/, '')         // drop trailing -YYYYMMDD date stamp
 }
-
-// Pre-index the pricing table by normalized model name for O(1), date-insensitive
-// lookup. Built once at module load.
-const PRICING_BY_NORM: Record<string, { input: number; output: number }> = ( () => {
-  const out: Record<string, { input: number; output: number }> = {}
-  for( const [ key, price ] of Object.entries( MODEL_PRICING ) ){
-    out[ normalizeModelKey( key ) ] = price
-  }
-  return out
-} )()
-
 /** USD per 1M tokens for one model. */
 export interface ModelPrice { input: number; output: number }
 
 /**
- * Host-supplied prices, keyed by model id. Model ids are matched the same way
- * as the built-in table (exact first, then date-stripped and provider-stripped),
- * so `claude-sonnet-5` matches `claude-sonnet-5-20260114`.
+ * Host-supplied prices, keyed by model id. Matching is exact first, then
+ * normalized (provider prefix, date stamp and context qualifier stripped), so
+ * `claude-sonnet-5` matches `claude-sonnet-5-20260114`.
  *
  * Prices belong to the host: they change on a vendor's schedule, differ per
- * account, and are ~0 for a self-hosted model. The engine ships a fallback
- * table as a convenience, never as a source of truth.
+ * account, and are ~0 for a self-hosted model. The engine ships none.
  */
 export type PriceTable = Record<string, ModelPrice>
 
@@ -164,27 +109,35 @@ export type PriceTable = Record<string, ModelPrice>
 const _unpricedWarned = new Set<string>()
 
 /**
- * Resolve the price for a model id. Host prices win; the built-in table is the
- * fallback; an unknown model resolves to `null`.
+ * Resolve the price for a model id from the host's table.
  *
- * `null` deliberately does NOT mean free — it means *unknown*, and the caller
- * reports zero cost with `priced: false` so the gap is visible. The previous
- * behaviour silently priced every unknown model at Sonnet's rate, which
- * overstated a budget model's output cost by ~54× while looking authoritative.
+ * The engine ships no prices at all. A table baked into a release is wrong the
+ * week a vendor changes a rate, differs per account, and is meaningless for a
+ * self-hosted model — and a *partial* table is worse than none, because some
+ * models then report plausible-but-stale numbers while others honestly report
+ * nothing. Prices live with the host, next to the routing policy they inform.
+ *
+ * `null` does NOT mean free — it means *unknown*, and the caller reports zero
+ * cost with `priced: false` so the gap stays visible rather than confidently
+ * wrong. (The removed built-in default priced every unrecognised model at
+ * Sonnet's rate, overstating a budget model's output by ~54×.)
  */
 export function resolvePricing( model: string, hostPrices?: PriceTable ): ModelPrice | null {
-  const norm = normalizeModelKey( model )
+  if( !hostPrices ) return null
 
-  if( hostPrices ){
-    const hit = hostPrices[ model ] ?? hostPrices[ norm ]
-    if( hit ) return hit
-    // A host table keyed by un-normalized ids still matches a normalized lookup.
-    for( const [ key, price ] of Object.entries( hostPrices ) ){
-      if( normalizeModelKey( key ) === norm ) return price
-    }
+  const exact = hostPrices[ model ]
+  if( exact ) return exact
+
+  // A host table keyed by bare ids still matches a dated / provider-prefixed
+  // model id, and vice versa.
+  const norm = normalizeModelKey( model )
+  if( hostPrices[ norm ] ) return hostPrices[ norm ]
+
+  for( const [ key, price ] of Object.entries( hostPrices ) ){
+    if( normalizeModelKey( key ) === norm ) return price
   }
 
-  return PRICING_BY_NORM[ norm ] ?? MODEL_PRICING[ model ] ?? null
+  return null
 }
 
 export interface TokenUsage {

@@ -1455,23 +1455,27 @@ interface ModelPrice {
     output: number;
 }
 /**
- * Host-supplied prices, keyed by model id. Model ids are matched the same way
- * as the built-in table (exact first, then date-stripped and provider-stripped),
- * so `claude-sonnet-5` matches `claude-sonnet-5-20260114`.
+ * Host-supplied prices, keyed by model id. Matching is exact first, then
+ * normalized (provider prefix, date stamp and context qualifier stripped), so
+ * `claude-sonnet-5` matches `claude-sonnet-5-20260114`.
  *
  * Prices belong to the host: they change on a vendor's schedule, differ per
- * account, and are ~0 for a self-hosted model. The engine ships a fallback
- * table as a convenience, never as a source of truth.
+ * account, and are ~0 for a self-hosted model. The engine ships none.
  */
 type PriceTable = Record<string, ModelPrice>;
 /**
- * Resolve the price for a model id. Host prices win; the built-in table is the
- * fallback; an unknown model resolves to `null`.
+ * Resolve the price for a model id from the host's table.
  *
- * `null` deliberately does NOT mean free — it means *unknown*, and the caller
- * reports zero cost with `priced: false` so the gap is visible. The previous
- * behaviour silently priced every unknown model at Sonnet's rate, which
- * overstated a budget model's output cost by ~54× while looking authoritative.
+ * The engine ships no prices at all. A table baked into a release is wrong the
+ * week a vendor changes a rate, differs per account, and is meaningless for a
+ * self-hosted model — and a *partial* table is worse than none, because some
+ * models then report plausible-but-stale numbers while others honestly report
+ * nothing. Prices live with the host, next to the routing policy they inform.
+ *
+ * `null` does NOT mean free — it means *unknown*, and the caller reports zero
+ * cost with `priced: false` so the gap stays visible rather than confidently
+ * wrong. (The removed built-in default priced every unrecognised model at
+ * Sonnet's rate, overstating a budget model's output by ~54×.)
  */
 declare function resolvePricing(model: string, hostPrices?: PriceTable): ModelPrice | null;
 interface TokenUsage {
@@ -3936,7 +3940,23 @@ interface ModelRouter {
     route(meta: LLMCallMeta): ModelRoute | null;
 }
 
-type LLMProvider = 'anthropic' | 'glm' | 'deepseek' | 'openai' | 'google';
+/**
+ * The request/response dialect an endpoint speaks. This — not the provider's
+ * name — is what the transport actually branches on.
+ */
+type LLMWire = 'anthropic' | 'openai' | 'google';
+/** Providers with built-in defaults. Any other string is equally valid. */
+type KnownProvider = 'anthropic' | 'glm' | 'deepseek' | 'openai' | 'google';
+/**
+ * A provider name. Deliberately open: the field of providers changes monthly,
+ * and a closed union meant a host reaching Kimi or Qwen had to masquerade as
+ * `openai`, which then lied on the completion tape and in cost attribution.
+ *
+ * `(string & {})` keeps editor autocomplete for the known names while accepting
+ * anything. A provider outside {@link KNOWN_PROVIDERS} simply has to declare its
+ * `wire` and `baseUrl` — see `WillLLMConfig.providers`.
+ */
+type LLMProvider = KnownProvider | (string & {});
 interface LLMDirectorConfig {
     willId: string;
     model: string;
@@ -3978,10 +3998,26 @@ interface LLMDirectorConfig {
      * remain the default entry; a route to a provider absent from this map falls
      * back to the default endpoint.
      */
-    credentials?: Partial<Record<LLMProvider, {
-        apiKey: string;
-        baseUrl?: string;
-    }>>;
+    credentials?: Partial<Record<string, ProviderCredential>>;
+    /**
+     * Dialect for the default provider. Required when the provider is not one of
+     * {@link KNOWN_PROVIDERS} — the engine will not guess how to talk to an
+     * endpoint it has never heard of.
+     */
+    wire?: LLMWire;
+}
+/**
+ * Everything a single call needs to reach a model. Resolved once per call and
+ * threaded through the provider methods — never stored on the instance, because
+ * the concurrency gate lets several calls be in flight on one director at once
+ * and per-call state on `this` would race between them.
+ */
+/** What a host supplies so a routed provider can be reached. */
+interface ProviderCredential {
+    apiKey: string;
+    baseUrl?: string;
+    /** Required for providers outside {@link KNOWN_PROVIDERS}. */
+    wire?: LLMWire;
 }
 interface LLMCallResult {
     text: string;
@@ -4123,8 +4159,6 @@ declare class LLMDirector {
     /** Cost-attribution tag for this call. Defaults to the master executive. */
     meta?: LLMCallMeta): Promise<LLMCallResult>;
     private _callProvider;
-    /** Default API base URL (including version segment) for a provider. */
-    private _baseFor;
     /** Resolved API base: explicit override wins, else the provider default. */
     private _resolvedBase;
     /**
@@ -4602,11 +4636,9 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         baseUrl?: string;
         maxOutputTokens?: number;
         timeoutMs?: number;
-        credentials?: Partial<Record<LLMProvider, {
-            apiKey: string;
-            baseUrl?: string;
-        }>>;
+        credentials?: Partial<Record<string, ProviderCredential>>;
         router?: ModelRouter | null;
+        wire?: LLMWire;
     } | null);
     /** The executive-role model id (back-compat read). */
     get modelId(): string | null;
@@ -4625,6 +4657,19 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * and subscribe() to receive facet decisions.
      */
     /** Get-or-create the director for a model id (shared config, per-Will). */
+    /**
+     * The provider, from config or environment — never guessed.
+     *
+     * This used to default to 'anthropic', which is how a Will configured for one
+     * vendor could quietly talk to another. An unset provider is a configuration
+     * error, and saying so at construction is far cheaper than a 401 mid-tick.
+     */
+    private _requireProvider;
+    /**
+     * True when this Will cannot make a live call, so provider/model are not
+     * required: mock mode, or a replay re-feeding recorded completions.
+     */
+    private _noLiveCalls;
     private _directorFor;
     spawnFacet(role?: 'deliberation' | 'conversation' | 'outreach' | 'supervision'): {
         attention: 'available' | 'full';

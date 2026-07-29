@@ -1191,6 +1191,98 @@ const graphs: Graph[] = [
       { from: 'tape',     to: 'replay',   label: 'recorded', fromSide: 'b', toSide: 't' },
     ],
   },
+  // ── Model routing ─────────────────────────────────────────
+  //
+  // The epoch's picture. Read left to right: the mind tags every call with
+  // what KIND of work it is and how much the moment demands; a router the
+  // HOST wrote turns that into a model; the endpoint resolves to a wire; the
+  // call comes back attributed to the vendor that actually served it. The top
+  // band is the part that is not in the engine at all.
+  {
+    file: 'model-routing.svg',
+    title: 'Model routing — the mind tags, the host routes',
+    subtitle: 'One mechanism, no policy: the engine knows a call is routine or consequential, and never who is paying or what anything costs. Provider, price and table belong to whoever runs the mind.',
+    width: 1460, height: 1000,
+    legend: [ 'executive', 'memory', 'llm', 'world', 'infra' ],
+    groups: [
+      { x: 44,   y: 150, w: 1372, h: 156, label: 'the host writes the table — where routing is actually decided, and none of it is in the engine', cat: 'world' },
+      { x: 44,   y: 342, w: 254,  h: 462, label: 'the mind — every call tags itself', cat: 'executive' },
+      { x: 318,  y: 342, w: 254,  h: 462, label: 'the seam — mechanism only',         cat: 'llm' },
+      { x: 592,  y: 342, w: 254,  h: 462, label: 'one endpoint, resolved per call',   cat: 'llm' },
+      { x: 866,  y: 342, w: 264,  h: 462, label: 'the world — wire, not vendor',      cat: 'world' },
+      { x: 1150, y: 342, w: 266,  h: 462, label: 'what comes back',                   cat: 'infra' },
+      { x: 44,   y: 838, w: 1372, h: 126, label: 'the invariants — what routing may never do', cat: 'infra' },
+    ],
+    nodes: [
+      // ── who writes the table (this is the external-use band) ──
+      { id: 'none',  x: 70,   y: 208, w: 300, label: 'Nobody',                sub: 'no router → one model, byte-identical',      cat: 'world' },
+      { id: 'host',  x: 400,  y: 208, w: 320, label: 'Any host supplies it',   sub: 'llm.router — or llm.model as a role map',    cat: 'world' },
+      { id: 'cloud', x: 760,  y: 208, w: 320, label: 'Mindot Cloud',           sub: 'pricing tier → rules, prices, credentials',  cat: 'world' },
+      { id: 'same',  x: 1120, y: 208, w: 296, label: 'One seam, both ways',    sub: 'the cloud gets no privileged interface',     cat: 'world' },
+
+      // ── the mind: the call sites that tag themselves ──
+      { id: 'master', x: 62, y: 404, w: 218, label: 'Master decision',    sub: 'executive · master · decision',          cat: 'executive', glow: true },
+      { id: 'facet',  x: 62, y: 496, w: 218, label: 'Facets',             sub: 'conversation · outreach · deliberation', cat: 'executive' },
+      { id: 'summ',   x: 62, y: 588, w: 218, label: 'Rolling summariser', sub: 'summarizer · memory · consolidation',    cat: 'memory' },
+      { id: 'guard',  x: 62, y: 680, w: 218, label: 'Identity guard',     sub: 'identity-guard · guard',                 cat: 'memory' },
+
+      // ── the seam: one vertical spine ──
+      { id: 'meta',  x: 336, y: 404, w: 218, label: 'LLMCallMeta',  sub: 'category · attribute · function',       cat: 'llm' },
+      { id: 'dem',   x: 336, y: 496, w: 218, label: 'demand  0..1', sub: 'the effort gate the mind already runs', cat: 'llm', glow: true },
+      { id: 'chain', x: 336, y: 588, w: 218, label: 'chainRouters', sub: 'host router first, then the role map',  cat: 'llm' },
+      { id: 'table', x: 336, y: 680, w: 218, label: 'TableRouter',  sub: 'first match wins · null = no opinion',  cat: 'llm' },
+
+      // ── endpoint resolution ──
+      { id: 'route', x: 610, y: 404, w: 218, label: 'ModelRoute',   sub: 'a model — a provider only if it moves', cat: 'llm' },
+      { id: 'cred',  x: 610, y: 542, w: 218, label: 'Credential',   sub: "that provider's key, never another's",  cat: 'llm' },
+      { id: 'wire',  x: 610, y: 680, w: 218, label: 'CallEndpoint', sub: 'wire · model · baseUrl · ceiling',      cat: 'llm', glow: true },
+
+      // ── providers, grouped by the ONLY thing the transport branches on ──
+      { id: 'anth', x: 884, y: 404, w: 228, label: 'Anthropic wire', sub: 'anthropic · glm — streams, caches',   cat: 'world' },
+      { id: 'oai',  x: 884, y: 542, w: 228, label: 'OpenAI wire',    sub: 'deepseek · moonshot · qwen · xai · …', cat: 'world' },
+      { id: 'goog', x: 884, y: 680, w: 228, label: 'Google wire',    sub: 'gemini, natively',                    cat: 'world' },
+
+      // ── what comes back ──
+      { id: 'tape',   x: 1168, y: 472, w: 230, label: 'Completion tape', sub: 'the endpoint that ACTUALLY served', cat: 'infra' },
+      { id: 'ledger', x: 1168, y: 610, w: 230, label: 'Cost ledger',     sub: 'provider · priced · tokens',        cat: 'infra' },
+
+      // ── invariants ──
+      { id: 'i1', x: 70,   y: 886, w: 320, label: 'Degrade, never crash',    sub: 'no key, bad wire, router threw → default', cat: 'infra' },
+      { id: 'i2', x: 410,  y: 886, w: 320, label: 'demand never feeds back', sub: 'no engine reads it — not a hidden input',  cat: 'infra' },
+      { id: 'i3', x: 750,  y: 886, w: 320, label: 'No dollars in state',     sub: 'a price cannot change what a mind does',   cat: 'infra' },
+      { id: 'i4', x: 1090, y: 886, w: 300, label: 'Replay ignores routers',  sub: 're-feeds the tape, never re-decides',      cat: 'infra' },
+    ],
+    edges: [
+      // the mind tags itself — one fan into the spine
+      { from: 'master', to: 'meta', fromSide: 'r', toSide: 'l' },
+      { from: 'facet',  to: 'meta', fromSide: 'r', toSide: 'l' },
+      { from: 'summ',   to: 'meta', fromSide: 'r', toSide: 'l' },
+      { from: 'guard',  to: 'meta', fromSide: 'r', toSide: 'l' },
+
+      // the spine
+      { from: 'meta',  to: 'dem',   fromSide: 'b', toSide: 't' },
+      { from: 'dem',   to: 'chain', fromSide: 'b', toSide: 't' },
+      { from: 'chain', to: 'table', fromSide: 'b', toSide: 't' },
+      { from: 'table', to: 'route', fromSide: 'r', toSide: 'l' },
+      { from: 'route', to: 'cred',  fromSide: 'b', toSide: 't' },
+      { from: 'cred',  to: 'wire',  fromSide: 'b', toSide: 't' },
+
+      // who supplies the table — the external-use edges
+      { from: 'host',  to: 'chain', dash: true, label: 'the table',           fromSide: 'b', toSide: 't', reach: 30 },
+      { from: 'cloud', to: 'cred',  dash: true, label: 'providers + prices',  fromSide: 'b', toSide: 't', reach: 30, at: 0.86 },
+
+      // dispatch — by wire, never by vendor name
+      { from: 'wire', to: 'anth', fromSide: 'r', toSide: 'l' },
+      { from: 'wire', to: 'oai',  fromSide: 'r', toSide: 'l' },
+      { from: 'wire', to: 'goog', fromSide: 'r', toSide: 'l' },
+
+      // what comes back
+      { from: 'anth', to: 'tape', fromSide: 'r', toSide: 'l' },
+      { from: 'oai',  to: 'tape', fromSide: 'r', toSide: 'l' },
+      { from: 'goog', to: 'tape', fromSide: 'r', toSide: 'l' },
+      { from: 'tape', to: 'ledger', dash: true, label: 'and costed', fromSide: 'b', toSide: 't' },
+    ],
+  },
 ]
 
 for( const g of graphs ){

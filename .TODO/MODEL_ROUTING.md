@@ -3,6 +3,9 @@
 **Status:** plan of record · opened 2026-07-28
 **Engine version at open:** 0.7.0
 
+> **The picture:** `docs/graphs/model-routing.svg` — the whole arc in one diagram:
+> what the mind tags, where the host decides, and how one endpoint resolves per call.
+
 ---
 
 ## 0. The problem

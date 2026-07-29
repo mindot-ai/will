@@ -1,0 +1,239 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1460" height="1000" viewBox="0 0 1460 1000" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-fbbf24" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#fbbf24"/></marker>
+<marker id="arr-a78bfa" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#a78bfa"/></marker>
+<marker id="arr-f97316" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#f97316"/></marker>
+<marker id="arr-e2e8f0" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#e2e8f0"/></marker>
+<marker id="arr-94a3b8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#94a3b8"/></marker>
+</defs>
+<rect width="1460" height="1000" fill="url(#sky)"/>
+<rect x="1" y="1" width="1458" height="998" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">Model routing — the mind tags, the host routes</text>
+<text x="40" y="80" font-size="13" fill="#8b93a7">One mechanism, no policy: the engine knows a call is routine or consequential, and never who is paying or what anything costs. Provider, price and table belong to whoever runs the mind.</text>
+<rect x="1259.9" y="42" width="160.1" height="22" rx="11" fill="#94a3b814" stroke="#94a3b855" stroke-width="1"/>
+<circle cx="1271.9" cy="53" r="3.4" fill="#94a3b8"/>
+<text x="1280.9" y="57" font-size="10.5" fill="#cbd5e1">Stem / infrastructure</text>
+<rect x="1146.7" y="42" width="105.19999999999999" height="22" rx="11" fill="#e2e8f014" stroke="#e2e8f055" stroke-width="1"/>
+<circle cx="1158.7" cy="53" r="3.4" fill="#e2e8f0"/>
+<text x="1167.7" y="57" font-size="10.5" fill="#cbd5e1">Host / world</text>
+<rect x="1057.9" y="42" width="80.8" height="22" rx="11" fill="#f9731614" stroke="#f9731655" stroke-width="1"/>
+<circle cx="1069.9" cy="53" r="3.4" fill="#f97316"/>
+<text x="1078.9" y="57" font-size="10.5" fill="#cbd5e1">LLM seam</text>
+<rect x="981.3000000000001" y="42" width="68.6" height="22" rx="11" fill="#a78bfa14" stroke="#a78bfa55" stroke-width="1"/>
+<circle cx="993.3000000000001" cy="53" r="3.4" fill="#a78bfa"/>
+<text x="1002.3000000000001" y="57" font-size="10.5" fill="#cbd5e1">Memory</text>
+<rect x="819.3000000000001" y="42" width="154" height="22" rx="11" fill="#fbbf2414" stroke="#fbbf2455" stroke-width="1"/>
+<circle cx="831.3000000000001" cy="53" r="3.4" fill="#fbbf24"/>
+<text x="840.3000000000001" y="57" font-size="10.5" fill="#cbd5e1">Executive (System 2)</text>
+<rect x="44" y="150" width="1372" height="156" rx="16" fill="#e2e8f007" stroke="#e2e8f02e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="172" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#e2e8f0bb">THE HOST WRITES THE TABLE — WHERE ROUTING IS ACTUALLY DECIDED, AND NONE OF IT IS IN THE ENGINE</text>
+<rect x="44" y="342" width="254" height="462" rx="16" fill="#fbbf2407" stroke="#fbbf242e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="364" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#fbbf24bb">THE MIND — EVERY CALL TAGS ITSELF</text>
+<rect x="318" y="342" width="254" height="462" rx="16" fill="#f9731607" stroke="#f973162e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="334" y="364" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#f97316bb">THE SEAM — MECHANISM ONLY</text>
+<rect x="592" y="342" width="254" height="462" rx="16" fill="#f9731607" stroke="#f973162e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="608" y="364" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#f97316bb">ONE ENDPOINT, RESOLVED PER CALL</text>
+<rect x="866" y="342" width="264" height="462" rx="16" fill="#e2e8f007" stroke="#e2e8f02e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="882" y="364" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#e2e8f0bb">THE WORLD — WIRE, NOT VENDOR</text>
+<rect x="1150" y="342" width="266" height="462" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="1166" y="364" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">WHAT COMES BACK</text>
+<rect x="44" y="838" width="1372" height="126" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="860" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">THE INVARIANTS — WHAT ROUTING MAY NEVER DO</text>
+<path d="M 280 431 C 314 431, 302 431, 336 431" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<path d="M 280 523 C 320.92725253422225 523, 295.07274746577775 431, 336 431" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<path d="M 280 615 C 353.08655690344153 615, 262.91344309655847 431, 336 431" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
+<path d="M 280 707 C 387.01706779761815 707, 228.98293220238185 431, 336 431" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
+<path d="M 445 458 C 445 492, 445 462, 445 496" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<path d="M 445 550 C 445 584, 445 554, 445 588" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<path d="M 445 642 C 445 676, 445 646, 445 680" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<path d="M 554 707 C 661.0170677976182 707, 502.98293220238185 431, 610 431" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<path d="M 719 458 C 719 492, 719 508, 719 542" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<path d="M 719 596 C 719 630, 719 646, 719 680" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<path d="M 560 262 C 560 412, 445 438, 445 588" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
+<rect x="469.3" y="415" width="66.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="502.5" y="428.5" font-size="10" fill="#cbd5e1" text-anchor="middle">the table</text>
+<path d="M 920 262 C 920 412, 719 392, 719 542" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
+<rect x="671.315712" y="478.06304" width="116.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="729.7157119999999" y="491.56304" font-size="10" fill="#cbd5e1" text-anchor="middle">providers + prices</text>
+<path d="M 828 707 C 935.0170677976182 707, 776.9829322023818 431, 884 431" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<path d="M 828 707 C 884.5932151410397 707, 827.4067848589603 569, 884 569" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<path d="M 828 707 C 862 707, 850 707, 884 707" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<path d="M 1112 431 C 1146 431, 1134 499, 1168 499" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 1112 569 C 1146.0646209431427 569, 1133.9353790568573 499, 1168 499" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 1112 707 C 1193.8545050684445 707, 1086.1454949315555 499, 1168 499" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 1283 526 C 1283 560, 1283 576, 1283 610" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<rect x="1247" y="558" width="72" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="1283" y="571.5" font-size="10" fill="#cbd5e1" text-anchor="middle">and costed</text>
+<g>
+<rect x="70" y="208" width="300" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="70" y="208" width="300" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="71.2" y="217" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="220" y="232" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Nobody</text>
+<text x="220" y="248.5" font-size="10" fill="#8b93a7" text-anchor="middle">no router → one model, byte-identical</text>
+</g>
+<g>
+<rect x="400" y="208" width="320" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="400" y="208" width="320" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="401.2" y="217" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="560" y="232" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Any host supplies it</text>
+<text x="560" y="248.5" font-size="10" fill="#8b93a7" text-anchor="middle">llm.router — or llm.model as a role map</text>
+</g>
+<g>
+<rect x="760" y="208" width="320" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="760" y="208" width="320" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="761.2" y="217" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="920" y="232" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Mindot Cloud</text>
+<text x="920" y="248.5" font-size="10" fill="#8b93a7" text-anchor="middle">pricing tier → rules, prices, credentials</text>
+</g>
+<g>
+<rect x="1120" y="208" width="296" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="1120" y="208" width="296" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="1121.2" y="217" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="1268" y="232" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">One seam, both ways</text>
+<text x="1268" y="248.5" font-size="10" fill="#8b93a7" text-anchor="middle">the cloud gets no privileged interface</text>
+</g>
+<g filter="url(#glow)" color="#fbbf24">
+<rect x="62" y="404" width="218" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="62" y="404" width="218" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="63.2" y="413" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="171" y="428" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Master decision</text>
+<text x="171" y="444.5" font-size="10" fill="#8b93a7" text-anchor="middle">executive · master · decision</text>
+</g>
+<g>
+<rect x="62" y="496" width="218" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="62" y="496" width="218" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="63.2" y="505" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="171" y="520" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Facets</text>
+<text x="171" y="536.5" font-size="10" fill="#8b93a7" text-anchor="middle">conversation · outreach · deliberation</text>
+</g>
+<g>
+<rect x="62" y="588" width="218" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="62" y="588" width="218" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="63.2" y="597" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="171" y="612" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Rolling summariser</text>
+<text x="171" y="628.5" font-size="10" fill="#8b93a7" text-anchor="middle">summarizer · memory · consolidation</text>
+</g>
+<g>
+<rect x="62" y="680" width="218" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="62" y="680" width="218" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="63.2" y="689" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="171" y="704" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Identity guard</text>
+<text x="171" y="720.5" font-size="10" fill="#8b93a7" text-anchor="middle">identity-guard · guard</text>
+</g>
+<g>
+<rect x="336" y="404" width="218" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="336" y="404" width="218" height="54" rx="12" fill="#f9731612"/>
+<rect x="337.2" y="413" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="445" y="428" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">LLMCallMeta</text>
+<text x="445" y="444.5" font-size="10" fill="#8b93a7" text-anchor="middle">category · attribute · function</text>
+</g>
+<g filter="url(#glow)" color="#f97316">
+<rect x="336" y="496" width="218" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="336" y="496" width="218" height="54" rx="12" fill="#f9731612"/>
+<rect x="337.2" y="505" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="445" y="520" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">demand  0..1</text>
+<text x="445" y="536.5" font-size="10" fill="#8b93a7" text-anchor="middle">the effort gate the mind already runs</text>
+</g>
+<g>
+<rect x="336" y="588" width="218" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="336" y="588" width="218" height="54" rx="12" fill="#f9731612"/>
+<rect x="337.2" y="597" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="445" y="612" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">chainRouters</text>
+<text x="445" y="628.5" font-size="10" fill="#8b93a7" text-anchor="middle">host router first, then the role map</text>
+</g>
+<g>
+<rect x="336" y="680" width="218" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="336" y="680" width="218" height="54" rx="12" fill="#f9731612"/>
+<rect x="337.2" y="689" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="445" y="704" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">TableRouter</text>
+<text x="445" y="720.5" font-size="10" fill="#8b93a7" text-anchor="middle">first match wins · null = no opinion</text>
+</g>
+<g>
+<rect x="610" y="404" width="218" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="610" y="404" width="218" height="54" rx="12" fill="#f9731612"/>
+<rect x="611.2" y="413" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="719" y="428" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">ModelRoute</text>
+<text x="719" y="444.5" font-size="10" fill="#8b93a7" text-anchor="middle">a model — a provider only if it moves</text>
+</g>
+<g>
+<rect x="610" y="542" width="218" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="610" y="542" width="218" height="54" rx="12" fill="#f9731612"/>
+<rect x="611.2" y="551" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="719" y="566" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Credential</text>
+<text x="719" y="582.5" font-size="10" fill="#8b93a7" text-anchor="middle">that provider's key, never another's</text>
+</g>
+<g filter="url(#glow)" color="#f97316">
+<rect x="610" y="680" width="218" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="610" y="680" width="218" height="54" rx="12" fill="#f9731612"/>
+<rect x="611.2" y="689" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="719" y="704" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">CallEndpoint</text>
+<text x="719" y="720.5" font-size="10" fill="#8b93a7" text-anchor="middle">wire · model · baseUrl · ceiling</text>
+</g>
+<g>
+<rect x="884" y="404" width="228" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="884" y="404" width="228" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="885.2" y="413" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="998" y="428" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Anthropic wire</text>
+<text x="998" y="444.5" font-size="10" fill="#8b93a7" text-anchor="middle">anthropic · glm — streams, caches</text>
+</g>
+<g>
+<rect x="884" y="542" width="228" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="884" y="542" width="228" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="885.2" y="551" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="998" y="566" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">OpenAI wire</text>
+<text x="998" y="582.5" font-size="10" fill="#8b93a7" text-anchor="middle">deepseek · moonshot · qwen · xai · …</text>
+</g>
+<g>
+<rect x="884" y="680" width="228" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="884" y="680" width="228" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="885.2" y="689" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="998" y="704" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Google wire</text>
+<text x="998" y="720.5" font-size="10" fill="#8b93a7" text-anchor="middle">gemini, natively</text>
+</g>
+<g>
+<rect x="1168" y="472" width="230" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="1168" y="472" width="230" height="54" rx="12" fill="#94a3b812"/>
+<rect x="1169.2" y="481" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="1283" y="496" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Completion tape</text>
+<text x="1283" y="512.5" font-size="10" fill="#8b93a7" text-anchor="middle">the endpoint that ACTUALLY served</text>
+</g>
+<g>
+<rect x="1168" y="610" width="230" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="1168" y="610" width="230" height="54" rx="12" fill="#94a3b812"/>
+<rect x="1169.2" y="619" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="1283" y="634" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Cost ledger</text>
+<text x="1283" y="650.5" font-size="10" fill="#8b93a7" text-anchor="middle">provider · priced · tokens</text>
+</g>
+<g>
+<rect x="70" y="886" width="320" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="70" y="886" width="320" height="54" rx="12" fill="#94a3b812"/>
+<rect x="71.2" y="895" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="230" y="910" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Degrade, never crash</text>
+<text x="230" y="926.5" font-size="10" fill="#8b93a7" text-anchor="middle">no key, bad wire, router threw → default</text>
+</g>
+<g>
+<rect x="410" y="886" width="320" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="410" y="886" width="320" height="54" rx="12" fill="#94a3b812"/>
+<rect x="411.2" y="895" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="570" y="910" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">demand never feeds back</text>
+<text x="570" y="926.5" font-size="10" fill="#8b93a7" text-anchor="middle">no engine reads it — not a hidden input</text>
+</g>
+<g>
+<rect x="750" y="886" width="320" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="750" y="886" width="320" height="54" rx="12" fill="#94a3b812"/>
+<rect x="751.2" y="895" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="910" y="910" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">No dollars in state</text>
+<text x="910" y="926.5" font-size="10" fill="#8b93a7" text-anchor="middle">a price cannot change what a mind does</text>
+</g>
+<g>
+<rect x="1090" y="886" width="300" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="1090" y="886" width="300" height="54" rx="12" fill="#94a3b812"/>
+<rect x="1091.2" y="895" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="1240" y="910" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Replay ignores routers</text>
+<text x="1240" y="926.5" font-size="10" fill="#8b93a7" text-anchor="middle">re-feeds the tape, never re-decides</text>
+</g>
+<text x="40" y="978" font-size="10.5" fill="#5b6372">@mindot/will · model-routing</text>
+<text x="1420" y="978" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

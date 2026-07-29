@@ -16,6 +16,7 @@
  * Exposes as metrics so the orchestrator and runner can log costs,
  * and the ParameterOptimizer can factor cost into optimization decisions.
  */
+import { logger } from '#core/logger'
 import type {
   Duration,
   Tick,
@@ -77,8 +78,6 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'google/text-embedding-004':     { input: 0,    output: 0 },  // free tier
   'google/gemini-embedding-001':   { input: 0,    output: 0 },  // free tier
 
-  // Fallback for unknown models
-  '__default__':                { input: 3.00,  output: 15.00 },
 }
 
 // ── Prompt-cache pricing (Anthropic) ──────────────────────
@@ -91,7 +90,7 @@ const CACHE_WRITE_MULT = 1.25
  * Normalize a model id to its bare, dateless form so a raw provider model string
  * ("claude-sonnet-4-5-20250929", "anthropic/claude-haiku-4-5") resolves to the
  * right pricing row. Without this, every non-default id missed the `provider/model`
- * keys and silently fell through to __default__ ($3/$15) — pricing Haiku ~3× and
+ * keys and silently fell through to a default rate — pricing Haiku ~3× and
  * DeepSeek ~11× too high, and breaking per-model cost telemetry entirely.
  */
 function normalizeModelKey( model: string ): string {
@@ -106,17 +105,50 @@ function normalizeModelKey( model: string ): string {
 const PRICING_BY_NORM: Record<string, { input: number; output: number }> = ( () => {
   const out: Record<string, { input: number; output: number }> = {}
   for( const [ key, price ] of Object.entries( MODEL_PRICING ) ){
-    if( key === '__default__') continue
     out[ normalizeModelKey( key ) ] = price
   }
   return out
 } )()
 
-/** Resolve the pricing row for any model id (exact, normalized, then default). */
-export function resolvePricing( model: string ): { input: number; output: number } {
-  return PRICING_BY_NORM[ normalizeModelKey( model ) ]
-      ?? MODEL_PRICING[ model ]
-      ?? MODEL_PRICING['__default__']!
+/** USD per 1M tokens for one model. */
+export interface ModelPrice { input: number; output: number }
+
+/**
+ * Host-supplied prices, keyed by model id. Model ids are matched the same way
+ * as the built-in table (exact first, then date-stripped and provider-stripped),
+ * so `claude-sonnet-5` matches `claude-sonnet-5-20260114`.
+ *
+ * Prices belong to the host: they change on a vendor's schedule, differ per
+ * account, and are ~0 for a self-hosted model. The engine ships a fallback
+ * table as a convenience, never as a source of truth.
+ */
+export type PriceTable = Record<string, ModelPrice>
+
+/** Models already warned about as unpriced — one line each, not one per call. */
+const _unpricedWarned = new Set<string>()
+
+/**
+ * Resolve the price for a model id. Host prices win; the built-in table is the
+ * fallback; an unknown model resolves to `null`.
+ *
+ * `null` deliberately does NOT mean free — it means *unknown*, and the caller
+ * reports zero cost with `priced: false` so the gap is visible. The previous
+ * behaviour silently priced every unknown model at Sonnet's rate, which
+ * overstated a budget model's output cost by ~54× while looking authoritative.
+ */
+export function resolvePricing( model: string, hostPrices?: PriceTable ): ModelPrice | null {
+  const norm = normalizeModelKey( model )
+
+  if( hostPrices ){
+    const hit = hostPrices[ model ] ?? hostPrices[ norm ]
+    if( hit ) return hit
+    // A host table keyed by un-normalized ids still matches a normalized lookup.
+    for( const [ key, price ] of Object.entries( hostPrices ) ){
+      if( normalizeModelKey( key ) === norm ) return price
+    }
+  }
+
+  return PRICING_BY_NORM[ norm ] ?? MODEL_PRICING[ model ] ?? null
 }
 
 export interface TokenUsage {
@@ -132,8 +164,15 @@ export interface TokenUsage {
   cacheReadTokens?: number
   /** Anthropic prompt-cache write tokens (billed at 1.25× input). Optional. */
   cacheWriteTokens?: number
-  /** Estimated cost in USD */
+  /** Estimated cost in USD. Zero when `priced` is false — unknown, not free. */
   estimatedCostUsd: number
+  /**
+   * Whether a price was found for this model. False ⇒ `estimatedCostUsd` is 0
+   * because nothing priced it, NOT because the call was free. A consumer
+   * summing costs should surface unpriced calls rather than fold them in as
+   * zero.
+   */
+  priced: boolean
 
   // ── 5-axis cost attribution ──────────────────────────────
   /** Top-level cost bucket: 'executive' | 'summarizer' | 'embedding' | 'identity-guard' | … */
@@ -157,7 +196,7 @@ export interface TokenUsage {
 }
 
 /** What callers pass to {@link TokenTracker.recordUsage} — cost and label are derived. */
-export type RecordUsageInput = Omit<TokenUsage, 'estimatedCostUsd' | 'label'> & { label?: string }
+export type RecordUsageInput = Omit<TokenUsage, 'estimatedCostUsd' | 'label' | 'priced'> & { label?: string }
 
 /** Compose a stable, readable label from the attribution axes. */
 function composeLabel( m: { category: string; attribute: string; function: string; scope?: string } ): string {
@@ -166,6 +205,12 @@ function composeLabel( m: { category: string; attribute: string; function: strin
 }
 
 export interface TokenTrackerConfig {
+  /**
+   * Host-supplied model prices (USD per 1M tokens), merged from the per-provider
+   * `prices` maps in `WillLLMConfig.providers`. These win over the built-in
+   * fallback table. Omitted ⇒ fallback only.
+   */
+  prices?: PriceTable
   /** Whether to emit cost events */
   emitCostEvents?: boolean
   /** Cost threshold for warning events */
@@ -186,6 +231,7 @@ export class TokenTracker implements SimulationEngine {
   
   private _emitCostEvents: boolean
   private _costWarningThreshold: number
+  private _prices: PriceTable | undefined
 
   // All recorded usage for the simulation run
   private _usageLog: TokenUsage[] = []
@@ -219,6 +265,7 @@ export class TokenTracker implements SimulationEngine {
   constructor( config: TokenTrackerConfig = {} ){
     this._emitCostEvents        = config.emitCostEvents        ?? true
     this._costWarningThreshold  = config.costWarningThresholdUsd ?? 0.05
+    this._prices                = config.prices
     this._ledgerPath = ( config.writeLedger && config.willId )
       ? `./data/wills/${config.willId}/debug/token-report.jsonl`
       : null
@@ -231,18 +278,31 @@ export class TokenTracker implements SimulationEngine {
    * Called by LLMDirector.call after each completion (src/llm/index.ts).
    */
   recordUsage( usage: RecordUsageInput ): void {
-    const pricing    = resolvePricing( usage.model )
+    const pricing    = resolvePricing( usage.model, this._prices )
     const cacheRead  = usage.cacheReadTokens  ?? 0
     const cacheWrite = usage.cacheWriteTokens ?? 0
-    const costUsd =
-      ( usage.promptTokens     / 1_000_000 ) * pricing.input  +
-      ( usage.completionTokens / 1_000_000 ) * pricing.output +
-      ( cacheRead              / 1_000_000 ) * pricing.input * CACHE_READ_MULT  +
-      ( cacheWrite             / 1_000_000 ) * pricing.input * CACHE_WRITE_MULT
+
+    // No price ⇒ cost 0 and `priced: false`. Warn once per model id so an
+    // unconfigured provider is visible without flooding the log.
+    if( !pricing && !_unpricedWarned.has( usage.model ) ){
+      _unpricedWarned.add( usage.model )
+      logger.warn(
+        `[tokens] no price for "${usage.model}" — reporting cost 0 for it. ` +
+        `Supply one via llm.providers.<provider>.prices to get cost telemetry.`
+      )
+    }
+
+    const costUsd = pricing
+      ? ( usage.promptTokens     / 1_000_000 ) * pricing.input  +
+        ( usage.completionTokens / 1_000_000 ) * pricing.output +
+        ( cacheRead              / 1_000_000 ) * pricing.input * CACHE_READ_MULT  +
+        ( cacheWrite             / 1_000_000 ) * pricing.input * CACHE_WRITE_MULT
+      : 0
 
     const full: TokenUsage = {
       ...usage,
       label:            usage.label ?? composeLabel( usage ),
+      priced:           pricing !== null,
       estimatedCostUsd: Math.round( costUsd * 1_000_000 ) / 1_000_000, // round to micro-dollars
     }
 
@@ -291,6 +351,10 @@ export class TokenTracker implements SimulationEngine {
       cacheWriteTok: full.cacheWriteTokens ?? 0,
       estPromptTok:  full.estPromptTokens,
       costUsd:       full.estimatedCostUsd,
+      // Whether costUsd came from a real price. False ⇒ 0 because nothing
+      // priced this model, NOT because the call was free — a consumer summing
+      // spend must not fold unpriced calls in as zero.
+      priced:        full.priced,
       latencyMs:     full.latencyMs,
     }
 
@@ -347,30 +411,33 @@ export class TokenTracker implements SimulationEngine {
     if( this._tickCosts.length > this._maxTickCostSamples )
       this._tickCosts.shift()
 
-    // Metrics
+    // Metrics — TOKENS ONLY (W8c).
+    //
+    // Token counts are a physical, deterministic fact of a call and belong in
+    // state. Dollars are the host's accounting over that fact: prices differ per
+    // account, change on a vendor's schedule, and are ~0 self-hosted. Nothing in
+    // cognition ever read them (the sole consumer was a console runner), yet
+    // while they sat in state a host editing its price table changed state bytes
+    // and broke replay-equivalence over a number that influenced nothing.
+    //
+    // Cost still reaches the host every call on the ledger path
+    // (`onRecord` → the stem's transport bridge), which is where it was already
+    // being consumed. See `totalCostUsd` / `costBreakdown()` for in-process reads.
     commands.metrics!.push(
       [ 'llm.prompt_tokens_total',      this._totalPromptTokens ],
       [ 'llm.completion_tokens_total',  this._totalCompletionTokens ],
-      [ 'llm.cost_total_usd',           this._totalCost ],
-      [ 'llm.cost_this_tick_usd',       tickCost ],
-      [ 'llm.cost_avg_per_tick_usd',    this._averageTickCost() ],
       [ 'llm.total_calls',              this._usageLog.length ],
     )
 
-    // Per-axis cost + token breakdown — the transparency surface for
-    // "how much goes into conversation vs executive vs embedding" (by category)
-    // and "decision vs ideation vs conversation vs planning…" (by function).
-    for( const [ cat, cost ] of this._categoryCosts ){
-      commands.metrics!.push([ `llm.cost.${cat}`, cost ])
-    }
+    // Per-axis TOKEN breakdown — the transparency surface for "how much goes
+    // into conversation vs executive vs embedding". The matching cost
+    // breakdown is host-side now (W8c); `costBreakdown()` still exposes it
+    // in-process for anyone holding the tracker.
     for( const [ cat, tok ] of this._categoryTokens ){
       commands.metrics!.push(
         [ `llm.prompt_tokens.${cat}`,     tok.prompt ],
         [ `llm.completion_tokens.${cat}`, tok.completion ],
       )
-    }
-    for( const [ fn, cost ] of this._functionCosts ){
-      commands.metrics!.push([ `llm.cost.fn.${fn}`, cost ])
     }
 
     // Cost warning event

@@ -9,6 +9,8 @@ import {
   type TokenUsage,
   type TokenLedgerRecord,
   type RecordUsageInput,
+  type PriceTable,
+  type ModelPrice,
 } from '#cognition/utilities/token.tracker'
 
 import { EnergyRegulator, type EnergyRegulatorConfig } from '#faculties/energy.regulator'
@@ -84,6 +86,8 @@ export {
   type TokenUsage,
   type TokenLedgerRecord,
   type RecordUsageInput,
+  type PriceTable,
+  type ModelPrice,
 
   // ── Regulatory Engines ─────────────────────────────────────
 

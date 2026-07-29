@@ -34,10 +34,10 @@ function usage( over: Partial<Parameters<TokenTracker['recordUsage']>[0]> = {} )
 }
 
 describe('TokenTracker — model-id normalization (resolvePricing)', () => {
-  it('resolves a dated Anthropic Haiku id to Haiku pricing, not the $3/$15 default', () => {
+  it('resolves a dated Anthropic Haiku id to Haiku pricing', () => {
     const p = resolvePricing('claude-haiku-4-5-20250101')
-    expect( p.input ).toBe( 1.00 )
-    expect( p.output ).toBe( 5.00 )
+    expect( p?.input ).toBe( 1.00 )
+    expect( p?.output ).toBe( 5.00 )
   } )
 
   it('resolves a provider-prefixed id and a bare id to the same row', () => {
@@ -45,11 +45,25 @@ describe('TokenTracker — model-id normalization (resolvePricing)', () => {
   } )
 
   it('resolves DeepSeek to its real (cheap) pricing, not the default', () => {
-    expect( resolvePricing('deepseek-v3').input ).toBe( 0.27 )
+    expect( resolvePricing('deepseek-v3')?.input ).toBe( 0.27 )
   } )
 
-  it('falls back to the default for a genuinely unknown model', () => {
-    expect( resolvePricing('mistral:7b').input ).toBe( 3.00 )
+  // BEHAVIOUR CHANGE (W8b): an unknown model used to resolve to a $3/$15
+  // default — Sonnet's rate silently applied to anything unrecognised, which
+  // overstated a budget model's output cost by ~54× while looking
+  // authoritative. Unknown now resolves to null: unknown, not "probably Sonnet".
+  it('returns null for a genuinely unknown model — unknown, never a guess', () => {
+    expect( resolvePricing('mistral:7b') ).toBeNull()
+  } )
+
+  it('lets host-supplied prices win over the built-in table', () => {
+    const host = { 'claude-haiku-4-5': { input: 0.5, output: 2 } }
+    expect( resolvePricing('claude-haiku-4-5-20250101', host ) ).toEqual( { input: 0.5, output: 2 } )
+  } )
+
+  it('prices a model the built-in table has never heard of, from host config', () => {
+    const host = { 'kimi-k2.5': { input: 0.6, output: 3 } }
+    expect( resolvePricing('moonshot/kimi-k2.5', host )?.output ).toBe( 3 )
   } )
 } )
 

@@ -1440,29 +1440,34 @@ interface CognitiveEngine extends SimulationEngine {
     restore?(snapshot: Record<string, unknown>): void;
 }
 
-/**
- * TokenTracker — monitors LLM token consumption across all engines.
- *
- * Hooks into the LLM calls to record:
- *   - Prompt tokens (input)
- *   - Completion tokens (output)
- *   - Total tokens
- *   - Cost (based on model pricing)
- *   - Per-engine breakdowns
- *   - Per-agent breakdowns
- *
- * Exposes as metrics so the orchestrator and runner can log costs,
- * and the ParameterOptimizer can factor cost into optimization decisions.
- */
-
 /** One attributed ledger record (5-axis attribution + tokens + cost). */
 type TokenLedgerRecord = Record<string, unknown>;
 type TokenRecordListener = (record: TokenLedgerRecord) => void;
-/** Resolve the pricing row for any model id (exact, normalized, then default). */
-declare function resolvePricing(model: string): {
+/** USD per 1M tokens for one model. */
+interface ModelPrice {
     input: number;
     output: number;
-};
+}
+/**
+ * Host-supplied prices, keyed by model id. Model ids are matched the same way
+ * as the built-in table (exact first, then date-stripped and provider-stripped),
+ * so `claude-sonnet-5` matches `claude-sonnet-5-20260114`.
+ *
+ * Prices belong to the host: they change on a vendor's schedule, differ per
+ * account, and are ~0 for a self-hosted model. The engine ships a fallback
+ * table as a convenience, never as a source of truth.
+ */
+type PriceTable = Record<string, ModelPrice>;
+/**
+ * Resolve the price for a model id. Host prices win; the built-in table is the
+ * fallback; an unknown model resolves to `null`.
+ *
+ * `null` deliberately does NOT mean free — it means *unknown*, and the caller
+ * reports zero cost with `priced: false` so the gap is visible. The previous
+ * behaviour silently priced every unknown model at Sonnet's rate, which
+ * overstated a budget model's output cost by ~54× while looking authoritative.
+ */
+declare function resolvePricing(model: string, hostPrices?: PriceTable): ModelPrice | null;
 interface TokenUsage {
     /** Model identifier (e.g., 'openai/gpt-4o') */
     model: string;
@@ -1476,8 +1481,15 @@ interface TokenUsage {
     cacheReadTokens?: number;
     /** Anthropic prompt-cache write tokens (billed at 1.25× input). Optional. */
     cacheWriteTokens?: number;
-    /** Estimated cost in USD */
+    /** Estimated cost in USD. Zero when `priced` is false — unknown, not free. */
     estimatedCostUsd: number;
+    /**
+     * Whether a price was found for this model. False ⇒ `estimatedCostUsd` is 0
+     * because nothing priced it, NOT because the call was free. A consumer
+     * summing costs should surface unpriced calls rather than fold them in as
+     * zero.
+     */
+    priced: boolean;
     /** Top-level cost bucket: 'executive' | 'summarizer' | 'embedding' | 'identity-guard' | … */
     category: string;
     /** Actor/subsystem doing the work: 'master' | 'facet' | 'memory' | 'guard' | … */
@@ -1496,10 +1508,16 @@ interface TokenUsage {
     latencyMs: number;
 }
 /** What callers pass to {@link TokenTracker.recordUsage} — cost and label are derived. */
-type RecordUsageInput = Omit<TokenUsage, 'estimatedCostUsd' | 'label'> & {
+type RecordUsageInput = Omit<TokenUsage, 'estimatedCostUsd' | 'label' | 'priced'> & {
     label?: string;
 };
 interface TokenTrackerConfig {
+    /**
+     * Host-supplied model prices (USD per 1M tokens), merged from the per-provider
+     * `prices` maps in `WillLLMConfig.providers`. These win over the built-in
+     * fallback table. Omitted ⇒ fallback only.
+     */
+    prices?: PriceTable;
     /** Whether to emit cost events */
     emitCostEvents?: boolean;
     /** Cost threshold for warning events */
@@ -1518,6 +1536,7 @@ declare class TokenTracker implements SimulationEngine {
     readonly name = "token-tracker";
     private _emitCostEvents;
     private _costWarningThreshold;
+    private _prices;
     private _usageLog;
     private _totalPromptTokens;
     private _totalCompletionTokens;
@@ -4578,6 +4597,10 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         baseUrl?: string;
         maxOutputTokens?: number;
         timeoutMs?: number;
+        credentials?: Partial<Record<LLMProvider, {
+            apiKey: string;
+            baseUrl?: string;
+        }>>;
     } | null);
     /** The executive-role model id (back-compat read). */
     get modelId(): string | null;
@@ -6959,12 +6982,43 @@ interface WillModelConfig {
  * `apiKey` is held in memory only — it is never mirrored into state entities,
  * session logs, or the PMA.
  */
+interface WillProviderConfig {
+    /** Credential for this provider. Held in memory only — never state/logs/PMA. */
+    apiKey?: string;
+    /** Base URL override — self-hosted or OpenAI-compatible endpoints. */
+    baseUrl?: string;
+    /**
+     * USD per 1M tokens, keyed by model id. Host-owned on purpose: prices change
+     * on a vendor's schedule, differ per account, and are ~0 self-hosted, so they
+     * cannot be tracked from inside an npm release. These win over the engine's
+     * built-in fallback table.
+     *
+     * Cost is telemetry only — it never enters simulation state — so changing a
+     * price can never change what a mind does or break a replay.
+     */
+    prices?: PriceTable;
+}
 interface WillLLMConfig {
     provider?: LLMProvider;
     apiKey?: string;
     baseUrl?: string;
     maxOutputTokens?: number;
     timeoutMs?: number;
+    /**
+     * Everything the host knows about each provider — credential, endpoint, and
+     * prices — declared once per provider. The single-provider fields above stay
+     * the simple path; this map is for hosts reaching more than one.
+     */
+    providers?: Partial<Record<LLMProvider, WillProviderConfig>>;
+    /**
+     * Concrete LLM model id(s) for this Will — a single id for every role, or a
+     * per-role map. An explicit WILL_LLM_MODEL env pins the thinking roles
+     * (operator single-model deployments); unset roles fall back to `executive`,
+     * then the LLMDirector's built-in default. Product-level labels (pricing
+     * tiers, model families) live host-side and resolve to concrete ids BEFORE
+     * reaching the engine.
+     */
+    model?: string | WillModelConfig;
 }
 interface WillIdentity {
     /**
@@ -7007,15 +7061,6 @@ interface WillConfig {
     identity: WillIdentity;
     /** Anatomy — 'mind' (default) or the no-LLM 'reflex' shell. */
     anatomy?: Anatomy;
-    /**
-     * Concrete LLM model id(s) for this Will — a single id for every role, or a
-     * per-role map. An explicit WILL_LLM_MODEL env pins the thinking roles
-     * (operator single-model deployments); unset roles fall back to `executive`,
-     * then the LLMDirector's built-in default. Product-level labels (pricing
-     * tiers, model families) live host-side and resolve to concrete ids BEFORE
-     * reaching the engine.
-     */
-    model?: string | WillModelConfig;
     /**
      * Per-Will LLM transport overrides (provider, BYO apiKey, baseUrl, output
      * cap, timeout). Unset fields fall back to WILL_LLM_* envs. The apiKey never
@@ -7569,7 +7614,7 @@ interface WillSummary {
     createdAt: Date;
     lastTickAt: Date | null;
     anatomy: WillConfig['anatomy'];
-    model: WillConfig['model'];
+    model: NonNullable<WillConfig['llm']>['model'];
 }
 
 interface WillInstance {
@@ -8045,20 +8090,33 @@ interface CreateWillOptions {
     anatomy?: Anatomy;
     /** Concrete LLM model id, or a per-role map ({ executive, summarizer?,
      *  deliberation?, embedding? } — unset thinking roles fall back to executive).
-     *  Unset → env / provider default. */
+     *  Unset → env / provider default.
+     *  @deprecated Pass `llmConfig: { model }` instead — model and transport are
+     *  one concern. Still honoured; an explicit `llmConfig.model` wins. */
     model?: string | WillModelConfig;
-    /** Per-Will LLM transport overrides (provider, BYO apiKey, baseUrl, caps).
+    /** Per-Will LLM config: provider, model(s), BYO apiKey, baseUrl, caps.
      *  Unset fields fall back to WILL_LLM_* envs. apiKey stays in memory only.
-     *  (Named llmConfig because `llm` is the mock/anthropic MODE switch.) */
+     *  (Named llmConfig because `llm` is the provider MODE switch.) */
     llmConfig?: WillLLMConfig;
     /**
-    * LLM mode. 'mock' (default when no key is present) runs a deterministic
-    * canned executive — zero keys, zero cost. 'anthropic' calls Claude (needs
-    * ANTHROPIC_API_KEY / WILL_LLM_* env); 'glm' calls Z.ai's GLM over its
-    * Anthropic-compatible endpoint (needs ZAI_API_KEY / WILL_LLM_*). Omit to
-    * auto-detect from whichever key is set.
+    * LLM mode — which provider the executive speaks to.
+    *
+    * 'mock' (the default when no key is present) runs a deterministic canned
+    * executive: zero keys, zero cost. Every other value names a provider and
+    * needs its key, either the provider's own env below or the
+    * provider-agnostic WILL_LLM_API_KEY:
+    *
+    *   anthropic  ANTHROPIC_API_KEY   Claude, native Messages wire
+    *   glm        ZAI_API_KEY         Z.ai GLM, Anthropic-compatible wire
+    *   deepseek   DEEPSEEK_API_KEY    OpenAI wire
+    *   openai     OPENAI_API_KEY      OpenAI wire — also any OpenAI-compatible
+    *                                  server (Ollama, vLLM, Together, OpenRouter,
+    *                                  Kimi, Qwen…) via `llmConfig.baseUrl`
+    *   google     GOOGLE_API_KEY | GEMINI_API_KEY
+    *
+    * Omit to auto-detect from whichever key is set.
     */
-    llm?: 'mock' | 'anthropic' | 'glm';
+    llm?: 'mock' | LLMProvider;
     /**
      * Abilities the Will can choose to enact. `name → handler`, or
      * `name → { handler, description?, cost?, valence?, preconditions? }` to seed
@@ -8181,4 +8239,4 @@ declare class Will {
     private _emitError;
 }
 
-export { DreamSimulator as $, type AckEnvelope as A, type BehavioralProbeResult as B, type ChunkEnvelope as C, type ClockConfig as D, type Cognition as E, type CognitiveHealth as F, ConfidenceCalibrator as G, type ConfidenceCalibratorConfig as H, type ConflictReport as I, type ConflictResolution as J, type ConflictStrategy as K, type Coordinates as L, type CreateWillOptions as M, DefaultEventBus as N, DefaultMetricCollector as O, DefaultOrchestrator as P, DefaultReplayRecorder as Q, DefaultReplaySession as R, DefaultScenario as S, DefaultSerializer as T, DefaultSimulation as U, DefaultSimulationClock as V, DefaultStateManager as W, DefaultVectorMemoryAdapter as X, DeliberationEngine as Y, DeltaEncoder as Z, type DeltaSnapshot as _, type AckResult as a, type OutboundEnvelope as a$, type DreamSimulatorConfig as a0, type Duration as a1, type EffectorDeclaration as a2, type EffectorEntry as a3, type EffectorHandler as a4, type EffectorResult as a5, type EffectorSpec as a6, type EmbeddingProvider as a7, EmpathySimulator as a8, type EmpathySimulatorConfig as a9, type InboundPerceptEnvelope as aA, InhibitionController as aB, type InhibitionControllerConfig as aC, Interoception as aD, type InteroceptionConfig as aE, IntrospectionEngine as aF, type IntrospectionEngineConfig as aG, KnownEntityTracker as aH, type KnownEntityTrackerConfig as aI, type LLMCompletionRecord as aJ, type LLMCompletionSink as aK, LossEvaluator as aL, type LossEvaluatorConfig as aM, type MessageEnvelope as aN, type MetricCollector as aO, type MetricPoint as aP, type MinimalContext as aQ, MockEmbedder as aR, MoralEvaluator as aS, type MoralEvaluatorConfig as aT, MotorSchemaExecutor as aU, NoveltyDetector as aV, type NoveltyDetectorConfig as aW, OlfactionEngine as aX, OpenAICompatibleEmbedder as aY, type Orchestrator as aZ, type OrchestratorConfig as a_, EnergyRegulator as aa, type EnergyRegulatorConfig as ab, type EngineRegistry as ac, type EngineResult as ad, type Envelope as ae, EpisodicConsolidator as af, type EpisodicConsolidatorConfig as ag, type EventBus as ah, type EventBusConfig as ai, type EventFilter as aj, type EventHandler as ak, type EventPayload as al, ExecutiveEngine as am, type ExecutiveEngineConfig$1 as an, type ExternalTransport as ao, Exteroception as ap, type ExteroceptionConfig as aq, ForgettingCurve as ar, type ForgettingCurveConfig as as, FrustrationEvaluator as at, type FrustrationEvaluatorConfig as au, GoalManager as av, type GoalManagerConfig as aw, GustationEngine as ax, type InboundEnvelope as ay, type InboundMessageEnvelope as az, type ActionRequest as b, type SocialPerceptionConfig as b$, type OutboxMessage as b0, type PMABehavioral as b1, type PMABelief as b2, type PMAEmotionalBaseline as b3, PMAEvalHarness as b4, type PMAGoal as b5, type PMAIdentity as b6, type PMAProbe as b7, type PMASnapshot as b8, type PerceptEnvelope as b9, type ScenarioValidationResult as bA, type SchemaPrecondition as bB, type SeededPRNG as bC, SelfModelUpdater as bD, type SelfModelUpdaterConfig as bE, SemanticIntegrator as bF, type SemanticIntegratorConfig as bG, type SensoryInput as bH, type SerializationConfig as bI, type SerializationFormat as bJ, type SerializedEntity as bK, type SerializedState as bL, type Serializer as bM, type SessionLogEnvelope as bN, type Simulation as bO, type SimulationClock as bP, type SimulationConfig as bQ, type SimulationContext as bR, type SimulationEngine as bS, type SimulationEntity as bT, type SimulationEvent as bU, type SimulationEventBase as bV, type SimulationEventListener as bW, type SimulationState as bX, type SleepPressureConfig as bY, SleepPressureRegulator as bZ, SocialPerception as b_, PersonaConsolidator as ba, type PersonaConsolidatorConfig as bb, PlanningEngine as bc, type PlanningEngineConfig as bd, type ReadonlySimulationState as be, ReafferenceEngine as bf, type ReasoningFootprint as bg, type ReconstructionFidelityReport as bh, type ReconstructionFidelityScores as bi, type RecordUsageInput as bj, type ReplayComparison as bk, type ReplayConfig as bl, type ReplayDifference as bm, ReplayManager as bn, type ReplayMetadata as bo, type ReplayRecord as bp, type ReplayRecorder as bq, type ReplaySession as br, type ReplyEnvelope as bs, ReputationTracker as bt, type ReputationTrackerConfig as bu, type RestoreOptions as bv, RewardEvaluator as bw, type RewardEvaluatorConfig as bx, type Scenario as by, type ScenarioConfig as bz, type ActionResult as c, SomatosensationEngine as c0, SpacedRepetition as c1, type SpacedRepetitionConfig as c2, type StateCommands as c3, type StateManager as c4, type StateSnapshot as c5, type Stimulus as c6, type StorageAdapter as c7, StressRegulator as c8, type StressRegulatorConfig as c9, type WillConfig as cA, type WillEffectorAct as cB, type WillInstance as cC, type WillMessage as cD, type WillStateSummary as cE, type WillStatus as cF, WillStem as cG, type WillSummary as cH, WorkingMemory as cI, type WorkingMemoryConfig as cJ, type WorldEntity as cK, type WorldInterface as cL, assembleMind as cM, clearCompletionRecorder as cN, type effectorInvocation as cO, type effectorInvocationEnvelope as cP, getCompletionRecorder as cQ, resolvePricing as cR, setCompletionRecorder as cS, TaskSwitcher as ca, type TaskSwitcherConfig as cb, type TextMessage as cc, TheoryOfMind as cd, type TheoryOfMindConfig as ce, ThreatEvaluator as cf, type ThreatEvaluatorConfig as cg, type Tick as ch, type TickListener as ci, type Timestamp as cj, type TokenLedgerRecord as ck, type TokenReportEnvelope as cl, TokenTracker as cm, type TokenTrackerConfig as cn, type TokenUsage as co, type TransportStatus as cp, type VectorIndex as cq, type VectorMemoryAdapter as cr, type VectorMemoryConfig as cs, type VectorQueryFilter as ct, type VectorQueryResult as cu, type VectorRecord as cv, VisionEngine as cw, type VoiceChunk as cx, Will as cy, type WillAffect as cz, ActionSelector as d, type ActivityEnvelope as e, type ActivityEvent as f, type ActivityEventHandler as g, AestheticEvaluator as h, type AestheticEvaluatorConfig as i, AffectiveBlender as j, type AffectiveBlenderConfig as k, AffordanceSynthesizer as l, AsyncEngine as m, type AsyncEngineConfig as n, AttachmentEvaluator as o, type AttachmentEvaluatorConfig as p, AttentionAllocator as q, type AttentionAllocatorConfig as r, AuditionEngine as s, AutobiographicalNarrator as t, type AutobiographicalNarratorConfig as u, BiasDetector as v, type BiasDetectorConfig as w, BunStorageAdapter as x, type CircadianConfig as y, CircadianOscillator as z };
+export { DreamSimulator as $, type AckEnvelope as A, type BehavioralProbeResult as B, type ChunkEnvelope as C, type ClockConfig as D, type Cognition as E, type CognitiveHealth as F, ConfidenceCalibrator as G, type ConfidenceCalibratorConfig as H, type ConflictReport as I, type ConflictResolution as J, type ConflictStrategy as K, type Coordinates as L, type CreateWillOptions as M, DefaultEventBus as N, DefaultMetricCollector as O, DefaultOrchestrator as P, DefaultReplayRecorder as Q, DefaultReplaySession as R, DefaultScenario as S, DefaultSerializer as T, DefaultSimulation as U, DefaultSimulationClock as V, DefaultStateManager as W, DefaultVectorMemoryAdapter as X, DeliberationEngine as Y, DeltaEncoder as Z, type DeltaSnapshot as _, type AckResult as a, type OrchestratorConfig as a$, type DreamSimulatorConfig as a0, type Duration as a1, type EffectorDeclaration as a2, type EffectorEntry as a3, type EffectorHandler as a4, type EffectorResult as a5, type EffectorSpec as a6, type EmbeddingProvider as a7, EmpathySimulator as a8, type EmpathySimulatorConfig as a9, type InboundPerceptEnvelope as aA, InhibitionController as aB, type InhibitionControllerConfig as aC, Interoception as aD, type InteroceptionConfig as aE, IntrospectionEngine as aF, type IntrospectionEngineConfig as aG, KnownEntityTracker as aH, type KnownEntityTrackerConfig as aI, type LLMCompletionRecord as aJ, type LLMCompletionSink as aK, LossEvaluator as aL, type LossEvaluatorConfig as aM, type MessageEnvelope as aN, type MetricCollector as aO, type MetricPoint as aP, type MinimalContext as aQ, MockEmbedder as aR, type ModelPrice as aS, MoralEvaluator as aT, type MoralEvaluatorConfig as aU, MotorSchemaExecutor as aV, NoveltyDetector as aW, type NoveltyDetectorConfig as aX, OlfactionEngine as aY, OpenAICompatibleEmbedder as aZ, type Orchestrator as a_, EnergyRegulator as aa, type EnergyRegulatorConfig as ab, type EngineRegistry as ac, type EngineResult as ad, type Envelope as ae, EpisodicConsolidator as af, type EpisodicConsolidatorConfig as ag, type EventBus as ah, type EventBusConfig as ai, type EventFilter as aj, type EventHandler as ak, type EventPayload as al, ExecutiveEngine as am, type ExecutiveEngineConfig$1 as an, type ExternalTransport as ao, Exteroception as ap, type ExteroceptionConfig as aq, ForgettingCurve as ar, type ForgettingCurveConfig as as, FrustrationEvaluator as at, type FrustrationEvaluatorConfig as au, GoalManager as av, type GoalManagerConfig as aw, GustationEngine as ax, type InboundEnvelope as ay, type InboundMessageEnvelope as az, type ActionRequest as b, SleepPressureRegulator as b$, type OutboundEnvelope as b0, type OutboxMessage as b1, type PMABehavioral as b2, type PMABelief as b3, type PMAEmotionalBaseline as b4, PMAEvalHarness as b5, type PMAGoal as b6, type PMAIdentity as b7, type PMAProbe as b8, type PMASnapshot as b9, type Scenario as bA, type ScenarioConfig as bB, type ScenarioValidationResult as bC, type SchemaPrecondition as bD, type SeededPRNG as bE, SelfModelUpdater as bF, type SelfModelUpdaterConfig as bG, SemanticIntegrator as bH, type SemanticIntegratorConfig as bI, type SensoryInput as bJ, type SerializationConfig as bK, type SerializationFormat as bL, type SerializedEntity as bM, type SerializedState as bN, type Serializer as bO, type SessionLogEnvelope as bP, type Simulation as bQ, type SimulationClock as bR, type SimulationConfig as bS, type SimulationContext as bT, type SimulationEngine as bU, type SimulationEntity as bV, type SimulationEvent as bW, type SimulationEventBase as bX, type SimulationEventListener as bY, type SimulationState as bZ, type SleepPressureConfig as b_, type PerceptEnvelope as ba, PersonaConsolidator as bb, type PersonaConsolidatorConfig as bc, PlanningEngine as bd, type PlanningEngineConfig as be, type PriceTable as bf, type ReadonlySimulationState as bg, ReafferenceEngine as bh, type ReasoningFootprint as bi, type ReconstructionFidelityReport as bj, type ReconstructionFidelityScores as bk, type RecordUsageInput as bl, type ReplayComparison as bm, type ReplayConfig as bn, type ReplayDifference as bo, ReplayManager as bp, type ReplayMetadata as bq, type ReplayRecord as br, type ReplayRecorder as bs, type ReplaySession as bt, type ReplyEnvelope as bu, ReputationTracker as bv, type ReputationTrackerConfig as bw, type RestoreOptions as bx, RewardEvaluator as by, type RewardEvaluatorConfig as bz, type ActionResult as c, SocialPerception as c0, type SocialPerceptionConfig as c1, SomatosensationEngine as c2, SpacedRepetition as c3, type SpacedRepetitionConfig as c4, type StateCommands as c5, type StateManager as c6, type StateSnapshot as c7, type Stimulus as c8, type StorageAdapter as c9, Will as cA, type WillAffect as cB, type WillConfig as cC, type WillEffectorAct as cD, type WillInstance as cE, type WillMessage as cF, type WillStateSummary as cG, type WillStatus as cH, WillStem as cI, type WillSummary as cJ, WorkingMemory as cK, type WorkingMemoryConfig as cL, type WorldEntity as cM, type WorldInterface as cN, assembleMind as cO, clearCompletionRecorder as cP, type effectorInvocation as cQ, type effectorInvocationEnvelope as cR, getCompletionRecorder as cS, resolvePricing as cT, setCompletionRecorder as cU, StressRegulator as ca, type StressRegulatorConfig as cb, TaskSwitcher as cc, type TaskSwitcherConfig as cd, type TextMessage as ce, TheoryOfMind as cf, type TheoryOfMindConfig as cg, ThreatEvaluator as ch, type ThreatEvaluatorConfig as ci, type Tick as cj, type TickListener as ck, type Timestamp as cl, type TokenLedgerRecord as cm, type TokenReportEnvelope as cn, TokenTracker as co, type TokenTrackerConfig as cp, type TokenUsage as cq, type TransportStatus as cr, type VectorIndex as cs, type VectorMemoryAdapter as ct, type VectorMemoryConfig as cu, type VectorQueryFilter as cv, type VectorQueryResult as cw, type VectorRecord as cx, VisionEngine as cy, type VoiceChunk as cz, ActionSelector as d, type ActivityEnvelope as e, type ActivityEvent as f, type ActivityEventHandler as g, AestheticEvaluator as h, type AestheticEvaluatorConfig as i, AffectiveBlender as j, type AffectiveBlenderConfig as k, AffordanceSynthesizer as l, AsyncEngine as m, type AsyncEngineConfig as n, AttachmentEvaluator as o, type AttachmentEvaluatorConfig as p, AttentionAllocator as q, type AttentionAllocatorConfig as r, AuditionEngine as s, AutobiographicalNarrator as t, type AutobiographicalNarratorConfig as u, BiasDetector as v, type BiasDetectorConfig as w, BunStorageAdapter as x, type CircadianConfig as y, CircadianOscillator as z };

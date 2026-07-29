@@ -16,6 +16,14 @@
 
 import type { WillConfig } from '#stem/mind'
 import type { StateSnapshot } from '#stem/index'
+import type { TokenTracker } from '#cognition/utilities/token.tracker'
+
+/**
+ * The Will's token tracker, for cost display. Held here rather than passed in
+ * because printStatus is registered as a TickListener, whose third parameter is
+ * the outbox. Cost is no longer a state metric (W8c) — it lives on the tracker.
+ */
+let _tracker: TokenTracker | undefined
 import { WillStem } from '#stem/index'
 
 // ── Env config ────────────────────────────────────────────────
@@ -88,14 +96,15 @@ function printStatus( snapshot: StateSnapshot, tick: number ): void {
     `  entities=${entities}`
   )
 
-  // LLM stats every LOG_INTERVAL
-  const costTotal    = ( snapshot.metrics.get('llm.cost_total_usd') ?? 0 ).toFixed( 4 )
-  const costThisTick = ( snapshot.metrics.get('llm.cost_this_tick_usd') ?? 0 ).toFixed( 5 )
-  const totalCalls   = snapshot.metrics.get('llm.total_calls') ?? 0
+  // LLM stats every LOG_INTERVAL. Tokens come from state; cost comes from the
+  // tracker — dollars are host accounting and no longer live in state (W8c).
+  const totalCalls = snapshot.metrics.get('llm.total_calls') ?? 0
+  const cost = _tracker
+    ? `  total_cost=$${_tracker.totalCostUsd.toFixed( 4 )}`
+    : ''
 
   console.log(
-    `  [llm] total_cost=$${costTotal}` +
-    `  tick_cost=$${costThisTick}` +
+    `  [llm]${cost}` +
     `  calls=${totalCalls}` +
     `  prompt=${snapshot.metrics.get('llm.prompt_tokens_total') ?? 0}` +
     `  completion=${snapshot.metrics.get('llm.completion_tokens_total') ?? 0}`
@@ -140,6 +149,9 @@ async function main(): Promise<void> {
 
   console.log('[init] Assembling mind...')
   await manager.createWill( willConfig )
+
+  // Cost is no longer a state metric (W8c) — read it off the Will's tracker.
+  _tracker = manager.getWillCognition( WILL_ID ).tokenTracker
 
   manager.addTickListener( WILL_ID, printStatus )
 

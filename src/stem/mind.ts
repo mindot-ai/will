@@ -46,6 +46,7 @@ import { effectorName, type EffectorDeclaration } from '#agency/types'
 
 import {
   TokenTracker,
+  type PriceTable,
   EnergyRegulator,
   SleepPressureRegulator,
   CircadianOscillator,
@@ -137,12 +138,35 @@ export interface WillModelConfig {
  * `apiKey` is held in memory only — it is never mirrored into state entities,
  * session logs, or the PMA.
  */
+export interface WillProviderConfig {
+  /** Credential for this provider. Held in memory only — never state/logs/PMA. */
+  apiKey?:  string
+  /** Base URL override — self-hosted or OpenAI-compatible endpoints. */
+  baseUrl?: string
+  /**
+   * USD per 1M tokens, keyed by model id. Host-owned on purpose: prices change
+   * on a vendor's schedule, differ per account, and are ~0 self-hosted, so they
+   * cannot be tracked from inside an npm release. These win over the engine's
+   * built-in fallback table.
+   *
+   * Cost is telemetry only — it never enters simulation state — so changing a
+   * price can never change what a mind does or break a replay.
+   */
+  prices?:  PriceTable
+}
+
 export interface WillLLMConfig {
   provider?:        LLMProvider
   apiKey?:          string
   baseUrl?:         string
   maxOutputTokens?: number
   timeoutMs?:       number
+  /**
+   * Everything the host knows about each provider — credential, endpoint, and
+   * prices — declared once per provider. The single-provider fields above stay
+   * the simple path; this map is for hosts reaching more than one.
+   */
+  providers?:       Partial<Record<LLMProvider, WillProviderConfig>>
   /**
    * Concrete LLM model id(s) for this Will — a single id for every role, or a
    * per-role map. An explicit WILL_LLM_MODEL env pins the thinking roles
@@ -168,6 +192,45 @@ export interface ExecutiveModelRoles {
  * single-model deployment, full stop. Embedding is untouched by the pin
  * (different model family; the embedding stack has its own env).
  */
+/**
+ * Flatten the per-provider `prices` maps into one model→price table.
+ *
+ * Providers declare their own models, so collisions are not expected; if two
+ * do claim the same id, the first declared wins rather than silently taking
+ * whichever iterated last.
+ */
+export function mergeProviderPrices(
+  providers?: Partial<Record<LLMProvider, WillProviderConfig>>,
+): PriceTable | undefined {
+  if( !providers ) return undefined
+  const out: PriceTable = {}
+  for( const entry of Object.values( providers ) ){
+    for( const [ model, price ] of Object.entries( entry?.prices ?? {} ) ){
+      if( !( model in out ) ) out[ model ] = price
+    }
+  }
+  return Object.keys( out ).length > 0 ? out : undefined
+}
+
+/**
+ * Narrow the per-provider map to just what the LLM transport needs — the
+ * prices ride to the TokenTracker instead, so a credential map never carries
+ * pricing into the call path.
+ */
+export function providerCredentials(
+  providers: Partial<Record<LLMProvider, WillProviderConfig>>,
+): Partial<Record<LLMProvider, { apiKey: string; baseUrl?: string }>> {
+  const out: Partial<Record<LLMProvider, { apiKey: string; baseUrl?: string }>> = {}
+  for( const [ name, entry ] of Object.entries( providers ) ){
+    if( !entry?.apiKey ) continue   // no key ⇒ unusable; the router falls back
+    out[ name as LLMProvider ] = {
+      apiKey: entry.apiKey,
+      ...( entry.baseUrl ? { baseUrl: entry.baseUrl } : {} ),
+    }
+  }
+  return out
+}
+
 export function resolveModelRoles( model?: string | WillModelConfig ): ExecutiveModelRoles & { embedding: string | null } {
   const map = typeof model === 'string' ? { executive: model } : ( model ?? {} )
   const pin = process.env.WILL_LLM_MODEL
@@ -665,6 +728,10 @@ function _constructCognition(
   // (attachTokenTracker), so usage/cost never conflates across Wills and
   // parallel runs stay isolated.
   const tokenTracker = new TokenTracker({
+    // Host prices, flattened from the per-provider map. Cost is telemetry only
+    // (it never enters state), so this can differ run to run without touching
+    // determinism.
+    prices:                  mergeProviderPrices( config.llm?.providers ),
     emitCostEvents:          true,
     costWarningThresholdUsd: 0.02,
     willId,
@@ -745,7 +812,11 @@ function _constructCognition(
   const executiveEngine   = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5 })
 
   executiveEngine.willId = willId
-  executiveEngine.llm    = config.llm ?? null
+  // Narrow the host's per-provider map to credentials for the call path; the
+  // prices from that same map went to the TokenTracker above.
+  executiveEngine.llm    = config.llm
+    ? { ...config.llm, ...( config.llm.providers ? { credentials: providerCredentials( config.llm.providers ) } : {} ) }
+    : null
   executiveEngine.models = {
     executive:    modelRoles.executive,
     summarizer:   modelRoles.summarizer,

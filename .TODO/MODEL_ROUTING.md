@@ -204,6 +204,87 @@ router?.route( meta )                    // null / absent ⇒ skip
 
 ---
 
+## 5b. W8 — pricing belongs to the host (and dollars leave state)
+
+### The three findings that forced this
+
+1. **The table cannot be kept current from inside the engine.** Of the ~23
+   models the host's cost model names, **20 have no row**. Prices change on a
+   vendor's schedule; an npm release is the wrong instrument for tracking them.
+2. **`__default__` is a silent lie.** An unpriced model is billed at Sonnet's
+   `$3/$15`. For a budget model at `$0.14/$0.28` that overstates output cost by
+   **~54×** — reported with total confidence. A wrong number nobody doubts is
+   worse than a missing one.
+3. **Dollars are in simulation state but nothing reads them.**
+   `llm.cost_total_usd`, `llm.cost.<category>` and `llm.cost.fn.<function>` are
+   pushed into `commands.metrics`; the only consumer in the tree is
+   `thin-shim.runner` (a console display), and the `llm.cost.tick` event schema
+   has **zero subscribers**.
+
+Finding 3 is what makes the rest safe. Because no engine reads cost, moving
+pricing to the host cannot change what a mind does — but while dollars sit in
+state they still change state *bytes*, so a host that edited its prices would
+break replay-equivalence over a number that influenced nothing.
+
+### The line
+
+> **Tokens are a physical fact of a call. Dollars are the host's accounting
+> over that fact.**
+
+| Stays in state | Leaves state — telemetry only |
+| :--- | :--- |
+| `llm.prompt_tokens_*`, `llm.completion_tokens_*`, `llm.total_calls`, per-category token counts | `llm.cost_total_usd`, `llm.cost_this_tick_usd`, `llm.cost_avg_per_tick_usd`, `llm.cost.<category>`, `llm.cost.fn.<function>` |
+| deterministic, physical, plausibly readable by a future budget governor | host accounting, zero engine readers |
+
+Cost keeps flowing on the existing ledger path (`onRecord` → the stem's
+transport bridge → the host), which is where a host was already reading it.
+
+**Consequence:** host-supplied prices have **no determinism surface**. Prices
+can change between a recording and its replay and the run still reproduces
+byte-for-byte.
+
+### The provider map
+
+One declaration per provider, carrying everything a host knows about it:
+
+```ts
+llm: {
+  providers: {
+    anthropic: { apiKey, prices: { 'claude-sonnet-5': { input: 3, output: 15 } } },
+    deepseek:  { apiKey, baseUrl, prices: { 'deepseek-v4-flash': { input: 0.14, output: 0.28 } } },
+  },
+  provider, model,   // the simple single-provider path, unchanged
+  router,            // W6 — routes to provider names
+}
+```
+
+Deliberately **not** hung off the router: a Will with no router still needs
+prices (the common case), prices and routing policy change on different
+schedules, and the tracker has no business reaching through a router to price a
+call. The router *references* provider names; it does not own them.
+
+### Unpriced is visible, never silent
+
+`__default__` is removed. An unpriced model reports **cost 0** with
+`priced: false` on the ledger record and one warning per model id. The quickstart
+still shows real token counts and an honest "cost unknown" instead of a
+confident wrong figure.
+
+The built-in table stays as a **fallback convenience** for the zero-config
+case, carries an `as of` date, and is always overridden by host prices — it is
+a starting point, not a source of truth.
+
+### W8 work items
+
+| # | Work |
+| :--- | :--- |
+| **W8a** | `providers` map on `WillLLMConfig`; thread prices → `TokenTracker`, credentials → `LLMDirector` |
+| **W8b** | Host prices win; unpriced ⇒ cost 0 + `priced:false` + warn-once; delete `__default__` |
+| **W8c** | Dollars out of `commands.metrics`; keep token metrics; move `thin-shim` to read the tracker |
+| **W8d** | Refresh the built-in fallback table + `as of` date |
+
+---
+
 ## 6. Non-goals
 
 - **No spend governor here.** A Will under sustained stress recruits the

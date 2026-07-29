@@ -2833,10 +2833,8 @@ var MODEL_PRICING = {
   "openai/text-embedding-3-large": { input: 0.13, output: 0 },
   "google/text-embedding-004": { input: 0, output: 0 },
   // free tier
-  "google/gemini-embedding-001": { input: 0, output: 0 },
+  "google/gemini-embedding-001": { input: 0, output: 0 }
   // free tier
-  // Fallback for unknown models
-  "__default__": { input: 3, output: 15 }
 };
 var CACHE_READ_MULT = 0.1;
 var CACHE_WRITE_MULT = 1.25;
@@ -2849,13 +2847,21 @@ function normalizeModelKey(model) {
 var PRICING_BY_NORM = (() => {
   const out = {};
   for (const [key, price] of Object.entries(MODEL_PRICING)) {
-    if (key === "__default__") continue;
     out[normalizeModelKey(key)] = price;
   }
   return out;
 })();
-function resolvePricing(model) {
-  return PRICING_BY_NORM[normalizeModelKey(model)] ?? MODEL_PRICING[model] ?? MODEL_PRICING["__default__"];
+var _unpricedWarned = /* @__PURE__ */ new Set();
+function resolvePricing(model, hostPrices) {
+  const norm = normalizeModelKey(model);
+  if (hostPrices) {
+    const hit = hostPrices[model] ?? hostPrices[norm];
+    if (hit) return hit;
+    for (const [key, price] of Object.entries(hostPrices)) {
+      if (normalizeModelKey(key) === norm) return price;
+    }
+  }
+  return PRICING_BY_NORM[norm] ?? MODEL_PRICING[model] ?? null;
 }
 function composeLabel(m) {
   const base = `${m.category}/${m.attribute}/${m.function}`;
@@ -2865,6 +2871,7 @@ var TokenTracker = class {
   name = "token-tracker";
   _emitCostEvents;
   _costWarningThreshold;
+  _prices;
   // All recorded usage for the simulation run
   _usageLog = [];
   // Running totals
@@ -2891,6 +2898,7 @@ var TokenTracker = class {
   constructor(config = {}) {
     this._emitCostEvents = config.emitCostEvents ?? true;
     this._costWarningThreshold = config.costWarningThresholdUsd ?? 0.05;
+    this._prices = config.prices;
     this._ledgerPath = config.writeLedger && config.willId ? `./data/wills/${config.willId}/debug/token-report.jsonl` : null;
   }
   // ── Public API: record usage ──────────────────────────────
@@ -2899,13 +2907,20 @@ var TokenTracker = class {
    * Called by LLMDirector.call after each completion (src/llm/index.ts).
    */
   recordUsage(usage) {
-    const pricing = resolvePricing(usage.model);
+    const pricing = resolvePricing(usage.model, this._prices);
     const cacheRead = usage.cacheReadTokens ?? 0;
     const cacheWrite = usage.cacheWriteTokens ?? 0;
-    const costUsd = usage.promptTokens / 1e6 * pricing.input + usage.completionTokens / 1e6 * pricing.output + cacheRead / 1e6 * pricing.input * CACHE_READ_MULT + cacheWrite / 1e6 * pricing.input * CACHE_WRITE_MULT;
+    if (!pricing && !_unpricedWarned.has(usage.model)) {
+      _unpricedWarned.add(usage.model);
+      logger.warn(
+        `[tokens] no price for "${usage.model}" \u2014 reporting cost 0 for it. Supply one via llm.providers.<provider>.prices to get cost telemetry.`
+      );
+    }
+    const costUsd = pricing ? usage.promptTokens / 1e6 * pricing.input + usage.completionTokens / 1e6 * pricing.output + cacheRead / 1e6 * pricing.input * CACHE_READ_MULT + cacheWrite / 1e6 * pricing.input * CACHE_WRITE_MULT : 0;
     const full = {
       ...usage,
       label: usage.label ?? composeLabel(usage),
+      priced: pricing !== null,
       estimatedCostUsd: Math.round(costUsd * 1e6) / 1e6
       // round to micro-dollars
     };
@@ -2946,6 +2961,10 @@ var TokenTracker = class {
       cacheWriteTok: full.cacheWriteTokens ?? 0,
       estPromptTok: full.estPromptTokens,
       costUsd: full.estimatedCostUsd,
+      // Whether costUsd came from a real price. False ⇒ 0 because nothing
+      // priced this model, NOT because the call was free — a consumer summing
+      // spend must not fold unpriced calls in as zero.
+      priced: full.priced,
       latencyMs: full.latencyMs
     };
     for (const fn of this._recordListeners) {
@@ -2984,22 +3003,13 @@ var TokenTracker = class {
     commands.metrics.push(
       ["llm.prompt_tokens_total", this._totalPromptTokens],
       ["llm.completion_tokens_total", this._totalCompletionTokens],
-      ["llm.cost_total_usd", this._totalCost],
-      ["llm.cost_this_tick_usd", tickCost],
-      ["llm.cost_avg_per_tick_usd", this._averageTickCost()],
       ["llm.total_calls", this._usageLog.length]
     );
-    for (const [cat, cost] of this._categoryCosts) {
-      commands.metrics.push([`llm.cost.${cat}`, cost]);
-    }
     for (const [cat, tok] of this._categoryTokens) {
       commands.metrics.push(
         [`llm.prompt_tokens.${cat}`, tok.prompt],
         [`llm.completion_tokens.${cat}`, tok.completion]
       );
-    }
-    for (const [fn, cost] of this._functionCosts) {
-      commands.metrics.push([`llm.cost.fn.${fn}`, cost]);
     }
     if (tickCost > this._costWarningThreshold && this._emitCostEvents && tick - this._lastCostWarningTick > 50) {
       this._lastCostWarningTick = tick;
@@ -13079,7 +13089,13 @@ var ExecutiveEngine = class extends AsyncEngine {
         mock: this._testMode,
         // Inject the per-Will tracker (R4) so live calls record usage here, not
         // through a process global. null is fine — the director skips recording.
-        tokenTracker: this._tokenTracker
+        tokenTracker: this._tokenTracker,
+        // Credentials for routed calls, from the host's per-provider map. The
+        // top-level apiKey/baseUrl above remain the default provider's entry.
+        // Credentials for routed calls, narrowed by the stem from the host's
+        // per-provider map. Prices from that same map ride to the TokenTracker
+        // instead, so nothing carries pricing into the call path.
+        ...this._llm?.credentials ? { credentials: this._llm.credentials } : {}
       });
       this._directorCache.set(model, d);
     }
@@ -22942,7 +22958,7 @@ function buildEngineConfigEntities(config, executiveInterval) {
       engine: "system",
       params: {
         anatomy: config.anatomy ?? "mind",
-        model: config.model ?? "",
+        model: config.llm?.model ?? "",
         tickIntervalMs: config.tickIntervalMs ?? 1e3
       }
     },
@@ -23377,6 +23393,27 @@ function buildEngineConfigEntities(config, executiveInterval) {
 }
 
 // src/stem/mind.ts
+function mergeProviderPrices(providers) {
+  if (!providers) return void 0;
+  const out = {};
+  for (const entry of Object.values(providers)) {
+    for (const [model, price] of Object.entries(entry?.prices ?? {})) {
+      if (!(model in out)) out[model] = price;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : void 0;
+}
+function providerCredentials(providers) {
+  const out = {};
+  for (const [name, entry] of Object.entries(providers)) {
+    if (!entry?.apiKey) continue;
+    out[name] = {
+      apiKey: entry.apiKey,
+      ...entry.baseUrl ? { baseUrl: entry.baseUrl } : {}
+    };
+  }
+  return out;
+}
 function resolveModelRoles(model) {
   const map = typeof model === "string" ? { executive: model } : model ?? {};
   const pin = process.env.WILL_LLM_MODEL;
@@ -23522,6 +23559,10 @@ function _buildSimulation(willId, config, randomSeed) {
 function _constructCognition({ simulation, willId, config, randomSeed, executiveInterval, profile }) {
   const anatomy = config.anatomy ?? "mind";
   const tokenTracker = new TokenTracker({
+    // Host prices, flattened from the per-provider map. Cost is telemetry only
+    // (it never enters state), so this can differ run to run without touching
+    // determinism.
+    prices: mergeProviderPrices(config.llm?.providers),
     emitCostEvents: true,
     costWarningThresholdUsd: 0.02,
     willId,
@@ -23553,7 +23594,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   const moralEvaluator = new MoralEvaluator();
   const affectiveBlender = new AffectiveBlender();
   const workingMemory = new WorkingMemory();
-  const modelRoles = resolveModelRoles(config.model);
+  const modelRoles = resolveModelRoles(config.llm?.model);
   const { embedder, vectorMemory } = _resolveVectorMemory(willId, randomSeed, config.vectorMemoryAdapter, config.disableVectorMemory, tokenTracker, config.testMode, modelRoles.embedding ?? void 0);
   const episodicConsolidator = new EpisodicConsolidator(vectorMemory ? { vectorMemory, ...embedder ? { embedder } : {} } : {});
   const semanticIntegrator = new SemanticIntegrator();
@@ -23568,7 +23609,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   const accessGrants = new AccessGrants(resolvedEffectorNames);
   const executiveEngine = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5 });
   executiveEngine.willId = willId;
-  executiveEngine.llm = config.llm ?? null;
+  executiveEngine.llm = config.llm ? { ...config.llm, ...config.llm.providers ? { credentials: providerCredentials(config.llm.providers) } : {} } : null;
   executiveEngine.models = {
     executive: modelRoles.executive,
     summarizer: modelRoles.summarizer,
@@ -26463,7 +26504,7 @@ var WillStem = class {
       willId: config.id,
       willName: config.name,
       anatomy: config.anatomy ?? "mind",
-      model: config.model ?? null,
+      model: config.llm?.model ?? null,
       startedAt: (/* @__PURE__ */ new Date()).toISOString()
     });
     instance._eventBusUnsub = simulation.eventBus.subscribeAll((event, context) => {
@@ -26984,7 +27025,7 @@ var WillStem = class {
       createdAt: inst.createdAt,
       lastTickAt: inst.lastTickAt,
       anatomy: inst.config.anatomy ?? "mind",
-      model: inst.config.model
+      model: inst.config.llm?.model
     }));
   }
   // ── Tick loop (internal) ───────────────────────────────────
@@ -27317,6 +27358,15 @@ var SocketIoTransport = class {
 
 // src/sdk/will.ts
 var AFFECT_EPSILON = 0.02;
+function detectProvider() {
+  if (process.env.WILL_LLM_API_KEY) return process.env.WILL_LLM_PROVIDER ?? "anthropic";
+  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  if (process.env.ZAI_API_KEY) return "glm";
+  if (process.env.DEEPSEEK_API_KEY) return "deepseek";
+  if (process.env.OPENAI_API_KEY) return "openai";
+  if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY) return "google";
+  return "mock";
+}
 var Will = class _Will {
   /** The underlying WillStem — drop here for the full contract. */
   stem;
@@ -27540,9 +27590,13 @@ var Will = class _Will {
   }
   // ── Internals ──────────────────────────────────────────────
   _buildConfig(id, opts) {
-    const mode = opts.llm ?? (process.env.ANTHROPIC_API_KEY ? "anthropic" : process.env.ZAI_API_KEY ? "glm" : "mock");
+    const mode = opts.llm ?? detectProvider();
     const useMock = mode === "mock";
-    const llmConfig = mode === "glm" ? { provider: "glm", ...opts.llmConfig } : opts.llmConfig;
+    const llmConfig = useMock && !opts.llmConfig && opts.model === void 0 ? void 0 : {
+      ...mode !== "mock" ? { provider: mode } : {},
+      ...opts.llmConfig,
+      ...opts.llmConfig?.model !== void 0 ? { model: opts.llmConfig.model } : opts.model !== void 0 ? { model: opts.model } : {}
+    };
     return {
       id,
       name: opts.name,
@@ -27553,7 +27607,6 @@ var Will = class _Will {
         style: opts.identity.style ?? ""
       },
       anatomy: opts.anatomy ?? "mind",
-      model: opts.model,
       llm: llmConfig,
       testMode: useMock,
       persistentMemory: opts.persist ?? false,

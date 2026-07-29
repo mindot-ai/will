@@ -149,7 +149,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   private _models: { executive: string | null; summarizer: string | null; deliberation: string | null; conversation: string | null } =
     { executive: null, summarizer: null, deliberation: null, conversation: null }
   /** Per-Will LLM transport overrides (config.llm) — env fallbacks apply per field. */
-  private _llm: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number } | null = null
+  private _llm: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number; credentials?: Partial<Record<LLMProvider, { apiKey: string; baseUrl?: string }>> } | null = null
   /** One director per distinct model — same config, different model. Shared
    *  tracker/recorder/willId, so ledger attribution and replay hold per role. */
   private _directorCache = new Map<string, LLMDirector>()
@@ -271,7 +271,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   set models( m: { executive: string | null; summarizer: string | null; deliberation: string | null; conversation: string | null } ){ this._models = m }
   get models(): { executive: string | null; summarizer: string | null; deliberation: string | null; conversation: string | null } { return this._models }
   /** Per-Will LLM transport overrides (config.llm). Set before the first tick. */
-  set llm( c: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number } | null ){ this._llm = c }
+  set llm( c: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number; credentials?: Partial<Record<LLMProvider, { apiKey: string; baseUrl?: string }>> } | null ){ this._llm = c }
   /** The executive-role model id (back-compat read). */
   get modelId(): string | null { return this._models.executive }
 
@@ -321,6 +321,12 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         // Inject the per-Will tracker (R4) so live calls record usage here, not
         // through a process global. null is fine — the director skips recording.
         tokenTracker: this._tokenTracker,
+        // Credentials for routed calls, from the host's per-provider map. The
+        // top-level apiKey/baseUrl above remain the default provider's entry.
+        // Credentials for routed calls, narrowed by the stem from the host's
+        // per-provider map. Prices from that same map ride to the TokenTracker
+        // instead, so nothing carries pricing into the call path.
+        ...( this._llm?.credentials ? { credentials: this._llm.credentials } : {} ),
       } )
       this._directorCache.set( model, d )
     }

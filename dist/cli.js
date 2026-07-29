@@ -2897,9 +2897,12 @@ var LLMDirector = class {
    */
   _track(result, meta, tick, latencyMs, estPromptTokens, ep = this._defaultEndpoint) {
     this._tokenTracker?.recordUsage({
-      // The model that actually served this call — routed or default. Pricing
-      // must follow the real model, or routed spend is attributed wrongly.
+      // The endpoint that actually served this call — routed or default.
+      // Pricing must follow the real model, or routed spend is attributed
+      // wrongly; the provider rides along because the same model id can be
+      // reached from several vendors at very different prices.
       model: ep.model,
+      provider: ep.provider,
       promptTokens: result.inputTok,
       completionTokens: result.outputTok,
       totalTokens: result.inputTok + result.outputTok,
@@ -4744,6 +4747,11 @@ var TokenTracker = class {
   _categoryTokens = /* @__PURE__ */ new Map();
   _functionCosts = /* @__PURE__ */ new Map();
   _functionTokens = /* @__PURE__ */ new Map();
+  // Per-provider spend. The axis a host actually reconciles against invoices —
+  // "which vendor did we pay?" is not answerable from the model id once routing
+  // can reach one model through several of them.
+  _providerCosts = /* @__PURE__ */ new Map();
+  _providerTokens = /* @__PURE__ */ new Map();
   // Per-tick costs (for spike detection)
   _tickCosts = [];
   _maxTickCostSamples = 1e3;
@@ -4791,6 +4799,7 @@ var TokenTracker = class {
     this._totalCost += full.estimatedCostUsd;
     this._accumulate(this._categoryCosts, this._categoryTokens, full.category, full);
     this._accumulate(this._functionCosts, this._functionTokens, full.function, full);
+    this._accumulate(this._providerCosts, this._providerTokens, full.provider ?? "unattributed", full);
     this._emitLedger(full);
   }
   /**
@@ -4811,6 +4820,7 @@ var TokenTracker = class {
       ts: new Date(wallClock()).toISOString(),
       // determinism-ok: ledger timestamp is telemetry, never replay state
       model: full.model,
+      provider: full.provider,
       category: full.category,
       attribute: full.attribute,
       function: full.function,
@@ -4915,6 +4925,22 @@ var TokenTracker = class {
   get functionTokenBreakdown() {
     return this._functionTokens;
   }
+  /**
+   * Cost broken down by provider ('anthropic' | 'glm' | 'moonshot' | …), plus
+   * an `unattributed` bucket for usage recorded without one.
+   *
+   * This is the axis a host reconciles against vendor invoices. Calls whose
+   * model went unpriced contribute 0 here, so compare against
+   * `getUsageLog()`'s `priced` flag before treating a small number as a small
+   * bill.
+   */
+  get providerBreakdown() {
+    return this._providerCosts;
+  }
+  /** Token counts (prompt + completion) broken down by provider. */
+  get providerTokenBreakdown() {
+    return this._providerTokens;
+  }
   /** Cost per call average */
   get averageCostPerCall() {
     if (this._usageLog.length === 0) return 0;
@@ -4944,6 +4970,8 @@ var TokenTracker = class {
     this._categoryTokens.clear();
     this._functionCosts.clear();
     this._functionTokens.clear();
+    this._providerCosts.clear();
+    this._providerTokens.clear();
     this._tickCosts = [];
   }
   // ── Internal ─────────────────────────────────────────────

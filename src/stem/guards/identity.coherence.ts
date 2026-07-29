@@ -18,7 +18,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { WillIdentity } from '#stem/mind'
-import { LLMDirector, defaultModelFor, type LLMProvider, type LLMCallMeta } from '#llm/index'
+import { LLMDirector, defaultModelFor, BACKGROUND_DEMAND, type LLMProvider, type LLMCallMeta } from '#llm/index'
 import type { TokenTracker } from '#cognition/utilities/token.tracker'
 
 export interface CoherenceIssue {
@@ -48,7 +48,10 @@ export interface IdentityReviewer {
 }
 
 /** Attribution tag for the one creation-time coherence-review call. */
-const COHERENCE_META: LLMCallMeta = { category: 'identity-guard', attribute: 'guard', function: 'identity-coherence' }
+// MODEL_ROUTING W0 — a one-shot classification at creation time; constant low
+// demand (structurally background, and it runs before there is a mind whose
+// state could modulate it).
+const COHERENCE_META: LLMCallMeta = { category: 'identity-guard', attribute: 'guard', function: 'identity-coherence', demand: BACKGROUND_DEMAND }
 
 const VALID_KINDS = new Set<CoherenceIssue['kind']>( [ 'contradiction', 'false-capability', 'injection', 'incoherence', 'other' ] )
 

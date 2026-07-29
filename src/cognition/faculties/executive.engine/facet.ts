@@ -424,7 +424,7 @@ export class ExecutiveFacet {
         ideationUserMessage,
         tick: currentState.tick,
         proposeTemperature,
-        meta: { category: 'executive', attribute: 'facet', function: this._currentFocus?.function ?? 'ideation', scope: this.facetId },
+        meta: { category: 'executive', attribute: 'facet', function: this._currentFocus?.function ?? 'ideation', scope: this.facetId, demand: processSelection.effortScore },
       } )
       logger.info(
         `[executive.facet] ${this.facetId} ◆ deliberate propose tick=${currentState.tick}  ` +
@@ -465,11 +465,15 @@ export class ExecutiveFacet {
       // Use streaming call when a per-facet chunk handler is registered —
       // this enables entity-scoped token delivery (e.g. AuditionEngine SSE).
       // Falls back to regular call when no handler is present.
+      // MODEL_ROUTING W0 — same effort gate as master, so a facet's demand is
+      // measured on the identical scale (a live message awaiting reply is this
+      // focus's stakes-bearing moment, and already weighs into the score).
       const facetMeta: LLMCallMeta = {
         category:  'executive',
         attribute: 'facet',
         function:  this._currentFocus?.function ?? 'facet',
         scope:     this.facetId,
+        demand:    processSelection.effortScore,
       }
       const result = this._chunkHandler
         ? await this._llmDirector.callStream( systemPrompt, userMessage, currentState.tick, this._chunkHandler, undefined, facetMeta )

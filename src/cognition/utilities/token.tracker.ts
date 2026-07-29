@@ -92,7 +92,7 @@ const CACHE_WRITE_MULT = 1.25
  * ("claude-sonnet-4-5-20250929", "anthropic/claude-haiku-4-5") resolves to the
  * right pricing row. Without this, every non-default id missed the `provider/model`
  * keys and silently fell through to __default__ ($3/$15) — pricing Haiku ~3× and
- * DeepSeek ~11× too high, and breaking the self-hosting margin telemetry entirely.
+ * DeepSeek ~11× too high, and breaking per-model cost telemetry entirely.
  */
 function normalizeModelKey( model: string ): string {
   let m = model.toLowerCase().trim()

@@ -34,7 +34,7 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
       engine: 'system',
       params: {
         anatomy:        config.anatomy ?? 'mind',
-        model:          config.model ?? '',
+        model:          config.llm?.model ?? '',
         tickIntervalMs: config.tickIntervalMs ?? 1000
       }
     },

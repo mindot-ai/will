@@ -143,6 +143,15 @@ export interface WillLLMConfig {
   baseUrl?:         string
   maxOutputTokens?: number
   timeoutMs?:       number
+  /**
+   * Concrete LLM model id(s) for this Will — a single id for every role, or a
+   * per-role map. An explicit WILL_LLM_MODEL env pins the thinking roles
+   * (operator single-model deployments); unset roles fall back to `executive`,
+   * then the LLMDirector's built-in default. Product-level labels (pricing
+   * tiers, model families) live host-side and resolve to concrete ids BEFORE
+   * reaching the engine.
+   */
+  model?: string | WillModelConfig
 }
 
 /** Executive-side resolved roles (embedding is threaded separately). */
@@ -222,16 +231,6 @@ export interface WillConfig {
 
   /** Anatomy — 'mind' (default) or the no-LLM 'reflex' shell. */
   anatomy?: Anatomy
-
-  /**
-   * Concrete LLM model id(s) for this Will — a single id for every role, or a
-   * per-role map. An explicit WILL_LLM_MODEL env pins the thinking roles
-   * (operator single-model deployments); unset roles fall back to `executive`,
-   * then the LLMDirector's built-in default. Product-level labels (pricing
-   * tiers, model families) live host-side and resolve to concrete ids BEFORE
-   * reaching the engine.
-   */
-  model?: string | WillModelConfig
 
   /**
    * Per-Will LLM transport overrides (provider, BYO apiKey, baseUrl, output
@@ -708,7 +707,7 @@ function _constructCognition(
 
   // Per-Will, per-ROLE models (env WILL_LLM_MODEL pins all thinking roles —
   // operator single-model deployments). No tier vocabulary inside the engine.
-  const modelRoles = resolveModelRoles( config.model )
+  const modelRoles = resolveModelRoles( config.llm?.model )
 
   const { embedder, vectorMemory } = _resolveVectorMemory( willId, randomSeed, config.vectorMemoryAdapter, config.disableVectorMemory, tokenTracker, config.testMode, modelRoles.embedding ?? undefined )
   const episodicConsolidator = new EpisodicConsolidator( vectorMemory ? { vectorMemory, ...(embedder ? { embedder } : {}) } : {} )

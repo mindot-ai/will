@@ -156,19 +156,19 @@ describe('mind assembly — order + wiring as reviewed artifacts', () => {
     } )
   }
 
-  it('threads config.model to the executive as a concrete id (env pin wins)', () => {
+  it('threads config.llm.model to the executive as a concrete id (env pin wins)', () => {
     const saved = process.env['WILL_LLM_MODEL']
     delete process.env['WILL_LLM_MODEL']
     try {
       const { cognition } = assembleMind('assembly-model', {
-        ...makeConfig('mind'), id: 'assembly-model', model: 'test-model-id',
+        ...makeConfig('mind'), id: 'assembly-model', llm: { model: 'test-model-id' },
       } )
       expect( cognition.executiveEngine.modelId ).toBe('test-model-id')
 
       // Per-role map: summarizer diverges, deliberation falls back to executive.
       const { cognition: c3 } = assembleMind('assembly-model-3', {
         ...makeConfig('mind'), id: 'assembly-model-3',
-        model: { executive: 'big-model', summarizer: 'small-model' },
+        llm: { model: { executive: 'big-model', summarizer: 'small-model' } },
       } )
       expect( c3.executiveEngine.models ).toEqual( {
         executive: 'big-model', summarizer: 'small-model', deliberation: 'big-model', conversation: 'big-model',
@@ -176,7 +176,7 @@ describe('mind assembly — order + wiring as reviewed artifacts', () => {
 
       process.env['WILL_LLM_MODEL'] = 'operator-pin'
       const { cognition: c2 } = assembleMind('assembly-model-2', {
-        ...makeConfig('mind'), id: 'assembly-model-2', model: 'test-model-id',
+        ...makeConfig('mind'), id: 'assembly-model-2', llm: { model: 'test-model-id' },
       } )
       expect( c2.executiveEngine.modelId ).toBe('operator-pin')
     } finally {

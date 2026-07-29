@@ -29,6 +29,7 @@
 
 import { WillStem } from '#stem/index'
 import type { WillConfig, WillIdentity, Anatomy, InitialGoal, WillModelConfig, WillLLMConfig } from '#stem/mind'
+import type { LLMProvider } from '#llm/index'
 import type { PMASnapshot } from '#pma/index'
 import type { effectorInvocation } from '#types'
 import type { EffectorDeclaration, SchemaPrecondition } from '#agency/types'
@@ -165,20 +166,33 @@ export interface CreateWillOptions {
   anatomy?: Anatomy
   /** Concrete LLM model id, or a per-role map ({ executive, summarizer?,
    *  deliberation?, embedding? } — unset thinking roles fall back to executive).
-   *  Unset → env / provider default. */
+   *  Unset → env / provider default.
+   *  @deprecated Pass `llmConfig: { model }` instead — model and transport are
+   *  one concern. Still honoured; an explicit `llmConfig.model` wins. */
   model?: string | WillModelConfig
-  /** Per-Will LLM transport overrides (provider, BYO apiKey, baseUrl, caps).
+  /** Per-Will LLM config: provider, model(s), BYO apiKey, baseUrl, caps.
    *  Unset fields fall back to WILL_LLM_* envs. apiKey stays in memory only.
-   *  (Named llmConfig because `llm` is the mock/anthropic MODE switch.) */
+   *  (Named llmConfig because `llm` is the provider MODE switch.) */
   llmConfig?: WillLLMConfig
    /**
-   * LLM mode. 'mock' (default when no key is present) runs a deterministic
-   * canned executive — zero keys, zero cost. 'anthropic' calls Claude (needs
-   * ANTHROPIC_API_KEY / WILL_LLM_* env); 'glm' calls Z.ai's GLM over its
-   * Anthropic-compatible endpoint (needs ZAI_API_KEY / WILL_LLM_*). Omit to
-   * auto-detect from whichever key is set.
+   * LLM mode — which provider the executive speaks to.
+   *
+   * 'mock' (the default when no key is present) runs a deterministic canned
+   * executive: zero keys, zero cost. Every other value names a provider and
+   * needs its key, either the provider's own env below or the
+   * provider-agnostic WILL_LLM_API_KEY:
+   *
+   *   anthropic  ANTHROPIC_API_KEY   Claude, native Messages wire
+   *   glm        ZAI_API_KEY         Z.ai GLM, Anthropic-compatible wire
+   *   deepseek   DEEPSEEK_API_KEY    OpenAI wire
+   *   openai     OPENAI_API_KEY      OpenAI wire — also any OpenAI-compatible
+   *                                  server (Ollama, vLLM, Together, OpenRouter,
+   *                                  Kimi, Qwen…) via `llmConfig.baseUrl`
+   *   google     GOOGLE_API_KEY | GEMINI_API_KEY
+   *
+   * Omit to auto-detect from whichever key is set.
    */
-  llm?: 'mock' | 'anthropic' | 'glm'
+  llm?: 'mock' | LLMProvider
   /**
    * Abilities the Will can choose to enact. `name → handler`, or
    * `name → { handler, description?, cost?, valence?, preconditions? }` to seed
@@ -212,6 +226,25 @@ interface UtteranceWaiter {
 const AFFECT_EPSILON = 0.02
 
 // ── The facade ────────────────────────────────────────────────
+
+
+/**
+ * Which provider to talk to when the caller did not say.
+ *
+ * Checks the provider-agnostic key first (it means "I configured this
+ * deliberately"), then each provider's conventional env. The order among
+ * providers is detection precedence when several keys happen to be present —
+ * it is not a ranking, and no provider here is more supported than another.
+ */
+function detectProvider(): 'mock' | LLMProvider {
+  if( process.env.WILL_LLM_API_KEY ) return ( process.env.WILL_LLM_PROVIDER as LLMProvider ) ?? 'anthropic'
+  if( process.env.ANTHROPIC_API_KEY ) return 'anthropic'
+  if( process.env.ZAI_API_KEY ) return 'glm'
+  if( process.env.DEEPSEEK_API_KEY ) return 'deepseek'
+  if( process.env.OPENAI_API_KEY ) return 'openai'
+  if( process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY ) return 'google'
+  return 'mock'
+}
 
 export class Will {
   /** The underlying WillStem — drop here for the full contract. */
@@ -462,13 +495,22 @@ export class Will {
 
   private _buildConfig( id: string, opts: CreateWillOptions ): WillConfig {
     // Auto-detect from whichever provider key is present; explicit `llm` wins.
-    const mode = opts.llm
-      ?? ( process.env.ANTHROPIC_API_KEY ? 'anthropic' : process.env.ZAI_API_KEY ? 'glm' : 'mock')
+    // Order is detection precedence when several keys are set, not a
+    // recommendation — every provider here is a first-class target.
+    const mode = opts.llm ?? detectProvider()
     const useMock = mode === 'mock'
-    // `llm: 'glm'` selects the provider; an explicit llmConfig still overrides it.
-    const llmConfig = mode === 'glm'
-      ? { provider: 'glm' as const, ...opts.llmConfig }
-      : opts.llmConfig
+    // `llm` selects the provider; an explicit llmConfig.provider still wins.
+    // Model rides with the transport: `llmConfig.model` is canonical, the
+    // top-level `opts.model` is the deprecated spelling of the same thing.
+    const llmConfig: WillLLMConfig | undefined = useMock && !opts.llmConfig && opts.model === undefined
+      ? undefined
+      : {
+          ...( mode !== 'mock' ? { provider: mode } : {} ),
+          ...opts.llmConfig,
+          ...( opts.llmConfig?.model !== undefined ? { model: opts.llmConfig.model }
+             : opts.model        !== undefined ? { model: opts.model }
+             : {} ),
+        }
     return {
       id, name: opts.name,
       identity: {
@@ -478,7 +520,6 @@ export class Will {
         style:  opts.identity.style ?? '',
       },
       anatomy: opts.anatomy ?? 'mind',
-      model:   opts.model,
       llm:     llmConfig,
       testMode:   useMock,
       persistentMemory: opts.persist ?? false,

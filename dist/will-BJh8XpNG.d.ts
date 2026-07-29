@@ -1513,6 +1513,20 @@ interface TokenUsage {
      * zero.
      */
     priced: boolean;
+    /**
+     * How much this call demanded, 0..1 — the cognitive measure the router saw.
+     *
+     * Recorded so routing can be ANSWERED rather than argued. Every call computes
+     * this, routes on it, and until now threw it away — which left questions like
+     * "is deliberation being rated by the tick's mood rather than the stakes of
+     * its own choice?" with no dataset at all.
+     *
+     * Absent means UNMEASURED, never zero. It must stay nullable all the way to
+     * storage: a call that never reported demand and a call that reported 0.0 are
+     * different facts, and collapsing them would put a floor of invented
+     * confidence under exactly the analysis this exists to enable.
+     */
+    demand?: number;
     category: LLMCallCategory;
     attribute: LLMCallAttribute;
     function: LLMCallFunction;

@@ -2903,6 +2903,9 @@ var LLMDirector = class {
       // reached from several vendors at very different prices.
       model: ep.model,
       provider: ep.provider,
+      // The router's own input, kept alongside its output. Without this the
+      // ledger records WHERE a call went and never WHY.
+      demand: meta.demand,
       promptTokens: result.inputTok,
       completionTokens: result.outputTok,
       totalTokens: result.inputTok + result.outputTok,
@@ -4836,6 +4839,9 @@ var TokenTracker = class {
       // priced this model, NOT because the call was free — a consumer summing
       // spend must not fold unpriced calls in as zero.
       priced: full.priced,
+      // Undefined stays undefined — see TokenUsage.demand. A consumer that
+      // coerces this to 0 has silently invented a measurement.
+      demand: full.demand,
       latencyMs: full.latencyMs
     };
     for (const fn of this._recordListeners) {

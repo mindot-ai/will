@@ -165,14 +165,15 @@ describe('mind assembly — order + wiring as reviewed artifacts', () => {
       } )
       expect( cognition.executiveEngine.modelId ).toBe('test-model-id')
 
-      // Per-role map: summarizer diverges, deliberation falls back to executive.
+      // W7: the engine holds only the executive model now — the other roles are
+      // routing rules (see compileRoleRouter, and the by-call assertions in
+      // tests/llm/routing.test.ts + tests/unit/routing.wiring.test.ts). What
+      // still belongs here is that a per-role map does not disturb the default.
       const { cognition: c3 } = assembleMind('assembly-model-3', {
         ...makeConfig('mind'), id: 'assembly-model-3',
         llm: { model: { executive: 'big-model', summarizer: 'small-model' } },
       } )
-      expect( c3.executiveEngine.models ).toEqual( {
-        executive: 'big-model', summarizer: 'small-model', deliberation: 'big-model', conversation: 'big-model',
-      } )
+      expect( c3.executiveEngine.modelId ).toBe('big-model')
 
       process.env['WILL_LLM_MODEL'] = 'operator-pin'
       const { cognition: c2 } = assembleMind('assembly-model-2', {

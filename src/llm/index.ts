@@ -32,7 +32,19 @@ export const MOCK_PROVIDER = 'mock'
 export const MOCK_MODEL    = 'mock'
 
 /** Providers with built-in defaults. Any other string is equally valid. */
-export type KnownProvider = 'anthropic' | 'glm' | 'deepseek' | 'openai' | 'google'
+export type KnownProvider =
+  | 'anthropic'   // Claude
+  | 'glm'         // Z.ai
+  | 'openai'      // GPT + the embedding models
+  | 'google'      // Gemini
+  | 'deepseek'
+  | 'moonshot'    // Kimi
+  | 'qwen'        // Alibaba Model Studio / DashScope
+  | 'xai'         // Grok
+  | 'minimax'
+  | 'mistral'
+  | 'ollama'      // local
+  | 'vllm'        // local / self-hosted
 
 /**
  * A provider name. Deliberately open: the field of providers changes monthly,
@@ -46,23 +58,97 @@ export type KnownProvider = 'anthropic' | 'glm' | 'deepseek' | 'openai' | 'googl
 export type LLMProvider = KnownProvider | ( string & {} )
 
 /**
- * Built-in defaults for the providers we have actually exercised. This is
- * *data*, not support: it saves a host from looking up a base URL, and nothing
- * more. Anything absent works identically once the host declares its wire.
+ * Built-in wire + base URL per provider. This is *data*, not support: it saves
+ * a host from looking up an endpoint, and nothing more. Any provider absent
+ * from this table works identically once the host declares `wire` + `baseUrl`
+ * on its `llm.providers` entry.
+ *
+ * WHY THIS TABLE SURVIVES WHEN THE PRICE TABLE DID NOT. A stale price is
+ * invisible: it produces a confident wrong number nobody doubts. A stale base
+ * URL fails on the first call, loudly, with the endpoint in the message. They
+ * also move on completely different clocks — vendors reprice quarterly, and
+ * change an API host about once a decade. Convenience is worth it when being
+ * wrong is self-announcing.
+ *
+ * REGIONAL ENDPOINTS. `moonshot`, `qwen` and `minimax` all run separate
+ * mainland-China hosts (`api.moonshot.cn`, `dashscope.aliyuncs.com`,
+ * `api.minimaxi.com`). The international host is the default here; a key issued
+ * on the other one authenticates nowhere, so a host on a China account must set
+ * `baseUrl` explicitly.
  */
 export const KNOWN_PROVIDERS: Record<string, { wire: LLMWire; baseUrl: string }> = {
   // Never dialled — present so a test-mode Will resolves an endpoint without
   // demanding a provider the run will never use.
   [ MOCK_PROVIDER ]: { wire: 'anthropic', baseUrl: 'http://mock.invalid/v1' },
+
+  // ── Anthropic wire ──────────────────────────────────────────
   anthropic: { wire: 'anthropic', baseUrl: 'https://api.anthropic.com/v1' },
   // Z.ai documents the base as `…/api/anthropic` because the Anthropic SDK
   // appends `/v1/messages`; this client appends `/messages`, so the version
   // segment belongs here — verified against the live endpoint.
   glm:       { wire: 'anthropic', baseUrl: 'https://api.z.ai/api/anthropic/v1' },
-  openai:    { wire: 'openai',    baseUrl: 'https://api.openai.com/v1' },
-  deepseek:  { wire: 'openai',    baseUrl: 'https://api.deepseek.com/v1' },
-  google:    { wire: 'google',    baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
+
+  // ── OpenAI wire ─────────────────────────────────────────────
+  openai:    { wire: 'openai', baseUrl: 'https://api.openai.com/v1' },
+  deepseek:  { wire: 'openai', baseUrl: 'https://api.deepseek.com/v1' },
+  moonshot:  { wire: 'openai', baseUrl: 'https://api.moonshot.ai/v1' },
+  qwen:      { wire: 'openai', baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1' },
+  xai:       { wire: 'openai', baseUrl: 'https://api.x.ai/v1' },
+  minimax:   { wire: 'openai', baseUrl: 'https://api.minimax.io/v1' },
+  mistral:   { wire: 'openai', baseUrl: 'https://api.mistral.ai/v1' },
+  // Local runtimes. The port is the project default; a host that moved it sets
+  // `baseUrl`. Both still want an `apiKey` — any non-empty string will do,
+  // since neither checks it.
+  ollama:    { wire: 'openai', baseUrl: 'http://localhost:11434/v1' },
+  vllm:      { wire: 'openai', baseUrl: 'http://localhost:8000/v1' },
+
+  // ── Google wire ─────────────────────────────────────────────
+  // Gemini also exposes an OpenAI-compatible surface; this client speaks the
+  // native one, which is where its caching and multimodal parts actually live.
+  google:    { wire: 'google', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
 }
+
+/**
+ * The conventional env var holding each provider's key.
+ *
+ * This is *not* the fallback that W9 removed. That one read `ANTHROPIC_API_KEY`
+ * whatever provider was configured, so a Will pointed at another vendor sent it
+ * an Anthropic key. This lookup is keyed by the resolved provider: a `moonshot`
+ * Will reads `MOONSHOT_API_KEY` and nothing else, and an unknown provider gets
+ * nothing rather than someone else's secret.
+ *
+ * `WILL_LLM_API_KEY` still wins over all of it — it is the explicit statement.
+ */
+export const PROVIDER_KEY_ENV: Record<string, string> = {
+  anthropic: 'ANTHROPIC_API_KEY',
+  glm:       'ZAI_API_KEY',
+  openai:    'OPENAI_API_KEY',
+  google:    'GOOGLE_API_KEY',
+  deepseek:  'DEEPSEEK_API_KEY',
+  moonshot:  'MOONSHOT_API_KEY',
+  qwen:      'DASHSCOPE_API_KEY',
+  xai:       'XAI_API_KEY',
+  minimax:   'MINIMAX_API_KEY',
+  mistral:   'MISTRAL_API_KEY',
+}
+
+/**
+ * The provider's own key from the environment, if it has a conventional one.
+ *
+ * An empty or blank value counts as absent. A `.env` that lists every provider
+ * and fills in one — which is what the template invites — leaves the rest as
+ * `KEY=`, and a present-but-empty key is not a key.
+ */
+export function providerKeyFromEnv( provider: LLMProvider ): string | undefined {
+  const name = PROVIDER_KEY_ENV[ provider ]
+  if( !name ) return undefined
+  // Gemini ships under two names in the wild; both mean the same account.
+  const value = nonBlank( process.env[ name ] )
+    ?? ( provider === 'google' ? nonBlank( process.env[ 'GEMINI_API_KEY' ] ) : undefined )
+  return value
+}
+
+const nonBlank = ( v: string | undefined ): string | undefined => v && v.trim() ? v : undefined
 
 /** Built-in wire for a known provider, or undefined — the host must declare it. */
 export function knownWireFor( provider: LLMProvider ): LLMWire | undefined {
@@ -327,21 +413,26 @@ export class LLMDirector {
     }
     if( !route ) return this._defaultEndpoint
 
+    // A route with no provider means "same vendor, different model" — the whole
+    // shape of the per-role model map, and the common case for a host swapping
+    // in a cheaper model for background work.
+    const provider = route.provider ?? this._defaultEndpoint.provider
+
     // The default provider's credential is reused when the route names it;
     // otherwise the route needs its own entry.
-    const cred = route.provider === this._defaultEndpoint.provider
+    const cred = provider === this._defaultEndpoint.provider
       ? { apiKey: this._defaultEndpoint.apiKey, baseUrl: this._defaultEndpoint.baseUrl, wire: this._defaultEndpoint.wire }
-      : this._credentials[ route.provider ]
+      : this._credentials[ provider ]
 
     if( !cred?.apiKey ){
-      this._warnRouteOnce(`cred:${route.provider}`,
-        `no credential for routed provider "${route.provider}" — using the default model` )
+      this._warnRouteOnce(`cred:${provider}`,
+        `no credential for routed provider "${provider}" — using the default model` )
       return this._defaultEndpoint
     }
 
     try {
       return resolveEndpoint( {
-        provider:        route.provider,
+        provider,
         model:           route.model,
         apiKey:          cred.apiKey,
         baseUrl:         route.baseUrl ?? cred.baseUrl,
@@ -352,8 +443,8 @@ export class LLMDirector {
     catch( err ){
       // An undeclared wire or base URL for a routed provider is a config gap,
       // not a reason to fail the call.
-      this._warnRouteOnce(`resolve:${route.provider}`,
-        `cannot reach routed provider "${route.provider}" — using the default model`, err )
+      this._warnRouteOnce(`resolve:${provider}`,
+        `cannot reach routed provider "${provider}" — using the default model`, err )
       return this._defaultEndpoint
     }
   }

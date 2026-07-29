@@ -2461,9 +2461,63 @@ var OutboxWriter = class {
 
 // src/llm/routing.ts
 var NULL_ROUTER = {
-  };
+  name: "null",
+  route() {
+    return null;
+  }
+};
 function isNullRouter(router) {
   return !router || router === NULL_ROUTER;
+}
+var TableRouter = class {
+  name;
+  _rules;
+  constructor(rules, name = "table") {
+    this._rules = [...rules];
+    this.name = name;
+  }
+  route(meta) {
+    for (const rule of this._rules) {
+      if (matches(rule, meta)) return rule.route;
+    }
+    return null;
+  }
+};
+function chainRouters(...routers) {
+  const chain = routers.filter((r) => !isNullRouter(r));
+  if (chain.length === 0) return NULL_ROUTER;
+  if (chain.length === 1) return chain[0];
+  const warned = /* @__PURE__ */ new Set();
+  return {
+    name: chain.map((r) => r.name).join(">"),
+    route(meta) {
+      for (const router of chain) {
+        try {
+          const hit = router.route(meta);
+          if (hit) return hit;
+        } catch (err) {
+          if (!warned.has(router.name)) {
+            warned.add(router.name);
+            logger.warn(`[llm.routing] router "${router.name}" threw \u2014 skipping it: ${err.message}`);
+          }
+        }
+      }
+      return null;
+    }
+  };
+}
+function matches(rule, meta) {
+  if (rule.category !== void 0 && rule.category !== meta.category) return false;
+  if (rule.attribute !== void 0 && rule.attribute !== meta.attribute) return false;
+  if (rule.function !== void 0 && rule.function !== meta.function) return false;
+  const bounded = rule.minDemand !== void 0 || rule.maxDemand !== void 0;
+  if (bounded) {
+    const d = meta.demand;
+    if (typeof d !== "number" || Number.isNaN(d)) return false;
+    if (rule.minDemand !== void 0 && d < rule.minDemand) return false;
+    if (rule.maxDemand !== void 0 && d >= rule.maxDemand) return false;
+  }
+  return true;
 }
 
 // src/core/completion.recorder.ts
@@ -2578,15 +2632,47 @@ var KNOWN_PROVIDERS = {
   // Never dialled — present so a test-mode Will resolves an endpoint without
   // demanding a provider the run will never use.
   [MOCK_PROVIDER]: { wire: "anthropic", baseUrl: "http://mock.invalid/v1" },
+  // ── Anthropic wire ──────────────────────────────────────────
   anthropic: { wire: "anthropic", baseUrl: "https://api.anthropic.com/v1" },
   // Z.ai documents the base as `…/api/anthropic` because the Anthropic SDK
   // appends `/v1/messages`; this client appends `/messages`, so the version
   // segment belongs here — verified against the live endpoint.
   glm: { wire: "anthropic", baseUrl: "https://api.z.ai/api/anthropic/v1" },
+  // ── OpenAI wire ─────────────────────────────────────────────
   openai: { wire: "openai", baseUrl: "https://api.openai.com/v1" },
   deepseek: { wire: "openai", baseUrl: "https://api.deepseek.com/v1" },
+  moonshot: { wire: "openai", baseUrl: "https://api.moonshot.ai/v1" },
+  qwen: { wire: "openai", baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1" },
+  xai: { wire: "openai", baseUrl: "https://api.x.ai/v1" },
+  minimax: { wire: "openai", baseUrl: "https://api.minimax.io/v1" },
+  mistral: { wire: "openai", baseUrl: "https://api.mistral.ai/v1" },
+  // Local runtimes. The port is the project default; a host that moved it sets
+  // `baseUrl`. Both still want an `apiKey` — any non-empty string will do,
+  // since neither checks it.
+  ollama: { wire: "openai", baseUrl: "http://localhost:11434/v1" },
+  vllm: { wire: "openai", baseUrl: "http://localhost:8000/v1" },
+  // ── Google wire ─────────────────────────────────────────────
+  // Gemini also exposes an OpenAI-compatible surface; this client speaks the
+  // native one, which is where its caching and multimodal parts actually live.
   google: { wire: "google", baseUrl: "https://generativelanguage.googleapis.com/v1beta" }
 };
+var PROVIDER_KEY_ENV = {
+  anthropic: "ANTHROPIC_API_KEY",
+  glm: "ZAI_API_KEY",
+  openai: "OPENAI_API_KEY",
+  google: "GOOGLE_API_KEY",
+  deepseek: "DEEPSEEK_API_KEY",
+  moonshot: "MOONSHOT_API_KEY",
+  qwen: "DASHSCOPE_API_KEY",
+  xai: "XAI_API_KEY",
+  minimax: "MINIMAX_API_KEY",
+  mistral: "MISTRAL_API_KEY"
+};
+function providerKeyFromEnv(provider) {
+  const name = PROVIDER_KEY_ENV[provider];
+  if (!name) return void 0;
+  return process.env[name] ?? (provider === "google" ? process.env["GEMINI_API_KEY"] : void 0);
+}
 function knownWireFor(provider) {
   return KNOWN_PROVIDERS[provider]?.wire;
 }
@@ -2681,17 +2767,18 @@ var LLMDirector = class {
       return this._defaultEndpoint;
     }
     if (!route) return this._defaultEndpoint;
-    const cred = route.provider === this._defaultEndpoint.provider ? { apiKey: this._defaultEndpoint.apiKey, baseUrl: this._defaultEndpoint.baseUrl, wire: this._defaultEndpoint.wire } : this._credentials[route.provider];
+    const provider = route.provider ?? this._defaultEndpoint.provider;
+    const cred = provider === this._defaultEndpoint.provider ? { apiKey: this._defaultEndpoint.apiKey, baseUrl: this._defaultEndpoint.baseUrl, wire: this._defaultEndpoint.wire } : this._credentials[provider];
     if (!cred?.apiKey) {
       this._warnRouteOnce(
-        `cred:${route.provider}`,
-        `no credential for routed provider "${route.provider}" \u2014 using the default model`
+        `cred:${provider}`,
+        `no credential for routed provider "${provider}" \u2014 using the default model`
       );
       return this._defaultEndpoint;
     }
     try {
       return resolveEndpoint({
-        provider: route.provider,
+        provider,
         model: route.model,
         apiKey: cred.apiKey,
         baseUrl: route.baseUrl ?? cred.baseUrl,
@@ -2700,8 +2787,8 @@ var LLMDirector = class {
       });
     } catch (err) {
       this._warnRouteOnce(
-        `resolve:${route.provider}`,
-        `cannot reach routed provider "${route.provider}" \u2014 using the default model`,
+        `resolve:${provider}`,
+        `cannot reach routed provider "${provider}" \u2014 using the default model`,
         err
       );
       return this._defaultEndpoint;
@@ -14437,13 +14524,14 @@ var ExecutiveEngine = class extends AsyncEngine {
   _lastExecutiveTick = -100;
   // ── Injected dependencies ──────────────────────────────────
   _willId = null;
-  /** Per-Will, per-role model ids (config.model, resolved in mind.ts). */
-  _models = { executive: null, summarizer: null, deliberation: null, conversation: null };
+  /**
+   * The Will's default model (config.model's `executive` role, resolved in
+   * mind.ts). Every other role reaches its model through the router — see
+   * `compileRoleRouter`.
+   */
+  _modelId = null;
   /** Per-Will LLM transport overrides (config.llm) — env fallbacks apply per field. */
   _llm = null;
-  /** One director per distinct model — same config, different model. Shared
-   *  tracker/recorder/willId, so ledger attribution and replay hold per role. */
-  _directorCache = /* @__PURE__ */ new Map();
   _workingMemory = null;
   _goalManager = null;
   _episodicConsolidator = null;
@@ -14556,20 +14644,22 @@ var ExecutiveEngine = class extends AsyncEngine {
   set willId(willId) {
     this._willId = willId;
   }
-  /** Per-Will role models (config.model, resolved). Set before the first tick. */
-  set models(m) {
-    this._models = m;
+  /**
+   * The Will's default model. Set before the first tick.
+   *
+   * This replaced a four-role map (W7): the other roles are routing rules now,
+   * compiled in mind.ts, so the engine holds one model and one router rather
+   * than a model per role plus a router.
+   */
+  set modelId(id) {
+    this._modelId = id;
   }
-  get models() {
-    return this._models;
+  get modelId() {
+    return this._modelId;
   }
   /** Per-Will LLM transport overrides (config.llm). Set before the first tick. */
   set llm(c) {
     this._llm = c;
-  }
-  /** The executive-role model id (back-compat read). */
-  get modelId() {
-    return this._models.executive;
   }
   // ── Public surface ─────────────────────────────────────────
   get latestOutput() {
@@ -14614,52 +14704,64 @@ var ExecutiveEngine = class extends AsyncEngine {
   _noLiveCalls() {
     return this._testMode || !!this._willId && !!getCompletionSource(this._willId);
   }
-  _directorFor(model) {
-    let d = this._directorCache.get(model);
-    if (!d) {
-      d = new LLMDirector({
-        willId: this._willId,
-        model,
-        maxOutputTokens: this._llm?.maxOutputTokens ?? parseInt(process.env.WILL_MAX_OUTPUT_TOKENS ?? "8096"),
-        // Provider-agnostic key; falls back to ANTHROPIC_API_KEY for back-compat.
-        // Provider-agnostic key only. The old chain ended at ANTHROPIC_API_KEY,
-        // so a Will pointed at another vendor would silently send an Anthropic
-        // key to it.
-        apiKey: this._llm?.apiKey ?? process.env.WILL_LLM_API_KEY ?? "",
-        provider: this._requireProvider(),
-        // Optional base-URL override (e.g. Ollama / Azure / self-hosted). Unset →
-        // the director uses the provider's official endpoint.
-        baseUrl: this._llm?.baseUrl ?? process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
-        timeoutMs: this._llm?.timeoutMs ?? (process.env.WILL_LLM_TIMEOUT_MS ? parseInt(process.env.WILL_LLM_TIMEOUT_MS) : void 0),
-        sessionLogger: this._sessionLogger,
-        mock: this._testMode,
-        // Inject the per-Will tracker (R4) so live calls record usage here, not
-        // through a process global. null is fine — the director skips recording.
-        tokenTracker: this._tokenTracker,
-        // Credentials for routed calls, from the host's per-provider map. The
-        // top-level apiKey/baseUrl above remain the default provider's entry.
-        // Credentials for routed calls, narrowed by the stem from the host's
-        // per-provider map. Prices from that same map ride to the TokenTracker
-        // instead, so nothing carries pricing into the call path.
-        ...this._llm?.credentials ? { credentials: this._llm.credentials } : {},
-        // Per-call model selection. Every director this Will builds — the
-        // primary and each role-cached one — carries the same router, so a
-        // role-configured facet cannot silently bypass routing.
-        ...this._llm?.router ? { router: this._llm.router } : {},
-        // Dialect for the default provider — required for anything outside the
-        // known set, so the engine never guesses how to talk to an endpoint.
-        ...this._llm?.wire ? { wire: this._llm.wire } : {}
-      });
-      this._directorCache.set(model, d);
-    }
-    return d;
+  /**
+   * Build this Will's one and only director.
+   *
+   * There used to be a cache of them, keyed by model, because the per-role
+   * model map had no other way to make a role use a different model. Routing
+   * gave it one — the role map now compiles to rules (see `compileRoleRouter`)
+   * and a single director resolves every call's endpoint per call. That is also
+   * strictly more faithful: a facet follows the work it is doing rather than
+   * whatever role it happened to be spawned under.
+   */
+  _buildDirector(model) {
+    const provider = this._requireProvider();
+    return new LLMDirector({
+      willId: this._willId,
+      model,
+      maxOutputTokens: this._llm?.maxOutputTokens ?? parseInt(process.env.WILL_MAX_OUTPUT_TOKENS ?? "8096"),
+      // Config, then the provider-agnostic env, then THIS provider's own env.
+      // The last step is not the fallback W9 removed: that one ended at
+      // ANTHROPIC_API_KEY for every provider, so a Will pointed elsewhere sent
+      // Anthropic's key to a stranger. This one can only ever read the key
+      // belonging to the provider actually configured.
+      apiKey: this._llm?.apiKey ?? process.env.WILL_LLM_API_KEY ?? providerKeyFromEnv(provider) ?? "",
+      provider,
+      // Optional base-URL override (e.g. Ollama / Azure / self-hosted). Unset →
+      // the director uses the provider's official endpoint.
+      baseUrl: this._llm?.baseUrl ?? process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
+      timeoutMs: this._llm?.timeoutMs ?? (process.env.WILL_LLM_TIMEOUT_MS ? parseInt(process.env.WILL_LLM_TIMEOUT_MS) : void 0),
+      sessionLogger: this._sessionLogger,
+      mock: this._testMode,
+      // Inject the per-Will tracker (R4) so live calls record usage here, not
+      // through a process global. null is fine — the director skips recording.
+      tokenTracker: this._tokenTracker,
+      // Credentials for routed calls, narrowed by the stem from the host's
+      // per-provider map. Prices from that same map ride to the TokenTracker
+      // instead, so nothing carries pricing into the call path.
+      ...this._llm?.credentials ? { credentials: this._llm.credentials } : {},
+      // Per-call model selection — the host's router chained with the rules
+      // compiled from the per-role model map.
+      ...this._llm?.router ? { router: this._llm.router } : {},
+      // Dialect for the default provider — required for anything outside the
+      // known set, so the engine never guesses how to talk to an endpoint.
+      ...this._llm?.wire ? { wire: this._llm.wire } : {}
+    });
   }
+  /**
+   * Spawn a facet.
+   *
+   * `role` declares the facet's intent at the call site. It no longer selects a
+   * model: that used to happen here, pinning a facet for life to whatever role
+   * it was spawned under, and it now happens per call from the focus function
+   * the caller sets immediately afterwards (W7). The two always agreed — every
+   * spawn site sets a focus whose `function` matches its role — so the routed
+   * answer is the same one, decided later and from the work itself.
+   */
   spawnFacet(role) {
-    const roleModel = role === "deliberation" ? this._models.deliberation : role === "conversation" || role === "outreach" ? this._models.conversation : null;
-    const director = roleModel && this._llmDirector ? this._directorFor(roleModel) : this._llmDirector;
     return this._facetSupervisor.spawn({
       bus: this._bus,
-      llmDirector: director,
+      llmDirector: this._llmDirector,
       stateRef: this._lastStateRef,
       willId: this._willId,
       inbox: this._inbox,
@@ -14725,13 +14827,13 @@ var ExecutiveEngine = class extends AsyncEngine {
     this._gatingState.executiveInterval = rtConfig.executiveInterval;
     this._gatingState.cooldownTicks = rtConfig.cooldownTicks;
     if (!this._llmDirector && this._willId) {
-      const execModel = this._models.executive ?? process.env.WILL_LLM_MODEL ?? (this._noLiveCalls() ? MOCK_MODEL : void 0);
-      if (!execModel)
+      const defaultModel = this._modelId ?? process.env.WILL_LLM_MODEL ?? (this._noLiveCalls() ? MOCK_MODEL : void 0);
+      if (!defaultModel)
         throw new Error(
           "No LLM model configured. Set one on the Will (llm.model) or in the environment (WILL_LLM_MODEL) \u2014 the engine carries no default."
         );
-      this._llmDirector = this._directorFor(execModel);
-      this._summarizer?.attachLLMDirector(this._directorFor(this._models.summarizer ?? execModel));
+      this._llmDirector = this._buildDirector(defaultModel);
+      this._summarizer?.attachLLMDirector(this._llmDirector);
     }
     const gatingDeps = {
       generativeModel: this._generativeModel,
@@ -22479,6 +22581,20 @@ function providerCredentials(providers) {
   }
   return out;
 }
+function compileRoleRouter(roles) {
+  const { executive, summarizer, deliberation, conversation } = roles;
+  const distinct = (model) => !!model && model !== executive;
+  const rules = [];
+  if (distinct(summarizer))
+    rules.push({ category: "summarizer", route: { model: summarizer } });
+  if (distinct(deliberation))
+    rules.push({ function: "deliberation", route: { model: deliberation } });
+  if (distinct(conversation)) {
+    rules.push({ function: "conversation", route: { model: conversation } });
+    rules.push({ function: "outreach", route: { model: conversation } });
+  }
+  return rules.length > 0 ? new TableRouter(rules, "role-map") : null;
+}
 function resolveModelRoles(model) {
   const map = typeof model === "string" ? { executive: model } : model ?? {};
   const pin = process.env.WILL_LLM_MODEL;
@@ -22674,16 +22790,13 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   const accessGrants = new AccessGrants(resolvedEffectorNames);
   const executiveEngine = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5 });
   executiveEngine.willId = willId;
+  const roleRouter = compileRoleRouter(modelRoles);
   executiveEngine.llm = config.llm ? {
     ...config.llm,
-    ...config.llm.providers ? { credentials: providerCredentials(config.llm.providers) } : {}
-  } : null;
-  executiveEngine.models = {
-    executive: modelRoles.executive,
-    summarizer: modelRoles.summarizer,
-    deliberation: modelRoles.deliberation,
-    conversation: modelRoles.conversation
-  };
+    ...config.llm.providers ? { credentials: providerCredentials(config.llm.providers) } : {},
+    router: chainRouters(config.llm.router, roleRouter)
+  } : roleRouter ? { router: roleRouter } : null;
+  executiveEngine.modelId = modelRoles.executive;
   if (config.testMode) executiveEngine.setTestMode(true);
   executiveEngine.attachWorkingMemory(workingMemory);
   executiveEngine.attachGoalManager(goalManager);
@@ -26689,6 +26802,11 @@ function detectProvider() {
   if (process.env.DEEPSEEK_API_KEY) return "deepseek";
   if (process.env.OPENAI_API_KEY) return "openai";
   if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY) return "google";
+  if (process.env.MOONSHOT_API_KEY) return "moonshot";
+  if (process.env.DASHSCOPE_API_KEY) return "qwen";
+  if (process.env.XAI_API_KEY) return "xai";
+  if (process.env.MINIMAX_API_KEY) return "minimax";
+  if (process.env.MISTRAL_API_KEY) return "mistral";
   return "mock";
 }
 var Will = class _Will {

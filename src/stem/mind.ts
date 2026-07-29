@@ -25,7 +25,7 @@ import { validateWillIdentity }  from '#stem/guards/identity.guard'
 import { OutboxWriter } from '#stem/tracts/outbox.writer'
 import { ExecutiveSummarizer } from '#llm/summarizer'
 import type { LLMProvider } from '#llm/index'
-import type { ModelRouter } from '#llm/routing'
+import { TableRouter, chainRouters, type ModelRouter, type RoutingRule } from '#llm/routing'
 import { resolveProfile } from '#profiles/index'
 import { DefaultVectorMemoryAdapter } from '#memory/vector.adapter'
 import { OpenAICompatibleEmbedder, MockEmbedder } from '#memory/vector.embedder'
@@ -240,6 +240,52 @@ export function providerCredentials(
     }
   }
   return out
+}
+
+/**
+ * Compile the per-role model map into routing rules — MODEL_ROUTING W7.
+ *
+ * The role map and the router were two mechanisms answering one question
+ * ("which model serves this call?"). The map was implemented by giving each
+ * role its own cached `LLMDirector`, which meant role selection happened at
+ * *facet-spawn* time while routing happened at *call* time — two answers, one
+ * question, and a facet could be pinned to a model its work had since stopped
+ * matching. The map is now sugar: it desugars to rules and there is one
+ * mechanism left.
+ *
+ * The mapping is exact, because every role's call sites already tag themselves
+ * with the matching axis:
+ *
+ * | role           | rule                        | call sites                          |
+ * | :---           | :---                        | :---                                |
+ * | `summarizer`   | `category: 'summarizer'`    | the rolling summariser              |
+ * | `deliberation` | `function: 'deliberation'`  | the deliberation facet + its propose pass |
+ * | `conversation` | `function: 'conversation'` and `'outreach'` | the audition facets   |
+ * | `executive`    | — it *is* the default       | master, and every unlabelled facet  |
+ *
+ * Roles equal to `executive` emit no rule: a Will on a single model keeps an
+ * empty chain and stays byte-identical to one built before this seam existed.
+ *
+ * Routes carry no provider — a role has never had one. They inherit the Will's
+ * default provider, which is exactly what the per-role directors did.
+ */
+export function compileRoleRouter( roles: ExecutiveModelRoles ): ModelRouter | null {
+  const { executive, summarizer, deliberation, conversation } = roles
+  const distinct = ( model: string | null ): model is string => !!model && model !== executive
+
+  const rules: RoutingRule[] = []
+  if( distinct( summarizer ) )
+    rules.push( { category: 'summarizer', route: { model: summarizer } } )
+  if( distinct( deliberation ) )
+    rules.push( { function: 'deliberation', route: { model: deliberation } } )
+  if( distinct( conversation ) ){
+    // Outreach is the same voice speaking first — it has always shared the
+    // conversation model, and splitting it is the host's call, via a router.
+    rules.push( { function: 'conversation', route: { model: conversation } } )
+    rules.push( { function: 'outreach',     route: { model: conversation } } )
+  }
+
+  return rules.length > 0 ? new TableRouter( rules, 'role-map') : null
 }
 
 export function resolveModelRoles( model?: string | WillModelConfig ): ExecutiveModelRoles & { embedding: string | null } {
@@ -825,18 +871,19 @@ function _constructCognition(
   executiveEngine.willId = willId
   // Narrow the host's per-provider map to credentials for the call path; the
   // prices from that same map went to the TokenTracker above.
+  // W7 — the per-role model map compiles into routing rules and joins the
+  // host's own router in one chain, so the engine receives a single answer to
+  // "which model serves this call?" instead of two. The host's router leads:
+  // that is the precedence the two mechanisms already had.
+  const roleRouter = compileRoleRouter( modelRoles )
   executiveEngine.llm    = config.llm
     ? {
         ...config.llm,
         ...( config.llm.providers ? { credentials: providerCredentials( config.llm.providers ) } : {} ),
+        router: chainRouters( config.llm.router, roleRouter ),
       }
-    : null
-  executiveEngine.models = {
-    executive:    modelRoles.executive,
-    summarizer:   modelRoles.summarizer,
-    deliberation: modelRoles.deliberation,
-    conversation: modelRoles.conversation,
-  }
+    : ( roleRouter ? { router: roleRouter } : null )
+  executiveEngine.modelId = modelRoles.executive
   if( config.testMode ) executiveEngine.setTestMode( true )
   executiveEngine.attachWorkingMemory( workingMemory )
   executiveEngine.attachGoalManager( goalManager )

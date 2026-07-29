@@ -62,11 +62,23 @@ describe('GLM — wire selection', () => {
     expect( knownWireFor('google') ).toBe('google')
   } )
 
+  it('knows every provider the cost model names', () => {
+    // These are the vendors WILL_PRICING_STRATEGY_ECONOMY.md builds its routing
+    // table from. A host had to hand-declare each one's wire and endpoint, and
+    // the tempting shortcut — calling Kimi `provider: 'openai'` because it
+    // speaks that wire — put a lie on the completion tape and in the per-
+    // provider cost breakdown.
+    for( const p of [ 'moonshot', 'qwen', 'xai', 'minimax', 'mistral', 'ollama', 'vllm' ] ){
+      expect( knownWireFor( p ), `${p} has no wire` ).toBe('openai')
+      expect( defaultBaseFor( p ), `${p} has no base URL` ).toBeTruthy()
+    }
+  } )
+
   it('has no opinion about a provider it has never heard of', () => {
     // The host declares the wire for anything outside the known set, rather
     // than the engine guessing (and previously guessing "Anthropic").
-    expect( knownWireFor('moonshot') ).toBeUndefined()
-    expect( defaultBaseFor('moonshot') ).toBeUndefined()
+    expect( knownWireFor('acme-inference') ).toBeUndefined()
+    expect( defaultBaseFor('acme-inference') ).toBeUndefined()
   } )
 
   it( "defaults to Z.ai's Anthropic-compatible endpoint, version segment included", () => {

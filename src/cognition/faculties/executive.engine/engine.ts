@@ -62,7 +62,7 @@ import {
 import { LLMDirector } from '#llm/index'
 import { MOCK_PROVIDER, MOCK_MODEL } from '#llm/index'
 import { getCompletionSource } from '#core/completion.recorder'
-import type { LLMProvider, LLMCallMeta, ProviderCredential, LLMWire } from '#llm/index'
+import { providerKeyFromEnv, type LLMProvider, type LLMCallMeta, type ProviderCredential, type LLMWire } from '#llm/index'
 import type { ModelRouter } from '#llm/routing'
 import { buildFallbackOutput, parseResponse } from '#faculties/executive.engine/parser'
 import { selectProcess, ideationTemperature, DELIBERATE_THRESHOLD } from '#faculties/executive.engine/effort.gate'
@@ -148,14 +148,14 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
   // ── Injected dependencies ──────────────────────────────────
   private _willId: string | null = null
-  /** Per-Will, per-role model ids (config.model, resolved in mind.ts). */
-  private _models: { executive: string | null; summarizer: string | null; deliberation: string | null; conversation: string | null } =
-    { executive: null, summarizer: null, deliberation: null, conversation: null }
+  /**
+   * The Will's default model (config.model's `executive` role, resolved in
+   * mind.ts). Every other role reaches its model through the router — see
+   * `compileRoleRouter`.
+   */
+  private _modelId: string | null = null
   /** Per-Will LLM transport overrides (config.llm) — env fallbacks apply per field. */
   private _llm: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number; credentials?: Partial<Record<string, ProviderCredential>>; router?: ModelRouter | null; wire?: LLMWire } | null = null
-  /** One director per distinct model — same config, different model. Shared
-   *  tracker/recorder/willId, so ledger attribution and replay hold per role. */
-  private _directorCache = new Map<string, LLMDirector>()
   private _workingMemory: WorkingMemory | null = null
   private _goalManager: GoalManager | null = null
   private _episodicConsolidator: EpisodicConsolidator | null = null
@@ -270,13 +270,18 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
   set willId( willId: string ){ this._willId = willId }
 
-  /** Per-Will role models (config.model, resolved). Set before the first tick. */
-  set models( m: { executive: string | null; summarizer: string | null; deliberation: string | null; conversation: string | null } ){ this._models = m }
-  get models(): { executive: string | null; summarizer: string | null; deliberation: string | null; conversation: string | null } { return this._models }
+  /**
+   * The Will's default model. Set before the first tick.
+   *
+   * This replaced a four-role map (W7): the other roles are routing rules now,
+   * compiled in mind.ts, so the engine holds one model and one router rather
+   * than a model per role plus a router.
+   */
+  set modelId( id: string | null ){ this._modelId = id }
+  get modelId(): string | null { return this._modelId }
+
   /** Per-Will LLM transport overrides (config.llm). Set before the first tick. */
   set llm( c: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number; credentials?: Partial<Record<string, ProviderCredential>>; router?: ModelRouter | null; wire?: LLMWire } | null ){ this._llm = c }
-  /** The executive-role model id (back-compat read). */
-  get modelId(): string | null { return this._models.executive }
 
   // ── Public surface ─────────────────────────────────────────
 
@@ -330,64 +335,72 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     return this._testMode || ( !!this._willId && !!getCompletionSource( this._willId ) )
   }
 
-  private _directorFor( model: string ): LLMDirector {
-    let d = this._directorCache.get( model )
-    if( !d ){
-      // Per-Will transport overrides first (BYO keys), env per field otherwise.
-      d = new LLMDirector( {
-        willId: this._willId!,
-        model,
-        maxOutputTokens: this._llm?.maxOutputTokens ?? parseInt( process.env.WILL_MAX_OUTPUT_TOKENS ?? '8096'),
-        // Provider-agnostic key; falls back to ANTHROPIC_API_KEY for back-compat.
-        // Provider-agnostic key only. The old chain ended at ANTHROPIC_API_KEY,
-        // so a Will pointed at another vendor would silently send an Anthropic
-        // key to it.
-        apiKey: this._llm?.apiKey ?? process.env.WILL_LLM_API_KEY ?? '',
-        provider: this._requireProvider(),
-        // Optional base-URL override (e.g. Ollama / Azure / self-hosted). Unset →
-        // the director uses the provider's official endpoint.
-        baseUrl: this._llm?.baseUrl ?? process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
-        timeoutMs: this._llm?.timeoutMs ?? ( process.env.WILL_LLM_TIMEOUT_MS ? parseInt( process.env.WILL_LLM_TIMEOUT_MS ) : undefined ),
-        sessionLogger: this._sessionLogger,
-        mock: this._testMode,
-        // Inject the per-Will tracker (R4) so live calls record usage here, not
-        // through a process global. null is fine — the director skips recording.
-        tokenTracker: this._tokenTracker,
-        // Credentials for routed calls, from the host's per-provider map. The
-        // top-level apiKey/baseUrl above remain the default provider's entry.
-        // Credentials for routed calls, narrowed by the stem from the host's
-        // per-provider map. Prices from that same map ride to the TokenTracker
-        // instead, so nothing carries pricing into the call path.
-        ...( this._llm?.credentials ? { credentials: this._llm.credentials } : {} ),
-        // Per-call model selection. Every director this Will builds — the
-        // primary and each role-cached one — carries the same router, so a
-        // role-configured facet cannot silently bypass routing.
-        ...( this._llm?.router ? { router: this._llm.router } : {} ),
-        // Dialect for the default provider — required for anything outside the
-        // known set, so the engine never guesses how to talk to an endpoint.
-        ...( this._llm?.wire ? { wire: this._llm.wire } : {} ),
-      } )
-      this._directorCache.set( model, d )
-    }
-    return d
+  /**
+   * Build this Will's one and only director.
+   *
+   * There used to be a cache of them, keyed by model, because the per-role
+   * model map had no other way to make a role use a different model. Routing
+   * gave it one — the role map now compiles to rules (see `compileRoleRouter`)
+   * and a single director resolves every call's endpoint per call. That is also
+   * strictly more faithful: a facet follows the work it is doing rather than
+   * whatever role it happened to be spawned under.
+   */
+  private _buildDirector( model: string ): LLMDirector {
+    // Resolved first: the key fallback below is keyed by it.
+    const provider = this._requireProvider()
+
+    // Per-Will transport overrides first (BYO keys), env per field otherwise.
+    return new LLMDirector( {
+      willId: this._willId!,
+      model,
+      maxOutputTokens: this._llm?.maxOutputTokens ?? parseInt( process.env.WILL_MAX_OUTPUT_TOKENS ?? '8096'),
+      // Config, then the provider-agnostic env, then THIS provider's own env.
+      // The last step is not the fallback W9 removed: that one ended at
+      // ANTHROPIC_API_KEY for every provider, so a Will pointed elsewhere sent
+      // Anthropic's key to a stranger. This one can only ever read the key
+      // belonging to the provider actually configured.
+      apiKey: this._llm?.apiKey ?? process.env.WILL_LLM_API_KEY ?? providerKeyFromEnv( provider ) ?? '',
+      provider,
+      // Optional base-URL override (e.g. Ollama / Azure / self-hosted). Unset →
+      // the director uses the provider's official endpoint.
+      baseUrl: this._llm?.baseUrl ?? process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
+      timeoutMs: this._llm?.timeoutMs ?? ( process.env.WILL_LLM_TIMEOUT_MS ? parseInt( process.env.WILL_LLM_TIMEOUT_MS ) : undefined ),
+      sessionLogger: this._sessionLogger,
+      mock: this._testMode,
+      // Inject the per-Will tracker (R4) so live calls record usage here, not
+      // through a process global. null is fine — the director skips recording.
+      tokenTracker: this._tokenTracker,
+      // Credentials for routed calls, narrowed by the stem from the host's
+      // per-provider map. Prices from that same map ride to the TokenTracker
+      // instead, so nothing carries pricing into the call path.
+      ...( this._llm?.credentials ? { credentials: this._llm.credentials } : {} ),
+      // Per-call model selection — the host's router chained with the rules
+      // compiled from the per-role model map.
+      ...( this._llm?.router ? { router: this._llm.router } : {} ),
+      // Dialect for the default provider — required for anything outside the
+      // known set, so the engine never guesses how to talk to an endpoint.
+      ...( this._llm?.wire ? { wire: this._llm.wire } : {} ),
+    } )
   }
 
+  /**
+   * Spawn a facet.
+   *
+   * `role` declares the facet's intent at the call site. It no longer selects a
+   * model: that used to happen here, pinning a facet for life to whatever role
+   * it was spawned under, and it now happens per call from the focus function
+   * the caller sets immediately afterwards (W7). The two always agreed — every
+   * spawn site sets a focus whose `function` matches its role — so the routed
+   * answer is the same one, decided later and from the work itself.
+   */
    spawnFacet( role?: 'deliberation' | 'conversation' | 'outreach' | 'supervision'): { attention: 'available' | 'full', handle?: ExecutiveFacetHandle } {
+    void role
     // Delegate to FacetSupervisor (R5-g-3), passing the current engine
     // attachments. The supervisor owns the registry + attention budget and
     // performs the throw-checks on bus / director / state ref.
-    // A role with its own configured model gets that role's director; every
-    // other facet shares the executive's (one self, role-appropriate depth).
-    // Outreach speaks with the conversation voice; supervision thinks with the
-    // executive's depth.
-    const roleModel =
-      role === 'deliberation'                        ? this._models.deliberation :
-      role === 'conversation' || role === 'outreach' ? this._models.conversation :
-      null
-    const director  = roleModel && this._llmDirector ? this._directorFor( roleModel ) : this._llmDirector
     return this._facetSupervisor.spawn( {
       bus:         this._bus,
-      llmDirector: director,
+      llmDirector: this._llmDirector,
       stateRef:    this._lastStateRef,
       willId:      this._willId,
       inbox:       this._inbox,
@@ -478,8 +491,8 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     this._gatingState.executiveInterval = rtConfig.executiveInterval
     this._gatingState.cooldownTicks = rtConfig.cooldownTicks
 
-    // Initialize LLM directors if not yet done (requires willId). One director
-    // per distinct role model; roles that share a model share the instance.
+    // Initialize the LLM director if not yet done (requires willId). One per
+    // Will — every role reaches its model through the router.
     if( !this._llmDirector && this._willId ){
       // No default model. The engine used to fall back to a Claude id for every
       // provider but GLM, which meant a misconfigured Will asked the wrong
@@ -492,17 +505,18 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       // from the tape, which carries the model that actually served them). The
       // sentinel is what a mock run records, so the tape still says plainly
       // that nothing real answered.
-      const execModel = this._models.executive ?? process.env.WILL_LLM_MODEL
+      const defaultModel = this._modelId ?? process.env.WILL_LLM_MODEL
         ?? ( this._noLiveCalls() ? MOCK_MODEL : undefined )
-      if( !execModel )
+      if( !defaultModel )
         throw new Error(
           'No LLM model configured. Set one on the Will (llm.model) or in the ' +
           'environment (WILL_LLM_MODEL) — the engine carries no default.'
         )
-      this._llmDirector = this._directorFor( execModel )
-      // The summarizer runs its role's model (falls back to executive) with the
-      // same provider, session logging and token tracking.
-      this._summarizer?.attachLLMDirector( this._directorFor( this._models.summarizer ?? execModel ) )
+      this._llmDirector = this._buildDirector( defaultModel )
+      // The summarizer shares that director. Its calls tag themselves
+      // `category: 'summarizer'`, which is what a configured summarizer role
+      // compiles to — so it still gets its own model, chosen per call.
+      this._summarizer?.attachLLMDirector( this._llmDirector )
     }
 
     // Evaluate gating

@@ -18,7 +18,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { WillIdentity } from '#stem/mind'
-import { LLMDirector, defaultModelFor, BACKGROUND_DEMAND, type LLMProvider, type LLMCallMeta } from '#llm/index'
+import { LLMDirector, BACKGROUND_DEMAND, type LLMProvider, type LLMCallMeta } from '#llm/index'
 import type { TokenTracker } from '#cognition/utilities/token.tracker'
 
 export interface CoherenceIssue {
@@ -115,13 +115,21 @@ export async function reviewIdentityCoherence(
   input: CoherenceInput,
   opts:  { willId?: string; tokenTracker?: TokenTracker | null } = {},
 ): Promise<CoherenceResult> {
-  const provider = ( process.env.WILL_LLM_PROVIDER ?? 'anthropic') as LLMProvider
+  // No defaults: an unconfigured environment cannot review a persona, and
+  // silently reviewing it with somebody else's model is worse than not running.
+  const provider = process.env.WILL_LLM_PROVIDER
+  const model    = process.env.WILL_LLM_MODEL
+  if( !provider || !model )
+    return { ok: true, ran: false, issues: [], raw: 'review skipped: WILL_LLM_PROVIDER / WILL_LLM_MODEL not set' }
+
   const director = new LLMDirector({
     willId:          opts.willId ?? 'identity-coherence',
-    model:           process.env.WILL_LLM_MODEL ?? defaultModelFor( provider ),
+    model,
     maxOutputTokens: 512,
-    apiKey:          process.env.WILL_LLM_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? '',
-    provider,
+    // Provider-agnostic key only — the old chain ended at ANTHROPIC_API_KEY,
+    // so a Will pointed at another vendor would have sent it an Anthropic key.
+    apiKey:          process.env.WILL_LLM_API_KEY ?? '',
+    provider: provider as LLMProvider,
     sessionLogger:   null,
     baseUrl:         process.env.WILL_LLM_BASE_URL ?? process.env.OPENAI_BASE_URL,
     // When a per-Will tracker is supplied, the creation-time review records under

@@ -15,66 +15,80 @@ import type { LLMCompletionRecord } from '#core/completion.recorder'
 import { withGate } from '#llm/gate'
 import { matchConversationFocus, wrapReplyText } from '#llm/wire.contracts'
 
-export type LLMProvider = 'anthropic' | 'glm' | 'deepseek' | 'openai' | 'google'
+/**
+ * The request/response dialect an endpoint speaks. This — not the provider's
+ * name — is what the transport actually branches on.
+ */
+export type LLMWire = 'anthropic' | 'openai' | 'google'
 
 /**
- * Providers that speak the Anthropic Messages wire.
+ * The provider and model a mock (test-mode) Will reports.
  *
- * Z.ai ships a real Anthropic-compatible endpoint for GLM — it is what Claude
- * Code itself targets — so GLM rides this path rather than the OpenAI scaffold.
- * That buys it everything the path already has: token streaming, the first-byte
- * deadline, prompt-cache breakpoints, and the structured-output contract. GLM is
- * therefore a second *production* provider, not a fifth scaffold.
+ * A mock Will never reaches a network, so it needs no credentials — but it
+ * still records completions, and the tape should say plainly that nothing real
+ * served them rather than borrow some vendor's name.
  */
-const ANTHROPIC_WIRE = new Set<LLMProvider>( [ 'anthropic', 'glm' ] )
+export const MOCK_PROVIDER = 'mock'
+export const MOCK_MODEL    = 'mock'
 
-/** Does this provider accept Anthropic-shaped requests? */
-export function speaksAnthropicWire( provider: LLMProvider ): boolean {
-  return ANTHROPIC_WIRE.has( provider )
-}
-
-/** Official API base URL (including version segment) for a provider. */
-export function defaultBaseFor( provider: LLMProvider ): string {
-  switch( provider ){
-    case 'anthropic': return 'https://api.anthropic.com/v1'
-    // Z.ai documents the base as `…/api/anthropic` because the Anthropic SDK
-    // appends `/v1/messages`; this client appends `/messages`, so the version
-    // segment belongs here — verified against the live endpoint.
-    case 'glm':       return 'https://api.z.ai/api/anthropic/v1'
-    case 'openai':    return 'https://api.openai.com/v1'
-    case 'deepseek':  return 'https://api.deepseek.com/v1'
-    case 'google':    return 'https://generativelanguage.googleapis.com/v1beta'
-  }
-}
+/** Providers with built-in defaults. Any other string is equally valid. */
+export type KnownProvider = 'anthropic' | 'glm' | 'deepseek' | 'openai' | 'google'
 
 /**
- * The model the executive recruits when none is pinned.
+ * A provider name. Deliberately open: the field of providers changes monthly,
+ * and a closed union meant a host reaching Kimi or Qwen had to masquerade as
+ * `openai`, which then lied on the completion tape and in cost attribution.
  *
- * Provider-specific because the default is *sent* — a GLM Will with no
- * `WILL_LLM_MODEL` would otherwise ask Z.ai for a Claude id and get a 404 it
- * could do nothing with. The scaffolded providers (openai/deepseek/google) keep
- * today's value: they need an explicit `WILL_LLM_MODEL` to work at all, and
- * inventing ids for them here would look like support that does not exist.
+ * `(string & {})` keeps editor autocomplete for the known names while accepting
+ * anything. A provider outside {@link KNOWN_PROVIDERS} simply has to declare its
+ * `wire` and `baseUrl` — see `WillLLMConfig.providers`.
  */
-export function defaultModelFor( provider: LLMProvider ): string {
-  return provider === 'glm' ? 'glm-5.2' : 'claude-sonnet-4-5-20250929'
+export type LLMProvider = KnownProvider | ( string & {} )
+
+/**
+ * Built-in defaults for the providers we have actually exercised. This is
+ * *data*, not support: it saves a host from looking up a base URL, and nothing
+ * more. Anything absent works identically once the host declares its wire.
+ */
+export const KNOWN_PROVIDERS: Record<string, { wire: LLMWire; baseUrl: string }> = {
+  // Never dialled — present so a test-mode Will resolves an endpoint without
+  // demanding a provider the run will never use.
+  [ MOCK_PROVIDER ]: { wire: 'anthropic', baseUrl: 'http://mock.invalid/v1' },
+  anthropic: { wire: 'anthropic', baseUrl: 'https://api.anthropic.com/v1' },
+  // Z.ai documents the base as `…/api/anthropic` because the Anthropic SDK
+  // appends `/v1/messages`; this client appends `/messages`, so the version
+  // segment belongs here — verified against the live endpoint.
+  glm:       { wire: 'anthropic', baseUrl: 'https://api.z.ai/api/anthropic/v1' },
+  openai:    { wire: 'openai',    baseUrl: 'https://api.openai.com/v1' },
+  deepseek:  { wire: 'openai',    baseUrl: 'https://api.deepseek.com/v1' },
+  google:    { wire: 'google',    baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
+}
+
+/** Built-in wire for a known provider, or undefined — the host must declare it. */
+export function knownWireFor( provider: LLMProvider ): LLMWire | undefined {
+  return KNOWN_PROVIDERS[ provider ]?.wire
+}
+
+/** Built-in base URL for a known provider, or undefined — the host must declare it. */
+export function defaultBaseFor( provider: LLMProvider ): string | undefined {
+  return KNOWN_PROVIDERS[ provider ]?.baseUrl
 }
 
 /**
  * Auth + version headers for the Anthropic wire.
  *
- * Anthropic authenticates with `x-api-key`. Z.ai's compat endpoint accepts
- * either that or the `Authorization: Bearer` its own docs describe (both were
- * probed against the live endpoint; each is read and validated). GLM sends both
- * — same secret, same host — so the mind keeps working whichever one Z.ai
- * eventually settles on.
+ * Anthropic authenticates with `x-api-key`. Compatible endpoints (Z.ai's GLM,
+ * and every third-party clone since) generally document
+ * `Authorization: Bearer`, and accept either. So we send `x-api-key` always,
+ * and add the bearer for everyone *except* Anthropic itself — same secret, same
+ * host, and the mind keeps working whichever header the endpoint reads.
  */
 export function anthropicWireHeaders( provider: LLMProvider, apiKey: string ): Record<string, string> {
   return {
     'Content-Type':      'application/json',
     'anthropic-version': '2023-06-01',
     'x-api-key':         apiKey,
-    ...( provider === 'glm' ? { Authorization: `Bearer ${ apiKey }` } : {} ),
+    ...( provider === 'anthropic' ? {} : { Authorization: `Bearer ${ apiKey }` } ),
   }
 }
 export interface LLMDirectorConfig {
@@ -118,7 +132,13 @@ export interface LLMDirectorConfig {
    * remain the default entry; a route to a provider absent from this map falls
    * back to the default endpoint.
    */
-  credentials?: Partial<Record<LLMProvider, { apiKey: string; baseUrl?: string }>>
+  credentials?: Partial<Record<string, ProviderCredential>>
+  /**
+   * Dialect for the default provider. Required when the provider is not one of
+   * {@link KNOWN_PROVIDERS} — the engine will not guess how to talk to an
+   * endpoint it has never heard of.
+   */
+  wire?: LLMWire
 }
 
 /**
@@ -127,11 +147,21 @@ export interface LLMDirectorConfig {
  * the concurrency gate lets several calls be in flight on one director at once
  * and per-call state on `this` would race between them.
  */
+/** What a host supplies so a routed provider can be reached. */
+export interface ProviderCredential {
+  apiKey:   string
+  baseUrl?: string
+  /** Required for providers outside {@link KNOWN_PROVIDERS}. */
+  wire?:    LLMWire
+}
+
 export interface CallEndpoint {
   provider:        LLMProvider
+  /** The dialect to speak. Resolved once; the transport branches on this. */
+  wire:            LLMWire
   model:           string
   apiKey:          string
-  baseUrl:         string | null
+  baseUrl:         string
   maxOutputTokens: number
 }
 
@@ -198,6 +228,47 @@ export const ESCALATION_DEMAND = 0.7
 /** Default attribution when a caller does not tag itself (back-compat). */
 const DEFAULT_CALL_META: LLMCallMeta = { category: 'executive', attribute: 'master', function: 'decision' }
 
+/**
+ * Fill in wire and base URL, or say clearly what is missing.
+ *
+ * Known providers supply both from {@link KNOWN_PROVIDERS}; anything else must
+ * declare them. The engine refuses to guess how to talk to an endpoint it has
+ * never heard of — a wrong guess is a 404 at the worst possible moment, and
+ * previously the guess was "Anthropic", which is how a GLM Will could end up
+ * asking Z.ai for a Claude model id.
+ */
+export function resolveEndpoint( spec: {
+  provider: LLMProvider
+  model: string
+  apiKey: string
+  baseUrl?: string | undefined
+  wire?: LLMWire | undefined
+  maxOutputTokens: number
+} ): CallEndpoint {
+  const wire = spec.wire ?? knownWireFor( spec.provider )
+  if( !wire )
+    throw new Error(
+      `LLM provider "${spec.provider}" has no known wire. Declare it: ` +
+      `llm.providers['${spec.provider}'].wire = 'anthropic' | 'openai' | 'google'.`
+    )
+
+  const baseUrl = spec.baseUrl ?? defaultBaseFor( spec.provider )
+  if( !baseUrl )
+    throw new Error(
+      `LLM provider "${spec.provider}" has no known base URL. Declare it: ` +
+      `llm.providers['${spec.provider}'].baseUrl.`
+    )
+
+  return {
+    provider:        spec.provider,
+    wire,
+    model:           spec.model,
+    apiKey:          spec.apiKey,
+    baseUrl,
+    maxOutputTokens: spec.maxOutputTokens,
+  }
+}
+
 export class LLMDirector {
   private _willId: string
   private _model: string
@@ -210,7 +281,7 @@ export class LLMDirector {
   private _timeoutMs: number
   private _tokenTracker: TokenTracker | null
   private _router: ModelRouter | null
-  private _credentials: Partial<Record<LLMProvider, { apiKey: string; baseUrl?: string }>>
+  private _credentials: Partial<Record<string, ProviderCredential>>
   /** Default endpoint — what every call used before the routing seam existed. */
   private _defaultEndpoint: CallEndpoint
   /** Routes already warned about (missing credential / bad provider) — log once. */
@@ -229,13 +300,14 @@ export class LLMDirector {
     this._tokenTracker = config.tokenTracker ?? null
     this._router = config.router ?? null
     this._credentials = config.credentials ?? {}
-    this._defaultEndpoint = {
+    this._defaultEndpoint = resolveEndpoint( {
       provider:        this._provider,
       model:           this._model,
       apiKey:          this._apiKey,
-      baseUrl:         this._baseUrl,
+      baseUrl:         this._baseUrl ?? undefined,
+      wire:            config.wire,
       maxOutputTokens: this._maxOutputTokens,
-    }
+    } )
   }
 
   /**
@@ -258,7 +330,7 @@ export class LLMDirector {
     // The default provider's credential is reused when the route names it;
     // otherwise the route needs its own entry.
     const cred = route.provider === this._defaultEndpoint.provider
-      ? { apiKey: this._defaultEndpoint.apiKey, baseUrl: this._defaultEndpoint.baseUrl ?? undefined }
+      ? { apiKey: this._defaultEndpoint.apiKey, baseUrl: this._defaultEndpoint.baseUrl, wire: this._defaultEndpoint.wire }
       : this._credentials[ route.provider ]
 
     if( !cred?.apiKey ){
@@ -267,12 +339,22 @@ export class LLMDirector {
       return this._defaultEndpoint
     }
 
-    return {
-      provider:        route.provider,
-      model:           route.model,
-      apiKey:          cred.apiKey,
-      baseUrl:         route.baseUrl ?? cred.baseUrl ?? null,
-      maxOutputTokens: route.maxOutputTokens ?? this._defaultEndpoint.maxOutputTokens,
+    try {
+      return resolveEndpoint( {
+        provider:        route.provider,
+        model:           route.model,
+        apiKey:          cred.apiKey,
+        baseUrl:         route.baseUrl ?? cred.baseUrl,
+        wire:            cred.wire,
+        maxOutputTokens: route.maxOutputTokens ?? this._defaultEndpoint.maxOutputTokens,
+      } )
+    }
+    catch( err ){
+      // An undeclared wire or base URL for a routed provider is a config gap,
+      // not a reason to fail the call.
+      this._warnRouteOnce(`resolve:${route.provider}`,
+        `cannot reach routed provider "${route.provider}" — using the default model`, err )
+      return this._defaultEndpoint
     }
   }
 
@@ -402,7 +484,7 @@ export class LLMDirector {
       return result
     }
 
-    const result = speaksAnthropicWire( ep.provider )
+    const result = ep.wire === 'anthropic'
       ? await this._callAnthropicStream( ep, systemPrompt, userMessage, onChunk, temperature )
       : await ( async () => {
           // Other providers: fall back to regular call, emit whole response as one chunk
@@ -635,7 +717,7 @@ export class LLMDirector {
     // accumulated text; live token chunks go through callStream(). Other
     // providers keep the whole-request deadline.
     const result = await withGate(
-      () => speaksAnthropicWire( ep.provider )
+      () => ep.wire === 'anthropic'
         ? this._callAnthropicStream( ep, systemPrompt, userMessage, () => {}, temperature )
         : this._callProvider( ep, systemPrompt, userMessage, temperature ),
       'executive/direct',
@@ -655,25 +737,16 @@ export class LLMDirector {
     userMessage: string,
     temperature?: number,
   ): Promise<LLMCallResult> {
-    switch( ep.provider ){
+    switch( ep.wire ){
       case 'anthropic': return this._callAnthropic( ep, systemPrompt, userMessage, temperature )
-      case 'glm': return this._callAnthropic( ep, systemPrompt, userMessage, temperature )
-      case 'deepseek': return this._callOpenAI( ep, systemPrompt, userMessage, temperature )
-      case 'openai': return this._callOpenAI( ep, systemPrompt, userMessage, temperature )
-      case 'google': return this._callGoogle( ep, systemPrompt, userMessage, temperature )
-      default: throw new Error(`Unknown LLM provider: ${ep.provider}`)
+      case 'openai':    return this._callOpenAI( ep, systemPrompt, userMessage, temperature )
+      case 'google':    return this._callGoogle( ep, systemPrompt, userMessage, temperature )
+      default: throw new Error(`Unknown LLM wire: ${ep.wire}`)
     }
   }
 
-  /** Default API base URL (including version segment) for a provider. */
-  private _baseFor( provider: LLMProvider ): string {
-    return defaultBaseFor( provider )
-  }
-
   /** Resolved API base: explicit override wins, else the provider default. */
-  private _resolvedBase( ep: CallEndpoint ): string {
-    return ep.baseUrl ?? this._baseFor( ep.provider )
-  }
+  private _resolvedBase( ep: CallEndpoint ): string { return ep.baseUrl }
 
   /**
    * fetch() with a hard per-request deadline. A hung connection is aborted

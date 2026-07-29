@@ -28,7 +28,7 @@ import { setLogger } from '#core/logger'
 import { Will, type CreateWillOptions } from '#sdk/will'
 import type { PMASnapshot } from '#pma/index'
 import { connectMcpEffectors, type McpToolsSource } from '#root/mcp/effectors'
-import { anthropicWireHeaders, defaultBaseFor, defaultModelFor } from '#llm/index'
+import { anthropicWireHeaders, defaultBaseFor } from '#llm/index'
 
 /**
  * Route every engine log line to stderr. For `will mcp`, stdout is the MCP
@@ -93,9 +93,21 @@ async function preflightLLM( anatomy: string ): Promise<void> {
   // that strands an operator. It uses the pinned model when there is one, so a
   // bad model id is caught too; otherwise the cheapest model stands in. GLM
   // speaks the same wire at Z.ai's compat endpoint, so one ping serves both.
-  const base  = process.env.WILL_LLM_BASE_URL ?? defaultBaseFor( mode )
+  const base = process.env.WILL_LLM_BASE_URL ?? defaultBaseFor( mode )
+  if( !base ){
+    console.error(`[will] WILL_LLM=${ mode } has no known base URL — set WILL_LLM_BASE_URL.`)
+    process.exit( 2 )
+  }
+  // The ping needs *a* model id. WILL_LLM_MODEL is the one the Will will
+  // actually use, so preferring it means a bad id is caught here rather than at
+  // the first tick. Without it there is nothing honest to send: the engine no
+  // longer carries a default model, so say so plainly instead of guessing.
   const model = process.env.WILL_LLM_MODEL
-    ?? ( mode === 'glm' ? defaultModelFor('glm') : 'claude-haiku-4-5-20251001')
+  if( !model ){
+    console.error(`[will] WILL_LLM_MODEL is not set. The engine has no default model —`)
+    console.error('[will] pick one for your provider (e.g. WILL_LLM_MODEL=claude-sonnet-4-5-20250929).')
+    process.exit( 2 )
+  }
   try {
     const res = await fetch(`${ base }/messages`, {
       method:  'POST',

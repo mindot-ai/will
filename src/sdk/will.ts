@@ -29,7 +29,7 @@
 
 import { WillStem } from '#stem/index'
 import type { WillConfig, WillIdentity, Anatomy, InitialGoal, WillModelConfig, WillLLMConfig } from '#stem/mind'
-import type { LLMProvider } from '#llm/index'
+import { PROVIDER_KEY_ENV, providerKeyFromEnv, type LLMProvider } from '#llm/index'
 import type { PMASnapshot } from '#pma/index'
 import type { effectorInvocation } from '#types'
 import type { EffectorDeclaration, SchemaPrecondition } from '#agency/types'
@@ -245,7 +245,7 @@ const AFFECT_EPSILON = 0.02
  * providers is detection precedence when several keys happen to be present —
  * it is not a ranking, and no provider here is more supported than another.
  */
-function detectProvider(): 'mock' | LLMProvider {
+export function detectProvider(): 'mock' | LLMProvider {
   // A provider-agnostic key says nothing about who to send it to. Guessing
   // here is how a key meant for one vendor ends up at another; the guess used
   // to be 'anthropic' unconditionally.
@@ -262,16 +262,12 @@ function detectProvider(): 'mock' | LLMProvider {
   // A provider-specific key IS the explicit statement — no guess involved.
   // Order is precedence when several are present, and is append-only: moving an
   // entry silently changes which vendor an existing environment talks to.
-  if( process.env.ANTHROPIC_API_KEY ) return 'anthropic'
-  if( process.env.ZAI_API_KEY ) return 'glm'
-  if( process.env.DEEPSEEK_API_KEY ) return 'deepseek'
-  if( process.env.OPENAI_API_KEY ) return 'openai'
-  if( process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY ) return 'google'
-  if( process.env.MOONSHOT_API_KEY ) return 'moonshot'
-  if( process.env.DASHSCOPE_API_KEY ) return 'qwen'
-  if( process.env.XAI_API_KEY ) return 'xai'
-  if( process.env.MINIMAX_API_KEY ) return 'minimax'
-  if( process.env.MISTRAL_API_KEY ) return 'mistral'
+  //
+  // Read through providerKeyFromEnv rather than raw truthiness, so "is a key
+  // set?" and "what is the key?" cannot disagree — a blank `XAI_API_KEY=` would
+  // otherwise select xai here and then supply nothing to call it with.
+  for( const provider of Object.keys( PROVIDER_KEY_ENV ) )
+    if( providerKeyFromEnv( provider ) ) return provider
   return 'mock'
 }
 

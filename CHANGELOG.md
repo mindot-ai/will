@@ -1,6 +1,66 @@
 # Changelog
 
-## Unreleased
+## Unreleased — the mind thinks at more than one depth
+
+A mind does several kinds of work, and they were all being done by one model.
+Summarising the last hour is not the same act as deciding what to do next, and a
+Will was paying — in latency, in money, in capability left on the table — as
+though they were. Now the mind's thinking can run on different substrates
+depending on what the thinking *is*: its deliberation on something deep, its
+rolling summary on something cheap, its voice on something fast. What decides is
+the character of the moment, not a plan or a price.
+
+- **The mind reports how much a moment demands.** Every LLM call now carries
+  `demand` (0..1) alongside its attribution — a *cognitive* measure, not a
+  commercial one: how consequential or uncertain this instant is. The master and
+  its facets forward the effort gate they already compute (uncertainty, prior
+  confidence, novelty, a pending reply, stress load); deliberation forwards the
+  stakes of the choice under contest; structurally background work reports a low
+  constant, because summarising is background whether the mind is calm or in
+  crisis. The field is inert with respect to cognition — nothing reads it back,
+  so routing can never become a hidden input to the mind.
+
+- **One question, one answer.** Roles could already have their own models, but
+  by a separate route: each got its own director, chosen when a facet was
+  *spawned*. A conversation facet therefore held its spawn-time model for life,
+  even as its work changed. The role map now compiles into routing rules
+  evaluated per call, so a facet follows the work it is actually doing. Absent
+  any configuration this is byte-identical — a single-model Will emits no rules
+  at all.
+
+- **A Will can be told who it is talking to, and is never guessed at.** The
+  engine carried defaults — a provider, a model, and a key fallback that ended
+  at `ANTHROPIC_API_KEY` no matter which vendor was configured. That last one
+  meant a Will pointed at one provider could quietly hand its secret to another.
+  All three are gone: provider, model and key are named or the mind says so
+  plainly at boot rather than failing at the first tick.
+
+- **Twelve providers are first class, and each is called by its own name.**
+  Anthropic · Z.ai GLM · OpenAI · Google · DeepSeek · Moonshot · Alibaba Qwen ·
+  xAI · MiniMax · Mistral, plus local Ollama and vLLM — and any other name once
+  it declares its wire. What the transport branches on is the *dialect*, never
+  the vendor, which is what lets the vendor stay honest: reaching Kimi as
+  `openai` because it speaks that wire put a false provider on the completion
+  tape and in every cost breakdown.
+
+- **What a call costs is the host's arithmetic, not the engine's.** The built-in
+  price table is gone. It could not be kept current from inside an npm release —
+  twenty of the models in real use had no row, and an unpriced model silently
+  billed at Sonnet's rate, overstating a budget model's output by ~54× with
+  total confidence. Prices are now declared per provider by the host, an
+  unpriced model reports cost 0 with `priced: false`, and dollars have left
+  simulation state entirely: tokens are a physical fact of a call, dollars are
+  accounting over it.
+
+**Throughout:** a Will with no router, no provider map and a single model is
+byte-identical to one built before any of this existed. Routing is an external
+oracle like the LLM itself — the completion tape records the provider and model
+that actually served each call, replay re-feeds rather than re-decides, and a
+run reproduces byte-for-byte whether its router is absent, present, or since
+reconfigured. Host-supplied prices have no determinism surface at all: they can
+change between a recording and its replay and the run still holds. A router that
+throws, or names a provider with no credential, degrades to the default model —
+a routing mistake never kills a running mind.
 
 ## 0.7.0 — 2026-07-22 · the mind learns may from can
 

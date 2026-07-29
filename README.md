@@ -74,8 +74,10 @@ ANTHROPIC_API_KEY=sk-ant-… \
   bun run examples/with-anthropic.ts  # a real executive: genuine reasoning + replies
 ```
 
-Requires [Bun](https://bun.sh) ≥ 1.1. For a real executive set `WILL_LLM_PROVIDER=anthropic`
-+ `ANTHROPIC_API_KEY` (other providers are scaffolded but not yet supported). The dev
+Requires [Bun](https://bun.sh) ≥ 1.1. For a real executive set a provider, a model and a
+key — `WILL_LLM_PROVIDER=anthropic` + `WILL_LLM_MODEL=claude-sonnet-4-5-20250929` +
+`ANTHROPIC_API_KEY`. All three are required and none is guessed: [a dozen providers are
+first-class](#llm-provider), and a default here would send your key to the wrong one. The dev
 runner (`bun dev`) starts a long-lived Will: engines step every `WILL_TICK_MS` on the
 deterministic clock; the ExecutiveEngine fires an LLM call every `WILL_EXECUTIVE_INTERVAL`
 ticks — or earlier when physiology demands it.
@@ -107,7 +109,9 @@ import { Will } from '@mindot/will'
 const will = await Will.create({
   name: 'Aria',
   identity: { prompt: 'I am Aria, a calm, precise research assistant.' },
-  // llm defaults to a zero-key deterministic mock unless ANTHROPIC_API_KEY is set
+  // Keyless by default: a deterministic mock executive. Set any provider's own
+  // key (ANTHROPIC_API_KEY, ZAI_API_KEY, MOONSHOT_API_KEY, …) plus
+  // WILL_LLM_MODEL to raise a live mind — or pass `llmConfig` explicitly.
 })
 
 // Hear the Will (replies arrive asynchronously — it reasons on its own tick cycle).
@@ -160,7 +164,7 @@ Host a Will over the [Model Context Protocol](https://modelcontextprotocol.io) �
 }
 ```
 
-The surface keeps the paradigm: `perceive` delivers a stimulus (it returns when *delivered*, not answered), `next_utterance` awaits the mind's next words (**silence is a valid outcome**, reported — never an error), `state` reads its inner life, and `save` checkpoints it without stopping it. There is deliberately no `ask()`-shaped tool. Config via env: `WILL_ANATOMY` (mind|reflex — reflex is the no-LLM shell), `WILL_LLM_MODEL` (concrete model id), `WILL_LLM` (mock|anthropic — defaults to the zero-key mock unless `ANTHROPIC_API_KEY` is set), `WILL_TICK_MS`, `WILL_PMA_PATH`.
+The surface keeps the paradigm: `perceive` delivers a stimulus (it returns when *delivered*, not answered), `next_utterance` awaits the mind's next words (**silence is a valid outcome**, reported — never an error), `state` reads its inner life, and `save` checkpoints it without stopping it. There is deliberately no `ask()`-shaped tool. Config via env: `WILL_ANATOMY` (mind|reflex — reflex is the no-LLM shell), `WILL_LLM_MODEL` (concrete model id — required for a live mind), `WILL_LLM` (`mock` or [any provider name](#llm-provider) — defaults to the zero-key mock unless some provider's own key is set), `WILL_TICK_MS`, `WILL_PMA_PATH`.
 
 ### Employing MCP tools — the mind gets abilities
 
@@ -220,7 +224,9 @@ const config: WillConfig = {
     traits: { conscientiousness: 0.9, neuroticism: 0.4 },
     style:  'measured and warm',
   },
-  model: 'claude-sonnet-4-5-20250929',   // concrete model id (optional — env/provider default otherwise)
+  // Provider + model ride together on `llm`. Both are required for a live mind
+  // and neither is guessed; omit the whole field for the zero-key mock.
+  llm: { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
   allowedGenericEffectors: ['listen', 'talk', 'text'],  // opt in to communication
   persistentMemory: true,
   snapshotInterval: 10,
@@ -555,7 +561,11 @@ Traits seed the PersonaPrior as a *starting disposition*, not a fixed personalit
 | `name` | ✅ | — | Human-readable display name |
 | `identity` | ✅ | — | Persona: `{ prompt, values[], traits{}, style }` (Layer 2) |
 | `anatomy` | — | `'mind'` | `'mind' \| 'reflex'` — the only structural variant. `mind` runs the whole architecture; `reflex` is a no-LLM shell (regulatory + senses + agency heuristics) for embedded use. Faculties are not a pricing axis — budgets are. |
-| `model` | — | env / provider default | Concrete LLM model id (e.g. `'claude-sonnet-4-5-20250929'`). `WILL_LLM_MODEL` env pins over this. Product tier labels resolve to a concrete id host-side, before the engine. |
+| `llm.provider` | ✅ *(live)* | — | Which provider to speak to. No default: see [LLM provider](#llm-provider). `WILL_LLM_PROVIDER` env fills in |
+| `llm.model` | ✅ *(live)* | — | A concrete model id (`'claude-sonnet-4-5-20250929'`), **or** a per-role map `{ executive, summarizer, deliberation, conversation, embedding }`. Unset roles fall back to `executive`. `WILL_LLM_MODEL` pins every thinking role. Product tier labels resolve to a concrete id host-side, before the engine |
+| `llm.apiKey` / `llm.baseUrl` | — | env | Credential + endpoint for the default provider. Held in memory only — never state, logs, or PMA |
+| `llm.providers` | — | — | Everything the host knows per provider: `{ apiKey, baseUrl?, wire?, prices? }`. Needed to route *across* vendors, and the only place prices live — the engine ships none |
+| `llm.router` | — | `NULL_ROUTER` | A `ModelRouter` choosing a model per call from the call's attribution and `demand`. Chains ahead of the compiled role map. See [Different models for different thinking](#different-models-for-different-thinking) |
 | `persistentMemory` | ✅ | — | Persist snapshots so beliefs/goals/narrative survive restarts |
 | `snapshotInterval` | ✅ | — | Ticks between in-memory snapshots |
 | `profile` | — | `null` | World profile preset (effectors + environment context). Merged with `allowedGenericEffectors` |
@@ -741,15 +751,22 @@ src/
 │   │   └── access.grants.ts · proactive.communicator.ts
 │   └── memory/                    #   in-house vector index + embedder (semantic recall)
 │
-├── llm/                           # in-house provider client (Anthropic) + concurrency gate + summariser
+├── llm/                           # in-house multi-provider client — no ai-sdk/Mastra runtime dep
+│   ├── index.ts                   #   wire dialects (anthropic·openai·google), provider table, director
+│   ├── routing.ts                 #   which model serves which call — ModelRouter, TableRouter, chainRouters
+│   ├── gate.ts                    #   global concurrency semaphore + 429 backoff
+│   └── summarizer.ts · wire.contracts.ts
 ├── pma/                           # PMADistiller, PMALoader + reconstruction-fidelity eval
 ├── profiles/                      # world profile presets (companion, game-npc, customer-service, …)
 ├── eval/ · extensions/ · runners/
 ├── types.ts                       # public API types (OutboxMessage, EffectorInvocation, …)
 │
 └── stem/
-    ├── mind.ts                    # assembleMind() — engine graph factory
+    ├── mind.ts                    # assembleMind() — engine graph factory; compiles the role
+    │                              #   model map into routing rules
     ├── index.ts                   # WillStem — lifecycle, tick loop, outbox, acks
+    ├── policy/                    # what a Will MAY enact — arbiter seam, rule table, verdict tape
+    ├── guards/                    # identity coherence — the self a drifting output is checked against
     └── tracts/                    # lifecycle controllers: outbox, effector, sensory, transport,
                                    #   replay, pma, health, biography, ack, session log
 ```
@@ -874,18 +891,18 @@ The engine carries the mechanism and none of the policy. A router sees the call'
 ### Running a mind on GLM
 
 ```bash
-ZAI_API_KEY=… WILL_NAME=Aria npx -y @mindot/will discord
+ZAI_API_KEY=… WILL_LLM_MODEL=glm-5.2 WILL_NAME=Aria npx -y @mindot/will discord
 ```
 
-That's all — the mode auto-detects from the key present, `WILL_LLM_PROVIDER=glm` defaults to `https://api.z.ai/api/anthropic`, and the model defaults to `glm-5.2`. Pin the 1M-context variant with `WILL_LLM_MODEL=glm-5.2[1m]`.
+The provider auto-detects from the key present and the endpoint comes with it; the **model is yours to name** — the engine carries no default, and the CLI says so plainly rather than guessing one. Pin the 1M-context variant with `WILL_LLM_MODEL=glm-5.2[1m]`.
 
 Why it matters for a Will specifically: a mind is **always on**. It reasons every N ticks whether or not anyone spoke, so the executive is a standing cost, not a per-request one — the arithmetic that makes a cheaper capable model matter more here than in a request/response agent. GLM-5.2 runs about **$1.40 / $4.40** per Mtok against Claude Sonnet's $3 / $15, with a 1M context.
 
-`WILL_LLM_BASE_URL` points `glm` at any **Anthropic-compatible** endpoint — a gateway (LiteLLM, claude-code-router), or one fronting the open weights (GLM-5.2 is MIT-licensed). Note the wire, not just the model: vLLM/SGLang serve an *OpenAI*-shaped API, so a bare self-host belongs on `WILL_LLM_PROVIDER=openai` — today's scaffold, no streaming — until an Anthropic-compatible shim sits in front.
+`WILL_LLM_BASE_URL` points `glm` at any **Anthropic-compatible** endpoint — a gateway (LiteLLM, claude-code-router), or one fronting the open weights (GLM-5.2 is MIT-licensed). Note the wire, not just the model: vLLM/SGLang serve an *OpenAI*-shaped API, so a bare self-host belongs on `WILL_LLM_PROVIDER=vllm` (non-streaming) until an Anthropic-compatible shim sits in front.
 
 A Will's identity survives the swap either way: the [PMA](#pma--the-persistent-mind-artifact) carries the self across a model change, and `runPMAEval` scores how faithfully — continuity across providers is measurable, not asserted.
 
-The provider layer is an in-house `fetch` client (`src/llm/index.ts`) with a global concurrency gate (`src/llm/gate.ts`) — no Mastra / ai-sdk runtime dependency.
+The provider layer is an in-house `fetch` client (`src/llm/index.ts`) with a global concurrency gate (`src/llm/gate.ts`) and a per-call router (`src/llm/routing.ts`) — no Mastra / ai-sdk runtime dependency.
 
 ---
 

@@ -12,6 +12,10 @@
  */
 
 import type { TokenTracker } from '#cognition/utilities/token.tracker'
+import type { LLMCallFunction } from '#cognition/utilities/token.tracker'
+
+/** Embedding is only ever a read or a write. */
+export type EmbedFunction = Extract<LLMCallFunction, 'recall' | 'index'>
 
 export interface EmbeddingProvider {
   readonly modelName: string
@@ -68,7 +72,7 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
     this._tokenTracker = config.tokenTracker ?? null
   }
 
-  async embed( content: unknown, fn: string = 'recall'): Promise<number[]> {
+  async embed( content: unknown, fn: EmbedFunction = 'recall'): Promise<number[]> {
     let response: Response
     try {
       response = await fetch(`${this._apiUrl}/embeddings`, {
@@ -128,7 +132,7 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
     return embedding
   }
 
-  async embedBatch( contents: unknown[], fn: string = 'index'): Promise<number[][]> {
+  async embedBatch( contents: unknown[], fn: EmbedFunction = 'index'): Promise<number[][]> {
     // Bounded fan-out: cap concurrent requests at _maxConcurrency instead of
     // firing all of them at once (FN16), while preserving input order.
     const results: number[][] = new Array( contents.length )
@@ -170,7 +174,7 @@ export class MockEmbedder implements EmbeddingProvider {
     this._seed = seed
   }
 
-  async embed( content: unknown, _fn: string = 'recall'): Promise<number[]> {
+  async embed( content: unknown, _fn: EmbedFunction = 'recall'): Promise<number[]> {
     const str = typeof content === 'string' ? content : JSON.stringify( content )
     const hash = this._hashString( str )
     const embedding: number[] = []
@@ -184,7 +188,7 @@ export class MockEmbedder implements EmbeddingProvider {
     return embedding
   }
 
-  async embedBatch( contents: unknown[], fn: string = 'index'): Promise<number[][]> {
+  async embedBatch( contents: unknown[], fn: EmbedFunction = 'index'): Promise<number[][]> {
     return Promise.all( contents.map( c => this.embed( c, fn ) ) )
   }
 

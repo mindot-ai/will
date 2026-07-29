@@ -45,6 +45,7 @@
  */
 
 import type { ReadonlySimulationState } from '#core/types'
+import type { LLMCallFunction } from '#cognition/utilities/token.tracker'
 import type { ExecutiveSummarizer } from '#llm/summarizer'
 import type { ExecutiveContext, PendingMessage, IdeationCandidate } from '#faculties/executive.engine/types'
 import { buildExecutiveContext, type ContextDependencies } from '#faculties/executive.engine/context'
@@ -158,7 +159,7 @@ export interface FocusSection {
    * into the facet's LLM calls as `LLMCallMeta.function` so the TokenTracker can
    * break spend down per facet type. Defaults to 'facet' when unset.
    */
-  function?: string
+  function?: LLMCallFunction
   /**
    * Optional: Custom output format to append instead of the standard executive format.
    * Pass via PromptBuildOptions.outputFormat when building the user message.

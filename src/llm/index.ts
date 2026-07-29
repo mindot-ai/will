@@ -6,7 +6,9 @@ import { logger } from '#core/logger'
 import type { Tick } from '#core/types'
 import type { SessionLogger } from '#stem/tracts/session.logger'
 import { writeFileSync, mkdirSync } from 'node:fs'
-import type { TokenTracker } from '#cognition/utilities/token.tracker'
+import type {
+  TokenTracker, LLMCallCategory, LLMCallAttribute, LLMCallFunction,
+} from '#cognition/utilities/token.tracker'
 import { type ModelRouter, isNullRouter } from '#llm/routing'
 import { getCompletionRecorder, getCompletionSource } from '#core/completion.recorder'
 import type { LLMCompletionRecord } from '#core/completion.recorder'
@@ -152,12 +154,12 @@ export interface LLMCallResult {
  * here, letting the TokenTracker break spend down per category for transparency.
  */
 export interface LLMCallMeta {
-  /** Top-level cost bucket: 'executive' | 'summarizer' | 'embedding' | 'identity-guard' | … */
-  category: string
-  /** The actor/subsystem doing the work: 'master' | 'facet' | 'memory' | 'guard' | … */
-  attribute: string
-  /** The specific cognitive function: 'decision' | 'ideation' | 'conversation' | 'planning' | 'deliberation' | 'outreach' | 'consolidation' | 'recall' | 'index' | 'identity-coherence' | … */
-  function: string
+  /** Top-level cost bucket. */
+  category: LLMCallCategory
+  /** The actor/subsystem doing the work. */
+  attribute: LLMCallAttribute
+  /** The specific cognitive function. */
+  function: LLMCallFunction
   /** Optional specific id or namespace: facet id, entity id, model name. */
   scope?: string
   /** Free-form human-readable label. Auto-composed from the axes when omitted. */

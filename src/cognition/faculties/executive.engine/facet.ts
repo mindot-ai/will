@@ -471,7 +471,11 @@ export class ExecutiveFacet {
       const facetMeta: LLMCallMeta = {
         category:  'executive',
         attribute: 'facet',
-        function:  this._currentFocus?.function ?? 'facet',
+        // A focus that declares no function is making its decision call, the
+        // facet's analogue of master's 'decision'. This previously fell back to
+        // 'facet' — an *attribute* value, which quietly created a bogus bucket
+        // in the by-function cost breakdown. The typed axes caught it.
+        function:  this._currentFocus?.function ?? 'decision',
         scope:     this.facetId,
         demand:    processSelection.effortScore,
       }

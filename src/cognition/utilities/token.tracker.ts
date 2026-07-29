@@ -32,6 +32,42 @@ import { wallClock } from '#core/wall.clock'
 // transport layer (determinism contract). The tracker exposes a neutral
 // onRecord() sink; the stem bridges records onto the transport.
 
+// ── Attribution axes ──────────────────────────────────────
+//
+// Typed rather than free strings so a deviation is caught at the call site
+// instead of surfacing as a silently-unmatched routing rule or a cost bucket
+// nobody notices is empty. These live here (not in #llm) because cognition is
+// the lower layer — #llm already imports from this module, and the reverse
+// would be circular.
+
+/** Top-level cost bucket for an LLM call. */
+export type LLMCallCategory =
+  | 'executive'       // the master consciousness and its facets
+  | 'summarizer'      // rolling memory consolidation
+  | 'embedding'       // semantic-memory vectorisation
+  | 'identity-guard'  // creation-time persona review
+
+/** The actor/subsystem doing the work. */
+export type LLMCallAttribute =
+  | 'master'   // the executive itself
+  | 'facet'    // a spawned focus (conversation, planning, outreach, supervision)
+  | 'memory'   // consolidation / embedding
+  | 'guard'    // a safety reviewer
+
+/** The specific cognitive function being paid for. */
+export type LLMCallFunction =
+  | 'decision'           // the master's fused decision call
+  | 'ideation'           // the deliberate path's propose pass
+  | 'deliberation'       // action choice under contest
+  | 'conversation'       // a live reply
+  | 'outreach'           // an unprompted message
+  | 'planning'           // plan formation / revision
+  | 'supervision'        // plan-step supervision
+  | 'consolidation'      // rolling summary
+  | 'recall'             // embedding a query
+  | 'index'              // embedding a write
+  | 'identity-coherence' // persona review
+
 /** One attributed ledger record (5-axis attribution + tokens + cost). */
 export type TokenLedgerRecord = Record<string, unknown>
 export type TokenRecordListener = ( record: TokenLedgerRecord ) => void
@@ -175,12 +211,9 @@ export interface TokenUsage {
   priced: boolean
 
   // ── 5-axis cost attribution ──────────────────────────────
-  /** Top-level cost bucket: 'executive' | 'summarizer' | 'embedding' | 'identity-guard' | … */
-  category: string
-  /** Actor/subsystem doing the work: 'master' | 'facet' | 'memory' | 'guard' | … */
-  attribute: string
-  /** Cognitive function: 'decision' | 'ideation' | 'conversation' | 'planning' | 'deliberation' | 'outreach' | 'consolidation' | 'recall' | 'index' | 'identity-coherence' | … */
-  function: string
+  category:  LLMCallCategory
+  attribute: LLMCallAttribute
+  function:  LLMCallFunction
   /** Optional specific id or namespace: facet id, entity id, model name. */
   scope?: string
   /** Human-readable label — auto-composed from the axes when the caller omits it. */
@@ -199,7 +232,7 @@ export interface TokenUsage {
 export type RecordUsageInput = Omit<TokenUsage, 'estimatedCostUsd' | 'label' | 'priced'> & { label?: string }
 
 /** Compose a stable, readable label from the attribution axes. */
-function composeLabel( m: { category: string; attribute: string; function: string; scope?: string } ): string {
+function composeLabel( m: { category: LLMCallCategory; attribute: LLMCallAttribute; function: LLMCallFunction; scope?: string } ): string {
   const base = `${m.category}/${m.attribute}/${m.function}`
   return m.scope ? `${base}#${m.scope}` : base
 }

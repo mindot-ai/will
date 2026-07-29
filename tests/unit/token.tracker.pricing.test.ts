@@ -16,17 +16,17 @@
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { readFileSync, rmSync, existsSync } from 'node:fs'
-import { TokenTracker, resolvePricing } from '#cognition/utilities/token.tracker'
+import { TokenTracker, resolvePricing, type RecordUsageInput } from '#cognition/utilities/token.tracker'
 
-function usage( over: Partial<Parameters<TokenTracker['recordUsage']>[0]> = {} ) {
+function usage( over: Partial<RecordUsageInput> = {} ): RecordUsageInput {
   return {
     model:            'claude-sonnet-4-5',
     promptTokens:     0,
     completionTokens: 0,
     totalTokens:      0,
-    category:         'executive',
-    attribute:        'master',
-    function:         'decision',
+    category:         'executive' as const,
+    attribute:        'master' as const,
+    function:         'decision' as const,
     tick:             1,
     latencyMs:        0,
     ...over,

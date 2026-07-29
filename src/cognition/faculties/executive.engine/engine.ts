@@ -60,7 +60,8 @@ import {
   type GatingState
 } from '#faculties/executive.engine/gating'
 import { LLMDirector } from '#llm/index'
-import { defaultModelFor, type LLMProvider } from '#llm/index'
+import { defaultModelFor, type LLMProvider, type LLMCallMeta } from '#llm/index'
+import type { ModelRouter } from '#llm/routing'
 import { buildFallbackOutput, parseResponse } from '#faculties/executive.engine/parser'
 import { selectProcess, ideationTemperature, DELIBERATE_THRESHOLD } from '#faculties/executive.engine/effort.gate'
 import { proposeCandidates } from '#faculties/executive.engine/deliberate.reasoning'
@@ -149,7 +150,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   private _models: { executive: string | null; summarizer: string | null; deliberation: string | null; conversation: string | null } =
     { executive: null, summarizer: null, deliberation: null, conversation: null }
   /** Per-Will LLM transport overrides (config.llm) — env fallbacks apply per field. */
-  private _llm: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number; credentials?: Partial<Record<LLMProvider, { apiKey: string; baseUrl?: string }>> } | null = null
+  private _llm: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number; credentials?: Partial<Record<LLMProvider, { apiKey: string; baseUrl?: string }>>; router?: ModelRouter | null } | null = null
   /** One director per distinct model — same config, different model. Shared
    *  tracker/recorder/willId, so ledger attribution and replay hold per role. */
   private _directorCache = new Map<string, LLMDirector>()
@@ -271,7 +272,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   set models( m: { executive: string | null; summarizer: string | null; deliberation: string | null; conversation: string | null } ){ this._models = m }
   get models(): { executive: string | null; summarizer: string | null; deliberation: string | null; conversation: string | null } { return this._models }
   /** Per-Will LLM transport overrides (config.llm). Set before the first tick. */
-  set llm( c: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number; credentials?: Partial<Record<LLMProvider, { apiKey: string; baseUrl?: string }>> } | null ){ this._llm = c }
+  set llm( c: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number; credentials?: Partial<Record<LLMProvider, { apiKey: string; baseUrl?: string }>>; router?: ModelRouter | null } | null ){ this._llm = c }
   /** The executive-role model id (back-compat read). */
   get modelId(): string | null { return this._models.executive }
 
@@ -327,6 +328,10 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         // per-provider map. Prices from that same map ride to the TokenTracker
         // instead, so nothing carries pricing into the call path.
         ...( this._llm?.credentials ? { credentials: this._llm.credentials } : {} ),
+        // Per-call model selection. Every director this Will builds — the
+        // primary and each role-cached one — carries the same router, so a
+        // role-configured facet cannot silently bypass routing.
+        ...( this._llm?.router ? { router: this._llm.router } : {} ),
       } )
       this._directorCache.set( model, d )
     }
@@ -655,7 +660,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       // MODEL_ROUTING W0 — the effort gate already weighed this tick's demand
       // (uncertainty, prior confidence, novelty, a pending reply, stress load);
       // forward it rather than inventing a second measure of the same thing.
-      const masterMeta = { category: 'executive', attribute: 'master', function: 'decision', demand: processSelection.effortScore }
+      const masterMeta: LLMCallMeta = { category: 'executive', attribute: 'master', function: 'decision', demand: processSelection.effortScore }
       const result = this._chunkBroadcaster
         ? await this._llmDirector.callStream( systemPrompt, userMessage, state.tick, this._chunkBroadcaster, undefined, masterMeta )
         : await this._llmDirector.call( systemPrompt, userMessage, state.tick, undefined, masterMeta )

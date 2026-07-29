@@ -1440,6 +1440,12 @@ interface CognitiveEngine extends SimulationEngine {
     restore?(snapshot: Record<string, unknown>): void;
 }
 
+/** Top-level cost bucket for an LLM call. */
+type LLMCallCategory = 'executive' | 'summarizer' | 'embedding' | 'identity-guard';
+/** The actor/subsystem doing the work. */
+type LLMCallAttribute = 'master' | 'facet' | 'memory' | 'guard';
+/** The specific cognitive function being paid for. */
+type LLMCallFunction = 'decision' | 'ideation' | 'deliberation' | 'conversation' | 'outreach' | 'planning' | 'supervision' | 'consolidation' | 'recall' | 'index' | 'identity-coherence';
 /** One attributed ledger record (5-axis attribution + tokens + cost). */
 type TokenLedgerRecord = Record<string, unknown>;
 type TokenRecordListener = (record: TokenLedgerRecord) => void;
@@ -1490,12 +1496,9 @@ interface TokenUsage {
      * zero.
      */
     priced: boolean;
-    /** Top-level cost bucket: 'executive' | 'summarizer' | 'embedding' | 'identity-guard' | … */
-    category: string;
-    /** Actor/subsystem doing the work: 'master' | 'facet' | 'memory' | 'guard' | … */
-    attribute: string;
-    /** Cognitive function: 'decision' | 'ideation' | 'conversation' | 'planning' | 'deliberation' | 'outreach' | 'consolidation' | 'recall' | 'index' | 'identity-coherence' | … */
-    function: string;
+    category: LLMCallCategory;
+    attribute: LLMCallAttribute;
+    function: LLMCallFunction;
     /** Optional specific id or namespace: facet id, entity id, model name. */
     scope?: string;
     /** Human-readable label — auto-composed from the axes when the caller omits it. */
@@ -2836,6 +2839,8 @@ declare class WorkingMemory implements SimulationEngine, CognitiveEngine {
  *   - Mock embedder for testing/deterministic replay
  */
 
+/** Embedding is only ever a read or a write. */
+type EmbedFunction = Extract<LLMCallFunction, 'recall' | 'index'>;
 interface EmbeddingProvider {
     readonly modelName: string;
     readonly dimensions: number;
@@ -2876,8 +2881,8 @@ declare class OpenAICompatibleEmbedder implements EmbeddingProvider {
          */
         tokenTracker?: TokenTracker | null;
     });
-    embed(content: unknown, fn?: string): Promise<number[]>;
-    embedBatch(contents: unknown[], fn?: string): Promise<number[][]>;
+    embed(content: unknown, fn?: EmbedFunction): Promise<number[]>;
+    embedBatch(contents: unknown[], fn?: EmbedFunction): Promise<number[][]>;
     areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
 }
 /**
@@ -2889,8 +2894,8 @@ declare class MockEmbedder implements EmbeddingProvider {
     readonly dimensions = 128;
     private _seed;
     constructor(seed?: number);
-    embed(content: unknown, _fn?: string): Promise<number[]>;
-    embedBatch(contents: unknown[], fn?: string): Promise<number[][]>;
+    embed(content: unknown, _fn?: EmbedFunction): Promise<number[]>;
+    embedBatch(contents: unknown[], fn?: EmbedFunction): Promise<number[][]>;
     areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
     private _hashString;
     private _next;
@@ -3994,12 +3999,12 @@ interface LLMCallResult {
  * here, letting the TokenTracker break spend down per category for transparency.
  */
 interface LLMCallMeta {
-    /** Top-level cost bucket: 'executive' | 'summarizer' | 'embedding' | 'identity-guard' | … */
-    category: string;
-    /** The actor/subsystem doing the work: 'master' | 'facet' | 'memory' | 'guard' | … */
-    attribute: string;
-    /** The specific cognitive function: 'decision' | 'ideation' | 'conversation' | 'planning' | 'deliberation' | 'outreach' | 'consolidation' | 'recall' | 'index' | 'identity-coherence' | … */
-    function: string;
+    /** Top-level cost bucket. */
+    category: LLMCallCategory;
+    /** The actor/subsystem doing the work. */
+    attribute: LLMCallAttribute;
+    /** The specific cognitive function. */
+    function: LLMCallFunction;
     /** Optional specific id or namespace: facet id, entity id, model name. */
     scope?: string;
     /** Free-form human-readable label. Auto-composed from the axes when omitted. */
@@ -4409,7 +4414,7 @@ interface FocusSection {
      * into the facet's LLM calls as `LLMCallMeta.function` so the TokenTracker can
      * break spend down per facet type. Defaults to 'facet' when unset.
      */
-    function?: string;
+    function?: LLMCallFunction;
     /**
      * Optional: Custom output format to append instead of the standard executive format.
      * Pass via PromptBuildOptions.outputFormat when building the user message.
@@ -4601,6 +4606,7 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
             apiKey: string;
             baseUrl?: string;
         }>>;
+        router?: ModelRouter | null;
     } | null);
     /** The executive-role model id (back-compat read). */
     get modelId(): string | null;
@@ -7010,6 +7016,16 @@ interface WillLLMConfig {
      * the simple path; this map is for hosts reaching more than one.
      */
     providers?: Partial<Record<LLMProvider, WillProviderConfig>>;
+    /**
+     * Per-call model selection. Omitted (or NULL_ROUTER) means every call uses
+     * `model` above, exactly as before the seam existed.
+     *
+     * The router sees only the call's attribution — what kind of work it is and
+     * how much the moment demands — never who is paying or what anything costs.
+     * Routes name providers from the `providers` map above; a route to a provider
+     * with no credential falls back to the default rather than failing the call.
+     */
+    router?: ModelRouter | null;
     /**
      * Concrete LLM model id(s) for this Will — a single id for every role, or a
      * per-role map. An explicit WILL_LLM_MODEL env pins the thinking roles

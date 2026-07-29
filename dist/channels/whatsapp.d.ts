@@ -1,4 +1,4 @@
-import { cA as Will } from '../will-DXgAf5Vu.js';
+import { cA as Will } from '../will-96G1fI-K.js';
 import { C as ChannelBridge } from '../types-E9-HV-SW.js';
 
 interface WaLikeMessage {

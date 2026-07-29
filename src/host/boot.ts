@@ -12,9 +12,11 @@
 //   WILL_NAME        display name                    (default "Will")
 //   WILL_IDENTITY    persona prompt                  (default a minimal self)
 //   WILL_TIER        basic | standard | full         (default standard)
-//   WILL_LLM         mock | anthropic | glm          (default: auto — anthropic when
-//                                                     ANTHROPIC_API_KEY is set, glm when
-//                                                     ZAI_API_KEY is, else mock)
+//   WILL_LLM         mock | any provider name        (default: auto — whichever
+//                                                     provider's own key is set,
+//                                                     else the zero-key mock)
+//   WILL_LLM_MODEL   concrete model id               (REQUIRED for a live mind —
+//                                                     the engine has no default)
 //   WILL_TICK_MS     ms per tick                     (default 1000)
 //   WILL_SEED        deterministic seed (testing)    (default unseeded/wall-time)
 //   WILL_PMA_PATH    PMA artifact path               (default ./.will/<name>.pma.json)
@@ -25,10 +27,10 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { setLogger } from '#core/logger'
-import { Will, type CreateWillOptions } from '#sdk/will'
+import { Will, detectProvider, type CreateWillOptions } from '#sdk/will'
 import type { PMASnapshot } from '#pma/index'
 import { connectMcpEffectors, type McpToolsSource } from '#root/mcp/effectors'
-import { anthropicWireHeaders, defaultBaseFor } from '#llm/index'
+import { anthropicWireHeaders, defaultBaseFor, knownWireFor, providerKeyFromEnv, PROVIDER_KEY_ENV, type LLMProvider, type LLMWire } from '#llm/index'
 
 /**
  * Route every engine log line to stderr. For `will mcp`, stdout is the MCP
@@ -47,19 +49,51 @@ function slug( s: string ): string {
 
 /** The LLM mode the hosts will boot with: an explicit WILL_LLM, else whichever
  *  provider's key is present, else the zero-key mock. */
-export function resolveLlmMode(): 'mock' | 'anthropic' | 'glm' {
-  const explicit = process.env.WILL_LLM as 'mock' | 'anthropic' | 'glm' | undefined
-  if( explicit ) return explicit
-  if( process.env.ANTHROPIC_API_KEY ) return 'anthropic'
-  if( process.env.ZAI_API_KEY ) return 'glm'
-  return 'mock'
+export function resolveLlmMode(): 'mock' | LLMProvider {
+  const explicit = process.env.WILL_LLM
+  if( explicit ) return explicit as 'mock' | LLMProvider
+  // The SDK's own detection, not a copy of it. Boot used to know only
+  // anthropic/glm, so once the provider set widened, a Will booting live on
+  // (say) Kimi had its preflight silently skipped — the one check that exists
+  // to stop a mind that boots, perceives, and never speaks.
+  return detectProvider()
 }
 
 /** The key for a live mode — the provider-agnostic override first, then the
  *  provider's own env. */
-function resolveLlmKey( mode: 'anthropic' | 'glm'): string | undefined {
-  return process.env.WILL_LLM_API_KEY
-    ?? ( mode === 'glm' ? process.env.ZAI_API_KEY : process.env.ANTHROPIC_API_KEY )
+function resolveLlmKey( mode: LLMProvider ): string | undefined {
+  return process.env.WILL_LLM_API_KEY ?? providerKeyFromEnv( mode )
+}
+
+/**
+ * The smallest real completion request, in a given wire's dialect.
+ *
+ * `null` means "this wire has no cheap ping here" — the caller raises the mind
+ * unchecked rather than inventing a request shape and reading its rejection as
+ * a broken provider.
+ */
+export function pingRequest(
+  wire: LLMWire, base: string, model: string, key: string, provider: LLMProvider,
+): { url: string; headers: Record<string, string>; body: unknown } | null {
+  const messages = [ { role: 'user', content: 'ping' } ]
+  switch( wire ){
+    case 'anthropic':
+      return {
+        url:     `${ base }/messages`,
+        headers: anthropicWireHeaders( provider, key ),
+        body:    { model, max_tokens: 1, messages },
+      }
+    case 'openai':
+      return {
+        url:     `${ base }/chat/completions`,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ key }` },
+        body:    { model, max_tokens: 1, messages },
+      }
+    // Gemini authenticates in the query string and nests its payload
+    // differently enough that a hand-rolled ping here would drift from the
+    // client that actually makes the calls. Better unchecked than wrong.
+    case 'google': return null
+  }
 }
 
 /**
@@ -83,7 +117,7 @@ async function preflightLLM( anatomy: string ): Promise<void> {
 
   const key = resolveLlmKey( mode )
   if( !key ){
-    const expected = mode === 'glm' ? 'ZAI_API_KEY' : 'ANTHROPIC_API_KEY'
+    const expected = PROVIDER_KEY_ENV[ mode ] ?? 'WILL_LLM_API_KEY'
     console.error(`[will] WILL_LLM=${ mode } but no ${ expected } / WILL_LLM_API_KEY is set.`)
     console.error('[will] The Will would boot, perceive, and never speak. Set a key, or run keyless with WILL_LLM=mock.')
     process.exit( 2 )
@@ -91,8 +125,7 @@ async function preflightLLM( anatomy: string ): Promise<void> {
 
   // The ping validates key + balance + reachability, which is the failure class
   // that strands an operator. It uses the pinned model when there is one, so a
-  // bad model id is caught too; otherwise the cheapest model stands in. GLM
-  // speaks the same wire at Z.ai's compat endpoint, so one ping serves both.
+  // bad model id is caught too.
   const base = process.env.WILL_LLM_BASE_URL ?? defaultBaseFor( mode )
   if( !base ){
     console.error(`[will] WILL_LLM=${ mode } has no known base URL — set WILL_LLM_BASE_URL.`)
@@ -108,11 +141,22 @@ async function preflightLLM( anatomy: string ): Promise<void> {
     console.error('[will] pick one for your provider (e.g. WILL_LLM_MODEL=claude-sonnet-4-5-20250929).')
     process.exit( 2 )
   }
+
+  // Ping in the provider's OWN dialect. This used to be hardcoded to the
+  // Anthropic wire, which was fine when boot knew only anthropic and glm. With
+  // the provider set widened it became a false negative: an OpenAI-wire
+  // provider answers 404 to `/messages`, preflight read that as "the LLM
+  // refused", and a perfectly working Will never got raised.
+  const ping = pingRequest( knownWireFor( mode ) ?? 'openai', base, model, key, mode )
+  if( !ping ){
+    console.error(`[will] no preflight ping for the ${ mode } wire — raising the mind unchecked.`)
+    return
+  }
   try {
-    const res = await fetch(`${ base }/messages`, {
+    const res = await fetch( ping.url, {
       method:  'POST',
-      headers: anthropicWireHeaders( mode, key ),
-      body:    JSON.stringify( { model, max_tokens: 1, messages: [ { role: 'user', content: 'ping' } ] } ),
+      headers: ping.headers,
+      body:    JSON.stringify( ping.body ),
       signal:  AbortSignal.timeout( 20_000 ),
     } )
     if( res.ok ) return

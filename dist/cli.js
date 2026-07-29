@@ -2671,8 +2671,10 @@ var PROVIDER_KEY_ENV = {
 function providerKeyFromEnv(provider) {
   const name = PROVIDER_KEY_ENV[provider];
   if (!name) return void 0;
-  return process.env[name] ?? (provider === "google" ? process.env["GEMINI_API_KEY"] : void 0);
+  const value = nonBlank(process.env[name]) ?? (provider === "google" ? nonBlank(process.env["GEMINI_API_KEY"]) : void 0);
+  return value;
 }
+var nonBlank = (v) => v && v.trim() ? v : void 0;
 function knownWireFor(provider) {
   return KNOWN_PROVIDERS[provider]?.wire;
 }
@@ -26797,16 +26799,8 @@ function detectProvider() {
       );
     return provider;
   }
-  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
-  if (process.env.ZAI_API_KEY) return "glm";
-  if (process.env.DEEPSEEK_API_KEY) return "deepseek";
-  if (process.env.OPENAI_API_KEY) return "openai";
-  if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY) return "google";
-  if (process.env.MOONSHOT_API_KEY) return "moonshot";
-  if (process.env.DASHSCOPE_API_KEY) return "qwen";
-  if (process.env.XAI_API_KEY) return "xai";
-  if (process.env.MINIMAX_API_KEY) return "minimax";
-  if (process.env.MISTRAL_API_KEY) return "mistral";
+  for (const provider of Object.keys(PROVIDER_KEY_ENV))
+    if (providerKeyFromEnv(provider)) return provider;
   return "mock";
 }
 var Will = class _Will {
@@ -27235,19 +27229,39 @@ function slug2(s) {
 function resolveLlmMode() {
   const explicit = process.env.WILL_LLM;
   if (explicit) return explicit;
-  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
-  if (process.env.ZAI_API_KEY) return "glm";
-  return "mock";
+  return detectProvider();
 }
 function resolveLlmKey(mode) {
-  return process.env.WILL_LLM_API_KEY ?? (mode === "glm" ? process.env.ZAI_API_KEY : process.env.ANTHROPIC_API_KEY);
+  return process.env.WILL_LLM_API_KEY ?? providerKeyFromEnv(mode);
+}
+function pingRequest(wire, base, model, key, provider) {
+  const messages = [{ role: "user", content: "ping" }];
+  switch (wire) {
+    case "anthropic":
+      return {
+        url: `${base}/messages`,
+        headers: anthropicWireHeaders(provider, key),
+        body: { model, max_tokens: 1, messages }
+      };
+    case "openai":
+      return {
+        url: `${base}/chat/completions`,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: { model, max_tokens: 1, messages }
+      };
+    // Gemini authenticates in the query string and nests its payload
+    // differently enough that a hand-rolled ping here would drift from the
+    // client that actually makes the calls. Better unchecked than wrong.
+    case "google":
+      return null;
+  }
 }
 async function preflightLLM(anatomy) {
   const mode = resolveLlmMode();
   if (mode === "mock" || anatomy === "reflex") return;
   const key = resolveLlmKey(mode);
   if (!key) {
-    const expected = mode === "glm" ? "ZAI_API_KEY" : "ANTHROPIC_API_KEY";
+    const expected = PROVIDER_KEY_ENV[mode] ?? "WILL_LLM_API_KEY";
     console.error(`[will] WILL_LLM=${mode} but no ${expected} / WILL_LLM_API_KEY is set.`);
     console.error("[will] The Will would boot, perceive, and never speak. Set a key, or run keyless with WILL_LLM=mock.");
     process.exit(2);
@@ -27263,11 +27277,16 @@ async function preflightLLM(anatomy) {
     console.error("[will] pick one for your provider (e.g. WILL_LLM_MODEL=claude-sonnet-4-5-20250929).");
     process.exit(2);
   }
+  const ping = pingRequest(knownWireFor(mode) ?? "openai", base, model, key, mode);
+  if (!ping) {
+    console.error(`[will] no preflight ping for the ${mode} wire \u2014 raising the mind unchecked.`);
+    return;
+  }
   try {
-    const res = await fetch(`${base}/messages`, {
+    const res = await fetch(ping.url, {
       method: "POST",
-      headers: anthropicWireHeaders(mode, key),
-      body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: "user", content: "ping" }] }),
+      headers: ping.headers,
+      body: JSON.stringify(ping.body),
       signal: AbortSignal.timeout(2e4)
     });
     if (res.ok) return;

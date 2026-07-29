@@ -12026,8 +12026,10 @@ var PROVIDER_KEY_ENV = {
 function providerKeyFromEnv(provider) {
   const name = PROVIDER_KEY_ENV[provider];
   if (!name) return void 0;
-  return process.env[name] ?? (provider === "google" ? process.env["GEMINI_API_KEY"] : void 0);
+  const value = nonBlank(process.env[name]) ?? (provider === "google" ? nonBlank(process.env["GEMINI_API_KEY"]) : void 0);
+  return value;
 }
+var nonBlank = (v) => v && v.trim() ? v : void 0;
 function knownWireFor(provider) {
   return KNOWN_PROVIDERS[provider]?.wire;
 }
@@ -27507,16 +27509,8 @@ function detectProvider() {
       );
     return provider;
   }
-  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
-  if (process.env.ZAI_API_KEY) return "glm";
-  if (process.env.DEEPSEEK_API_KEY) return "deepseek";
-  if (process.env.OPENAI_API_KEY) return "openai";
-  if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY) return "google";
-  if (process.env.MOONSHOT_API_KEY) return "moonshot";
-  if (process.env.DASHSCOPE_API_KEY) return "qwen";
-  if (process.env.XAI_API_KEY) return "xai";
-  if (process.env.MINIMAX_API_KEY) return "minimax";
-  if (process.env.MISTRAL_API_KEY) return "mistral";
+  for (const provider of Object.keys(PROVIDER_KEY_ENV))
+    if (providerKeyFromEnv(provider)) return provider;
   return "mock";
 }
 var Will = class _Will {

@@ -95,7 +95,7 @@ export interface WillSummary {
   createdAt:  Date
   lastTickAt: Date | null
   anatomy:    WillConfig['anatomy']
-  model:      WillConfig['model']
+  model:      NonNullable<WillConfig['llm']>['model']
 }
 
 // Re-export WillConfig so the API layer only imports from manager
@@ -289,7 +289,7 @@ export class WillStem {
       willId:     config.id,
       willName:   config.name,
       anatomy:    config.anatomy ?? 'mind',
-      model:      config.model ?? null,
+      model:      config.llm?.model ?? null,
       startedAt:  new Date().toISOString(),
     })
 
@@ -942,7 +942,7 @@ export class WillStem {
       createdAt:  inst.createdAt,
       lastTickAt: inst.lastTickAt,
       anatomy:    inst.config.anatomy ?? 'mind',
-      model:      inst.config.model,
+      model:      inst.config.llm?.model,
     }))
   }
 

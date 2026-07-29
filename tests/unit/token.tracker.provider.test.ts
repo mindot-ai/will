@@ -78,6 +78,28 @@ describe('TokenTracker — per-provider attribution', () => {
     expect( seen[0]!.costUsd ).toBe( 0 )
   } )
 
+  it('records the demand the router saw, so routing can be answered not argued', () => {
+    const t = tracker()
+    const seen: Record<string, unknown>[] = []
+    t.onRecord( r => { seen.push( r ) } )
+    t.recordUsage( usage( { provider: 'anthropic', demand: 0.82, promptTokens: 10 } ) )
+    expect( seen[0]!.demand ).toBe( 0.82 )
+  } )
+
+  it('leaves unmeasured demand undefined — never 0', () => {
+    // A call that reported no demand and a call that reported 0.0 are different
+    // facts. Collapsing them puts a floor of invented confidence under exactly
+    // the analysis this field exists to enable.
+    const t = tracker()
+    const seen: Record<string, unknown>[] = []
+    t.onRecord( r => { seen.push( r ) } )
+    t.recordUsage( usage( { provider: 'anthropic', promptTokens: 10 } ) )          // no demand
+    t.recordUsage( usage( { provider: 'anthropic', demand: 0, promptTokens: 10 } ) ) // measured zero
+
+    expect( seen[0]!.demand ).toBeUndefined()
+    expect( seen[1]!.demand ).toBe( 0 )
+  } )
+
   it('clears provider buckets on reset', () => {
     const t = tracker()
     t.recordUsage( usage( { provider: 'anthropic', completionTokens: 1000 } ) )

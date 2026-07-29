@@ -606,6 +606,9 @@ export class LLMDirector {
       // reached from several vendors at very different prices.
       model:            ep.model,
       provider:         ep.provider,
+      // The router's own input, kept alongside its output. Without this the
+      // ledger records WHERE a call went and never WHY.
+      demand:           meta.demand,
       promptTokens:     result.inputTok,
       completionTokens: result.outputTok,
       totalTokens:      result.inputTok + result.outputTok,

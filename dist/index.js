@@ -11612,7 +11612,11 @@ ${this._facetReasoningHistory.join("\n")}` : "";
       const facetMeta = {
         category: "executive",
         attribute: "facet",
-        function: this._currentFocus?.function ?? "facet",
+        // A focus that declares no function is making its decision call, the
+        // facet's analogue of master's 'decision'. This previously fell back to
+        // 'facet' — an *attribute* value, which quietly created a bogus bucket
+        // in the by-function cost breakdown. The typed axes caught it.
+        function: this._currentFocus?.function ?? "decision",
         scope: this.facetId,
         demand: processSelection.effortScore
       };
@@ -13095,7 +13099,11 @@ var ExecutiveEngine = class extends AsyncEngine {
         // Credentials for routed calls, narrowed by the stem from the host's
         // per-provider map. Prices from that same map ride to the TokenTracker
         // instead, so nothing carries pricing into the call path.
-        ...this._llm?.credentials ? { credentials: this._llm.credentials } : {}
+        ...this._llm?.credentials ? { credentials: this._llm.credentials } : {},
+        // Per-call model selection. Every director this Will builds — the
+        // primary and each role-cached one — carries the same router, so a
+        // role-configured facet cannot silently bypass routing.
+        ...this._llm?.router ? { router: this._llm.router } : {}
       });
       this._directorCache.set(model, d);
     }
@@ -23609,7 +23617,10 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   const accessGrants = new AccessGrants(resolvedEffectorNames);
   const executiveEngine = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5 });
   executiveEngine.willId = willId;
-  executiveEngine.llm = config.llm ? { ...config.llm, ...config.llm.providers ? { credentials: providerCredentials(config.llm.providers) } : {} } : null;
+  executiveEngine.llm = config.llm ? {
+    ...config.llm,
+    ...config.llm.providers ? { credentials: providerCredentials(config.llm.providers) } : {}
+  } : null;
   executiveEngine.models = {
     executive: modelRoles.executive,
     summarizer: modelRoles.summarizer,

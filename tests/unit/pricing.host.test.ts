@@ -8,7 +8,7 @@
 //      billed at some default rate
 // ─────────────────────────────────────────────────────────────
 
-import { describe, it, expect } from 'bun:test'
+import { describe, it, expect } from 'vitest'
 
 import { TokenTracker, resolvePricing, type RecordUsageInput } from '#cognition/utilities/token.tracker'
 import { mergeProviderPrices, providerCredentials } from '#stem/mind'

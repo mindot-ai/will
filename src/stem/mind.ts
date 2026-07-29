@@ -25,6 +25,7 @@ import { validateWillIdentity }  from '#stem/guards/identity.guard'
 import { OutboxWriter } from '#stem/tracts/outbox.writer'
 import { ExecutiveSummarizer } from '#llm/summarizer'
 import type { LLMProvider } from '#llm/index'
+import type { ModelRouter } from '#llm/routing'
 import { resolveProfile } from '#profiles/index'
 import { DefaultVectorMemoryAdapter } from '#memory/vector.adapter'
 import { OpenAICompatibleEmbedder, MockEmbedder } from '#memory/vector.embedder'
@@ -167,6 +168,16 @@ export interface WillLLMConfig {
    * the simple path; this map is for hosts reaching more than one.
    */
   providers?:       Partial<Record<LLMProvider, WillProviderConfig>>
+  /**
+   * Per-call model selection. Omitted (or NULL_ROUTER) means every call uses
+   * `model` above, exactly as before the seam existed.
+   *
+   * The router sees only the call's attribution — what kind of work it is and
+   * how much the moment demands — never who is paying or what anything costs.
+   * Routes name providers from the `providers` map above; a route to a provider
+   * with no credential falls back to the default rather than failing the call.
+   */
+  router?:          ModelRouter | null
   /**
    * Concrete LLM model id(s) for this Will — a single id for every role, or a
    * per-role map. An explicit WILL_LLM_MODEL env pins the thinking roles
@@ -815,7 +826,10 @@ function _constructCognition(
   // Narrow the host's per-provider map to credentials for the call path; the
   // prices from that same map went to the TokenTracker above.
   executiveEngine.llm    = config.llm
-    ? { ...config.llm, ...( config.llm.providers ? { credentials: providerCredentials( config.llm.providers ) } : {} ) }
+    ? {
+        ...config.llm,
+        ...( config.llm.providers ? { credentials: providerCredentials( config.llm.providers ) } : {} ),
+      }
     : null
   executiveEngine.models = {
     executive:    modelRoles.executive,

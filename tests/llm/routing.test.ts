@@ -9,7 +9,7 @@
 //      which is what makes replay survive routing
 // ─────────────────────────────────────────────────────────────
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 import {
   LLMDirector, BACKGROUND_DEMAND, ESCALATION_DEMAND,

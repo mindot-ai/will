@@ -600,9 +600,12 @@ export class LLMDirector {
    */
   private _track( result: LLMCallResult, meta: LLMCallMeta, tick: Tick, latencyMs: number, estPromptTokens?: number, ep: CallEndpoint = this._defaultEndpoint ): void {
     this._tokenTracker?.recordUsage({
-      // The model that actually served this call — routed or default. Pricing
-      // must follow the real model, or routed spend is attributed wrongly.
+      // The endpoint that actually served this call — routed or default.
+      // Pricing must follow the real model, or routed spend is attributed
+      // wrongly; the provider rides along because the same model id can be
+      // reached from several vendors at very different prices.
       model:            ep.model,
+      provider:         ep.provider,
       promptTokens:     result.inputTok,
       completionTokens: result.outputTok,
       totalTokens:      result.inputTok + result.outputTok,

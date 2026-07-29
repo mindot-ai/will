@@ -143,6 +143,19 @@ export function resolvePricing( model: string, hostPrices?: PriceTable ): ModelP
 export interface TokenUsage {
   /** Model identifier (e.g., 'openai/gpt-4o') */
   model: string
+  /**
+   * The provider that actually served this call.
+   *
+   * Not derivable from `model`: routing is what makes the same model id
+   * reachable from several places — `deepseek-v3` direct, through a gateway, or
+   * self-hosted — at prices that differ by orders of magnitude. Without this a
+   * host billing across a multi-vendor routing table can attribute spend to a
+   * model but never to the vendor it actually paid.
+   *
+   * Optional because a caller recording usage directly (outside the LLM
+   * director) may not know it; absent means unattributed, not "the default".
+   */
+  provider?: string
   /** Input/prompt tokens consumed */
   promptTokens: number
   /** Output/completion tokens consumed */
@@ -232,6 +245,11 @@ export class TokenTracker implements SimulationEngine {
   private _categoryTokens = new Map<string, { prompt: number; completion: number }>()
   private _functionCosts  = new Map<string, number>()
   private _functionTokens = new Map<string, { prompt: number; completion: number }>()
+  // Per-provider spend. The axis a host actually reconciles against invoices —
+  // "which vendor did we pay?" is not answerable from the model id once routing
+  // can reach one model through several of them.
+  private _providerCosts  = new Map<string, number>()
+  private _providerTokens = new Map<string, { prompt: number; completion: number }>()
 
   // Per-tick costs (for spike detection)
   private _tickCosts: number[] = []
@@ -302,6 +320,9 @@ export class TokenTracker implements SimulationEngine {
     // Per-axis breakdowns — the repartition surface (category × function).
     this._accumulate( this._categoryCosts, this._categoryTokens, full.category, full )
     this._accumulate( this._functionCosts, this._functionTokens, full.function, full )
+    // Unattributed rather than guessed: a caller that did not say which
+    // provider served the call must not be silently folded into the default.
+    this._accumulate( this._providerCosts, this._providerTokens, full.provider ?? 'unattributed', full )
 
     // Complete attributed ledger record (every call, all axes + cost): notify
     // record listeners (the stem forwards them onto the transport) and mirror to
@@ -326,6 +347,7 @@ export class TokenTracker implements SimulationEngine {
       tick:          full.tick,
       ts:            new Date( wallClock() ).toISOString(), // determinism-ok: ledger timestamp is telemetry, never replay state
       model:         full.model,
+      provider:      full.provider,
       category:      full.category,
       attribute:     full.attribute,
       function:      full.function,
@@ -480,6 +502,24 @@ export class TokenTracker implements SimulationEngine {
     return this._functionTokens
   }
 
+  /**
+   * Cost broken down by provider ('anthropic' | 'glm' | 'moonshot' | …), plus
+   * an `unattributed` bucket for usage recorded without one.
+   *
+   * This is the axis a host reconciles against vendor invoices. Calls whose
+   * model went unpriced contribute 0 here, so compare against
+   * `getUsageLog()`'s `priced` flag before treating a small number as a small
+   * bill.
+   */
+  get providerBreakdown(): ReadonlyMap<string, number> {
+    return this._providerCosts
+  }
+
+  /** Token counts (prompt + completion) broken down by provider. */
+  get providerTokenBreakdown(): ReadonlyMap<string, { prompt: number; completion: number }> {
+    return this._providerTokens
+  }
+
   /** Cost per call average */
   get averageCostPerCall(): number {
     if( this._usageLog.length === 0 ) return 0
@@ -514,6 +554,8 @@ export class TokenTracker implements SimulationEngine {
     this._categoryTokens.clear()
     this._functionCosts.clear()
     this._functionTokens.clear()
+    this._providerCosts.clear()
+    this._providerTokens.clear()
     this._tickCosts = []
   }
 

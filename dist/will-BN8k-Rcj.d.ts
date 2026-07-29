@@ -1481,6 +1481,19 @@ declare function resolvePricing(model: string, hostPrices?: PriceTable): ModelPr
 interface TokenUsage {
     /** Model identifier (e.g., 'openai/gpt-4o') */
     model: string;
+    /**
+     * The provider that actually served this call.
+     *
+     * Not derivable from `model`: routing is what makes the same model id
+     * reachable from several places — `deepseek-v3` direct, through a gateway, or
+     * self-hosted — at prices that differ by orders of magnitude. Without this a
+     * host billing across a multi-vendor routing table can attribute spend to a
+     * model but never to the vendor it actually paid.
+     *
+     * Optional because a caller recording usage directly (outside the LLM
+     * director) may not know it; absent means unattributed, not "the default".
+     */
+    provider?: string;
     /** Input/prompt tokens consumed */
     promptTokens: number;
     /** Output/completion tokens consumed */
@@ -1552,6 +1565,8 @@ declare class TokenTracker implements SimulationEngine {
     private _categoryTokens;
     private _functionCosts;
     private _functionTokens;
+    private _providerCosts;
+    private _providerTokens;
     private _tickCosts;
     private _maxTickCostSamples;
     private _lastCostWarningTick;
@@ -1593,6 +1608,21 @@ declare class TokenTracker implements SimulationEngine {
     get functionBreakdown(): ReadonlyMap<string, number>;
     /** Token counts (prompt + completion) broken down by function. */
     get functionTokenBreakdown(): ReadonlyMap<string, {
+        prompt: number;
+        completion: number;
+    }>;
+    /**
+     * Cost broken down by provider ('anthropic' | 'glm' | 'moonshot' | …), plus
+     * an `unattributed` bucket for usage recorded without one.
+     *
+     * This is the axis a host reconciles against vendor invoices. Calls whose
+     * model went unpriced contribute 0 here, so compare against
+     * `getUsageLog()`'s `priced` flag before treating a small number as a small
+     * bill.
+     */
+    get providerBreakdown(): ReadonlyMap<string, number>;
+    /** Token counts (prompt + completion) broken down by provider. */
+    get providerTokenBreakdown(): ReadonlyMap<string, {
         prompt: number;
         completion: number;
     }>;

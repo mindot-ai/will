@@ -139,6 +139,24 @@ be enacted, what happened is evidenced, and why it happened can be re-derived.
 **Community-facing outcome:** an anchored record you can verify yourself, with
 a CLI, independent of any hosted service.
 
+### Per-call model routing
+
+One Will currently sends every call to one model — the master's decision, each
+facet, the propose pass, the rolling summariser, the identity guard. Those are
+not the same cognitive act and need not be the same inference.
+
+The engine now tags each call with how much it *demands* (0..1), taken from the
+same a-priori effort gate that already decides fast-vs-deliberate, and exposes a
+`ModelRouter` seam so a host can send each call where it belongs — including to
+a self-hosted or local model.
+
+**What the engine knows:** whether a moment is routine or consequential. **What
+it will never know:** who is paying, or what anything costs them. Routing policy
+is host configuration; the engine ships the mechanism and a reference
+table-driven router, never a table of its own.
+
+Unconfigured, this is inert: a Will with no router behaves exactly as before.
+
 ### Determinism test harness
 
 Making replay-equivalence something contributors can run and extend, not just

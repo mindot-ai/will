@@ -593,7 +593,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         ideationUserMessage,
         tick: state.tick,
         proposeTemperature,
-        meta: { category: 'executive', attribute: 'master', function: 'ideation' },
+        meta: { category: 'executive', attribute: 'master', function: 'ideation', demand: processSelection.effortScore },
       } )
       logger.info(
         `[executive] ◆ deliberate propose tick=${state.tick}  ` +
@@ -646,7 +646,10 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
     try {
       // Use streaming call when clients are connected (F3); fall back to regular call.
-      const masterMeta = { category: 'executive', attribute: 'master', function: 'decision' }
+      // MODEL_ROUTING W0 — the effort gate already weighed this tick's demand
+      // (uncertainty, prior confidence, novelty, a pending reply, stress load);
+      // forward it rather than inventing a second measure of the same thing.
+      const masterMeta = { category: 'executive', attribute: 'master', function: 'decision', demand: processSelection.effortScore }
       const result = this._chunkBroadcaster
         ? await this._llmDirector.callStream( systemPrompt, userMessage, state.tick, this._chunkBroadcaster, undefined, masterMeta )
         : await this._llmDirector.call( systemPrompt, userMessage, state.tick, undefined, masterMeta )

@@ -11567,7 +11567,7 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         ideationUserMessage,
         tick: currentState.tick,
         proposeTemperature,
-        meta: { category: "executive", attribute: "facet", function: this._currentFocus?.function ?? "ideation", scope: this.facetId }
+        meta: { category: "executive", attribute: "facet", function: this._currentFocus?.function ?? "ideation", scope: this.facetId, demand: processSelection.effortScore }
       });
       logger.info(
         `[executive.facet] ${this.facetId} \u25C6 deliberate propose tick=${currentState.tick}  candidates=${ideationCandidates?.length ?? 0}  temp=${proposeTemperature.toFixed(2)}`
@@ -11603,7 +11603,8 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         category: "executive",
         attribute: "facet",
         function: this._currentFocus?.function ?? "facet",
-        scope: this.facetId
+        scope: this.facetId,
+        demand: processSelection.effortScore
       };
       const result = this._chunkHandler ? await this._llmDirector.callStream(systemPrompt, userMessage, currentState.tick, this._chunkHandler, void 0, facetMeta) : await this._llmDirector.call(systemPrompt, userMessage, currentState.tick, void 0, facetMeta);
       output = parseResponse(result.text, currentState, []);
@@ -11877,6 +11878,13 @@ function updateGatingState(gs, state, _tick, didActivate, cleanedBuffer) {
     gs.lastExecutiveTick = _tick;
 }
 
+// src/llm/routing.ts
+var NULL_ROUTER = {
+  };
+function isNullRouter(router) {
+  return !router || router === NULL_ROUTER;
+}
+
 // src/llm/gate.ts
 var MAX_CONCURRENT = parseInt(process.env.WILL_LLM_CONCURRENCY ?? "2");
 var maxRetries = () => parseInt(process.env.WILL_LLM_MAX_RETRIES ?? "4");
@@ -11979,6 +11987,7 @@ function anthropicWireHeaders(provider, apiKey) {
     ...provider === "glm" ? { Authorization: `Bearer ${apiKey}` } : {}
   };
 }
+var BACKGROUND_DEMAND = 0.1;
 var DEFAULT_CALL_META = { category: "executive", attribute: "master", function: "decision" };
 var LLMDirector = class {
   _willId;
@@ -11991,6 +12000,12 @@ var LLMDirector = class {
   _baseUrl;
   _timeoutMs;
   _tokenTracker;
+  _router;
+  _credentials;
+  /** Default endpoint — what every call used before the routing seam existed. */
+  _defaultEndpoint;
+  /** Routes already warned about (missing credential / bad provider) — log once. */
+  _routeWarned = /* @__PURE__ */ new Set();
   constructor(config) {
     this._willId = config.willId;
     this._model = config.model;
@@ -12002,6 +12017,55 @@ var LLMDirector = class {
     this._baseUrl = config.baseUrl ?? null;
     this._timeoutMs = config.timeoutMs ?? 9e4;
     this._tokenTracker = config.tokenTracker ?? null;
+    this._router = config.router ?? null;
+    this._credentials = config.credentials ?? {};
+    this._defaultEndpoint = {
+      provider: this._provider,
+      model: this._model,
+      apiKey: this._apiKey,
+      baseUrl: this._baseUrl,
+      maxOutputTokens: this._maxOutputTokens
+    };
+  }
+  /**
+   * Resolve which model serves this call. Falls back to the default endpoint
+   * whenever the router has no opinion, throws, or names a provider we hold no
+   * credential for — degrade, never crash.
+   */
+  _resolveEndpoint(meta) {
+    if (isNullRouter(this._router)) return this._defaultEndpoint;
+    let route;
+    try {
+      route = this._router.route(meta);
+    } catch (err) {
+      this._warnRouteOnce(
+        `throw:${this._router.name}`,
+        `router "${this._router.name}" threw \u2014 using the default model`,
+        err
+      );
+      return this._defaultEndpoint;
+    }
+    if (!route) return this._defaultEndpoint;
+    const cred = route.provider === this._defaultEndpoint.provider ? { apiKey: this._defaultEndpoint.apiKey, baseUrl: this._defaultEndpoint.baseUrl ?? void 0 } : this._credentials[route.provider];
+    if (!cred?.apiKey) {
+      this._warnRouteOnce(
+        `cred:${route.provider}`,
+        `no credential for routed provider "${route.provider}" \u2014 using the default model`
+      );
+      return this._defaultEndpoint;
+    }
+    return {
+      provider: route.provider,
+      model: route.model,
+      apiKey: cred.apiKey,
+      baseUrl: route.baseUrl ?? cred.baseUrl ?? null,
+      maxOutputTokens: route.maxOutputTokens ?? this._defaultEndpoint.maxOutputTokens
+    };
+  }
+  _warnRouteOnce(key, message, err) {
+    if (this._routeWarned.has(key)) return;
+    this._routeWarned.add(key);
+    logger.warn(`[llm.routing] ${message}`, err instanceof Error ? err.message : "");
   }
   // ── Mock response (test mode) ────────────────────────────
   /**
@@ -12076,18 +12140,19 @@ var LLMDirector = class {
       if (!replay.mock) onChunk(replay.text);
       return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok };
     }
+    const ep = this._resolveEndpoint(meta);
     if (this._mock) {
       const result2 = this._mockResponse(tick, userMessage);
-      this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - start, true);
+      this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - start, true, ep);
       return result2;
     }
-    const result = speaksAnthropicWire(this._provider) ? await this._callAnthropicStream(systemPrompt, userMessage, onChunk, temperature) : await (async () => {
-      const r = await this._callProvider(systemPrompt, userMessage, temperature);
+    const result = speaksAnthropicWire(ep.provider) ? await this._callAnthropicStream(ep, systemPrompt, userMessage, onChunk, temperature) : await (async () => {
+      const r = await this._callProvider(ep, systemPrompt, userMessage, temperature);
       onChunk(r.text);
       return r;
     })();
-    this._track(result, meta, tick, Date.now() - start, this._estPromptTokens(systemPrompt, userMessage));
-    this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - start, false);
+    this._track(result, meta, tick, Date.now() - start, this._estPromptTokens(systemPrompt, userMessage), ep);
+    this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - start, false, ep);
     return result;
   }
   /**
@@ -12096,9 +12161,11 @@ var LLMDirector = class {
    * mock/replay directors, so the call is simply skipped. Cache read/write tokens
    * are forwarded so the tracker prices them at 0.1× / 1.25× input.
    */
-  _track(result, meta, tick, latencyMs, estPromptTokens) {
+  _track(result, meta, tick, latencyMs, estPromptTokens, ep = this._defaultEndpoint) {
     this._tokenTracker?.recordUsage({
-      model: this._model,
+      // The model that actually served this call — routed or default. Pricing
+      // must follow the real model, or routed spend is attributed wrongly.
+      model: ep.model,
       promptTokens: result.inputTok,
       completionTokens: result.outputTok,
       totalTokens: result.inputTok + result.outputTok,
@@ -12124,14 +12191,16 @@ var LLMDirector = class {
    * The LLM is the non-deterministic oracle; recording its input+output is the
    * prerequisite for deterministic re-execution (REORIENT R2, deferred).
    */
-  _recordCompletion(systemPrompt, userMessage, tick, result, latencyMs, mock) {
+  _recordCompletion(systemPrompt, userMessage, tick, result, latencyMs, mock, ep = this._defaultEndpoint) {
     try {
       getCompletionRecorder(this._willId)?.recordCompletion({
         tick,
         willId: this._willId,
-        provider: this._provider,
-        model: this._model,
-        maxOutputTokens: this._maxOutputTokens,
+        // Record the endpoint that actually served the call: the tape is what
+        // replay re-feeds, so it must say which model produced this text.
+        provider: ep.provider,
+        model: ep.model,
+        maxOutputTokens: ep.maxOutputTokens,
         systemPrompt,
         userMessage,
         text: result.text,
@@ -12154,17 +12223,17 @@ var LLMDirector = class {
   _replayCompletion(systemPrompt, userMessage, tick) {
     return getCompletionSource(this._willId)?.nextCompletion(tick, systemPrompt, userMessage);
   }
-  async _callAnthropicStream(systemPrompt, userMessage, onChunk, temperature) {
+  async _callAnthropicStream(ep, systemPrompt, userMessage, onChunk, temperature) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this._timeoutMs);
     let res;
     try {
-      res = await fetch(`${this._resolvedBase()}/messages`, {
+      res = await fetch(`${this._resolvedBase(ep)}/messages`, {
         method: "POST",
-        headers: anthropicWireHeaders(this._provider, this._apiKey),
+        headers: anthropicWireHeaders(ep.provider, ep.apiKey),
         body: JSON.stringify({
-          model: this._model,
-          max_tokens: this._maxOutputTokens,
+          model: ep.model,
+          max_tokens: ep.maxOutputTokens,
           ...temperature !== void 0 ? { temperature } : {},
           stream: true,
           system: this._systemField(systemPrompt),
@@ -12175,7 +12244,7 @@ var LLMDirector = class {
     } catch (err) {
       clearTimeout(timer);
       if (controller.signal.aborted)
-        throw new Error(`LLM stream to ${this._provider} timed out after ${this._timeoutMs}ms (no response)`);
+        throw new Error(`LLM stream to ${ep.provider} timed out after ${this._timeoutMs}ms (no response)`);
       throw err;
     }
     clearTimeout(timer);
@@ -12230,34 +12299,35 @@ var LLMDirector = class {
     const replay = this._replayCompletion(systemPrompt, userMessage, tick);
     if (replay)
       return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok };
+    const ep = this._resolveEndpoint(meta);
     if (this._mock) {
       const result2 = this._mockResponse(tick, userMessage);
-      this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - llmStart, true);
+      this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - llmStart, true, ep);
       return result2;
     }
     const result = await withGate(
-      () => speaksAnthropicWire(this._provider) ? this._callAnthropicStream(systemPrompt, userMessage, () => {
-      }, temperature) : this._callProvider(systemPrompt, userMessage, temperature),
+      () => speaksAnthropicWire(ep.provider) ? this._callAnthropicStream(ep, systemPrompt, userMessage, () => {
+      }, temperature) : this._callProvider(ep, systemPrompt, userMessage, temperature),
       "executive/direct"
     );
-    this._track(result, meta, tick, Date.now() - llmStart, this._estPromptTokens(systemPrompt, userMessage));
-    this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - llmStart, false);
+    this._track(result, meta, tick, Date.now() - llmStart, this._estPromptTokens(systemPrompt, userMessage), ep);
+    this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - llmStart, false, ep);
     return result;
   }
-  _callProvider(systemPrompt, userMessage, temperature) {
-    switch (this._provider) {
+  _callProvider(ep, systemPrompt, userMessage, temperature) {
+    switch (ep.provider) {
       case "anthropic":
-        return this._callAnthropic(systemPrompt, userMessage, temperature);
+        return this._callAnthropic(ep, systemPrompt, userMessage, temperature);
       case "glm":
-        return this._callAnthropic(systemPrompt, userMessage, temperature);
+        return this._callAnthropic(ep, systemPrompt, userMessage, temperature);
       case "deepseek":
-        return this._callOpenAI(systemPrompt, userMessage, temperature);
+        return this._callOpenAI(ep, systemPrompt, userMessage, temperature);
       case "openai":
-        return this._callOpenAI(systemPrompt, userMessage, temperature);
+        return this._callOpenAI(ep, systemPrompt, userMessage, temperature);
       case "google":
-        return this._callGoogle(systemPrompt, userMessage, temperature);
+        return this._callGoogle(ep, systemPrompt, userMessage, temperature);
       default:
-        throw new Error(`Unknown LLM provider: ${this._provider}`);
+        throw new Error(`Unknown LLM provider: ${ep.provider}`);
     }
   }
   /** Default API base URL (including version segment) for a provider. */
@@ -12265,8 +12335,8 @@ var LLMDirector = class {
     return defaultBaseFor(provider);
   }
   /** Resolved API base: explicit override wins, else the provider default. */
-  _resolvedBase() {
-    return this._baseUrl ?? this._baseFor(this._provider);
+  _resolvedBase(ep) {
+    return ep.baseUrl ?? this._baseFor(ep.provider);
   }
   /**
    * fetch() with a hard per-request deadline. A hung connection is aborted
@@ -12292,21 +12362,21 @@ var LLMDirector = class {
   _systemField(systemPrompt) {
     return [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }];
   }
-  async _callAnthropic(systemPrompt, userMessage, temperature) {
+  async _callAnthropic(ep, systemPrompt, userMessage, temperature) {
     const body = {
-      model: this._model,
-      max_tokens: this._maxOutputTokens,
+      model: ep.model,
+      max_tokens: ep.maxOutputTokens,
       ...temperature !== void 0 ? { temperature } : {},
       system: this._systemField(systemPrompt),
       messages: [{ role: "user", content: userMessage }]
     };
-    const res = await this._fetchWithTimeout(`${this._resolvedBase()}/messages`, {
+    const res = await this._fetchWithTimeout(`${this._resolvedBase(ep)}/messages`, {
       method: "POST",
-      headers: anthropicWireHeaders(this._provider, this._apiKey),
+      headers: anthropicWireHeaders(ep.provider, ep.apiKey),
       body: JSON.stringify(body)
     });
     if (!res.ok)
-      throw new Error(`${this._provider} API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      throw new Error(`${ep.provider} API ${res.status}: ${(await res.text()).slice(0, 300)}`);
     const data = await res.json(), text = data.content.find((b) => b.type === "text")?.text ?? "";
     return {
       text,
@@ -12316,21 +12386,21 @@ var LLMDirector = class {
       cacheWriteTok: data.usage.cache_creation_input_tokens ?? 0
     };
   }
-  async _callOpenAI(systemPrompt, userMessage, temperature) {
+  async _callOpenAI(ep, systemPrompt, userMessage, temperature) {
     const body = {
-      model: this._model,
-      max_completion_tokens: this._maxOutputTokens,
+      model: ep.model,
+      max_completion_tokens: ep.maxOutputTokens,
       ...temperature !== void 0 ? { temperature } : {},
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage }
       ]
     };
-    const res = await this._fetchWithTimeout(`${this._resolvedBase()}/chat/completions`, {
+    const res = await this._fetchWithTimeout(`${this._resolvedBase(ep)}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${this._apiKey}`
+        "Authorization": `Bearer ${ep.apiKey}`
       },
       body: JSON.stringify(body)
     });
@@ -12343,22 +12413,22 @@ var LLMDirector = class {
       outputTok: data.usage.completion_tokens
     };
   }
-  async _callGoogle(systemPrompt, userMessage, temperature) {
+  async _callGoogle(ep, systemPrompt, userMessage, temperature) {
     const body = {
       systemInstruction: { parts: [{ text: systemPrompt }] },
       contents: [{ role: "user", parts: [{ text: userMessage }] }],
       generationConfig: {
-        maxOutputTokens: this._maxOutputTokens,
+        maxOutputTokens: ep.maxOutputTokens,
         ...temperature !== void 0 ? { temperature } : {}
       }
     };
     const res = await this._fetchWithTimeout(
-      `${this._resolvedBase()}/models/${this._model}:generateContent`,
+      `${this._resolvedBase(ep)}/models/${ep.model}:generateContent`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-goog-api-key": this._apiKey
+          "x-goog-api-key": ep.apiKey
         },
         body: JSON.stringify(body)
       }
@@ -13187,7 +13257,7 @@ var ExecutiveEngine = class extends AsyncEngine {
         ideationUserMessage,
         tick: state.tick,
         proposeTemperature,
-        meta: { category: "executive", attribute: "master", function: "ideation" }
+        meta: { category: "executive", attribute: "master", function: "ideation", demand: processSelection.effortScore }
       });
       logger.info(
         `[executive] \u25C6 deliberate propose tick=${state.tick}  candidates=${ideationCandidates?.length ?? 0}  temp=${proposeTemperature.toFixed(2)}  latency=${wallClock() - ideationStart}ms`
@@ -13229,7 +13299,7 @@ var ExecutiveEngine = class extends AsyncEngine {
     const llmStart = wallClock();
     let executiveOutput;
     try {
-      const masterMeta = { category: "executive", attribute: "master", function: "decision" };
+      const masterMeta = { category: "executive", attribute: "master", function: "decision", demand: processSelection.effortScore };
       const result = this._chunkBroadcaster ? await this._llmDirector.callStream(systemPrompt, userMessage, state.tick, this._chunkBroadcaster, void 0, masterMeta) : await this._llmDirector.call(systemPrompt, userMessage, state.tick, void 0, masterMeta);
       logger.info(
         `[executive] \u2713 tick=${state.tick}  in=${result.inputTok} tok  out=${result.outputTok} tok  latency=${wallClock() - llmStart}ms`
@@ -21791,7 +21861,10 @@ ${r}`).join("\n\n---\n\n");
         userMessage,
         this._callCount,
         void 0,
-        { category: "summarizer", attribute: "memory", function: "consolidation" }
+        // MODEL_ROUTING W0 — compression is background work at a constant low
+        // demand: distilling excerpts is the same job whether the mind is calm
+        // or in crisis, so there is no honest per-tick measure to forward here.
+        { category: "summarizer", attribute: "memory", function: "consolidation", demand: BACKGROUND_DEMAND }
       );
       if (result.text) {
         this._summary = result.text.trim();
@@ -23784,7 +23857,7 @@ function resolveExecutiveInterval(config) {
 }
 
 // src/stem/guards/identity.coherence.ts
-var COHERENCE_META = { category: "identity-guard", attribute: "guard", function: "identity-coherence" };
+var COHERENCE_META = { category: "identity-guard", attribute: "guard", function: "identity-coherence", demand: BACKGROUND_DEMAND };
 var VALID_KINDS = /* @__PURE__ */ new Set(["contradiction", "false-capability", "injection", "incoherence", "other"]);
 var SYSTEM_PROMPT = `You are a safety reviewer of profile/persona inputs for, an autonomous synthetic-mind (Called Wills) platform.
 A Will is an EMBODIED cognitive system: it has continuous physiological state (energy, sleep, stress), affect, memory and goals, and it perceives the world through text/conversation. It is NOT a stateless assistant and NOT a generic chatbot.

@@ -7,6 +7,7 @@ import type { Tick } from '#core/types'
 import type { SessionLogger } from '#stem/tracts/session.logger'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import type { TokenTracker } from '#cognition/utilities/token.tracker'
+import { type ModelRouter, isNullRouter } from '#llm/routing'
 import { getCompletionRecorder, getCompletionSource } from '#core/completion.recorder'
 import type { LLMCompletionRecord } from '#core/completion.recorder'
 import { withGate } from '#llm/gate'
@@ -103,6 +104,33 @@ export interface LLMDirectorConfig {
    * replay runs). This replaces the former process-global getTokenTracker().
    */
   tokenTracker?: TokenTracker | null
+  /**
+   * MODEL_ROUTING W3 — per-call model selection. Absent (or NULL_ROUTER) means
+   * every call uses the default model below, exactly as before the seam existed.
+   * A router that throws, or names a provider with no usable credential, falls
+   * back to the default: a routing problem must never kill a running mind.
+   */
+  router?: ModelRouter | null
+  /**
+   * Per-provider credentials for routed calls. The top-level `apiKey`/`baseUrl`
+   * remain the default entry; a route to a provider absent from this map falls
+   * back to the default endpoint.
+   */
+  credentials?: Partial<Record<LLMProvider, { apiKey: string; baseUrl?: string }>>
+}
+
+/**
+ * Everything a single call needs to reach a model. Resolved once per call and
+ * threaded through the provider methods — never stored on the instance, because
+ * the concurrency gate lets several calls be in flight on one director at once
+ * and per-call state on `this` would race between them.
+ */
+export interface CallEndpoint {
+  provider:        LLMProvider
+  model:           string
+  apiKey:          string
+  baseUrl:         string | null
+  maxOutputTokens: number
 }
 
 // ── LLM call result ──────────────────────────────────────────
@@ -134,7 +162,36 @@ export interface LLMCallMeta {
   scope?: string
   /** Free-form human-readable label. Auto-composed from the axes when omitted. */
   label?: string
+  /**
+   * How much this call demands, 0..1 — MODEL_ROUTING W0.
+   *
+   * A *cognitive* measure, never a commercial one: it says how consequential or
+   * uncertain this moment is, never who is paying for it. Two faculties already
+   * compute it and simply forward what they have — the master and its facets
+   * pass `effortScore` (the a-priori effort gate: uncertainty, prior
+   * confidence, novelty, a pending reply, stress load), and deliberation passes
+   * the agency stakes of the choice under consideration. Structurally
+   * background work (summarising, guarding, embedding, delivery) reports a low
+   * constant, because it is background whether the mind is calm or in crisis.
+   *
+   * Absent means UNKNOWN, not zero: a consumer must fall back to its default
+   * rather than treat a missing value as "cheapest possible".
+   *
+   * This field is inert with respect to cognition. It rides along to whoever
+   * resolves the model for a call; no engine may read it back and behave
+   * differently, or the routing layer becomes a hidden input to the mind.
+   */
+  demand?: number
 }
+
+/** Structurally background work — see `LLMCallMeta.demand`. */
+export const BACKGROUND_DEMAND = 0.1
+
+/**
+ * Escalation is elevated by construction: the buffer only fires once something
+ * has already failed to resolve on its own.
+ */
+export const ESCALATION_DEMAND = 0.7
 
 /** Default attribution when a caller does not tag itself (back-compat). */
 const DEFAULT_CALL_META: LLMCallMeta = { category: 'executive', attribute: 'master', function: 'decision' }
@@ -150,6 +207,12 @@ export class LLMDirector {
   private _baseUrl: string | null
   private _timeoutMs: number
   private _tokenTracker: TokenTracker | null
+  private _router: ModelRouter | null
+  private _credentials: Partial<Record<LLMProvider, { apiKey: string; baseUrl?: string }>>
+  /** Default endpoint — what every call used before the routing seam existed. */
+  private _defaultEndpoint: CallEndpoint
+  /** Routes already warned about (missing credential / bad provider) — log once. */
+  private _routeWarned = new Set<string>()
 
   constructor( config: LLMDirectorConfig ) {
     this._willId = config.willId
@@ -162,6 +225,59 @@ export class LLMDirector {
     this._baseUrl = config.baseUrl ?? null
     this._timeoutMs = config.timeoutMs ?? 90_000
     this._tokenTracker = config.tokenTracker ?? null
+    this._router = config.router ?? null
+    this._credentials = config.credentials ?? {}
+    this._defaultEndpoint = {
+      provider:        this._provider,
+      model:           this._model,
+      apiKey:          this._apiKey,
+      baseUrl:         this._baseUrl,
+      maxOutputTokens: this._maxOutputTokens,
+    }
+  }
+
+  /**
+   * Resolve which model serves this call. Falls back to the default endpoint
+   * whenever the router has no opinion, throws, or names a provider we hold no
+   * credential for — degrade, never crash.
+   */
+  private _resolveEndpoint( meta: LLMCallMeta ): CallEndpoint {
+    if( isNullRouter( this._router ) ) return this._defaultEndpoint
+
+    let route
+    try { route = this._router!.route( meta ) }
+    catch( err ){
+      this._warnRouteOnce(`throw:${this._router!.name}`,
+        `router "${this._router!.name}" threw — using the default model`, err )
+      return this._defaultEndpoint
+    }
+    if( !route ) return this._defaultEndpoint
+
+    // The default provider's credential is reused when the route names it;
+    // otherwise the route needs its own entry.
+    const cred = route.provider === this._defaultEndpoint.provider
+      ? { apiKey: this._defaultEndpoint.apiKey, baseUrl: this._defaultEndpoint.baseUrl ?? undefined }
+      : this._credentials[ route.provider ]
+
+    if( !cred?.apiKey ){
+      this._warnRouteOnce(`cred:${route.provider}`,
+        `no credential for routed provider "${route.provider}" — using the default model` )
+      return this._defaultEndpoint
+    }
+
+    return {
+      provider:        route.provider,
+      model:           route.model,
+      apiKey:          cred.apiKey,
+      baseUrl:         route.baseUrl ?? cred.baseUrl ?? null,
+      maxOutputTokens: route.maxOutputTokens ?? this._defaultEndpoint.maxOutputTokens,
+    }
+  }
+
+  private _warnRouteOnce( key: string, message: string, err?: unknown ): void {
+    if( this._routeWarned.has( key ) ) return
+    this._routeWarned.add( key )
+    logger.warn(`[llm.routing] ${message}`, err instanceof Error ? err.message : '')
   }
 
   // ── Mock response (test mode) ────────────────────────────
@@ -268,20 +384,27 @@ export class LLMDirector {
       return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok }
     }
 
+    // MODEL_ROUTING W3 — resolve once, then thread it: several calls can be in
+    // flight on this director at once, so the endpoint must travel with the call
+    // rather than live on `this`. Resolved before the mock branch so a mock run
+    // records the endpoint that WOULD have served the call — the tape then says
+    // the same thing in mock and live runs.
+    const ep = this._resolveEndpoint( meta )
+
     if( this._mock ){
       const result = this._mockResponse( tick, userMessage )
       // In mock mode we don't stream raw internal text — the response will be
       // emitted from the outbox content by the SSE layer.  onChunk is intentionally
       // not called here so no internal [REPLY] / JSON format leaks to the client.
-      this._recordCompletion( systemPrompt, userMessage, tick, result, Date.now() - start, true )
+      this._recordCompletion( systemPrompt, userMessage, tick, result, Date.now() - start, true, ep )
       return result
     }
 
-    const result = speaksAnthropicWire( this._provider )
-      ? await this._callAnthropicStream( systemPrompt, userMessage, onChunk, temperature )
+    const result = speaksAnthropicWire( ep.provider )
+      ? await this._callAnthropicStream( ep, systemPrompt, userMessage, onChunk, temperature )
       : await ( async () => {
           // Other providers: fall back to regular call, emit whole response as one chunk
-          const r = await this._callProvider( systemPrompt, userMessage, temperature )
+          const r = await this._callProvider( ep, systemPrompt, userMessage, temperature )
           onChunk( r.text )
           return r
         } )()
@@ -289,8 +412,8 @@ export class LLMDirector {
     // Token tracking lives here too: streamed calls (conversation facets, the
     // master when broadcasting) previously bypassed the tracker entirely, so all
     // streamed spend was invisible. Record it with the caller's attribution.
-    this._track( result, meta, tick, Date.now() - start, this._estPromptTokens( systemPrompt, userMessage ) )
-    this._recordCompletion( systemPrompt, userMessage, tick, result, Date.now() - start, false )
+    this._track( result, meta, tick, Date.now() - start, this._estPromptTokens( systemPrompt, userMessage ), ep )
+    this._recordCompletion( systemPrompt, userMessage, tick, result, Date.now() - start, false, ep )
     return result
   }
 
@@ -300,9 +423,11 @@ export class LLMDirector {
    * mock/replay directors, so the call is simply skipped. Cache read/write tokens
    * are forwarded so the tracker prices them at 0.1× / 1.25× input.
    */
-  private _track( result: LLMCallResult, meta: LLMCallMeta, tick: Tick, latencyMs: number, estPromptTokens?: number ): void {
+  private _track( result: LLMCallResult, meta: LLMCallMeta, tick: Tick, latencyMs: number, estPromptTokens?: number, ep: CallEndpoint = this._defaultEndpoint ): void {
     this._tokenTracker?.recordUsage({
-      model:            this._model,
+      // The model that actually served this call — routed or default. Pricing
+      // must follow the real model, or routed spend is attributed wrongly.
+      model:            ep.model,
       promptTokens:     result.inputTok,
       completionTokens: result.outputTok,
       totalTokens:      result.inputTok + result.outputTok,
@@ -337,14 +462,17 @@ export class LLMDirector {
     result:       LLMCallResult,
     latencyMs:    number,
     mock:         boolean,
+    ep:           CallEndpoint = this._defaultEndpoint,
   ): void {
     try {
       getCompletionRecorder( this._willId )?.recordCompletion({
         tick,
         willId:          this._willId,
-        provider:        this._provider,
-        model:           this._model,
-        maxOutputTokens: this._maxOutputTokens,
+        // Record the endpoint that actually served the call: the tape is what
+        // replay re-feeds, so it must say which model produced this text.
+        provider:        ep.provider,
+        model:           ep.model,
+        maxOutputTokens: ep.maxOutputTokens,
         systemPrompt,
         userMessage,
         text:            result.text,
@@ -374,6 +502,7 @@ export class LLMDirector {
   }
 
   private async _callAnthropicStream(
+    ep:           CallEndpoint,
     systemPrompt: string,
     userMessage:  string,
     onChunk:      ( chunk: string ) => void,
@@ -387,12 +516,12 @@ export class LLMDirector {
 
     let res: Response
     try {
-      res = await fetch(`${this._resolvedBase()}/messages`, {
+      res = await fetch(`${this._resolvedBase( ep )}/messages`, {
         method: 'POST',
-        headers: anthropicWireHeaders( this._provider, this._apiKey ),
+        headers: anthropicWireHeaders( ep.provider, ep.apiKey ),
         body: JSON.stringify({
-          model:      this._model,
-          max_tokens: this._maxOutputTokens,
+          model:      ep.model,
+          max_tokens: ep.maxOutputTokens,
           ...( temperature !== undefined ? { temperature } : {} ),
           stream:     true,
           system:     this._systemField( systemPrompt ),
@@ -404,7 +533,7 @@ export class LLMDirector {
     catch( err ){
       clearTimeout( timer )
       if( controller.signal.aborted )
-        throw new Error(`LLM stream to ${this._provider} timed out after ${this._timeoutMs}ms (no response)`)
+        throw new Error(`LLM stream to ${ep.provider} timed out after ${this._timeoutMs}ms (no response)`)
       throw err
     }
 
@@ -489,9 +618,11 @@ export class LLMDirector {
     if( replay )
       return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok }
 
+    const ep = this._resolveEndpoint( meta )
+
     if( this._mock ){
       const result = this._mockResponse( tick, userMessage )
-      this._recordCompletion( systemPrompt, userMessage, tick, result, Date.now() - llmStart, true )
+      this._recordCompletion( systemPrompt, userMessage, tick, result, Date.now() - llmStart, true, ep )
       return result
     }
 
@@ -502,32 +633,33 @@ export class LLMDirector {
     // accumulated text; live token chunks go through callStream(). Other
     // providers keep the whole-request deadline.
     const result = await withGate(
-      () => speaksAnthropicWire( this._provider )
-        ? this._callAnthropicStream( systemPrompt, userMessage, () => {}, temperature )
-        : this._callProvider( systemPrompt, userMessage, temperature ),
+      () => speaksAnthropicWire( ep.provider )
+        ? this._callAnthropicStream( ep, systemPrompt, userMessage, () => {}, temperature )
+        : this._callProvider( ep, systemPrompt, userMessage, temperature ),
       'executive/direct',
     )
 
     // Record token usage + cost into this Will's injected tracker (R4), tagged
     // with the caller's attribution. Optional — absent on mock/replay directors.
-    this._track( result, meta, tick, Date.now() - llmStart, this._estPromptTokens( systemPrompt, userMessage ) )
+    this._track( result, meta, tick, Date.now() - llmStart, this._estPromptTokens( systemPrompt, userMessage ), ep )
 
-    this._recordCompletion( systemPrompt, userMessage, tick, result, Date.now() - llmStart, false )
+    this._recordCompletion( systemPrompt, userMessage, tick, result, Date.now() - llmStart, false, ep )
     return result
   }
 
   private _callProvider(
+    ep: CallEndpoint,
     systemPrompt: string,
     userMessage: string,
     temperature?: number,
   ): Promise<LLMCallResult> {
-    switch( this._provider ){
-      case 'anthropic': return this._callAnthropic( systemPrompt, userMessage, temperature )
-      case 'glm': return this._callAnthropic( systemPrompt, userMessage, temperature )
-      case 'deepseek': return this._callOpenAI( systemPrompt, userMessage, temperature )
-      case 'openai': return this._callOpenAI( systemPrompt, userMessage, temperature )
-      case 'google': return this._callGoogle( systemPrompt, userMessage, temperature )
-      default: throw new Error(`Unknown LLM provider: ${this._provider}`)
+    switch( ep.provider ){
+      case 'anthropic': return this._callAnthropic( ep, systemPrompt, userMessage, temperature )
+      case 'glm': return this._callAnthropic( ep, systemPrompt, userMessage, temperature )
+      case 'deepseek': return this._callOpenAI( ep, systemPrompt, userMessage, temperature )
+      case 'openai': return this._callOpenAI( ep, systemPrompt, userMessage, temperature )
+      case 'google': return this._callGoogle( ep, systemPrompt, userMessage, temperature )
+      default: throw new Error(`Unknown LLM provider: ${ep.provider}`)
     }
   }
 
@@ -537,8 +669,8 @@ export class LLMDirector {
   }
 
   /** Resolved API base: explicit override wins, else the provider default. */
-  private _resolvedBase(): string {
-    return this._baseUrl ?? this._baseFor( this._provider )
+  private _resolvedBase( ep: CallEndpoint ): string {
+    return ep.baseUrl ?? this._baseFor( ep.provider )
   }
 
   /**
@@ -569,23 +701,23 @@ export class LLMDirector {
     return [ { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } } ]
   }
 
-  private async _callAnthropic( systemPrompt: string, userMessage: string, temperature?: number ): Promise<LLMCallResult> {
+  private async _callAnthropic( ep: CallEndpoint, systemPrompt: string, userMessage: string, temperature?: number ): Promise<LLMCallResult> {
     const body = {
-      model: this._model,
-      max_tokens: this._maxOutputTokens,
+      model: ep.model,
+      max_tokens: ep.maxOutputTokens,
       ...( temperature !== undefined ? { temperature } : {} ),
       system: this._systemField( systemPrompt ),
       messages: [{ role: 'user', content: userMessage }]
     }
 
-    const res = await this._fetchWithTimeout(`${this._resolvedBase()}/messages`, {
+    const res = await this._fetchWithTimeout(`${this._resolvedBase( ep )}/messages`, {
       method: 'POST',
-      headers: anthropicWireHeaders( this._provider, this._apiKey ),
+      headers: anthropicWireHeaders( ep.provider, ep.apiKey ),
       body: JSON.stringify( body )
     })
 
     if( !res.ok )
-      throw new Error(`${this._provider} API ${res.status}: ${( await res.text() ).slice(0, 300)}`)
+      throw new Error(`${ep.provider} API ${res.status}: ${( await res.text() ).slice(0, 300)}`)
 
     const
     data = await res.json() as {
@@ -603,10 +735,10 @@ export class LLMDirector {
     }
   }
 
-  private async _callOpenAI( systemPrompt: string, userMessage: string, temperature?: number ): Promise<LLMCallResult> {
+  private async _callOpenAI( ep: CallEndpoint, systemPrompt: string, userMessage: string, temperature?: number ): Promise<LLMCallResult> {
     const body = {
-      model: this._model,
-      max_completion_tokens: this._maxOutputTokens,
+      model: ep.model,
+      max_completion_tokens: ep.maxOutputTokens,
       ...( temperature !== undefined ? { temperature } : {} ),
       messages: [
         { role: 'system', content: systemPrompt },
@@ -614,11 +746,11 @@ export class LLMDirector {
       ]
     }
 
-    const res = await this._fetchWithTimeout(`${this._resolvedBase()}/chat/completions`, {
+    const res = await this._fetchWithTimeout(`${this._resolvedBase( ep )}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this._apiKey}`,
+        'Authorization': `Bearer ${ep.apiKey}`,
       },
       body: JSON.stringify(body),
     })
@@ -640,25 +772,25 @@ export class LLMDirector {
     }
   }
 
-  private async _callGoogle( systemPrompt: string, userMessage: string, temperature?: number ): Promise<LLMCallResult> {
+  private async _callGoogle( ep: CallEndpoint, systemPrompt: string, userMessage: string, temperature?: number ): Promise<LLMCallResult> {
     // Gemini carries the system prompt in a dedicated `systemInstruction`
     // field and the conversation in `contents`.
     const body = {
       systemInstruction: { parts: [ { text: systemPrompt } ] },
       contents:          [ { role: 'user', parts: [ { text: userMessage } ] } ],
       generationConfig:  {
-        maxOutputTokens: this._maxOutputTokens,
+        maxOutputTokens: ep.maxOutputTokens,
         ...( temperature !== undefined ? { temperature } : {} ),
       },
     }
 
     const res = await this._fetchWithTimeout(
-      `${this._resolvedBase()}/models/${this._model}:generateContent`,
+      `${this._resolvedBase( ep )}/models/${ep.model}:generateContent`,
       {
         method: 'POST',
         headers: {
           'Content-Type':   'application/json',
-          'x-goog-api-key': this._apiKey,
+          'x-goog-api-key': ep.apiKey,
         },
         body: JSON.stringify( body ),
       }

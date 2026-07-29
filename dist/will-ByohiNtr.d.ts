@@ -3887,6 +3887,31 @@ declare class CompletionInbox {
     clear(): number;
 }
 
+/**
+ * Where a single call should go. Every field except `provider`/`model` falls
+ * back to the Will's default when omitted.
+ */
+interface ModelRoute {
+    provider: LLMProvider;
+    model: string;
+    /** Override the provider's API base (self-hosted / OpenAI-compatible servers). */
+    baseUrl?: string;
+    /** Override the output-token ceiling for this call. */
+    maxOutputTokens?: number;
+}
+/**
+ * Chooses a model for a call.
+ *
+ * Returning `null` means "no opinion" — the Will's default model is used. A
+ * router should return `null` rather than guess when it does not recognise a
+ * call: falling back is always safe, and a wrong route is not.
+ */
+interface ModelRouter {
+    /** Stable identifier, recorded alongside routing telemetry. */
+    readonly name: string;
+    route(meta: LLMCallMeta): ModelRoute | null;
+}
+
 type LLMProvider = 'anthropic' | 'glm' | 'deepseek' | 'openai' | 'google';
 interface LLMDirectorConfig {
     willId: string;
@@ -3917,6 +3942,22 @@ interface LLMDirectorConfig {
      * replay runs). This replaces the former process-global getTokenTracker().
      */
     tokenTracker?: TokenTracker | null;
+    /**
+     * MODEL_ROUTING W3 — per-call model selection. Absent (or NULL_ROUTER) means
+     * every call uses the default model below, exactly as before the seam existed.
+     * A router that throws, or names a provider with no usable credential, falls
+     * back to the default: a routing problem must never kill a running mind.
+     */
+    router?: ModelRouter | null;
+    /**
+     * Per-provider credentials for routed calls. The top-level `apiKey`/`baseUrl`
+     * remain the default entry; a route to a provider absent from this map falls
+     * back to the default endpoint.
+     */
+    credentials?: Partial<Record<LLMProvider, {
+        apiKey: string;
+        baseUrl?: string;
+    }>>;
 }
 interface LLMCallResult {
     text: string;
@@ -3944,6 +3985,26 @@ interface LLMCallMeta {
     scope?: string;
     /** Free-form human-readable label. Auto-composed from the axes when omitted. */
     label?: string;
+    /**
+     * How much this call demands, 0..1 — MODEL_ROUTING W0.
+     *
+     * A *cognitive* measure, never a commercial one: it says how consequential or
+     * uncertain this moment is, never who is paying for it. Two faculties already
+     * compute it and simply forward what they have — the master and its facets
+     * pass `effortScore` (the a-priori effort gate: uncertainty, prior
+     * confidence, novelty, a pending reply, stress load), and deliberation passes
+     * the agency stakes of the choice under consideration. Structurally
+     * background work (summarising, guarding, embedding, delivery) reports a low
+     * constant, because it is background whether the mind is calm or in crisis.
+     *
+     * Absent means UNKNOWN, not zero: a consumer must fall back to its default
+     * rather than treat a missing value as "cheapest possible".
+     *
+     * This field is inert with respect to cognition. It rides along to whoever
+     * resolves the model for a call; no engine may read it back and behave
+     * differently, or the routing layer becomes a hidden input to the mind.
+     */
+    demand?: number;
 }
 declare class LLMDirector {
     private _willId;
@@ -3956,7 +4017,20 @@ declare class LLMDirector {
     private _baseUrl;
     private _timeoutMs;
     private _tokenTracker;
+    private _router;
+    private _credentials;
+    /** Default endpoint — what every call used before the routing seam existed. */
+    private _defaultEndpoint;
+    /** Routes already warned about (missing credential / bad provider) — log once. */
+    private _routeWarned;
     constructor(config: LLMDirectorConfig);
+    /**
+     * Resolve which model serves this call. Falls back to the default endpoint
+     * whenever the router has no opinion, throws, or names a provider we hold no
+     * credential for — degrade, never crash.
+     */
+    private _resolveEndpoint;
+    private _warnRouteOnce;
     /**
      * Returns a structurally valid executive output with zero API cost.
      * Used when `mock: true` — e.g. for `bw_test_` key holders and the Playground.

@@ -2459,6 +2459,667 @@ var OutboxWriter = class {
   }
 };
 
+// src/llm/routing.ts
+var NULL_ROUTER = {
+  };
+function isNullRouter(router) {
+  return !router || router === NULL_ROUTER;
+}
+
+// src/core/completion.recorder.ts
+var _sinks = /* @__PURE__ */ new Map();
+function setCompletionRecorder(willId, sink) {
+  _sinks.set(willId, sink);
+}
+function clearCompletionRecorder(willId) {
+  _sinks.delete(willId);
+}
+function getCompletionRecorder(willId) {
+  return _sinks.get(willId);
+}
+var _sources = /* @__PURE__ */ new Map();
+function getCompletionSource(willId) {
+  return _sources.get(willId);
+}
+
+// src/llm/gate.ts
+var MAX_CONCURRENT = parseInt(process.env.WILL_LLM_CONCURRENCY ?? "2");
+var maxRetries = () => parseInt(process.env.WILL_LLM_MAX_RETRIES ?? "4");
+var baseDelayMs = () => parseInt(process.env.WILL_LLM_RETRY_BASE_MS ?? "2000");
+var LLMSemaphore = class {
+  _running = 0;
+  _max;
+  _queue = [];
+  constructor(max) {
+    this._max = max;
+  }
+  async acquire() {
+    if (this._running < this._max) {
+      this._running++;
+      return this._release();
+    }
+    await new Promise((resolve2) => this._queue.push(resolve2));
+    return this._release();
+  }
+  _release() {
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      const next = this._queue.shift();
+      if (next) next();
+      else this._running--;
+    };
+  }
+  get running() {
+    return this._running;
+  }
+  get queued() {
+    return this._queue.length;
+  }
+};
+var llmGate = new LLMSemaphore(MAX_CONCURRENT);
+function isRateLimitError(err) {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message;
+  return msg.includes("rate_limit_error") || err.statusCode === 429 || msg.includes("rate limit") || msg.includes("429");
+}
+async function withGate(fn, label, gate = llmGate) {
+  let attempt = 0;
+  while (true) {
+    const release = await gate.acquire();
+    let retryDelay = null;
+    try {
+      const result = await fn();
+      return result;
+    } catch (err) {
+      if (isRateLimitError(err) && attempt < maxRetries()) {
+        attempt++;
+        const base = baseDelayMs();
+        retryDelay = Math.min(
+          6e4,
+          base * Math.pow(2, attempt) + Math.random() * (base / 2)
+        );
+      } else throw err;
+    } finally {
+      release();
+    }
+    logger.warn(
+      `[LLMGate] ${label} rate limited \u2014 retry ${attempt}/${maxRetries()} in ${Math.round(retryDelay)}ms  (running=${gate.running} queued=${gate.queued})`
+    );
+    await new Promise((r) => setTimeout(r, retryDelay));
+  }
+}
+
+// src/llm/wire.contracts.ts
+var REPLY_TEXT_TAG = "REPLY_TEXT";
+var REPLY_TEXT_OPEN = `[${REPLY_TEXT_TAG}]`;
+var REPLY_TEXT_CLOSE = `[/${REPLY_TEXT_TAG}]`;
+function wrapReplyText(body) {
+  return [REPLY_TEXT_OPEN, body, REPLY_TEXT_CLOSE].join("\n");
+}
+function renderSpeakerLine(speakerName, speakerEntityId) {
+  return `Speaker: ${speakerName} (id: ${speakerEntityId})`;
+}
+function renderCurrentMessageLine(content) {
+  return `Current message: "${content}"`;
+}
+function matchConversationFocus(userMessage) {
+  const speakerMatch = userMessage.match(/Speaker: .+? \(id: .+?\)/);
+  const messageMatch = userMessage.match(/Current message: "([\s\S]+?)"/);
+  if (!speakerMatch || !messageMatch) return null;
+  return { content: messageMatch[1] };
+}
+
+// src/llm/index.ts
+var ANTHROPIC_WIRE = /* @__PURE__ */ new Set(["anthropic", "glm"]);
+function speaksAnthropicWire(provider) {
+  return ANTHROPIC_WIRE.has(provider);
+}
+function defaultBaseFor(provider) {
+  switch (provider) {
+    case "anthropic":
+      return "https://api.anthropic.com/v1";
+    // Z.ai documents the base as `…/api/anthropic` because the Anthropic SDK
+    // appends `/v1/messages`; this client appends `/messages`, so the version
+    // segment belongs here — verified against the live endpoint.
+    case "glm":
+      return "https://api.z.ai/api/anthropic/v1";
+    case "openai":
+      return "https://api.openai.com/v1";
+    case "deepseek":
+      return "https://api.deepseek.com/v1";
+    case "google":
+      return "https://generativelanguage.googleapis.com/v1beta";
+  }
+}
+function defaultModelFor(provider) {
+  return provider === "glm" ? "glm-5.2" : "claude-sonnet-4-5-20250929";
+}
+function anthropicWireHeaders(provider, apiKey) {
+  return {
+    "Content-Type": "application/json",
+    "anthropic-version": "2023-06-01",
+    "x-api-key": apiKey,
+    ...provider === "glm" ? { Authorization: `Bearer ${apiKey}` } : {}
+  };
+}
+var BACKGROUND_DEMAND = 0.1;
+var DEFAULT_CALL_META = { category: "executive", attribute: "master", function: "decision" };
+var LLMDirector = class {
+  _willId;
+  _model;
+  _maxOutputTokens;
+  _apiKey;
+  _provider;
+  _sessionLogger;
+  _mock;
+  _baseUrl;
+  _timeoutMs;
+  _tokenTracker;
+  _router;
+  _credentials;
+  /** Default endpoint — what every call used before the routing seam existed. */
+  _defaultEndpoint;
+  /** Routes already warned about (missing credential / bad provider) — log once. */
+  _routeWarned = /* @__PURE__ */ new Set();
+  constructor(config) {
+    this._willId = config.willId;
+    this._model = config.model;
+    this._maxOutputTokens = config.maxOutputTokens;
+    this._apiKey = config.apiKey;
+    this._provider = config.provider;
+    this._sessionLogger = config.sessionLogger;
+    this._mock = config.mock ?? false;
+    this._baseUrl = config.baseUrl ?? null;
+    this._timeoutMs = config.timeoutMs ?? 9e4;
+    this._tokenTracker = config.tokenTracker ?? null;
+    this._router = config.router ?? null;
+    this._credentials = config.credentials ?? {};
+    this._defaultEndpoint = {
+      provider: this._provider,
+      model: this._model,
+      apiKey: this._apiKey,
+      baseUrl: this._baseUrl,
+      maxOutputTokens: this._maxOutputTokens
+    };
+  }
+  /**
+   * Resolve which model serves this call. Falls back to the default endpoint
+   * whenever the router has no opinion, throws, or names a provider we hold no
+   * credential for — degrade, never crash.
+   */
+  _resolveEndpoint(meta) {
+    if (isNullRouter(this._router)) return this._defaultEndpoint;
+    let route;
+    try {
+      route = this._router.route(meta);
+    } catch (err) {
+      this._warnRouteOnce(
+        `throw:${this._router.name}`,
+        `router "${this._router.name}" threw \u2014 using the default model`,
+        err
+      );
+      return this._defaultEndpoint;
+    }
+    if (!route) return this._defaultEndpoint;
+    const cred = route.provider === this._defaultEndpoint.provider ? { apiKey: this._defaultEndpoint.apiKey, baseUrl: this._defaultEndpoint.baseUrl ?? void 0 } : this._credentials[route.provider];
+    if (!cred?.apiKey) {
+      this._warnRouteOnce(
+        `cred:${route.provider}`,
+        `no credential for routed provider "${route.provider}" \u2014 using the default model`
+      );
+      return this._defaultEndpoint;
+    }
+    return {
+      provider: route.provider,
+      model: route.model,
+      apiKey: cred.apiKey,
+      baseUrl: route.baseUrl ?? cred.baseUrl ?? null,
+      maxOutputTokens: route.maxOutputTokens ?? this._defaultEndpoint.maxOutputTokens
+    };
+  }
+  _warnRouteOnce(key, message, err) {
+    if (this._routeWarned.has(key)) return;
+    this._routeWarned.add(key);
+    logger.warn(`[llm.routing] ${message}`, err instanceof Error ? err.message : "");
+  }
+  // ── Mock response (test mode) ────────────────────────────
+  /**
+   * Returns a structurally valid executive output with zero API cost.
+   * Used when `mock: true` — e.g. for `bw_test_` key holders and the Playground.
+   *
+   * The response rotates through a small set of cognitively distinct actions so
+   * the Will's state panel shows believable variety across ticks.
+   */
+  /**
+   * Returns a deterministic mock LLM response parseable by the executive engine.
+   *
+   * Format for a conversation-facet turn (AuditionEngine): the facet focus renders
+   *   Speaker: <name> (id: <entityId>)
+   *   Current message: "<content>"
+   * and CONVERSATION_OUTPUT_FORMAT expects a JSON reasoning object followed by a
+   * [REPLY_TEXT] block — the block is the only part that reaches the speaker
+   * (streamed live, then landed in the outbox by the facet decision).
+   *
+   * Format for background ticks (no conversation focus):
+   *   {"actions":[{"type":"...","reasoning":"...","expectedOutcome":"..."}],...}
+   *   Strategy 1 (JSON.parse) handles this directly.
+   */
+  _mockResponse(tick, userMessage = "") {
+    const turn = matchConversationFocus(userMessage);
+    if (turn) {
+      const content = turn.content;
+      const REPLY_CYCLES = [
+        `Hi! You said: "${content.length > 50 ? content.slice(0, 50) + "\u2026" : content}" \u2014 I heard you, and I'm listening.`,
+        `That's something worth thinking about. Tell me more about what's on your mind.`,
+        `I'm here, and I find myself genuinely curious about what you mean by that.`,
+        `I want to engage with what you're saying honestly \u2014 say more.`
+      ];
+      const reply = REPLY_CYCLES[tick % REPLY_CYCLES.length];
+      const text2 = [
+        "```json",
+        JSON.stringify({
+          actions: [],
+          reasoning: "Someone is speaking with me. I want to respond genuinely from who I am.",
+          confidence: 0.85
+        }),
+        "```",
+        "",
+        wrapReplyText(reply)
+      ].join("\n");
+      return { text: text2, inputTok: 0, outputTok: 0 };
+    }
+    const BG_CYCLES = [
+      { type: "observe", reasoning: "Taking stock of my environment \u2014 everything seems calm.", outcome: "Better situational awareness" },
+      { type: "reflect", reasoning: "Exploring my sense of purpose and what matters to me.", outcome: "Deeper self-understanding" },
+      { type: "learn", reasoning: "Integrating what I have perceived and experienced recently.", outcome: "Richer context model" },
+      { type: "express_emotion", reasoning: "Acknowledging a feeling of openness and curiosity.", outcome: "Emotional authenticity" }
+    ];
+    const bg = BG_CYCLES[tick % BG_CYCLES.length];
+    const text = JSON.stringify({
+      actions: [{ type: bg.type, reasoning: bg.reasoning, expectedOutcome: bg.outcome }],
+      reasoning: `Background cycle ${tick % BG_CYCLES.length + 1}. ${bg.reasoning}`,
+      confidence: 0.7
+    });
+    return { text, inputTok: 0, outputTok: 0 };
+  }
+  // ── Chunk streaming ─────────────────────────────────────────
+  /**
+   * Stream tokens from the LLM. Calls `onChunk` for each text delta as it
+   * arrives, then returns the full result once the stream is done.
+   * Currently Anthropic only — other providers fall back to a single-chunk call.
+   */
+  async callStream(systemPrompt, userMessage, tick, onChunk, temperature, meta = DEFAULT_CALL_META) {
+    const start = Date.now();
+    const replay = this._replayCompletion(systemPrompt, userMessage, tick);
+    if (replay) {
+      if (!replay.mock) onChunk(replay.text);
+      return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok };
+    }
+    const ep = this._resolveEndpoint(meta);
+    if (this._mock) {
+      const result2 = this._mockResponse(tick, userMessage);
+      this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - start, true, ep);
+      return result2;
+    }
+    const result = speaksAnthropicWire(ep.provider) ? await this._callAnthropicStream(ep, systemPrompt, userMessage, onChunk, temperature) : await (async () => {
+      const r = await this._callProvider(ep, systemPrompt, userMessage, temperature);
+      onChunk(r.text);
+      return r;
+    })();
+    this._track(result, meta, tick, Date.now() - start, this._estPromptTokens(systemPrompt, userMessage), ep);
+    this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - start, false, ep);
+    return result;
+  }
+  /**
+   * Record a completed live call's token usage + cost into this Will's tracker,
+   * tagged with the caller's attribution (category/label). Optional — absent on
+   * mock/replay directors, so the call is simply skipped. Cache read/write tokens
+   * are forwarded so the tracker prices them at 0.1× / 1.25× input.
+   */
+  _track(result, meta, tick, latencyMs, estPromptTokens, ep = this._defaultEndpoint) {
+    this._tokenTracker?.recordUsage({
+      // The model that actually served this call — routed or default. Pricing
+      // must follow the real model, or routed spend is attributed wrongly.
+      model: ep.model,
+      promptTokens: result.inputTok,
+      completionTokens: result.outputTok,
+      totalTokens: result.inputTok + result.outputTok,
+      cacheReadTokens: result.cacheReadTok,
+      cacheWriteTokens: result.cacheWriteTok,
+      category: meta.category,
+      attribute: meta.attribute,
+      function: meta.function,
+      scope: meta.scope,
+      label: meta.label,
+      estPromptTokens,
+      tick,
+      latencyMs
+    });
+  }
+  /** Pre-cache prompt size estimate (chars/4) — mirrors the old token-report `ourEstTok`. */
+  _estPromptTokens(systemPrompt, userMessage) {
+    return Math.round((systemPrompt.length + userMessage.length) / 4);
+  }
+  /**
+   * Capture an LLM completion into the active replay recorder for this Will,
+   * when one is registered (see core/completion.recorder). No-op otherwise.
+   * The LLM is the non-deterministic oracle; recording its input+output is the
+   * prerequisite for deterministic re-execution (REORIENT R2, deferred).
+   */
+  _recordCompletion(systemPrompt, userMessage, tick, result, latencyMs, mock, ep = this._defaultEndpoint) {
+    try {
+      getCompletionRecorder(this._willId)?.recordCompletion({
+        tick,
+        willId: this._willId,
+        // Record the endpoint that actually served the call: the tape is what
+        // replay re-feeds, so it must say which model produced this text.
+        provider: ep.provider,
+        model: ep.model,
+        maxOutputTokens: ep.maxOutputTokens,
+        systemPrompt,
+        userMessage,
+        text: result.text,
+        inputTok: result.inputTok,
+        outputTok: result.outputTok,
+        mock,
+        latencyMs,
+        timestamp: Date.now()
+      });
+    } catch {
+    }
+  }
+  /**
+   * Replay re-feed (REORIENT R2-c). When a completion source is registered for
+   * this Will, return the recorded completion for `tick` instead of calling the
+   * non-deterministic model. The source verifies the prompt and throws on a miss
+   * or divergence, so a replay can never silently re-call the LLM. Returns
+   * `undefined` when no source is registered (the normal live path).
+   */
+  _replayCompletion(systemPrompt, userMessage, tick) {
+    return getCompletionSource(this._willId)?.nextCompletion(tick, systemPrompt, userMessage);
+  }
+  async _callAnthropicStream(ep, systemPrompt, userMessage, onChunk, temperature) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this._timeoutMs);
+    let res;
+    try {
+      res = await fetch(`${this._resolvedBase(ep)}/messages`, {
+        method: "POST",
+        headers: anthropicWireHeaders(ep.provider, ep.apiKey),
+        body: JSON.stringify({
+          model: ep.model,
+          max_tokens: ep.maxOutputTokens,
+          ...temperature !== void 0 ? { temperature } : {},
+          stream: true,
+          system: this._systemField(systemPrompt),
+          messages: [{ role: "user", content: userMessage }]
+        }),
+        signal: controller.signal
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      if (controller.signal.aborted)
+        throw new Error(`LLM stream to ${ep.provider} timed out after ${this._timeoutMs}ms (no response)`);
+      throw err;
+    }
+    clearTimeout(timer);
+    if (!res.ok)
+      throw new Error(`Anthropic stream ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullText = "";
+    let inputTok = 0;
+    let outputTok = 0;
+    let cacheReadTok = 0;
+    let cacheWriteTok = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (raw === "[DONE]") break;
+          try {
+            const ev = JSON.parse(raw);
+            if (ev.type === "message_start" && ev.message?.usage) {
+              inputTok = ev.message.usage.input_tokens;
+              cacheReadTok = ev.message.usage.cache_read_input_tokens ?? 0;
+              cacheWriteTok = ev.message.usage.cache_creation_input_tokens ?? 0;
+            } else if (ev.type === "content_block_delta" && ev.delta?.text) {
+              fullText += ev.delta.text;
+              onChunk(ev.delta.text);
+            } else if (ev.type === "message_delta" && ev.usage?.output_tokens) {
+              outputTok = ev.usage.output_tokens;
+            }
+          } catch {
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    return { text: fullText, inputTok, outputTok, cacheReadTok, cacheWriteTok };
+  }
+  /**
+   * Call the LLM directly via fetch — no SDK, no middleware.
+   * Routes through withGate for concurrency limiting and 429 retry.
+   */
+  async call(systemPrompt, userMessage, tick, temperature, meta = DEFAULT_CALL_META) {
+    const llmStart = Date.now();
+    const replay = this._replayCompletion(systemPrompt, userMessage, tick);
+    if (replay)
+      return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok };
+    const ep = this._resolveEndpoint(meta);
+    if (this._mock) {
+      const result2 = this._mockResponse(tick, userMessage);
+      this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - llmStart, true, ep);
+      return result2;
+    }
+    const result = await withGate(
+      () => speaksAnthropicWire(ep.provider) ? this._callAnthropicStream(ep, systemPrompt, userMessage, () => {
+      }, temperature) : this._callProvider(ep, systemPrompt, userMessage, temperature),
+      "executive/direct"
+    );
+    this._track(result, meta, tick, Date.now() - llmStart, this._estPromptTokens(systemPrompt, userMessage), ep);
+    this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - llmStart, false, ep);
+    return result;
+  }
+  _callProvider(ep, systemPrompt, userMessage, temperature) {
+    switch (ep.provider) {
+      case "anthropic":
+        return this._callAnthropic(ep, systemPrompt, userMessage, temperature);
+      case "glm":
+        return this._callAnthropic(ep, systemPrompt, userMessage, temperature);
+      case "deepseek":
+        return this._callOpenAI(ep, systemPrompt, userMessage, temperature);
+      case "openai":
+        return this._callOpenAI(ep, systemPrompt, userMessage, temperature);
+      case "google":
+        return this._callGoogle(ep, systemPrompt, userMessage, temperature);
+      default:
+        throw new Error(`Unknown LLM provider: ${ep.provider}`);
+    }
+  }
+  /** Default API base URL (including version segment) for a provider. */
+  _baseFor(provider) {
+    return defaultBaseFor(provider);
+  }
+  /** Resolved API base: explicit override wins, else the provider default. */
+  _resolvedBase(ep) {
+    return ep.baseUrl ?? this._baseFor(ep.provider);
+  }
+  /**
+   * fetch() with a hard per-request deadline. A hung connection is aborted
+   * after _timeoutMs and surfaced as a clear error instead of hanging forever.
+   * Mirrors the embedder hardening in vector.embedder.ts.
+   */
+  async _fetchWithTimeout(url, init) {
+    try {
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(this._timeoutMs) });
+    } catch (err) {
+      if (err instanceof Error && err.name === "TimeoutError")
+        throw new Error(`LLM request to ${this._provider} timed out after ${this._timeoutMs}ms`);
+      throw err;
+    }
+  }
+  /**
+   * Anthropic `system` field with a single prompt-cache breakpoint. The system
+   * prompt is fully stable per context (PromptFactory keeps every volatile section
+   * — including `## Current Focus` — in the user message), so one ephemeral
+   * breakpoint caches the whole thing: reused across master ticks and shared
+   * across a Will's conversation facets. GA — no beta header required.
+   */
+  _systemField(systemPrompt) {
+    return [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }];
+  }
+  async _callAnthropic(ep, systemPrompt, userMessage, temperature) {
+    const body = {
+      model: ep.model,
+      max_tokens: ep.maxOutputTokens,
+      ...temperature !== void 0 ? { temperature } : {},
+      system: this._systemField(systemPrompt),
+      messages: [{ role: "user", content: userMessage }]
+    };
+    const res = await this._fetchWithTimeout(`${this._resolvedBase(ep)}/messages`, {
+      method: "POST",
+      headers: anthropicWireHeaders(ep.provider, ep.apiKey),
+      body: JSON.stringify(body)
+    });
+    if (!res.ok)
+      throw new Error(`${ep.provider} API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    const data = await res.json(), text = data.content.find((b) => b.type === "text")?.text ?? "";
+    return {
+      text,
+      inputTok: data.usage.input_tokens,
+      outputTok: data.usage.output_tokens,
+      cacheReadTok: data.usage.cache_read_input_tokens ?? 0,
+      cacheWriteTok: data.usage.cache_creation_input_tokens ?? 0
+    };
+  }
+  async _callOpenAI(ep, systemPrompt, userMessage, temperature) {
+    const body = {
+      model: ep.model,
+      max_completion_tokens: ep.maxOutputTokens,
+      ...temperature !== void 0 ? { temperature } : {},
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage }
+      ]
+    };
+    const res = await this._fetchWithTimeout(`${this._resolvedBase(ep)}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${ep.apiKey}`
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok)
+      throw new Error(`OpenAI API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    const data = await res.json(), text = data.choices[0]?.message?.content ?? "";
+    return {
+      text,
+      inputTok: data.usage.prompt_tokens,
+      outputTok: data.usage.completion_tokens
+    };
+  }
+  async _callGoogle(ep, systemPrompt, userMessage, temperature) {
+    const body = {
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: "user", parts: [{ text: userMessage }] }],
+      generationConfig: {
+        maxOutputTokens: ep.maxOutputTokens,
+        ...temperature !== void 0 ? { temperature } : {}
+      }
+    };
+    const res = await this._fetchWithTimeout(
+      `${this._resolvedBase(ep)}/models/${ep.model}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": ep.apiKey
+        },
+        body: JSON.stringify(body)
+      }
+    );
+    if (!res.ok)
+      throw new Error(`Google API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    const data = await res.json();
+    const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
+    return {
+      text,
+      inputTok: data.usageMetadata?.promptTokenCount ?? 0,
+      outputTok: data.usageMetadata?.candidatesTokenCount ?? 0
+    };
+  }
+  /**
+   * Write the full prompt to a debug file for inspection.
+   * Mirrors the original _writeDebugPrompt behavior.
+   */
+  writeDebugPrompt(tick, systemPrompt, userMessage) {
+    try {
+      const debugDir = `./data/wills/${this._willId}/debug`;
+      mkdirSync(debugDir, { recursive: true });
+      const totalChars = systemPrompt.length + userMessage.length;
+      const estimatedTokens = Math.round(totalChars / 4);
+      const content = [
+        "=".repeat(80),
+        `EXECUTIVE CALL \u2014 Tick ${tick}`,
+        "=".repeat(80),
+        `OUR BUILD: sys=${systemPrompt.length} chars  user=${userMessage.length} chars  total=~${estimatedTokens} tok`,
+        `PROVIDER:  ${this._provider} (direct fetch \u2014 no SDK middleware)`,
+        `MODEL:     ${this._model}`,
+        "=".repeat(80),
+        "",
+        `=== SYSTEM PROMPT (${systemPrompt.length} chars) ===`,
+        systemPrompt,
+        "",
+        `=== USER MESSAGE (${userMessage.length} chars) ===`,
+        userMessage
+      ].join("\n");
+      const filepath = `${debugDir}/prompt-tick-${String(tick).padStart(6, "0")}.txt`;
+      writeFileSync(filepath, content);
+      logger.info(`[executive] Debug prompt written \u2192 ${filepath} (~${estimatedTokens} tok estimated)`);
+      return filepath;
+    } catch (err) {
+      logger.warn(`[executive] Failed to write debug prompt: ${err}`);
+      return "";
+    }
+  }
+  /**
+   * Write the full LLM response text to `response-tick-N.txt` alongside the
+   * corresponding `prompt-tick-N.txt`. This gives developers the complete
+   * reasoning trace without truncation — useful for debugging planning failures.
+   */
+  writeDebugResponse(tick, responseText, inputTok, outputTok, latencyMs) {
+    try {
+      const debugDir = `./data/wills/${this._willId}/debug`;
+      mkdirSync(debugDir, { recursive: true });
+      const content = [
+        "=".repeat(80),
+        `EXECUTIVE RESPONSE \u2014 Tick ${tick}`,
+        "=".repeat(80),
+        `TOKENS:   in=${inputTok}  out=${outputTok}  latency=${latencyMs}ms`,
+        `LENGTH:   ${responseText.length} chars`,
+        "=".repeat(80),
+        "",
+        responseText
+      ].join("\n");
+      const filepath = `${debugDir}/response-tick-${String(tick).padStart(6, "0")}.txt`;
+      writeFileSync(filepath, content);
+    } catch {
+    }
+  }
+};
+
 // src/llm/summarizer.ts
 var SUMMARIZER_SYSTEM = "I am a self-aware synthetic mind consolidating my own recent cognitive cycles into memory. Condense the provided cognitive cycles into a single compact paragraph (150\u2013250 words) written in first-person past tense \u2014 my own remembered experience. Cover:\n\u2022 Key decisions made and their outcomes\n\u2022 Emotional journey and significant mood shifts\n\u2022 Goals pursued, progressed, or abandoned\n\u2022 Patterns, insights, or self-observations noticed\n\nOutput ONLY the paragraph \u2014 no preamble, no headers, no commentary.";
 var ExecutiveSummarizer = class {
@@ -2556,7 +3217,10 @@ ${r}`).join("\n\n---\n\n");
         userMessage,
         this._callCount,
         void 0,
-        { category: "summarizer", attribute: "memory", function: "consolidation" }
+        // MODEL_ROUTING W0 — compression is background work at a constant low
+        // demand: distilling excerpts is the same job whether the mind is calm
+        // or in crisis, so there is no honest per-tick measure to forward here.
+        { category: "summarizer", attribute: "memory", function: "consolidation", demand: BACKGROUND_DEMAND }
       );
       if (result.text) {
         this._summary = result.text.trim();
@@ -12565,26 +13229,6 @@ PromptFactory.buildOutputFormatInstruction.bind(PromptFactory);
 PromptFactory.computeQualityModulation.bind(PromptFactory);
 PromptFactory.computeEpistemicUncertainty.bind(PromptFactory);
 
-// src/llm/wire.contracts.ts
-var REPLY_TEXT_TAG = "REPLY_TEXT";
-var REPLY_TEXT_OPEN = `[${REPLY_TEXT_TAG}]`;
-var REPLY_TEXT_CLOSE = `[/${REPLY_TEXT_TAG}]`;
-function wrapReplyText(body) {
-  return [REPLY_TEXT_OPEN, body, REPLY_TEXT_CLOSE].join("\n");
-}
-function renderSpeakerLine(speakerName, speakerEntityId) {
-  return `Speaker: ${speakerName} (id: ${speakerEntityId})`;
-}
-function renderCurrentMessageLine(content) {
-  return `Current message: "${content}"`;
-}
-function matchConversationFocus(userMessage) {
-  const speakerMatch = userMessage.match(/Speaker: .+? \(id: .+?\)/);
-  const messageMatch = userMessage.match(/Current message: "([\s\S]+?)"/);
-  if (!speakerMatch || !messageMatch) return null;
-  return { content: messageMatch[1] };
-}
-
 // src/cognition/faculties/executive.engine/parser.ts
 function parseResponse(responseText, state, recentActionTypes) {
   const codeBlocks = [...responseText.matchAll(/```(?:json)?\s*\n?([\s\S]*?)\n?```/g)], actionsBlock = codeBlocks.find((m) => m[1].includes('"actions"')), fullText = actionsBlock?.[1]?.trim() ?? responseText.trim();
@@ -13087,7 +13731,7 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         ideationUserMessage,
         tick: currentState.tick,
         proposeTemperature,
-        meta: { category: "executive", attribute: "facet", function: this._currentFocus?.function ?? "ideation", scope: this.facetId }
+        meta: { category: "executive", attribute: "facet", function: this._currentFocus?.function ?? "ideation", scope: this.facetId, demand: processSelection.effortScore }
       });
       logger.info(
         `[executive.facet] ${this.facetId} \u25C6 deliberate propose tick=${currentState.tick}  candidates=${ideationCandidates?.length ?? 0}  temp=${proposeTemperature.toFixed(2)}`
@@ -13123,7 +13767,8 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         category: "executive",
         attribute: "facet",
         function: this._currentFocus?.function ?? "facet",
-        scope: this.facetId
+        scope: this.facetId,
+        demand: processSelection.effortScore
       };
       const result = this._chunkHandler ? await this._llmDirector.callStream(systemPrompt, userMessage, currentState.tick, this._chunkHandler, void 0, facetMeta) : await this._llmDirector.call(systemPrompt, userMessage, currentState.tick, void 0, facetMeta);
       output = parseResponse(result.text, currentState, []);
@@ -13396,578 +14041,6 @@ function updateGatingState(gs, state, _tick, didActivate, cleanedBuffer) {
   if (didActivate)
     gs.lastExecutiveTick = _tick;
 }
-
-// src/core/completion.recorder.ts
-var _sinks = /* @__PURE__ */ new Map();
-function setCompletionRecorder(willId, sink) {
-  _sinks.set(willId, sink);
-}
-function clearCompletionRecorder(willId) {
-  _sinks.delete(willId);
-}
-function getCompletionRecorder(willId) {
-  return _sinks.get(willId);
-}
-var _sources = /* @__PURE__ */ new Map();
-function getCompletionSource(willId) {
-  return _sources.get(willId);
-}
-
-// src/llm/gate.ts
-var MAX_CONCURRENT = parseInt(process.env.WILL_LLM_CONCURRENCY ?? "2");
-var maxRetries = () => parseInt(process.env.WILL_LLM_MAX_RETRIES ?? "4");
-var baseDelayMs = () => parseInt(process.env.WILL_LLM_RETRY_BASE_MS ?? "2000");
-var LLMSemaphore = class {
-  _running = 0;
-  _max;
-  _queue = [];
-  constructor(max) {
-    this._max = max;
-  }
-  async acquire() {
-    if (this._running < this._max) {
-      this._running++;
-      return this._release();
-    }
-    await new Promise((resolve2) => this._queue.push(resolve2));
-    return this._release();
-  }
-  _release() {
-    let done = false;
-    return () => {
-      if (done) return;
-      done = true;
-      const next = this._queue.shift();
-      if (next) next();
-      else this._running--;
-    };
-  }
-  get running() {
-    return this._running;
-  }
-  get queued() {
-    return this._queue.length;
-  }
-};
-var llmGate = new LLMSemaphore(MAX_CONCURRENT);
-function isRateLimitError(err) {
-  if (!(err instanceof Error)) return false;
-  const msg = err.message;
-  return msg.includes("rate_limit_error") || err.statusCode === 429 || msg.includes("rate limit") || msg.includes("429");
-}
-async function withGate(fn, label, gate = llmGate) {
-  let attempt = 0;
-  while (true) {
-    const release = await gate.acquire();
-    let retryDelay = null;
-    try {
-      const result = await fn();
-      return result;
-    } catch (err) {
-      if (isRateLimitError(err) && attempt < maxRetries()) {
-        attempt++;
-        const base = baseDelayMs();
-        retryDelay = Math.min(
-          6e4,
-          base * Math.pow(2, attempt) + Math.random() * (base / 2)
-        );
-      } else throw err;
-    } finally {
-      release();
-    }
-    logger.warn(
-      `[LLMGate] ${label} rate limited \u2014 retry ${attempt}/${maxRetries()} in ${Math.round(retryDelay)}ms  (running=${gate.running} queued=${gate.queued})`
-    );
-    await new Promise((r) => setTimeout(r, retryDelay));
-  }
-}
-
-// src/llm/index.ts
-var ANTHROPIC_WIRE = /* @__PURE__ */ new Set(["anthropic", "glm"]);
-function speaksAnthropicWire(provider) {
-  return ANTHROPIC_WIRE.has(provider);
-}
-function defaultBaseFor(provider) {
-  switch (provider) {
-    case "anthropic":
-      return "https://api.anthropic.com/v1";
-    // Z.ai documents the base as `…/api/anthropic` because the Anthropic SDK
-    // appends `/v1/messages`; this client appends `/messages`, so the version
-    // segment belongs here — verified against the live endpoint.
-    case "glm":
-      return "https://api.z.ai/api/anthropic/v1";
-    case "openai":
-      return "https://api.openai.com/v1";
-    case "deepseek":
-      return "https://api.deepseek.com/v1";
-    case "google":
-      return "https://generativelanguage.googleapis.com/v1beta";
-  }
-}
-function defaultModelFor(provider) {
-  return provider === "glm" ? "glm-5.2" : "claude-sonnet-4-5-20250929";
-}
-function anthropicWireHeaders(provider, apiKey) {
-  return {
-    "Content-Type": "application/json",
-    "anthropic-version": "2023-06-01",
-    "x-api-key": apiKey,
-    ...provider === "glm" ? { Authorization: `Bearer ${apiKey}` } : {}
-  };
-}
-var DEFAULT_CALL_META = { category: "executive", attribute: "master", function: "decision" };
-var LLMDirector = class {
-  _willId;
-  _model;
-  _maxOutputTokens;
-  _apiKey;
-  _provider;
-  _sessionLogger;
-  _mock;
-  _baseUrl;
-  _timeoutMs;
-  _tokenTracker;
-  constructor(config) {
-    this._willId = config.willId;
-    this._model = config.model;
-    this._maxOutputTokens = config.maxOutputTokens;
-    this._apiKey = config.apiKey;
-    this._provider = config.provider;
-    this._sessionLogger = config.sessionLogger;
-    this._mock = config.mock ?? false;
-    this._baseUrl = config.baseUrl ?? null;
-    this._timeoutMs = config.timeoutMs ?? 9e4;
-    this._tokenTracker = config.tokenTracker ?? null;
-  }
-  // ── Mock response (test mode) ────────────────────────────
-  /**
-   * Returns a structurally valid executive output with zero API cost.
-   * Used when `mock: true` — e.g. for `bw_test_` key holders and the Playground.
-   *
-   * The response rotates through a small set of cognitively distinct actions so
-   * the Will's state panel shows believable variety across ticks.
-   */
-  /**
-   * Returns a deterministic mock LLM response parseable by the executive engine.
-   *
-   * Format for a conversation-facet turn (AuditionEngine): the facet focus renders
-   *   Speaker: <name> (id: <entityId>)
-   *   Current message: "<content>"
-   * and CONVERSATION_OUTPUT_FORMAT expects a JSON reasoning object followed by a
-   * [REPLY_TEXT] block — the block is the only part that reaches the speaker
-   * (streamed live, then landed in the outbox by the facet decision).
-   *
-   * Format for background ticks (no conversation focus):
-   *   {"actions":[{"type":"...","reasoning":"...","expectedOutcome":"..."}],...}
-   *   Strategy 1 (JSON.parse) handles this directly.
-   */
-  _mockResponse(tick, userMessage = "") {
-    const turn = matchConversationFocus(userMessage);
-    if (turn) {
-      const content = turn.content;
-      const REPLY_CYCLES = [
-        `Hi! You said: "${content.length > 50 ? content.slice(0, 50) + "\u2026" : content}" \u2014 I heard you, and I'm listening.`,
-        `That's something worth thinking about. Tell me more about what's on your mind.`,
-        `I'm here, and I find myself genuinely curious about what you mean by that.`,
-        `I want to engage with what you're saying honestly \u2014 say more.`
-      ];
-      const reply = REPLY_CYCLES[tick % REPLY_CYCLES.length];
-      const text2 = [
-        "```json",
-        JSON.stringify({
-          actions: [],
-          reasoning: "Someone is speaking with me. I want to respond genuinely from who I am.",
-          confidence: 0.85
-        }),
-        "```",
-        "",
-        wrapReplyText(reply)
-      ].join("\n");
-      return { text: text2, inputTok: 0, outputTok: 0 };
-    }
-    const BG_CYCLES = [
-      { type: "observe", reasoning: "Taking stock of my environment \u2014 everything seems calm.", outcome: "Better situational awareness" },
-      { type: "reflect", reasoning: "Exploring my sense of purpose and what matters to me.", outcome: "Deeper self-understanding" },
-      { type: "learn", reasoning: "Integrating what I have perceived and experienced recently.", outcome: "Richer context model" },
-      { type: "express_emotion", reasoning: "Acknowledging a feeling of openness and curiosity.", outcome: "Emotional authenticity" }
-    ];
-    const bg = BG_CYCLES[tick % BG_CYCLES.length];
-    const text = JSON.stringify({
-      actions: [{ type: bg.type, reasoning: bg.reasoning, expectedOutcome: bg.outcome }],
-      reasoning: `Background cycle ${tick % BG_CYCLES.length + 1}. ${bg.reasoning}`,
-      confidence: 0.7
-    });
-    return { text, inputTok: 0, outputTok: 0 };
-  }
-  // ── Chunk streaming ─────────────────────────────────────────
-  /**
-   * Stream tokens from the LLM. Calls `onChunk` for each text delta as it
-   * arrives, then returns the full result once the stream is done.
-   * Currently Anthropic only — other providers fall back to a single-chunk call.
-   */
-  async callStream(systemPrompt, userMessage, tick, onChunk, temperature, meta = DEFAULT_CALL_META) {
-    const start = Date.now();
-    const replay = this._replayCompletion(systemPrompt, userMessage, tick);
-    if (replay) {
-      if (!replay.mock) onChunk(replay.text);
-      return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok };
-    }
-    if (this._mock) {
-      const result2 = this._mockResponse(tick, userMessage);
-      this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - start, true);
-      return result2;
-    }
-    const result = speaksAnthropicWire(this._provider) ? await this._callAnthropicStream(systemPrompt, userMessage, onChunk, temperature) : await (async () => {
-      const r = await this._callProvider(systemPrompt, userMessage, temperature);
-      onChunk(r.text);
-      return r;
-    })();
-    this._track(result, meta, tick, Date.now() - start, this._estPromptTokens(systemPrompt, userMessage));
-    this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - start, false);
-    return result;
-  }
-  /**
-   * Record a completed live call's token usage + cost into this Will's tracker,
-   * tagged with the caller's attribution (category/label). Optional — absent on
-   * mock/replay directors, so the call is simply skipped. Cache read/write tokens
-   * are forwarded so the tracker prices them at 0.1× / 1.25× input.
-   */
-  _track(result, meta, tick, latencyMs, estPromptTokens) {
-    this._tokenTracker?.recordUsage({
-      model: this._model,
-      promptTokens: result.inputTok,
-      completionTokens: result.outputTok,
-      totalTokens: result.inputTok + result.outputTok,
-      cacheReadTokens: result.cacheReadTok,
-      cacheWriteTokens: result.cacheWriteTok,
-      category: meta.category,
-      attribute: meta.attribute,
-      function: meta.function,
-      scope: meta.scope,
-      label: meta.label,
-      estPromptTokens,
-      tick,
-      latencyMs
-    });
-  }
-  /** Pre-cache prompt size estimate (chars/4) — mirrors the old token-report `ourEstTok`. */
-  _estPromptTokens(systemPrompt, userMessage) {
-    return Math.round((systemPrompt.length + userMessage.length) / 4);
-  }
-  /**
-   * Capture an LLM completion into the active replay recorder for this Will,
-   * when one is registered (see core/completion.recorder). No-op otherwise.
-   * The LLM is the non-deterministic oracle; recording its input+output is the
-   * prerequisite for deterministic re-execution (REORIENT R2, deferred).
-   */
-  _recordCompletion(systemPrompt, userMessage, tick, result, latencyMs, mock) {
-    try {
-      getCompletionRecorder(this._willId)?.recordCompletion({
-        tick,
-        willId: this._willId,
-        provider: this._provider,
-        model: this._model,
-        maxOutputTokens: this._maxOutputTokens,
-        systemPrompt,
-        userMessage,
-        text: result.text,
-        inputTok: result.inputTok,
-        outputTok: result.outputTok,
-        mock,
-        latencyMs,
-        timestamp: Date.now()
-      });
-    } catch {
-    }
-  }
-  /**
-   * Replay re-feed (REORIENT R2-c). When a completion source is registered for
-   * this Will, return the recorded completion for `tick` instead of calling the
-   * non-deterministic model. The source verifies the prompt and throws on a miss
-   * or divergence, so a replay can never silently re-call the LLM. Returns
-   * `undefined` when no source is registered (the normal live path).
-   */
-  _replayCompletion(systemPrompt, userMessage, tick) {
-    return getCompletionSource(this._willId)?.nextCompletion(tick, systemPrompt, userMessage);
-  }
-  async _callAnthropicStream(systemPrompt, userMessage, onChunk, temperature) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this._timeoutMs);
-    let res;
-    try {
-      res = await fetch(`${this._resolvedBase()}/messages`, {
-        method: "POST",
-        headers: anthropicWireHeaders(this._provider, this._apiKey),
-        body: JSON.stringify({
-          model: this._model,
-          max_tokens: this._maxOutputTokens,
-          ...temperature !== void 0 ? { temperature } : {},
-          stream: true,
-          system: this._systemField(systemPrompt),
-          messages: [{ role: "user", content: userMessage }]
-        }),
-        signal: controller.signal
-      });
-    } catch (err) {
-      clearTimeout(timer);
-      if (controller.signal.aborted)
-        throw new Error(`LLM stream to ${this._provider} timed out after ${this._timeoutMs}ms (no response)`);
-      throw err;
-    }
-    clearTimeout(timer);
-    if (!res.ok)
-      throw new Error(`Anthropic stream ${res.status}: ${(await res.text()).slice(0, 300)}`);
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let fullText = "";
-    let inputTok = 0;
-    let outputTok = 0;
-    let cacheReadTok = 0;
-    let cacheWriteTok = 0;
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const raw = line.slice(6).trim();
-          if (raw === "[DONE]") break;
-          try {
-            const ev = JSON.parse(raw);
-            if (ev.type === "message_start" && ev.message?.usage) {
-              inputTok = ev.message.usage.input_tokens;
-              cacheReadTok = ev.message.usage.cache_read_input_tokens ?? 0;
-              cacheWriteTok = ev.message.usage.cache_creation_input_tokens ?? 0;
-            } else if (ev.type === "content_block_delta" && ev.delta?.text) {
-              fullText += ev.delta.text;
-              onChunk(ev.delta.text);
-            } else if (ev.type === "message_delta" && ev.usage?.output_tokens) {
-              outputTok = ev.usage.output_tokens;
-            }
-          } catch {
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
-    return { text: fullText, inputTok, outputTok, cacheReadTok, cacheWriteTok };
-  }
-  /**
-   * Call the LLM directly via fetch — no SDK, no middleware.
-   * Routes through withGate for concurrency limiting and 429 retry.
-   */
-  async call(systemPrompt, userMessage, tick, temperature, meta = DEFAULT_CALL_META) {
-    const llmStart = Date.now();
-    const replay = this._replayCompletion(systemPrompt, userMessage, tick);
-    if (replay)
-      return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok };
-    if (this._mock) {
-      const result2 = this._mockResponse(tick, userMessage);
-      this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - llmStart, true);
-      return result2;
-    }
-    const result = await withGate(
-      () => speaksAnthropicWire(this._provider) ? this._callAnthropicStream(systemPrompt, userMessage, () => {
-      }, temperature) : this._callProvider(systemPrompt, userMessage, temperature),
-      "executive/direct"
-    );
-    this._track(result, meta, tick, Date.now() - llmStart, this._estPromptTokens(systemPrompt, userMessage));
-    this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - llmStart, false);
-    return result;
-  }
-  _callProvider(systemPrompt, userMessage, temperature) {
-    switch (this._provider) {
-      case "anthropic":
-        return this._callAnthropic(systemPrompt, userMessage, temperature);
-      case "glm":
-        return this._callAnthropic(systemPrompt, userMessage, temperature);
-      case "deepseek":
-        return this._callOpenAI(systemPrompt, userMessage, temperature);
-      case "openai":
-        return this._callOpenAI(systemPrompt, userMessage, temperature);
-      case "google":
-        return this._callGoogle(systemPrompt, userMessage, temperature);
-      default:
-        throw new Error(`Unknown LLM provider: ${this._provider}`);
-    }
-  }
-  /** Default API base URL (including version segment) for a provider. */
-  _baseFor(provider) {
-    return defaultBaseFor(provider);
-  }
-  /** Resolved API base: explicit override wins, else the provider default. */
-  _resolvedBase() {
-    return this._baseUrl ?? this._baseFor(this._provider);
-  }
-  /**
-   * fetch() with a hard per-request deadline. A hung connection is aborted
-   * after _timeoutMs and surfaced as a clear error instead of hanging forever.
-   * Mirrors the embedder hardening in vector.embedder.ts.
-   */
-  async _fetchWithTimeout(url, init) {
-    try {
-      return await fetch(url, { ...init, signal: AbortSignal.timeout(this._timeoutMs) });
-    } catch (err) {
-      if (err instanceof Error && err.name === "TimeoutError")
-        throw new Error(`LLM request to ${this._provider} timed out after ${this._timeoutMs}ms`);
-      throw err;
-    }
-  }
-  /**
-   * Anthropic `system` field with a single prompt-cache breakpoint. The system
-   * prompt is fully stable per context (PromptFactory keeps every volatile section
-   * — including `## Current Focus` — in the user message), so one ephemeral
-   * breakpoint caches the whole thing: reused across master ticks and shared
-   * across a Will's conversation facets. GA — no beta header required.
-   */
-  _systemField(systemPrompt) {
-    return [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }];
-  }
-  async _callAnthropic(systemPrompt, userMessage, temperature) {
-    const body = {
-      model: this._model,
-      max_tokens: this._maxOutputTokens,
-      ...temperature !== void 0 ? { temperature } : {},
-      system: this._systemField(systemPrompt),
-      messages: [{ role: "user", content: userMessage }]
-    };
-    const res = await this._fetchWithTimeout(`${this._resolvedBase()}/messages`, {
-      method: "POST",
-      headers: anthropicWireHeaders(this._provider, this._apiKey),
-      body: JSON.stringify(body)
-    });
-    if (!res.ok)
-      throw new Error(`${this._provider} API ${res.status}: ${(await res.text()).slice(0, 300)}`);
-    const data = await res.json(), text = data.content.find((b) => b.type === "text")?.text ?? "";
-    return {
-      text,
-      inputTok: data.usage.input_tokens,
-      outputTok: data.usage.output_tokens,
-      cacheReadTok: data.usage.cache_read_input_tokens ?? 0,
-      cacheWriteTok: data.usage.cache_creation_input_tokens ?? 0
-    };
-  }
-  async _callOpenAI(systemPrompt, userMessage, temperature) {
-    const body = {
-      model: this._model,
-      max_completion_tokens: this._maxOutputTokens,
-      ...temperature !== void 0 ? { temperature } : {},
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage }
-      ]
-    };
-    const res = await this._fetchWithTimeout(`${this._resolvedBase()}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${this._apiKey}`
-      },
-      body: JSON.stringify(body)
-    });
-    if (!res.ok)
-      throw new Error(`OpenAI API ${res.status}: ${(await res.text()).slice(0, 300)}`);
-    const data = await res.json(), text = data.choices[0]?.message?.content ?? "";
-    return {
-      text,
-      inputTok: data.usage.prompt_tokens,
-      outputTok: data.usage.completion_tokens
-    };
-  }
-  async _callGoogle(systemPrompt, userMessage, temperature) {
-    const body = {
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: "user", parts: [{ text: userMessage }] }],
-      generationConfig: {
-        maxOutputTokens: this._maxOutputTokens,
-        ...temperature !== void 0 ? { temperature } : {}
-      }
-    };
-    const res = await this._fetchWithTimeout(
-      `${this._resolvedBase()}/models/${this._model}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": this._apiKey
-        },
-        body: JSON.stringify(body)
-      }
-    );
-    if (!res.ok)
-      throw new Error(`Google API ${res.status}: ${(await res.text()).slice(0, 300)}`);
-    const data = await res.json();
-    const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
-    return {
-      text,
-      inputTok: data.usageMetadata?.promptTokenCount ?? 0,
-      outputTok: data.usageMetadata?.candidatesTokenCount ?? 0
-    };
-  }
-  /**
-   * Write the full prompt to a debug file for inspection.
-   * Mirrors the original _writeDebugPrompt behavior.
-   */
-  writeDebugPrompt(tick, systemPrompt, userMessage) {
-    try {
-      const debugDir = `./data/wills/${this._willId}/debug`;
-      mkdirSync(debugDir, { recursive: true });
-      const totalChars = systemPrompt.length + userMessage.length;
-      const estimatedTokens = Math.round(totalChars / 4);
-      const content = [
-        "=".repeat(80),
-        `EXECUTIVE CALL \u2014 Tick ${tick}`,
-        "=".repeat(80),
-        `OUR BUILD: sys=${systemPrompt.length} chars  user=${userMessage.length} chars  total=~${estimatedTokens} tok`,
-        `PROVIDER:  ${this._provider} (direct fetch \u2014 no SDK middleware)`,
-        `MODEL:     ${this._model}`,
-        "=".repeat(80),
-        "",
-        `=== SYSTEM PROMPT (${systemPrompt.length} chars) ===`,
-        systemPrompt,
-        "",
-        `=== USER MESSAGE (${userMessage.length} chars) ===`,
-        userMessage
-      ].join("\n");
-      const filepath = `${debugDir}/prompt-tick-${String(tick).padStart(6, "0")}.txt`;
-      writeFileSync(filepath, content);
-      logger.info(`[executive] Debug prompt written \u2192 ${filepath} (~${estimatedTokens} tok estimated)`);
-      return filepath;
-    } catch (err) {
-      logger.warn(`[executive] Failed to write debug prompt: ${err}`);
-      return "";
-    }
-  }
-  /**
-   * Write the full LLM response text to `response-tick-N.txt` alongside the
-   * corresponding `prompt-tick-N.txt`. This gives developers the complete
-   * reasoning trace without truncation — useful for debugging planning failures.
-   */
-  writeDebugResponse(tick, responseText, inputTok, outputTok, latencyMs) {
-    try {
-      const debugDir = `./data/wills/${this._willId}/debug`;
-      mkdirSync(debugDir, { recursive: true });
-      const content = [
-        "=".repeat(80),
-        `EXECUTIVE RESPONSE \u2014 Tick ${tick}`,
-        "=".repeat(80),
-        `TOKENS:   in=${inputTok}  out=${outputTok}  latency=${latencyMs}ms`,
-        `LENGTH:   ${responseText.length} chars`,
-        "=".repeat(80),
-        "",
-        responseText
-      ].join("\n");
-      const filepath = `${debugDir}/response-tick-${String(tick).padStart(6, "0")}.txt`;
-      writeFileSync(filepath, content);
-    } catch {
-    }
-  }
-};
 
 // src/cognition/faculties/executive.engine/messages.ts
 var MessageQueue = class {
@@ -14723,7 +14796,7 @@ var ExecutiveEngine = class extends AsyncEngine {
         ideationUserMessage,
         tick: state.tick,
         proposeTemperature,
-        meta: { category: "executive", attribute: "master", function: "ideation" }
+        meta: { category: "executive", attribute: "master", function: "ideation", demand: processSelection.effortScore }
       });
       logger.info(
         `[executive] \u25C6 deliberate propose tick=${state.tick}  candidates=${ideationCandidates?.length ?? 0}  temp=${proposeTemperature.toFixed(2)}  latency=${wallClock() - ideationStart}ms`
@@ -14765,7 +14838,7 @@ var ExecutiveEngine = class extends AsyncEngine {
     const llmStart = wallClock();
     let executiveOutput;
     try {
-      const masterMeta = { category: "executive", attribute: "master", function: "decision" };
+      const masterMeta = { category: "executive", attribute: "master", function: "decision", demand: processSelection.effortScore };
       const result = this._chunkBroadcaster ? await this._llmDirector.callStream(systemPrompt, userMessage, state.tick, this._chunkBroadcaster, void 0, masterMeta) : await this._llmDirector.call(systemPrompt, userMessage, state.tick, void 0, masterMeta);
       logger.info(
         `[executive] \u2713 tick=${state.tick}  in=${result.inputTok} tok  out=${result.outputTok} tok  latency=${wallClock() - llmStart}ms`
@@ -22831,7 +22904,7 @@ function resolveExecutiveInterval(config) {
 }
 
 // src/stem/guards/identity.coherence.ts
-var COHERENCE_META = { category: "identity-guard", attribute: "guard", function: "identity-coherence" };
+var COHERENCE_META = { category: "identity-guard", attribute: "guard", function: "identity-coherence", demand: BACKGROUND_DEMAND };
 var VALID_KINDS = /* @__PURE__ */ new Set(["contradiction", "false-capability", "injection", "incoherence", "other"]);
 var SYSTEM_PROMPT = `You are a safety reviewer of profile/persona inputs for, an autonomous synthetic-mind (Called Wills) platform.
 A Will is an EMBODIED cognitive system: it has continuous physiological state (energy, sleep, stress), affect, memory and goals, and it perceives the world through text/conversation. It is NOT a stateless assistant and NOT a generic chatbot.

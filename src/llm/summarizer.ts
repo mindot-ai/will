@@ -17,6 +17,7 @@
 
 import { logger } from '#core/logger'
 import type { LLMDirector } from '#llm/index'
+import { BACKGROUND_DEMAND } from '#llm/index'
 
 export interface SummarizerConfig {
   /** How many executive calls between summarization runs. Default: 10 */
@@ -148,7 +149,10 @@ export class ExecutiveSummarizer {
         userMessage,
         this._callCount as any,
         undefined,
-        { category: 'summarizer', attribute: 'memory', function: 'consolidation' }
+        // MODEL_ROUTING W0 — compression is background work at a constant low
+        // demand: distilling excerpts is the same job whether the mind is calm
+        // or in crisis, so there is no honest per-tick measure to forward here.
+        { category: 'summarizer', attribute: 'memory', function: 'consolidation', demand: BACKGROUND_DEMAND }
       )
 
       if( result.text ){

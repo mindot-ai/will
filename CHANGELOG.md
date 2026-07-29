@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — the mind thinks at more than one depth
+## 0.8.0 — 2026-07-29 · the mind thinks at more than one depth
 
 A mind does several kinds of work, and they were all being done by one model.
 Summarising the last hour is not the same act as deciding what to do next, and a
@@ -61,6 +61,35 @@ reconfigured. Host-supplied prices have no determinism surface at all: they can
 change between a recording and its replay and the run still holds. A router that
 throws, or names a provider with no credential, degrades to the default model —
 a routing mistake never kills a running mind.
+
+### Also in this release
+
+Two epochs' worth of work sat on main. The story above is the routing one; the
+**policy-reafference tail** rides along, and is listed here so release
+archaeology does not have to reconstruct it from the log:
+
+- **The finality taxonomy splits three ways** (#87). A refusal's `'instance'`
+  fate was really two things wanting opposite responses, so the enum became
+  `'class' | 'parameter' | 'context'` — `parameter` dents availability lightly,
+  `context` touches nothing at all, and an arbiter fault now refuses as
+  `context` instead of decaying into a competence-scarring timeout.
+- **"Denials That Teach" — the conformance pack, S1–S9** (#88), and the
+  vocabulary reconciliation behind it (#83, #86): these are OUR names for the
+  distinctions the joint RFC with the HELM builders established, never their
+  wire spellings.
+- **The counterfactual survives the ack** (#89). The bound a denial reports
+  reached the verdict tape but was dropped before the outcome the mind actually
+  learns from. Tape and outcome now agree.
+
+**None of it is reachable from this package.** `PolicyArbiter`, `Verdict` and
+`finality` are not exported, and nothing reads the new fields yet — that is the
+next phase, and it stays blocked upstream on an open question in the joint RFC
+(a scalar `allowed` cannot be told from a ceiling or a floor). So this release
+publishes no policy contract, and the RFC's conclusion cannot contradict one.
+The policy epoch gets its own release when it closes.
+
+Also: the release ritual itself (#81, #82, #90) — `RELEASE.md` now records
+**when** to cut, not just how.
 
 ## 0.7.0 — 2026-07-22 · the mind learns may from can
 

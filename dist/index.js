@@ -22775,6 +22775,10 @@ var OpenAICompatibleEmbedder = class {
     const embedding = data?.data?.[0]?.embedding;
     if (!Array.isArray(embedding) || embedding.length === 0)
       throw new Error(`Embedding response was empty or malformed for model ${this.modelName}`);
+    if (embedding.length !== this.dimensions)
+      throw new Error(
+        `Embedding width mismatch for ${this.modelName}: provider returned ${embedding.length} dimensions, index is configured for ${this.dimensions}. Set WILL_EMBEDDING_DIMENSIONS=${embedding.length} (and delete any existing vector_index built at the old width).`
+      );
     const usedTok = data?.usage?.total_tokens ?? data?.usage?.prompt_tokens ?? 0;
     if (usedTok > 0) {
       this._tokenTracker?.recordUsage({
@@ -23817,6 +23821,11 @@ function _resolveVectorMemory(willId, seed, overrideAdapter, disable, tokenTrack
         apiUrl = "https://generativelanguage.googleapis.com/v1beta/openai";
         apiKey = process.env.WILL_EMBEDDING_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY;
         dimensions = modelName.includes("004") ? 768 : 3072;
+        break;
+      case "jina":
+        apiUrl = "https://api.jina.ai/v1";
+        apiKey = process.env.WILL_EMBEDDING_API_KEY ?? process.env.JINA_API_KEY;
+        dimensions = modelName.includes("v4") ? 2048 : modelName.includes("v2") ? 768 : 1024;
         break;
       default:
         apiUrl = process.env.WILL_EMBEDDING_URL ?? "https://api.openai.com/v1";

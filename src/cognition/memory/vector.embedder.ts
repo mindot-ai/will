@@ -137,6 +137,21 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
     if( !Array.isArray( embedding ) || embedding.length === 0 )
       throw new Error(`Embedding response was empty or malformed for model ${this.modelName}`)
 
+    // The configured width must match what the provider actually returns. This class
+    // sends no `dimensions` param, so the index is sized from config alone — and a
+    // wrong number does not fail, it silently builds an index that can never match.
+    // Providers differ per model family and change defaults between versions, so the
+    // number is checked against reality once rather than trusted. Failing here is safe:
+    // indexing degrades to "deferred" and recall to "no recall", both already
+    // best-effort, and the message carries the value to set.
+    if( embedding.length !== this.dimensions )
+      throw new Error(
+        `Embedding width mismatch for ${ this.modelName }: provider returned ${ embedding.length } ` +
+        `dimensions, index is configured for ${ this.dimensions }. ` +
+        `Set WILL_EMBEDDING_DIMENSIONS=${ embedding.length } (and delete any existing ` +
+        `vector_index built at the old width).`
+      )
+
     // Meter embedding token usage (input-only — embeddings have no completion).
     // Recorded under the 'embedding' category so per-Will dashboards can split
     // memory-vector spend from LLM reasoning spend.

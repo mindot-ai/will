@@ -578,6 +578,20 @@ export function _resolveVectorMemory(
         apiKey     = process.env.WILL_EMBEDDING_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY
         dimensions = modelName.includes('004') ? 768 : 3072  // text-embedding-004 → 768, gemini-embedding-001 → 3072
         break
+      case 'jina':
+        // OpenAI-compatible endpoint. Native output widths differ per family and the
+        // embedder sends no `dimensions` param, so the index must be sized to match —
+        // a wrong width here builds a silently useless index. These defaults are
+        // CHECKED at runtime against the first vector returned (vector.embedder.ts);
+        // a mismatch fails loudly with the number to set rather than corrupting recall.
+        // Override with WILL_EMBEDDING_DIMENSIONS, which also lets v3's Matryoshka
+        // truncation be requested explicitly.
+        apiUrl     = 'https://api.jina.ai/v1'
+        apiKey     = process.env.WILL_EMBEDDING_API_KEY ?? process.env.JINA_API_KEY
+        dimensions = modelName.includes('v4') ? 2048
+                   : modelName.includes('v2') ? 768
+                   : 1024                                     // v3 / clip-v2 native
+        break
       default:
         apiUrl     = process.env.WILL_EMBEDDING_URL ?? 'https://api.openai.com/v1'
         apiKey     = process.env.WILL_EMBEDDING_API_KEY

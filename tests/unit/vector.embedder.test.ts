@@ -18,8 +18,16 @@ import { OpenAICompatibleEmbedder } from '#memory/vector.embedder'
 
 const realFetch = globalThis.fetch
 
-function okEmbedding( embedding: number[] ){
-  return { ok: true, status: 200, statusText: 'OK', json: async () => ({ data: [ { embedding } ] }) } as unknown as Response
+/**
+ * A response whose vector is the configured width (3). Padded deliberately: the
+ * embedder now rejects a width that disagrees with the index it is sizing, and a
+ * fixture returning a 1-dim vector against a 3-dim config is the same lie that
+ * would silently build an unusable index in production. Assertions read [0], so
+ * padding is invisible to them.
+ */
+function okEmbedding( embedding: number[], width = 3 ){
+  const v = [ ...embedding, ...Array( Math.max( 0, width - embedding.length ) ).fill( 0 ) ]
+  return { ok: true, status: 200, statusText: 'OK', json: async () => ({ data: [ { embedding: v } ] }) } as unknown as Response
 }
 
 function make( extra: Partial<{ maxConcurrency: number; timeoutMs: number }> = {} ){
@@ -144,9 +152,30 @@ describe('OpenAICompatibleEmbedder — independent embed() callers share the gat
 
     process.env.WILL_LLM_RETRY_BASE_MS = '1'
     try {
-      expect( await make().embed('x') ).toEqual( [ 7 ] )
+      expect( await make().embed('x') ).toEqual( [ 7, 0, 0 ] )
       expect( calls ).toBe( 2 )   // a rate limit is a wait, not a lost recall
     }
     finally { delete process.env.WILL_LLM_RETRY_BASE_MS }
+  })
+})
+
+describe('OpenAICompatibleEmbedder — index width must match the provider', () => {
+  it('rejects a vector whose width disagrees with the configured index', async () => {
+    // This class sends no `dimensions` param, so the index is sized from config
+    // alone. A wrong number does not fail anywhere — it quietly builds an index
+    // that can never match. Providers differ per model family and change defaults
+    // between versions, so the number is checked against reality rather than trusted.
+    globalThis.fetch = ( async () => okEmbedding( [ 1, 2 ], 2 ) ) as unknown as typeof fetch
+    await expect( make().embed('x') ).rejects.toThrow( /width mismatch/ )
+  })
+
+  it('names the value to set, so the fix does not need a source dive', async () => {
+    globalThis.fetch = ( async () => okEmbedding( [ 1, 2, 3, 4, 5 ], 5 ) ) as unknown as typeof fetch
+    await expect( make().embed('x') ).rejects.toThrow( /WILL_EMBEDDING_DIMENSIONS=5/ )
+  })
+
+  it('accepts the matching width', async () => {
+    globalThis.fetch = ( async () => okEmbedding( [ 1, 2, 3 ] ) ) as unknown as typeof fetch
+    await expect( make().embed('x') ).resolves.toEqual( [ 1, 2, 3 ] )
   })
 })

@@ -7851,6 +7851,99 @@ var EpisodicConsolidator = class {
   }
 };
 
+// src/cognition/agency/schemas/innate.ts
+var INNATE_SCHEMAS = [
+  // ── objectless stances ───────────────────────────────────────
+  {
+    id: "orient",
+    kind: "primitive",
+    source: "innate",
+    binds: "none",
+    cost: 0.05,
+    baseValence: 0,
+    tags: ["perception", "reflexive"]
+  },
+  {
+    id: "attend",
+    kind: "primitive",
+    source: "innate",
+    binds: "none",
+    cost: 0.08,
+    preconditions: [{ metric: "energy.level", op: "gt", value: 10 }],
+    baseValence: 0,
+    tags: ["attention", "meta-cognition"]
+  },
+  {
+    id: "rest",
+    kind: "primitive",
+    source: "innate",
+    binds: "none",
+    cost: 0,
+    preconditions: [{ metric: "energy.level", op: "lt", value: 95 }],
+    baseValence: 0.15,
+    tags: ["self-care", "regulatory"]
+  },
+  {
+    id: "withdraw",
+    kind: "primitive",
+    source: "innate",
+    binds: "none",
+    cost: 0.03,
+    baseValence: 0.05,
+    tags: ["self-protection", "regulatory"]
+  },
+  {
+    id: "reflect",
+    kind: "primitive",
+    source: "innate",
+    binds: "none",
+    cost: 0.06,
+    preconditions: [{ metric: "energy.level", op: "gt", value: 10 }],
+    baseValence: 0.05,
+    tags: ["cognitive", "meta-cognition", "internal"]
+  },
+  {
+    id: "wait",
+    kind: "primitive",
+    source: "innate",
+    binds: "none",
+    cost: 0.01,
+    baseValence: 0,
+    tags: ["neutral"]
+  },
+  {
+    id: "express",
+    kind: "primitive",
+    source: "innate",
+    binds: "none",
+    cost: 0.02,
+    baseValence: 0.1,
+    tags: ["affective", "expression"]
+  },
+  // ── perception-bound possibilities ───────────────────────────
+  {
+    id: "inspect",
+    kind: "primitive",
+    source: "perceptual",
+    binds: "percept",
+    cost: 0.06,
+    preconditions: [{ metric: "energy.level", op: "gt", value: 8 }],
+    baseValence: 0.05,
+    tags: ["perception", "information"]
+  },
+  {
+    id: "reach-out",
+    kind: "primitive",
+    source: "social",
+    binds: "entity",
+    cost: 0.1,
+    preconditions: [{ metric: "energy.level", op: "gt", value: 5 }],
+    baseValence: 0.2,
+    tags: ["social", "communication"]
+  }
+];
+var INNATE_SCHEMA_BY_ID = new Map(INNATE_SCHEMAS.map((s) => [s.id, s]));
+
 // src/cognition/faculties/executive.engine/commands.ts
 var EVIDENCE_TO_COUNT = {
   single_observation: 1,
@@ -8112,6 +8205,7 @@ function resolveKnownEntity(target, state) {
 function buildIdeomotorIntents(output, state, footprint) {
   const set = [];
   const seen = /* @__PURE__ */ new Set();
+  const unresolved = /* @__PURE__ */ new Set();
   const priority = clamp01(output.confidence ?? 0.8);
   const externalBySchema = /* @__PURE__ */ new Map();
   for (const e of state.entities.values()) {
@@ -8148,7 +8242,11 @@ function buildIdeomotorIntents(output, state, footprint) {
       continue;
     }
     const schema = externalBySchema.get(t);
-    if (!schema || seen.has(`ability:${schema}`)) continue;
+    if (!schema) {
+      if (!INNATE_SCHEMA_BY_ID.has(t)) unresolved.add(action.type);
+      continue;
+    }
+    if (seen.has(`ability:${schema}`)) continue;
     seen.add(`ability:${schema}`);
     const keid = action.target ? resolveKnownEntity(action.target, state) : void 0;
     set.push({
@@ -8164,11 +8262,25 @@ function buildIdeomotorIntents(output, state, footprint) {
       }
     });
   }
+  if (unresolved.size > 0)
+    set.push({
+      id: "action.unresolved",
+      type: "action.unresolved",
+      metadata: {
+        names: [...unresolved],
+        summary: `I named ${[...unresolved].map((n) => `'${n}'`).join(", ")} as an action, but ${unresolved.size > 1 ? "those are not things" : "that is not a thing"} I can do \u2014 no such ability is in my repertoire or afforded right now. Nothing happened. To act I have to name something I actually have.`,
+        salience: 0.75,
+        origin: "executive",
+        tick: footprint.tickObserved
+      }
+    });
   const currentIds = new Set(set.map((s) => s.id));
   const del = [];
   for (const [id, e] of state.entities)
     if (e.type === "ideomotor.intent" && e.metadata?.["origin"] === "executive" && !currentIds.has(id))
       del.push(id);
+  if (unresolved.size === 0 && state.entities.has("action.unresolved"))
+    del.push("action.unresolved");
   return { set, delete: del };
 }
 function clamp01(n) {
@@ -10423,6 +10535,7 @@ function extractAffect(state) {
 }
 
 // src/cognition/faculties/executive.engine/prompt.factory.ts
+var INNATE_ACTION_NAMES = INNATE_SCHEMAS.map((s) => s.id).sort().join(", ");
 var TRAIT_EMPHASIS_BANDS = [
   { min: 0.4, adverb: "markedly", rank: 0 },
   // v ≥ .90 / ≤ .10
@@ -10509,7 +10622,7 @@ ${roleDescription}
 ${consciousnessArchitecture}
 
 ## Output Guidelines
-- **actions**: What I intend to do. I express intent \u2014 my body finds the fit. The abilities I actually have, if any, are listed under "## Abilities Available Now"; if there is no such section then I have none right now, and the honest move is to say so rather than to attempt something. When enacting a named ability that needs specifics (a query, a message, a value), put them in the action's "args" object and my body enacts it with exactly those args.
+- **actions**: What I intend to do. I express intent \u2014 my body finds the fit. My own stances are always with me (listed with the output schema below); *acquired* abilities, if any, appear under "## Abilities Available Now", and when there is no such section I have none of those \u2014 so a thing I want done that needs one is a thing to say I cannot do, not to attempt. When enacting a named ability that needs specifics (a query, a message, a value), put them in the action's "args" object and my body enacts it with exactly those args.
 - **plans**: Include for goals without existing plans or where plans need revision. I may keep multiple plans per goal \u2014 set **planId** to act on a specific existing plan (validate/execute/revise/cancel); omit it to draft a new one. My current plans are listed under "## Active Plans".
 - **newBeliefs**: Extract patterns from experiences visible in my current state. Only record a belief if I can point to a specific observation that supports it \u2014 do not infer experiences I have no record of. Set 'evidence' honestly: 'single_observation' (first time noticing), 'recurring_pattern' (seen multiple times), 'strong_pattern' (deeply established).
 - **introspection**: Include when significant events occurred or I notice patterns. When I spot a cognitive bias in my own reasoning, name it in 'identifiedBiases' using its common term where one fits (e.g. overgeneralization, confirmation bias, recency bias) \u2014 this lets my self-assessment line up with the patterns my faculties detect on their own.
@@ -10522,7 +10635,7 @@ ${consciousnessArchitecture}
 
 ## Required Output
 Output a single JSON object with these fields:
-- **actions**: Array of {type, reasoning, expectedOutcome, target?, args?}. When I am reaching out to someone, **target** is who \u2014 their name or id as it appears under "## People I Know" \u2014 and the words themselves go in **args.content**. Without a person to reach, the reaching cannot happen.
+- **actions**: Array of {type, reasoning, expectedOutcome, target?, args?}. The stances I always have are: ${INNATE_ACTION_NAMES} \u2014 \`reach-out\` is how I say something to someone. Anything else must be an ability named under "## Abilities Available Now". A **type** outside those two sets is not something I can do; naming one achieves nothing at all. When I reach out, **target** is who \u2014 their name or id as it appears under "## People I Know" \u2014 and the words themselves go in **args.content**. Without a person to reach, the reaching cannot happen.
 - **reasoning**: My full reasoning. Embed optional outputs as tagged blocks here. Minimum 2\u20133 sentences \u2014 do not produce a one-line reasoning field.
 - **confidence**: Number 0.0-1.0 reflecting my certainty. Be calibrated: 0.9+ only when I have strong grounding; use 0.4\u20130.6 when uncertain.
 
@@ -18839,99 +18952,6 @@ var GustationEngine = class extends ShellSenseEngine {
   domain = "gustation";
   acceptedKinds = /* @__PURE__ */ new Set(["self-eval", "assessment"]);
 };
-
-// src/cognition/agency/schemas/innate.ts
-var INNATE_SCHEMAS = [
-  // ── objectless stances ───────────────────────────────────────
-  {
-    id: "orient",
-    kind: "primitive",
-    source: "innate",
-    binds: "none",
-    cost: 0.05,
-    baseValence: 0,
-    tags: ["perception", "reflexive"]
-  },
-  {
-    id: "attend",
-    kind: "primitive",
-    source: "innate",
-    binds: "none",
-    cost: 0.08,
-    preconditions: [{ metric: "energy.level", op: "gt", value: 10 }],
-    baseValence: 0,
-    tags: ["attention", "meta-cognition"]
-  },
-  {
-    id: "rest",
-    kind: "primitive",
-    source: "innate",
-    binds: "none",
-    cost: 0,
-    preconditions: [{ metric: "energy.level", op: "lt", value: 95 }],
-    baseValence: 0.15,
-    tags: ["self-care", "regulatory"]
-  },
-  {
-    id: "withdraw",
-    kind: "primitive",
-    source: "innate",
-    binds: "none",
-    cost: 0.03,
-    baseValence: 0.05,
-    tags: ["self-protection", "regulatory"]
-  },
-  {
-    id: "reflect",
-    kind: "primitive",
-    source: "innate",
-    binds: "none",
-    cost: 0.06,
-    preconditions: [{ metric: "energy.level", op: "gt", value: 10 }],
-    baseValence: 0.05,
-    tags: ["cognitive", "meta-cognition", "internal"]
-  },
-  {
-    id: "wait",
-    kind: "primitive",
-    source: "innate",
-    binds: "none",
-    cost: 0.01,
-    baseValence: 0,
-    tags: ["neutral"]
-  },
-  {
-    id: "express",
-    kind: "primitive",
-    source: "innate",
-    binds: "none",
-    cost: 0.02,
-    baseValence: 0.1,
-    tags: ["affective", "expression"]
-  },
-  // ── perception-bound possibilities ───────────────────────────
-  {
-    id: "inspect",
-    kind: "primitive",
-    source: "perceptual",
-    binds: "percept",
-    cost: 0.06,
-    preconditions: [{ metric: "energy.level", op: "gt", value: 8 }],
-    baseValence: 0.05,
-    tags: ["perception", "information"]
-  },
-  {
-    id: "reach-out",
-    kind: "primitive",
-    source: "social",
-    binds: "entity",
-    cost: 0.1,
-    preconditions: [{ metric: "energy.level", op: "gt", value: 5 }],
-    baseValence: 0.2,
-    tags: ["social", "communication"]
-  }
-];
-var INNATE_SCHEMA_BY_ID = new Map(INNATE_SCHEMAS.map((s) => [s.id, s]));
 
 // src/cognition/agency/selection.scoring.ts
 var DEFAULT_WEIGHTS = {

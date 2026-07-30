@@ -390,3 +390,58 @@ describe('buildStateCommands — a communicate action reaches the outbox', () =>
     expect( ideomotorOf( commands, 'reach-out') ).toBeUndefined()
   } )
 } )
+
+// ── an action that names nothing is reported, not swallowed ──────────────────
+//
+// The executive's actions bias the agency competition rather than commanding it,
+// so a name matching no schema is not a dispatch error and nothing downstream
+// ever objected. But an unopposed no-op is indistinguishable from an act that
+// was tried and failed — and the mind reasons from the difference. Observed live:
+// eleven consecutive `query` actions (not a real schema), then "five consecutive
+// queries with no memory trace is a failure mode" and a plan to diagnose its own
+// memory. The one explanation it could not reach was that the name wasn't real.
+describe('buildStateCommands — an unresolvable action name is surfaced', () => {
+  const run = ( output: ExecutiveOutputFull, state: ReadonlySimulationState ) => {
+    const log = freshLog()
+    return buildStateCommands( output, footprintAt( 1 ), state, makeDeps( log, new ExecutiveSummarizer() ), [] ).commands
+  }
+  const unresolvedOf = ( commands: { set?: Array<{ id: string; type: string; metadata?: Record<string, unknown> }> } ) =>
+    ( commands.set ?? [] ).find( e => e.type === 'action.unresolved')
+
+  const bare = { tick: 1, time: 0, entities: new Map(), metrics: new Map() } as unknown as ReadonlySimulationState
+
+  it('reports an invented action name back to the mind', () => {
+    const commands = run( outputWithAction( { type: 'query', reasoning: 'r', expectedOutcome: 'o' } ), bare )
+    const e = unresolvedOf( commands )
+    expect( e ).toBeDefined()
+    expect( e?.metadata?.['names'] ).toEqual( [ 'query' ] )
+    expect( String( e?.metadata?.['summary'] ) ).toContain("'query'")
+    expect( String( e?.metadata?.['summary'] ) ).toContain('Nothing happened')
+  } )
+
+  it('stays quiet for an innate stance — those are real actions', () => {
+    for( const t of [ 'inspect', 'orient', 'attend', 'reflect', 'express', 'rest', 'wait', 'withdraw' ] )
+      expect( unresolvedOf( run( outputWithAction( { type: t, reasoning: 'r', expectedOutcome: 'o' } ), bare ) ) ).toBeUndefined()
+  } )
+
+  it('stays quiet for a communicate action — that leg handles its own resolution', () => {
+    expect( unresolvedOf( run( outputWithAction( { type: 'message', reasoning: 'r', expectedOutcome: 'o' } ), bare ) ) ).toBeUndefined()
+  } )
+
+  it('stays quiet for an ability the field actually affords', () => {
+    const commands = run(
+      outputWithAction( { type: 'search_docs', reasoning: 'r', expectedOutcome: 'o', args: { query: 'x' } } ),
+      stateWithExternalAffordance('search_docs'),
+    )
+    expect( unresolvedOf( commands ) ).toBeUndefined()
+  } )
+
+  it('clears a previous report once the mind names something real', () => {
+    const state = {
+      tick: 1, time: 0, metrics: new Map(),
+      entities: new Map( [ [ 'action.unresolved', { id: 'action.unresolved', type: 'action.unresolved', metadata: {} } ] ] ),
+    } as unknown as ReadonlySimulationState
+    const commands = run( outputWithAction( { type: 'reflect', reasoning: 'r', expectedOutcome: 'o' } ), state )
+    expect( ( commands as { delete?: string[] } ).delete ?? [] ).toContain('action.unresolved')
+  } )
+} )

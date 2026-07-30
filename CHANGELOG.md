@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **An action that names nothing now says so.** The executive's actions bias the
+  agency competition rather than commanding it, so a `type` matching no schema was
+  never a dispatch error — nothing downstream objected, and nothing told the mind.
+  An unopposed no-op is indistinguishable from an act that was tried and achieved
+  nothing, and a mind reasons from the difference: observed live, a Will spent
+  eleven consecutive actions on an invented `query`, watched nothing come of them,
+  and concluded *"five consecutive queries with no memory trace is a failure
+  mode"* — setting out to diagnose its own memory, the one explanation that was
+  not true. An unresolvable name is now reported back as a percept, and cleared
+  once the mind names something real.
+
+- **A mind is told what its own stances are.** It could only learn action names
+  from whichever affordances won the salience competition into its percepts, so
+  it invented plausible ones for everything else — `query`, `message`, and
+  `search_docs` before it (#103). The always-available set is now named in the
+  output schema, including that `reach-out` is how one says something to someone.
+  The abilities wording no longer claims a Will has *no* abilities when it merely
+  has no acquired ones; its own body was never in question.
+
 - **A message the mind writes now reaches the person it wrote it for.** The
   communicate leg of `buildIdeomotorIntents` looked for the addressee on
   `action.target` only — a field the output guidelines never documented, while

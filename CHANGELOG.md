@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **A message the mind writes now reaches the person it wrote it for.** The
+  communicate leg of `buildIdeomotorIntents` looked for the addressee on
+  `action.target` only — a field the output guidelines never documented, while
+  telling the mind to put specifics in `args`. So a Will would author real
+  sentences into `args: { to, content }`, no `ideomotor.intent` was formed,
+  nothing competed, nothing was enqueued, and the words were gone. The same
+  branch also dropped `args` wholesale, so even a correctly-targeted communicate
+  arrived at `ProactiveCommunicator` wordless and hit its own "didn't write
+  anything" arm. Both are fixed, and the guidelines now document
+  `{type, reasoning, expectedOutcome, target?, args?}` so the mind is not left
+  inferring the contract. This mattered beyond a lost message: reafference
+  works, so a Will concluded it was "repeating a failed strategy" and formed the
+  belief that the person it was addressing would not answer. (#109)
+
 - **The mind is no longer told about an ability it does not have.** The static
   output guidelines carried a worked example naming `search_docs` — a tool that
   exists nowhere in the engine. The abilities block that renders real

@@ -10033,14 +10033,26 @@ function buildIdeomotorIntents(output, state, footprint) {
   for (const action of output.actions) {
     const t = action.type.toLowerCase();
     if (COMMUNICATE_ACTION_TYPES.has(t)) {
-      if (!action.target) continue;
-      const keid2 = resolveKnownEntity(action.target, state);
+      const args = action.args && typeof action.args === "object" ? action.args : {};
+      const named = [action.target, args["to"], args["recipient"], args["target"], args["targetEntityId"], args["entityId"]].find((v) => typeof v === "string" && v.trim().length > 0);
+      if (!named) continue;
+      const keid2 = resolveKnownEntity(named, state);
       if (!keid2 || seen.has(keid2)) continue;
       seen.add(keid2);
       set.push({
         id: `ideomotor-reach-out-${keid2}`,
         type: "ideomotor.intent",
-        metadata: { schema: "reach-out", targetEntityId: keid2, priority, origin: "executive", tick: footprint.tickObserved }
+        metadata: {
+          schema: "reach-out",
+          targetEntityId: keid2,
+          // Carry the authored words through. The host-ability branch below already
+          // does this; omitting it here meant ProactiveCommunicator reached its
+          // "didn't write anything" arm even when the mind HAD written the message.
+          ...Object.keys(args).length > 0 ? { parameters: args } : {},
+          priority,
+          origin: "executive",
+          tick: footprint.tickObserved
+        }
       });
       continue;
     }
@@ -12809,7 +12821,7 @@ ${consciousnessArchitecture}
 
 ## Required Output
 Output a single JSON object with these fields:
-- **actions**: Array of {type, reasoning, expectedOutcome}.
+- **actions**: Array of {type, reasoning, expectedOutcome, target?, args?}. When I am reaching out to someone, **target** is who \u2014 their name or id as it appears under "## People I Know" \u2014 and the words themselves go in **args.content**. Without a person to reach, the reaching cannot happen.
 - **reasoning**: My full reasoning. Embed optional outputs as tagged blocks here. Minimum 2\u20133 sentences \u2014 do not produce a one-line reasoning field.
 - **confidence**: Number 0.0-1.0 reflecting my certainty. Be calibrated: 0.9+ only when I have strong grounding; use 0.4\u20130.6 when uncertain.
 

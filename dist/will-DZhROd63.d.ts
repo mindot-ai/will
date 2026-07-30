@@ -3595,6 +3595,10 @@ interface GoalState {
     activatedAt: Tick;
     deadline?: Tick;
     tags: string[];
+    /** Why this goal was abandoned, when it was. Set only on status 'abandoned'.
+     *  The reason used to be pushed onto `tags`, which threw once the goal had
+     *  been rehydrated from a deep-frozen state entity. */
+    abandonedReason?: string;
     /** Snapshot of memory.beliefs_total when this goal was activated.
      *  Used to compute epistemic progress: (currentBeliefs - baseline) / threshold. */
     beliefsAtActivation: number;

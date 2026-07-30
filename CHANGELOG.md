@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+- **The mind is no longer told about an ability it does not have.** The static
+  output guidelines carried a worked example naming `search_docs` — a tool that
+  exists nowhere in the engine. The abilities block that renders real
+  affordances is correctly gated on having some, so for a Will with *no*
+  effectors the fictional one was the only affordance-shaped thing in its whole
+  prompt. Minds duly planned around it, attempted it, and reported the results
+  to people. The guidance now describes `actions` as expressing intent — which
+  is what the agency pipeline actually does — and says plainly that when there
+  is no abilities section there are no abilities, so saying so is the honest
+  move. Affordances are named in exactly one place now, which makes the
+  zero-ability case right by construction rather than by luck. (#103)
+
+- **A goal you abandon stays abandoned.** `abandonGoal` recorded its reason by
+  pushing onto the goal's `tags`, and goals hand those arrays straight to state
+  entities, which are deep-frozen — so the push threw, the goal stayed active
+  and kept competing for salience, and the rest of that tick's deferred effects
+  were lost with it. The reason now lives on its own `abandonedReason` field,
+  and goals copy their arrays across the state boundary in both directions
+  rather than sharing them (which also fixes the same latent crash in
+  `addGoal`'s append to a parent's `subGoals`). (#104)
+
+- **A file is something someone said.** An attachment-only Discord message —
+  which is what the client *produces* when you paste long markdown — has an
+  empty body, and the bridge dropped it before perception: no percept, no log
+  line. From the mind's side the person had gone silent. Such messages are now
+  perceived, text-like attachments are read into the percept, and everything
+  else is named so the Will can ask about it. Fetching is restricted to
+  Discord's own CDN, size-capped, and the contents enter fenced and labelled as
+  handed over rather than spoken. `readAttachments: false` opts out and still
+  names the file. (#105, #106)
+
 ## 0.8.0 — 2026-07-29 · the mind thinks at more than one depth
 
 A mind does several kinds of work, and they were all being done by one model.

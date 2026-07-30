@@ -221,3 +221,84 @@ describe('discord bridge — outbound', () => {
     expect( client.destroyed ).toBe( true )
   } )
 } )
+
+// ── attachments ──────────────────────────────────────────────────────────────
+//
+// Discord manufactures these: a long pasted markdown block becomes a .md upload
+// with an EMPTY content body. Such a message used to be dropped before
+// perceive() — so the person appeared to have gone silent, which is far worse
+// than a file the Will cannot read.
+
+describe('discord bridge — attachments', () => {
+  const cdn = ( name: string ) => `https://cdn.discordapp.com/attachments/1/2/${ name }`
+
+  it('perceives an attachment-only message instead of dropping it', async () => {
+    const { client, will } = await bridgeUp( { readAttachments: false } )
+    client.emit( {
+      content: '', channelId: 'c1', author: { id: 'U1' }, member: { displayName: 'Ada' },
+      attachments: [ { name: 'ROADMAP.md', contentType: 'text/markdown', size: 8402, url: cdn('ROADMAP.md') } ],
+    } )
+    await flush()
+
+    expect( will.perceived ).toHaveLength( 1 )
+    expect( will.perceived[0]!.text ).toContain('ROADMAP.md')
+    expect( will.perceived[0]!.text ).toContain('have not read')
+    expect( will.perceived[0] ).toMatchObject( { from: 'discord:U1', speaker: 'Ada', thread: 'discord:c1' } )
+  } )
+
+  it('reads a text attachment from the CDN into the percept, alongside what was said', async () => {
+    const original = globalThis.fetch
+    globalThis.fetch = ( async () => new Response('# Roadmap\nShip the thing.') ) as unknown as typeof fetch
+    try {
+      const { client, will } = await bridgeUp()
+      client.emit( {
+        content: 'here it is', channelId: 'c1', author: { id: 'U1' },
+        attachments: [ { name: 'ROADMAP.md', contentType: 'text/markdown', size: 25, url: cdn('ROADMAP.md') } ],
+      } )
+      await flush()
+
+      const text = will.perceived[0]!.text
+      expect( text ).toContain('here it is')          // speech survives
+      expect( text ).toContain('Ship the thing.')     // document is readable
+      expect( text ).toContain('not something said to me')   // …and marked as handed over
+    }
+    finally { globalThis.fetch = original }
+  } )
+
+  it('refuses to fetch from any host but Discord\'s CDN — an inbound url is untrusted input', async () => {
+    let called = 0
+    const original = globalThis.fetch
+    globalThis.fetch = ( async () => { called++; return new Response('pwned') } ) as unknown as typeof fetch
+    try {
+      const { client, will } = await bridgeUp()
+      client.emit( {
+        content: '', channelId: 'c1', author: { id: 'U1' },
+        attachments: [ { name: 'notes.md', contentType: 'text/markdown', size: 5, url: 'https://evil.example/notes.md' } ],
+      } )
+      await flush()
+
+      expect( called ).toBe( 0 )
+      expect( will.perceived[0]!.text ).not.toContain('pwned')
+      expect( will.perceived[0]!.text ).toContain('notes.md')
+    }
+    finally { globalThis.fetch = original }
+  } )
+
+  it('names a non-textual attachment without fetching it', async () => {
+    let called = 0
+    const original = globalThis.fetch
+    globalThis.fetch = ( async () => { called++; return new Response('binary') } ) as unknown as typeof fetch
+    try {
+      const { client, will } = await bridgeUp()
+      client.emit( {
+        content: '', channelId: 'c1', author: { id: 'U1' },
+        attachments: [ { name: 'diagram.png', contentType: 'image/png', size: 40_000, url: cdn('diagram.png') } ],
+      } )
+      await flush()
+
+      expect( called ).toBe( 0 )
+      expect( will.perceived[0]!.text ).toContain('diagram.png')
+    }
+    finally { globalThis.fetch = original }
+  } )
+} )

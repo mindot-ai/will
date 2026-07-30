@@ -343,14 +343,38 @@ describe('buildStateCommands — a communicate action reaches the outbox', () =>
     expect( intent?.metadata?.['targetEntityId'] ).toBe('ada')
   } )
 
-  it('carries the authored words through as parameters', () => {
+  it('carries the master\'s words as `gist` — direction for the facet, never the message', () => {
     const commands = run(
       outputWithAction( { type: 'message', reasoning: 'r', expectedOutcome: 'o',
         args: { to: 'Ada', content: 'What are you working on?' } } ),
       withAda(),
     )
     const params = ideomotorOf( commands, 'reach-out')?.metadata?.['parameters'] as Record<string, unknown>
-    expect( params?.['content'] ).toBe('What are you working on?')
+    expect( params?.['gist'] ).toBe('What are you working on?')
+    // `content` is delivered VERBATIM by MotorSchemaExecutor._deliver, bypassing the
+    // outreach facet — that is the master speaking directly, which it must never do.
+    expect( params?.['content'] ).toBeUndefined()
+  } )
+
+  it('resolves the addressee to the name the mind LEARNED, not the key it typed', () => {
+    const commands = run(
+      outputWithAction( { type: 'message', reasoning: 'r', expectedOutcome: 'o',
+        args: { to: 'ada', content: 'Checking in.' } } ),
+      withAda(),
+    )
+    const params = ideomotorOf( commands, 'reach-out')?.metadata?.['parameters'] as Record<string, unknown>
+    expect( params?.['targetEntityName'] ).toBe('Ada')
+  } )
+
+  it('drops the addressing keys — the addressee already lives in targetEntityId', () => {
+    const commands = run(
+      outputWithAction( { type: 'message', reasoning: 'r', expectedOutcome: 'o',
+        args: { to: 'Ada', content: 'Hi.', urgency: 'high' } } ),
+      withAda(),
+    )
+    const params = ideomotorOf( commands, 'reach-out')?.metadata?.['parameters'] as Record<string, unknown>
+    expect( params?.['to'] ).toBeUndefined()
+    expect( params?.['urgency'] ).toBe('high')   // unrelated args survive untouched
   } )
 
   it('accepts `recipient` too — the mind does not always pick the same key', () => {
@@ -370,7 +394,7 @@ describe('buildStateCommands — a communicate action reaches the outbox', () =>
     )
     const intent = ideomotorOf( commands, 'reach-out')
     expect( intent?.metadata?.['targetEntityId'] ).toBe('ada')
-    expect( ( intent?.metadata?.['parameters'] as Record<string, unknown> )?.['content'] ).toBe('Directly addressed.')
+    expect( ( intent?.metadata?.['parameters'] as Record<string, unknown> )?.['gist'] ).toBe('Directly addressed.')
   } )
 
   it('still forms no intent when there is genuinely no one named', () => {

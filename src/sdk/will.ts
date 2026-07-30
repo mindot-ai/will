@@ -319,7 +319,16 @@ export class Will {
     pma: PMASnapshot,
     opts: Omit<CreateWillOptions, 'identity'> & { identity?: Partial<WillIdentity> },
   ): Promise<Will> {
-    const id = opts.id ?? `${slug( opts.name )}-${Math.random().toString( 36 ).slice( 2, 8 )}`
+    // Waking IS being the same mind, so the id continues from the artifact unless the
+    // caller overrides it. The id is the path key for everything durable that lives
+    // OUTSIDE the artifact — `data/wills/<id>/vector_index`, snapshots, session logs.
+    // Minting a fresh `name-<random>` here gave a woken mind a brand-new, empty vector
+    // store every boot: identity/beliefs/goals returned (those are in the artifact) while
+    // episodic recall came back permanently empty, and the orphaned index was left behind
+    // on disk. Observed: four boots, four `lora-*` directories, four 4KB indexes, and a
+    // mind that concluded at 100% confidence that its own channel might not be viable
+    // because it could not recall a conversation it had just had.
+    const id = opts.id ?? pma.willId ?? `${slug( opts.name )}-${Math.random().toString( 36 ).slice( 2, 8 )}`
     const stem = new WillStem()
     const will = new Will( stem, id, opts.name )
 

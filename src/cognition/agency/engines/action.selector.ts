@@ -729,6 +729,8 @@ function readAffordance( id: string, m: ReadonlyMap<string, unknown> | Record<st
     available:       meta['available'] === true,
     tags:            Array.isArray( meta['tags'] ) ? ( meta['tags'] as unknown[] ).filter( ( t ): t is string => typeof t === 'string') : [],
     planBias:        typeof meta['planBias'] === 'number' ? ( meta['planBias'] as number ) : undefined,
+    willBias:        typeof meta['willBias'] === 'number' ? ( meta['willBias'] as number ) : undefined,
+    socialPrior:     typeof meta['socialPrior'] === 'number' ? ( meta['socialPrior'] as number ) : undefined,
     planId:          str( meta['planId'] ),
     stepId:          str( meta['stepId'] ),
     tick:            num( meta['tick'], 0 ),

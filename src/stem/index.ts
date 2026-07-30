@@ -459,6 +459,12 @@ export class WillStem {
     instance.simulation.snapshotManager.persistNow( pauseState )
       .catch( err => logger.error(`[WillStem] snapshot persist failed on pause (${id}):`, err ))
 
+    // The vector index lives outside the snapshot and only ever persisted itself from
+    // a debounce timer nothing awaited — so it died with the process, and every
+    // restart cold-started with an EMPTY index no matter how much was consolidated.
+    instance.cognition.vectorMemory?.persist()
+      .catch( ( err: unknown ) => logger.error(`[WillStem] vector index persist failed on pause (${id}):`, err ))
+
     this._biography.writeSessionSummary( instance )
     this._biography.writeEmotionalBiographySummary( instance )
     instance.sessionLogger?.close()
@@ -574,6 +580,16 @@ export class WillStem {
       instance.simulation.stateManager.applyCommands( flushCmds )
     const archiveState = instance.simulation.stateManager.snapshot()
     await instance.simulation.snapshotManager.persistNow( archiveState )
+
+    // …and the vector index, which is NOT part of that snapshot. Awaited here (unlike
+    // the pause path) because the process usually exits straight after this: a
+    // fire-and-forget write would simply be lost, which is exactly how a mind ended a
+    // session having consolidated episodes and left a 198-byte index on disk.
+    // Indexing runs in the background (it must not stall the tick loop), so drain it
+    // first — otherwise the last episodes consolidated are still mid-embed when the
+    // index is written and are absent from the file this session leaves behind.
+    await instance.cognition.episodicConsolidator.flushIndexing()
+    await instance.cognition.vectorMemory?.persist()
   }
 
   // Session-biography writers (behavioral + emotional) extracted to

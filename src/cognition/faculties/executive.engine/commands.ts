@@ -377,6 +377,11 @@ const COMMUNICATE_ACTION_TYPES = new Set([
   'communicate', 'speak', 'initiate_conversation', 'reach-out', 'reach_out', 'talk', 'text', 'message',
 ])
 
+/** Arg keys a mind uses for the words themselves — folded into `gist` (see below). */
+const WORDS_ARG_KEYS   = new Set([ 'content', 'message', 'text', 'body' ])
+/** Arg keys naming the addressee — already resolved into `targetEntityId`. */
+const ADDRESS_ARG_KEYS = new Set([ 'to', 'recipient', 'target', 'targetEntityId', 'entityId' ])
+
 /** Resolve an executive action target (a display name OR a keid) to a known-entity keid. */
 function resolveKnownEntity( target: string, state: ReadonlySimulationState ): string | undefined {
   const t = target.trim().toLowerCase()
@@ -387,6 +392,23 @@ function resolveKnownEntity( target: string, state: ReadonlySimulationState ): s
     const name = typeof m?.['name'] === 'string' ? m['name'] as string : undefined
     if( keid && keid.toLowerCase() === t ) return keid
     if( name && name.toLowerCase() === t ) return keid
+  }
+  return undefined
+}
+
+/**
+ * The name the mind has LEARNED for this entity. The outreach facet addresses someone
+ * by it ("I have decided to reach out to ${ name }"), so a keid leaking through here
+ * would have the mind reaching out to `discord:1019376031150379101`. Undefined when
+ * unlearned — the caller omits it rather than substituting a placeholder.
+ */
+function knownEntityName( keid: string, state: ReadonlySimulationState ): string | undefined {
+  for( const e of state.entities.values() ){
+    if( e.type !== 'known-entity') continue
+    const m = e.metadata as Record<string, unknown> | undefined
+    if( m?.['keid'] !== keid ) continue
+    const name = typeof m['name'] === 'string' ? m['name'].trim() : ''
+    return name.length > 0 ? name : undefined
   }
   return undefined
 }
@@ -443,15 +465,31 @@ function buildIdeomotorIntents(
       const keid = resolveKnownEntity( named, state )
       if( !keid || seen.has( keid ) ) continue
       seen.add( keid )
+      // The master forms the INTENT; it does not author the words. Whatever it wrote
+      // is the DIRECTION for the outreach facet (AuditionEngine.authorOutreach) to
+      // speak in — so it lands in `gist`, never `content`. This is load-bearing:
+      // MotorSchemaExecutor._deliver sends `parameters.content` VERBATIM and only
+      // falls back to the facet when it is empty, so carrying the master's sentences
+      // as `content` would put the master itself in a second, parallel conversation
+      // with someone a conversation facet may already be talking to — one mind
+      // holding two threads with one person about one thing. `gist` was read in
+      // three places and written nowhere; this is what writes it.
+      const said = [ ...WORDS_ARG_KEYS ]
+        .map( k => args[ k ] )
+        .find( v => typeof v === 'string' && v.trim().length > 0 ) as string | undefined
+      const parameters: Record<string, unknown> = {}
+      for( const [ k, v ] of Object.entries( args ) )
+        if( !WORDS_ARG_KEYS.has( k ) && !ADDRESS_ARG_KEYS.has( k ) ) parameters[ k ] = v
+      if( said ) parameters['gist'] = said
+      const targetName = knownEntityName( keid, state )
+      if( targetName ) parameters['targetEntityName'] = targetName
+
       set.push({
         id:   `ideomotor-reach-out-${ keid }`,
         type: 'ideomotor.intent',
         metadata: {
           schema: 'reach-out', targetEntityId: keid,
-          // Carry the authored words through. The host-ability branch below already
-          // does this; omitting it here meant ProactiveCommunicator reached its
-          // "didn't write anything" arm even when the mind HAD written the message.
-          ...( Object.keys( args ).length > 0 ? { parameters: args } : {} ),
+          ...( Object.keys( parameters ).length > 0 ? { parameters } : {} ),
           priority, origin: 'executive', tick: footprint.tickObserved,
         },
       })

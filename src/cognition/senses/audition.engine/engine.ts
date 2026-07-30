@@ -270,6 +270,8 @@ export class AuditionEngine extends BaseSenseEngine {
    * other percept uses. Wired to `stateManager.setEntity` in assembleMind().
    */
   private _memorySink: (( entity: MemoryEntity ) => void) | null = null
+  /** Deterministic id source for `conversation.received` — see _writeReceived. */
+  private _receivedSeq = 0
   /** Speaker attachment strength accessor (0–1) — weights salience by relationship. */
   private _getAttachmentScore: (( entityId: string ) => number) | null = null
   /** Active-goal topic text accessor — for salience topic-overlap. */
@@ -505,6 +507,16 @@ export class AuditionEngine extends BaseSenseEngine {
     // envelopes carry the right threadId.
     this._inflightInbound.set( entityId, content )
     this._inflightThread.set( entityId, threadId )
+
+    // Someone spoke to us — record it in state so SOCIAL COGNITION can see it.
+    // Until this, an inbound message existed only on the bus and inside a facet:
+    // it created no entity, so SocialPerception (whose whole job is to notice
+    // people acting toward us) had nothing to scan, never published
+    // `interaction.occurred`, and every consumer of that event — reputation,
+    // affect, theory-of-mind, attachment, frustration — learned nothing from any
+    // conversation the Will ever had. A Will could hold 27 exchanges with someone
+    // and still carry familiarity 0, valence 0 for them.
+    this._writeReceived( entityId, speakerName, content, threadId )
 
     // ── Route to facet, then block the entity queue until the turn resolves ──
     // The turn deferred must be armed BEFORE routing because a synchronous facet
@@ -801,6 +813,38 @@ export class AuditionEngine extends BaseSenseEngine {
    * (Section 1.2) routes ingest through the tick loop. The entity carries no
    * wall-clock timestamp — `setEntity` stamps createdAt/tick from the sim clock.
    */
+  /**
+   * The inbound as a social signal in state — mirror of `conversation.sent`.
+   *
+   * Shaped for `SocialPerception._scanSocialSignals`, which reads `sourceKeid` for
+   * who acted and `directedAtSelf` for whether it was aimed at us. Valence is left
+   * UNSET on purpose: the words have not been appraised yet, and guessing a number
+   * here would feed reputation and affect a sentiment nobody measured. Absent, the
+   * scanner falls back to its neutral default, so the Will learns *that* someone
+   * engaged (familiarity, recency, reliability) without inventing how it felt.
+   */
+  private _writeReceived( entityId: string, speakerName: string | undefined, content: string, threadId: string ): void {
+    if( !this._memorySink ) return
+    // Monotonic counter, never wallClock(): this entity LIVES IN STATE for a tick, so
+    // a wall-clock id makes the recorded and replayed runs diverge (R2). Observed as
+    // a replay consuming 17 of 18 recorded completions — different ids meant different
+    // percepts meant a different executive firing schedule.
+    this._receivedSeq += 1
+    this._memorySink({
+      id:   `conv-received-${ entityId }-${ this._receivedSeq }`,
+      type: 'conversation.received',
+      metadata: {
+        sourceKeid:     entityId,
+        sourceName:     speakerName,
+        directedAtSelf: true,          // an inbound turn is addressed to us by definition
+        action:         'communication',
+        preview:        content.slice( 0, 140 ),
+        chars:          content.length,
+        ...( threadId ? { threadId } : {} ),
+      },
+    })
+  }
+
   private _persistExchangeMemory( entityId: string, threadId: string, reply: string, confidence: number, entityName?: string ): void {
     const inbound = this._inflightInbound.get( entityId ) ?? ''
     this._inflightInbound.delete( entityId )

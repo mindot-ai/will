@@ -10,7 +10,7 @@ import type { ReadonlySimulationState, SimulationContext, EntityInput } from '#c
 import { AffordanceSynthesizer } from '#agency/engines/affordance.synthesizer'
 import { ActionSelector } from '#agency/engines/action.selector'
 import {
-  scoreAffordance, competitionEntropy, goalRelevance, driveUrgency,
+  scoreAffordance, competitionEntropy, goalRelevance, driveUrgency, DEFAULT_WEIGHTS,
   type BiasContext,
 } from '#agency/selection.scoring'
 import type { Affordance } from '#agency/types'
@@ -48,6 +48,8 @@ function aff( o: Partial<Affordance> & { id: string; schema: string } ) {
       available:       o.available       ?? true,
       tags:            o.tags            ?? [],
       tick:            o.tick            ?? 1,
+      planBias:        o.planBias,
+      willBias:        o.willBias,
     },
   }
 }
@@ -87,6 +89,44 @@ describe('scoring — the activation arithmetic', () => {
     const bias = { ...NEUTRAL_BIAS, drives: { energy: 0.9, sleep: 0.2, stress: 0, social: 0.4 } }
     expect( driveUrgency( restful, bias ) ).toBe( 0.9 )
     expect( driveUrgency( social,  bias ) ).toBe( 0.4 )
+  })
+
+  it('a willed act out-competes a fully habit-locked reflex', () => {
+    // Lora, 2026-07-30: the master willed `reach-out` at ticks 29/46/150/164/199 and
+    // `express` won all 176 enactions, ratcheting its own habit with every win — it is
+    // unconditional, binds nothing, and costs 0.02 against reach-out's 0.1. Nothing in
+    // the arithmetic knew the reach-out had been DELIBERATELY WILLED, so the reflex
+    // simply out-cheapened the intention, forever. `express` is given habit 1 here (its
+    // ceiling after the ratchet); the willed act must still win.
+    const reflex = aff({ id: 'r', schema: 'express', cost: 0.02, expectedReward: 0.55,
+      expectedValence: 0.1, habitStrength: 1, tags: [ 'affective', 'expression' ] })
+      .metadata as unknown as Affordance
+    const willed = aff({ id: 'w', schema: 'reach-out', source: 'ideomotor', cost: 0.1,
+      expectedReward: 0.6, expectedValence: 0.2, habitStrength: 0, willBias: 0.75,
+      targetEntityId: 'alice', tags: [ 'social', 'communication' ] })
+      .metadata as unknown as Affordance
+
+    expect( scoreAffordance( willed, NEUTRAL_BIAS ) )
+      .toBeGreaterThan( scoreAffordance( reflex, NEUTRAL_BIAS ) )
+
+    // …and the same field WITHOUT the volitional term reproduces the observed loss,
+    // so this test fails against the pre-fix arithmetic rather than merely passing.
+    const noWill = { ...DEFAULT_WEIGHTS, will: 0 }
+    expect( scoreAffordance( willed, NEUTRAL_BIAS, noWill ) )
+      .toBeLessThan( scoreAffordance( reflex, NEUTRAL_BIAS, noWill ) )
+  })
+
+  it('willing is a bias, not a rubber stamp — real homeostatic need still overrides it', () => {
+    // The volitional term must not make the competition a formality: a body that
+    // genuinely needs rest outranks a moderately-confident intention to talk.
+    const willed = aff({ id: 'w', schema: 'reach-out', source: 'ideomotor', cost: 0.1,
+      expectedReward: 0.6, expectedValence: 0.2, willBias: 0.5,
+      tags: [ 'social', 'communication' ] }).metadata as unknown as Affordance
+    const rest   = aff({ id: 'z', schema: 'rest', cost: 0.05, expectedReward: 0.5,
+      tags: [ 'regulatory' ] }).metadata as unknown as Affordance
+    const spent  = { ...NEUTRAL_BIAS, drives: { energy: 1, sleep: 1, stress: 0, social: 0 } }
+
+    expect( scoreAffordance( rest, spent ) ).toBeGreaterThan( scoreAffordance( willed, spent ) )
   })
 
   it('entropy is ~0 for a dominant winner and ~1 for a flat field', () => {

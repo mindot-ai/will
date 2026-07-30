@@ -616,6 +616,22 @@ declare class DefaultOrchestrator implements Orchestrator {
      * calls _executeTick() which handles pause/stop checks internally.
      * The orchestrator is the sole driver of ticks.
      */
+    /**
+     * A plain SimulationEngine's `react()` is implicitly "finish inside the tick" —
+     * only an AsyncEngine is allowed to span ticks, and it does so by LAUNCHING work
+     * and landing it later (see async.engine.ts: "react() never awaits LLM calls").
+     * Nothing enforces that on everyone else, and the failure is silent and severe:
+     * every agency deadline is denominated in TICKS, so an engine that awaits network
+     * I/O does not merely run slowly, it rescales time for the whole mind.
+     *
+     * Measured: one rate-limited embedding call awaited inside EpisodicConsolidator
+     * made two consecutive ticks take 64.9s and 63.5s. `AWAIT_TIMEOUT` — 15 ticks,
+     * normally ~15s — silently became 15 minutes, so a communicate intent sat
+     * 'awaiting' forever and the serial selector never chose anything again. 45
+     * executive decisions produced one intent and zero delivered messages, with no
+     * error anywhere. This turns that into a line in the log the first time it happens.
+     */
+    private _warnIfSlow;
     private _runLoop;
     private _shutdown;
     stop(): void;
@@ -1652,6 +1668,451 @@ declare class TokenTracker implements SimulationEngine {
     reset(): void;
     private _computeTickCost;
     private _averageTickCost;
+}
+
+/**
+ * Embedding provider interface — abstracts different embedding models.
+ *
+ * Supports:
+ *   - Local models (via Transformers.js or Ollama)
+ *   - Cloud providers (OpenAI, Anthropic, Cohere)
+ *   - Mock embedder for testing/deterministic replay
+ */
+
+/** Embedding is only ever a read or a write. */
+type EmbedFunction = Extract<LLMCallFunction, 'recall' | 'index'>;
+interface EmbeddingProvider {
+    readonly modelName: string;
+    readonly dimensions: number;
+    /** Generate embedding for a single piece of content. `fn` tags the call for
+     *  cost attribution: 'recall' (query) vs 'index' (write). */
+    embed(content: unknown, fn?: string): Promise<number[]>;
+    /** Generate embeddings for multiple items (batched for efficiency). */
+    embedBatch(contents: unknown[], fn?: string): Promise<number[][]>;
+    /** Check if two embeddings are semantically equivalent (for replay validation) */
+    areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
+}
+/**
+ * OpenAI-compatible embedder (works with OpenAI, Azure, LocalAI, Ollama)
+ */
+declare class OpenAICompatibleEmbedder implements EmbeddingProvider {
+    readonly modelName: string;
+    readonly dimensions: number;
+    private _apiUrl;
+    private _apiKey;
+    private _maxConcurrency;
+    private _timeoutMs;
+    private _tokenTracker;
+    /**
+     * Own gate — the same LLMSemaphore the LLM calls use, on a separate instance so
+     * embeddings and reasoning do not compete for one another's slots. It bounds the
+     * fan-out that produced the 10.7s tail, and `withGate` additionally retries a 429
+     * with backoff, which a bare `embed()` previously surfaced as a hard failure.
+     */
+    private _gate;
+    constructor(config: {
+        modelName: string;
+        dimensions: number;
+        apiUrl: string;
+        apiKey?: string | null;
+        /**
+         * Max embedding requests in flight at once — across ALL callers, not just one
+         * embedBatch(). Default 4, chosen from measured provider behaviour rather than
+         * taste: gemini-embedding-001 answers a lone request in ~1.1s, but queues hard
+         * under fan-out — at 8 in flight the slowest three took 10.7s (all HTTP 200, no
+         * 429, simply serialized). That tail is what made recall exceed its 5s budget
+         * and return "no recall" while a mind with six live facets was asking.
+         */
+        maxConcurrency?: number;
+        /** @deprecated use maxConcurrency — kept as its fallback for back-compat. */
+        batchSize?: number;
+        /** Per-request timeout in ms before the connection is aborted. Default 30s. */
+        timeoutMs?: number;
+        /**
+         * Per-Will token tracker. When provided, each embedding call records its
+         * input-token usage under the 'embedding' category so memory-vector spend is
+         * visible alongside LLM spend instead of being a silent cost leak.
+         */
+        tokenTracker?: TokenTracker | null;
+    });
+    /**
+     * Embed one item, gated. Every caller funnels through here — a facet building a
+     * prompt, the master recalling, the consolidator indexing — so the gate is the
+     * only place total in-flight fan-out is bounded. Waiting for a slot is strictly
+     * better than the alternative it replaces: an ungated request that returns after
+     * the recall budget has already expired is a request whose answer is thrown away.
+     */
+    embed(content: unknown, fn?: EmbedFunction): Promise<number[]>;
+    private _embedOnce;
+    embedBatch(contents: unknown[], fn?: EmbedFunction): Promise<number[][]>;
+    areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
+}
+/**
+ * Deterministic mock embedder for testing and replay.
+ * Uses content hashing to produce stable embeddings.
+ */
+declare class MockEmbedder implements EmbeddingProvider {
+    readonly modelName = "mock";
+    readonly dimensions = 128;
+    private _seed;
+    constructor(seed?: number);
+    embed(content: unknown, _fn?: EmbedFunction): Promise<number[]>;
+    embedBatch(contents: unknown[], fn?: EmbedFunction): Promise<number[][]>;
+    areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
+    private _hashString;
+    private _next;
+}
+
+interface EpisodicConsolidatorConfig {
+    /** Threshold above which a WM item is consolidated */
+    consolidationThreshold?: number;
+    /** How much emotional intensity boosts consolidation (multiplier) */
+    emotionBoost?: number;
+    /** Maximum episodes to consolidate per tick */
+    maxPerTick?: number;
+    /** Optional vector memory adapter for semantic search */
+    vectorMemory?: VectorMemoryAdapter;
+    /** Optional embedding provider (required if vectorMemory provided) */
+    embedder?: EmbeddingProvider;
+    /** Whether to automatically index episodes (default true) */
+    autoIndex?: boolean;
+    bus?: CognitiveBus;
+}
+interface EpisodicMemory {
+    id: string;
+    timestamp: Tick;
+    content: unknown;
+    emotionalTags: Record<string, number>;
+    affectiveContext: {
+        valence: number;
+        arousal: number;
+        dominance: number;
+    };
+    activationStrength: number;
+    retrievalCount: number;
+    lastRetrievedAt: Tick | null;
+    tags: string[];
+    sourceType: string;
+    /** Wall-clock ms at the moment the episode was first consolidated. */
+    createdAt: number;
+    /**
+     * Outcome lifecycle of the originating action/intent:
+     *   'intended'  — goal or plan was formed but not yet attempted
+     *   'attempted' — action was dispatched; outcome unknown at consolidation time
+     *   'confirmed' — action was confirmed successful (e.g. message delivered)
+     *   'failed'    — action failed, timed out, or was abandoned
+     */
+    outcomeStatus?: 'intended' | 'attempted' | 'confirmed' | 'failed';
+}
+declare class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
+    readonly name = "episodic-consolidator";
+    private _consolidationThreshold;
+    private _emotionBoost;
+    private _maxPerTick;
+    private _store;
+    private _storeMap;
+    private _restored;
+    /** Ticks between full-store state syncs (captures decay / dream mutations).
+     *  Must be ≤ SnapshotManager.persistInterval (default 15) so every persisted
+     *  snapshot contains up-to-date episode values. */
+    private readonly _syncInterval;
+    private _ticksSinceSync;
+    private _affectValence;
+    private _affectArousal;
+    private _affectDominance;
+    private _bus;
+    private _vectorMemory;
+    /**
+     * In-flight background indexing. Indexing is deliberately not awaited inside
+     * react() (a rate-limit retry chain would stall the whole tick loop), so this is
+     * the handle for the two callers that genuinely must wait for it: shutdown,
+     * before persisting the index, and tests asserting on it.
+     */
+    private _indexing;
+    private _embedder;
+    private _autoIndex;
+    private readonly _model;
+    constructor(config?: EpisodicConsolidatorConfig);
+    attachBus(bus: CognitiveBus): void;
+    private _readConfigFromState;
+    subscribes(): string[];
+    publishes(): CognitiveEventSchema[];
+    onCognitiveEvent(e: CognitiveEvent): StateCommands | void;
+    snapshot(): Record<string, unknown>;
+    react(_delta: Duration, tick: Tick, state: ReadonlySimulationState, context: SimulationContext): Promise<EngineResult>;
+    /**
+     * Query episodic memory by tags, time range, or emotional context.
+     */
+    query(filters: {
+        tags?: string[];
+        fromTick?: Tick;
+        toTick?: Tick;
+        minEmotion?: string;
+        limit?: number;
+    }): EpisodicMemory[];
+    /**
+     * Semantic query via vector memory.
+     * Returns episodes with content semantically similar to the query.
+     * Requires vectorMemory adapter to be configured.
+     *
+     * Similarity ranking, with optional mood-congruent re-ranking: when
+     * `affectiveBias` is supplied, results are re-scored by blending embedding
+     * similarity with affective congruence between the caller's current valence
+     * and each episode's encoded valence (`affectiveContext.valence`) — modelling
+     * mood-congruent recall (Bower). Similarity still dominates at low weights. To
+     * let affect promote a congruent-but-slightly-less-similar memory, we
+     * over-fetch candidates and re-rank before truncating to `limit`.
+     *
+     * Other metadata narrowing (sourceType / tags) remains the caller's job on the
+     * returned episodes (which carry all metadata).
+     */
+    /** Await any background indexing still in flight. Shutdown and tests only. */
+    flushIndexing(): Promise<void>;
+    semanticQuery(query: unknown, filters?: {
+        minSimilarity?: number;
+        limit?: number;
+        /** Mood-congruent re-ranking: target valence [-1,1] + blend weight [0,1]. */
+        affectiveBias?: {
+            valence: number;
+            weight: number;
+        };
+    }): Promise<EpisodicMemory[]>;
+    /**
+     * Mark an episode as retrieved (boosts its strength slightly).
+     *
+     * Immutable replace (mirrors applyDecay): other engines may already hold a
+     * reference to this episode this tick, so we update a copy in both _store and
+     * _storeMap rather than mutating the shared object underneath them. The bumped
+     * retrievalCount is the load-bearing field — it unlocks the ForgettingCurve's
+     * retrievalBoost, so memories that are actively recalled decay slower than
+     * ones that are never used.
+     */
+    markRetrieved(episodeId: string, tick: Tick): void;
+    /**
+     * Get all episodes (for serialization / replay).
+     */
+    getAllEpisodes(): ReadonlyArray<EpisodicMemory>;
+    /**
+     * Permanently remove decayed episodes from the store, the id index, and the
+     * vector index. The consolidator owns the store, so the ForgettingCurve asks
+     * it to prune rather than mutating the store itself. Returns the ids that
+     * were actually present and removed, so the caller can emit matching state
+     * deletions. Removal is order-deterministic for replay.
+     */
+    /**
+     * Apply decayed activation strengths computed by the ForgettingCurve.
+     *
+     * The consolidator owns the episode store, so decay is committed here rather
+     * than written onto the live objects the curve borrowed via getAllEpisodes()
+     * — those references may already be held by other engines this tick. Each
+     * changed episode is replaced with an updated copy (immutable update), so
+     * previously handed-out references are not mutated underneath their holders.
+     */
+    applyDecay(updates: ReadonlyMap<string, number>): void;
+    /**
+     * Commit dream-state mutations computed by the DreamSimulator — reactivation
+     * boosts (activationStrength), REM emotional dampening (emotionalTags), and
+     * creative-recombination tag cross-pollination (tags).
+     *
+     * Like applyDecay, the consolidator owns the store, so the simulator computes
+     * the new field values on its own working copies and hands them here for an
+     * immutable replace, rather than mutating the shared episode objects it
+     * borrowed via getAllEpisodes() — those references may be held by other
+     * engines this tick. Only the fields present in each entry are replaced.
+     */
+    applyDreamUpdates(updates: ReadonlyMap<string, {
+        activationStrength?: number;
+        emotionalTags?: Record<string, number>;
+        tags?: string[];
+    }>): void;
+    pruneEpisodes(ids: Iterable<string>): Promise<string[]>;
+    /**
+     * Force an immediate full sync of all in-memory episodes to StateCommands.
+     *
+     * Called at session end (pauseWill / archiveWill) to guarantee that episode
+     * mutations accumulated since the last periodic sync — activationStrength
+     * decay, emotionalTag dampening, retrieval counts — are captured in the
+     * final persisted snapshot.  Without this, any session that ends between
+     * two scheduled sync ticks loses those mutations on the next cold-start.
+     */
+    flushToState(): StateCommands;
+    /**
+     * Restore episodes from snapshot (for replay).
+     */
+    restoreEpisodes(episodes: EpisodicMemory[]): void;
+    /**
+     * Serialize one episode into a StateCommands entity write.
+     * Used both at creation time and during periodic sync.
+     */
+    private _episodeToEntity;
+    /**
+     * Rehydrate _store from 'episodic_memory' entities in state.
+     * Called once on first tick after snapshot restore.
+     * Also rebuilds vector index if configured.
+     */
+    private _restoreFromState;
+    private _findCandidates;
+    private _readCurrentEmotions;
+    private _computeEmotionalIntensity;
+}
+
+/**
+ * Vector memory types for semantic episodic retrieval.
+ *
+ * Provides similarity search over consolidated episodic memories
+ * without replacing the existing _store array or StateManager.
+ * Acts as a read-optimized secondary index.
+ */
+
+interface VectorMemoryConfig {
+    /** Dimension of embedding vectors (default 1536 for OpenAI text-embedding-3-small) */
+    dimensions?: number;
+    /** Similarity metric: 'cosine', 'euclidean', or 'dot' */
+    similarityMetric?: 'cosine' | 'euclidean' | 'dot';
+    /** Maximum number of episodes to index (older entries evicted) */
+    maxIndexedEpisodes?: number;
+    /** Minimum similarity threshold for query results (0-1). Default 0.35, tuned
+     *  for real sentence embeddings (text-embedding-3-small); raise for higher
+     *  precision. */
+    minSimilarity?: number;
+    /** Seed for the index's level-assignment PRNG — required for deterministic replay */
+    seed?: number;
+}
+interface VectorRecord {
+    id: string;
+    vector: number[];
+    embeddingModel: string;
+    createdAt: number;
+    metadata: {
+        tick: Tick;
+        sourceType: string;
+        /** Encode-time affective valence (-1..1). Stamped here so index backends that
+         *  CAN filter/rank on metadata (pgvector, Qdrant) may do affective filtering
+         *  server-side. The HNSW path is similarity-only, so its mood-congruent recall
+         *  (EpisodicConsolidator.semanticQuery affectiveBias) re-ranks on the
+         *  authoritative resolved-episode valence instead. */
+        emotionalValence: number;
+        tags: string[];
+    };
+}
+interface VectorQueryResult {
+    episodeId: string;
+    similarity: number;
+}
+/**
+ * Query knobs for vector search.
+ *
+ * The HNSW index is **similarity-only**: it ranks by vector distance and
+ * applies a `minSimilarity` floor, nothing else. Metadata is stored on
+ * VectorRecord but is NOT indexed, so any metadata-based narrowing
+ * (sourceType / valence / tags / tick range) must be done by the caller
+ * AFTER the search returns. See episodic.consolidator.semanticQuery.
+ */
+interface VectorQueryFilter {
+    minSimilarity?: number;
+    maxResults?: number;
+}
+
+/**
+ * Vector index interface — allows swapping different implementations.
+ *
+ * Implementations:
+ *   - HNSWIndex (in-memory, deterministic)
+ *   - QdrantClient (cloud)
+ *   - PgVectorClient (Postgres)
+ *   - PineconeClient (cloud)
+ */
+
+interface VectorIndex {
+    /** Insert a vector into the index */
+    insert(record: VectorRecord): Promise<void>;
+    /** Search for k nearest neighbors. Similarity-only — see VectorQueryFilter. */
+    search(vector: number[], k: number, filter?: {
+        minSimilarity?: number;
+    }): Promise<VectorQueryResult[]>;
+    /** Delete a vector from the index */
+    delete(id: string): Promise<boolean>;
+    /** Get current size of index */
+    readonly size: number;
+    /** Iterate all indexed ids in insertion order — lets callers rebuild an
+     *  external id-set (e.g. the adapter's dedup/eviction set) after a load. */
+    keys?(): IterableIterator<string>;
+    /** Serialize index to bytes for persistence (optional) */
+    serialize?(): Uint8Array;
+    /** Deserialize index from bytes (optional) */
+    deserialize?(bytes: Uint8Array): Promise<void>;
+    /** Clear all entries */
+    clear(): Promise<void>;
+}
+
+interface VectorMemoryAdapter {
+    /** Index an episodic memory (called during consolidation) */
+    index(episode: EpisodicMemory, content: unknown): Promise<void>;
+    /** Index multiple episodes in batch */
+    indexBatch(episodes: Array<{
+        episode: EpisodicMemory;
+        content: unknown;
+    }>): Promise<void>;
+    /** Search for semantically similar episodes — returns ID + similarity, caller resolves from store */
+    search(query: unknown, filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
+    /** Search with embedding vector directly */
+    searchWithVector(embedding: number[], filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
+    /** Delete an episode from the index (when pruned from _store) */
+    delete(episodeId: string): Promise<void>;
+    /** Rebuild entire index from store (called on snapshot restore when no persisted index exists) */
+    rebuildFromStore(store: EpisodicMemory[]): Promise<void>;
+    /** Persist index to storage */
+    persist(): Promise<void>;
+    /** Load index from storage */
+    load(): Promise<void>;
+    /** Get current index size */
+    readonly size: number;
+}
+declare class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
+    private _index;
+    private _embedder;
+    private _storage;
+    private _persistPath;
+    private _metaPath;
+    private _maxIndexedEpisodes;
+    private _indexedIds;
+    private _dirty;
+    private _persistDebounceTimer;
+    private _minSimilarity;
+    /** Per-id access recency (insert + search hit) for LRU-style eviction. A plain
+     *  monotonic counter — not persisted; rebuilt from insertion order on load. */
+    private _accessTick;
+    private _accessClock;
+    constructor(embedder: EmbeddingProvider, config?: VectorMemoryConfig & {
+        persistPath?: string;
+    }, storage?: StorageAdapter, indexImpl?: VectorIndex);
+    /** Record that `id` was just inserted or recalled, so eviction keeps the
+     *  memories the Will actually uses (LRU) and drops the genuinely cold ones. */
+    private _touch;
+    get size(): number;
+    index(episode: EpisodicMemory, content: unknown): Promise<void>;
+    indexBatch(episodes: Array<{
+        episode: EpisodicMemory;
+        content: unknown;
+    }>): Promise<void>;
+    search(query: unknown, filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
+    searchWithVector(embedding: number[], filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
+    delete(episodeId: string): Promise<void>;
+    rebuildFromStore(store: EpisodicMemory[]): Promise<void>;
+    persist(): Promise<void>;
+    load(): Promise<void>;
+    private _evictColdest;
+    /**
+     * Throttle, NOT a debounce. The previous version cleared and re-armed the timer on
+     * every index(), so it only ever fired after 5s of complete inactivity — and a mind
+     * consolidating steadily indexes far more often than that, so the write was pushed
+     * back indefinitely and the index never reached disk while it was awake.
+     *
+     * A pending timer is now left alone: the first write after a quiet period sets the
+     * deadline, and everything indexed within the window rides along on it. Persist is
+     * bounded at 5s from the FIRST pending change rather than the last.
+     */
+    private _schedulePersist;
 }
 
 interface EnergyRegulatorConfig {
@@ -2820,7 +3281,6 @@ declare class WorkingMemory implements SimulationEngine, CognitiveEngine {
     private _emitEvents;
     private _items;
     private _modulatedCapacity;
-    private _currentFocusId;
     private _activeGoalCount;
     /**
      * Monotonic suffix counter for injected WM item ids. Replaces Math.random()
@@ -2861,8 +3321,10 @@ declare class WorkingMemory implements SimulationEngine, CognitiveEngine {
      */
     private _ingestGoals;
     /**
-     * Mark the currently focused entity's WM item as attended this tick.
-     * Also checks for attention.focus entities in state as a fallback.
+     * Mark the currently focused entity's WM item as attended this tick, from the
+     * `attention.focus` entities AttentionAllocator writes. (A second, bus-driven
+     * branch used to sit above this one, labelled "preferred"; the event behind it was
+     * never published, so this loop has always been the only path — see #114.)
      */
     private _applyAttention;
     /**
@@ -2876,410 +3338,6 @@ declare class WorkingMemory implements SimulationEngine, CognitiveEngine {
      */
     private _persistItems;
     private _evictIfNeeded;
-}
-
-/**
- * Embedding provider interface — abstracts different embedding models.
- *
- * Supports:
- *   - Local models (via Transformers.js or Ollama)
- *   - Cloud providers (OpenAI, Anthropic, Cohere)
- *   - Mock embedder for testing/deterministic replay
- */
-
-/** Embedding is only ever a read or a write. */
-type EmbedFunction = Extract<LLMCallFunction, 'recall' | 'index'>;
-interface EmbeddingProvider {
-    readonly modelName: string;
-    readonly dimensions: number;
-    /** Generate embedding for a single piece of content. `fn` tags the call for
-     *  cost attribution: 'recall' (query) vs 'index' (write). */
-    embed(content: unknown, fn?: string): Promise<number[]>;
-    /** Generate embeddings for multiple items (batched for efficiency). */
-    embedBatch(contents: unknown[], fn?: string): Promise<number[][]>;
-    /** Check if two embeddings are semantically equivalent (for replay validation) */
-    areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
-}
-/**
- * OpenAI-compatible embedder (works with OpenAI, Azure, LocalAI, Ollama)
- */
-declare class OpenAICompatibleEmbedder implements EmbeddingProvider {
-    readonly modelName: string;
-    readonly dimensions: number;
-    private _apiUrl;
-    private _apiKey;
-    private _maxConcurrency;
-    private _timeoutMs;
-    private _tokenTracker;
-    constructor(config: {
-        modelName: string;
-        dimensions: number;
-        apiUrl: string;
-        apiKey?: string | null;
-        /** Max embedding requests in flight at once for embedBatch(). Default 8. */
-        maxConcurrency?: number;
-        /** @deprecated use maxConcurrency — kept as its fallback for back-compat. */
-        batchSize?: number;
-        /** Per-request timeout in ms before the connection is aborted. Default 30s. */
-        timeoutMs?: number;
-        /**
-         * Per-Will token tracker. When provided, each embedding call records its
-         * input-token usage under the 'embedding' category so memory-vector spend is
-         * visible alongside LLM spend instead of being a silent cost leak.
-         */
-        tokenTracker?: TokenTracker | null;
-    });
-    embed(content: unknown, fn?: EmbedFunction): Promise<number[]>;
-    embedBatch(contents: unknown[], fn?: EmbedFunction): Promise<number[][]>;
-    areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
-}
-/**
- * Deterministic mock embedder for testing and replay.
- * Uses content hashing to produce stable embeddings.
- */
-declare class MockEmbedder implements EmbeddingProvider {
-    readonly modelName = "mock";
-    readonly dimensions = 128;
-    private _seed;
-    constructor(seed?: number);
-    embed(content: unknown, _fn?: EmbedFunction): Promise<number[]>;
-    embedBatch(contents: unknown[], fn?: EmbedFunction): Promise<number[][]>;
-    areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
-    private _hashString;
-    private _next;
-}
-
-/**
- * Vector memory types for semantic episodic retrieval.
- *
- * Provides similarity search over consolidated episodic memories
- * without replacing the existing _store array or StateManager.
- * Acts as a read-optimized secondary index.
- */
-
-interface VectorMemoryConfig {
-    /** Dimension of embedding vectors (default 1536 for OpenAI text-embedding-3-small) */
-    dimensions?: number;
-    /** Similarity metric: 'cosine', 'euclidean', or 'dot' */
-    similarityMetric?: 'cosine' | 'euclidean' | 'dot';
-    /** Maximum number of episodes to index (older entries evicted) */
-    maxIndexedEpisodes?: number;
-    /** Minimum similarity threshold for query results (0-1). Default 0.35, tuned
-     *  for real sentence embeddings (text-embedding-3-small); raise for higher
-     *  precision. */
-    minSimilarity?: number;
-    /** Seed for the index's level-assignment PRNG — required for deterministic replay */
-    seed?: number;
-}
-interface VectorRecord {
-    id: string;
-    vector: number[];
-    embeddingModel: string;
-    createdAt: number;
-    metadata: {
-        tick: Tick;
-        sourceType: string;
-        /** Encode-time affective valence (-1..1). Stamped here so index backends that
-         *  CAN filter/rank on metadata (pgvector, Qdrant) may do affective filtering
-         *  server-side. The HNSW path is similarity-only, so its mood-congruent recall
-         *  (EpisodicConsolidator.semanticQuery affectiveBias) re-ranks on the
-         *  authoritative resolved-episode valence instead. */
-        emotionalValence: number;
-        tags: string[];
-    };
-}
-interface VectorQueryResult {
-    episodeId: string;
-    similarity: number;
-}
-/**
- * Query knobs for vector search.
- *
- * The HNSW index is **similarity-only**: it ranks by vector distance and
- * applies a `minSimilarity` floor, nothing else. Metadata is stored on
- * VectorRecord but is NOT indexed, so any metadata-based narrowing
- * (sourceType / valence / tags / tick range) must be done by the caller
- * AFTER the search returns. See episodic.consolidator.semanticQuery.
- */
-interface VectorQueryFilter {
-    minSimilarity?: number;
-    maxResults?: number;
-}
-
-/**
- * Vector index interface — allows swapping different implementations.
- *
- * Implementations:
- *   - HNSWIndex (in-memory, deterministic)
- *   - QdrantClient (cloud)
- *   - PgVectorClient (Postgres)
- *   - PineconeClient (cloud)
- */
-
-interface VectorIndex {
-    /** Insert a vector into the index */
-    insert(record: VectorRecord): Promise<void>;
-    /** Search for k nearest neighbors. Similarity-only — see VectorQueryFilter. */
-    search(vector: number[], k: number, filter?: {
-        minSimilarity?: number;
-    }): Promise<VectorQueryResult[]>;
-    /** Delete a vector from the index */
-    delete(id: string): Promise<boolean>;
-    /** Get current size of index */
-    readonly size: number;
-    /** Iterate all indexed ids in insertion order — lets callers rebuild an
-     *  external id-set (e.g. the adapter's dedup/eviction set) after a load. */
-    keys?(): IterableIterator<string>;
-    /** Serialize index to bytes for persistence (optional) */
-    serialize?(): Uint8Array;
-    /** Deserialize index from bytes (optional) */
-    deserialize?(bytes: Uint8Array): Promise<void>;
-    /** Clear all entries */
-    clear(): Promise<void>;
-}
-
-interface VectorMemoryAdapter {
-    /** Index an episodic memory (called during consolidation) */
-    index(episode: EpisodicMemory, content: unknown): Promise<void>;
-    /** Index multiple episodes in batch */
-    indexBatch(episodes: Array<{
-        episode: EpisodicMemory;
-        content: unknown;
-    }>): Promise<void>;
-    /** Search for semantically similar episodes — returns ID + similarity, caller resolves from store */
-    search(query: unknown, filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
-    /** Search with embedding vector directly */
-    searchWithVector(embedding: number[], filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
-    /** Delete an episode from the index (when pruned from _store) */
-    delete(episodeId: string): Promise<void>;
-    /** Rebuild entire index from store (called on snapshot restore when no persisted index exists) */
-    rebuildFromStore(store: EpisodicMemory[]): Promise<void>;
-    /** Persist index to storage */
-    persist(): Promise<void>;
-    /** Load index from storage */
-    load(): Promise<void>;
-    /** Get current index size */
-    readonly size: number;
-}
-declare class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
-    private _index;
-    private _embedder;
-    private _storage;
-    private _persistPath;
-    private _metaPath;
-    private _maxIndexedEpisodes;
-    private _indexedIds;
-    private _dirty;
-    private _persistDebounceTimer;
-    private _minSimilarity;
-    /** Per-id access recency (insert + search hit) for LRU-style eviction. A plain
-     *  monotonic counter — not persisted; rebuilt from insertion order on load. */
-    private _accessTick;
-    private _accessClock;
-    constructor(embedder: EmbeddingProvider, config?: VectorMemoryConfig & {
-        persistPath?: string;
-    }, storage?: StorageAdapter, indexImpl?: VectorIndex);
-    /** Record that `id` was just inserted or recalled, so eviction keeps the
-     *  memories the Will actually uses (LRU) and drops the genuinely cold ones. */
-    private _touch;
-    get size(): number;
-    index(episode: EpisodicMemory, content: unknown): Promise<void>;
-    indexBatch(episodes: Array<{
-        episode: EpisodicMemory;
-        content: unknown;
-    }>): Promise<void>;
-    search(query: unknown, filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
-    searchWithVector(embedding: number[], filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
-    delete(episodeId: string): Promise<void>;
-    rebuildFromStore(store: EpisodicMemory[]): Promise<void>;
-    persist(): Promise<void>;
-    load(): Promise<void>;
-    private _evictColdest;
-    private _schedulePersist;
-}
-
-interface EpisodicConsolidatorConfig {
-    /** Threshold above which a WM item is consolidated */
-    consolidationThreshold?: number;
-    /** How much emotional intensity boosts consolidation (multiplier) */
-    emotionBoost?: number;
-    /** Maximum episodes to consolidate per tick */
-    maxPerTick?: number;
-    /** Optional vector memory adapter for semantic search */
-    vectorMemory?: VectorMemoryAdapter;
-    /** Optional embedding provider (required if vectorMemory provided) */
-    embedder?: EmbeddingProvider;
-    /** Whether to automatically index episodes (default true) */
-    autoIndex?: boolean;
-    bus?: CognitiveBus;
-}
-interface EpisodicMemory {
-    id: string;
-    timestamp: Tick;
-    content: unknown;
-    emotionalTags: Record<string, number>;
-    affectiveContext: {
-        valence: number;
-        arousal: number;
-        dominance: number;
-    };
-    activationStrength: number;
-    retrievalCount: number;
-    lastRetrievedAt: Tick | null;
-    tags: string[];
-    sourceType: string;
-    /** Wall-clock ms at the moment the episode was first consolidated. */
-    createdAt: number;
-    /**
-     * Outcome lifecycle of the originating action/intent:
-     *   'intended'  — goal or plan was formed but not yet attempted
-     *   'attempted' — action was dispatched; outcome unknown at consolidation time
-     *   'confirmed' — action was confirmed successful (e.g. message delivered)
-     *   'failed'    — action failed, timed out, or was abandoned
-     */
-    outcomeStatus?: 'intended' | 'attempted' | 'confirmed' | 'failed';
-}
-declare class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
-    readonly name = "episodic-consolidator";
-    private _consolidationThreshold;
-    private _emotionBoost;
-    private _maxPerTick;
-    private _store;
-    private _storeMap;
-    private _restored;
-    /** Ticks between full-store state syncs (captures decay / dream mutations).
-     *  Must be ≤ SnapshotManager.persistInterval (default 15) so every persisted
-     *  snapshot contains up-to-date episode values. */
-    private readonly _syncInterval;
-    private _ticksSinceSync;
-    private _affectValence;
-    private _affectArousal;
-    private _affectDominance;
-    private _bus;
-    private _vectorMemory;
-    private _embedder;
-    private _autoIndex;
-    private readonly _model;
-    constructor(config?: EpisodicConsolidatorConfig);
-    attachBus(bus: CognitiveBus): void;
-    private _readConfigFromState;
-    subscribes(): string[];
-    publishes(): CognitiveEventSchema[];
-    onCognitiveEvent(e: CognitiveEvent): StateCommands | void;
-    snapshot(): Record<string, unknown>;
-    react(_delta: Duration, tick: Tick, state: ReadonlySimulationState, context: SimulationContext): Promise<EngineResult>;
-    /**
-     * Query episodic memory by tags, time range, or emotional context.
-     */
-    query(filters: {
-        tags?: string[];
-        fromTick?: Tick;
-        toTick?: Tick;
-        minEmotion?: string;
-        limit?: number;
-    }): EpisodicMemory[];
-    /**
-     * Semantic query via vector memory.
-     * Returns episodes with content semantically similar to the query.
-     * Requires vectorMemory adapter to be configured.
-     *
-     * Similarity ranking, with optional mood-congruent re-ranking: when
-     * `affectiveBias` is supplied, results are re-scored by blending embedding
-     * similarity with affective congruence between the caller's current valence
-     * and each episode's encoded valence (`affectiveContext.valence`) — modelling
-     * mood-congruent recall (Bower). Similarity still dominates at low weights. To
-     * let affect promote a congruent-but-slightly-less-similar memory, we
-     * over-fetch candidates and re-rank before truncating to `limit`.
-     *
-     * Other metadata narrowing (sourceType / tags) remains the caller's job on the
-     * returned episodes (which carry all metadata).
-     */
-    semanticQuery(query: unknown, filters?: {
-        minSimilarity?: number;
-        limit?: number;
-        /** Mood-congruent re-ranking: target valence [-1,1] + blend weight [0,1]. */
-        affectiveBias?: {
-            valence: number;
-            weight: number;
-        };
-    }): Promise<EpisodicMemory[]>;
-    /**
-     * Mark an episode as retrieved (boosts its strength slightly).
-     *
-     * Immutable replace (mirrors applyDecay): other engines may already hold a
-     * reference to this episode this tick, so we update a copy in both _store and
-     * _storeMap rather than mutating the shared object underneath them. The bumped
-     * retrievalCount is the load-bearing field — it unlocks the ForgettingCurve's
-     * retrievalBoost, so memories that are actively recalled decay slower than
-     * ones that are never used.
-     */
-    markRetrieved(episodeId: string, tick: Tick): void;
-    /**
-     * Get all episodes (for serialization / replay).
-     */
-    getAllEpisodes(): ReadonlyArray<EpisodicMemory>;
-    /**
-     * Permanently remove decayed episodes from the store, the id index, and the
-     * vector index. The consolidator owns the store, so the ForgettingCurve asks
-     * it to prune rather than mutating the store itself. Returns the ids that
-     * were actually present and removed, so the caller can emit matching state
-     * deletions. Removal is order-deterministic for replay.
-     */
-    /**
-     * Apply decayed activation strengths computed by the ForgettingCurve.
-     *
-     * The consolidator owns the episode store, so decay is committed here rather
-     * than written onto the live objects the curve borrowed via getAllEpisodes()
-     * — those references may already be held by other engines this tick. Each
-     * changed episode is replaced with an updated copy (immutable update), so
-     * previously handed-out references are not mutated underneath their holders.
-     */
-    applyDecay(updates: ReadonlyMap<string, number>): void;
-    /**
-     * Commit dream-state mutations computed by the DreamSimulator — reactivation
-     * boosts (activationStrength), REM emotional dampening (emotionalTags), and
-     * creative-recombination tag cross-pollination (tags).
-     *
-     * Like applyDecay, the consolidator owns the store, so the simulator computes
-     * the new field values on its own working copies and hands them here for an
-     * immutable replace, rather than mutating the shared episode objects it
-     * borrowed via getAllEpisodes() — those references may be held by other
-     * engines this tick. Only the fields present in each entry are replaced.
-     */
-    applyDreamUpdates(updates: ReadonlyMap<string, {
-        activationStrength?: number;
-        emotionalTags?: Record<string, number>;
-        tags?: string[];
-    }>): void;
-    pruneEpisodes(ids: Iterable<string>): Promise<string[]>;
-    /**
-     * Force an immediate full sync of all in-memory episodes to StateCommands.
-     *
-     * Called at session end (pauseWill / archiveWill) to guarantee that episode
-     * mutations accumulated since the last periodic sync — activationStrength
-     * decay, emotionalTag dampening, retrieval counts — are captured in the
-     * final persisted snapshot.  Without this, any session that ends between
-     * two scheduled sync ticks loses those mutations on the next cold-start.
-     */
-    flushToState(): StateCommands;
-    /**
-     * Restore episodes from snapshot (for replay).
-     */
-    restoreEpisodes(episodes: EpisodicMemory[]): void;
-    /**
-     * Serialize one episode into a StateCommands entity write.
-     * Used both at creation time and during periodic sync.
-     */
-    private _episodeToEntity;
-    /**
-     * Rehydrate _store from 'episodic_memory' entities in state.
-     * Called once on first tick after snapshot restore.
-     * Also rebuilds vector index if configured.
-     */
-    private _restoreFromState;
-    private _findCandidates;
-    private _readCurrentEmotions;
-    private _computeEmotionalIntensity;
 }
 
 /** Forwards each entry to the consumer (the stem bridges it onto the transport). */
@@ -6578,6 +6636,8 @@ declare class AuditionEngine extends BaseSenseEngine {
      * other percept uses. Wired to `stateManager.setEntity` in assembleMind().
      */
     private _memorySink;
+    /** Deterministic id source for `conversation.received` — see _writeReceived. */
+    private _receivedSeq;
     /** Speaker attachment strength accessor (0–1) — weights salience by relationship. */
     private _getAttachmentScore;
     /** Active-goal topic text accessor — for salience topic-overlap. */
@@ -6698,6 +6758,17 @@ declare class AuditionEngine extends BaseSenseEngine {
      * (Section 1.2) routes ingest through the tick loop. The entity carries no
      * wall-clock timestamp — `setEntity` stamps createdAt/tick from the sim clock.
      */
+    /**
+     * The inbound as a social signal in state — mirror of `conversation.sent`.
+     *
+     * Shaped for `SocialPerception._scanSocialSignals`, which reads `sourceKeid` for
+     * who acted and `directedAtSelf` for whether it was aimed at us. Valence is left
+     * UNSET on purpose: the words have not been appraised yet, and guessing a number
+     * here would feed reputation and affect a sentiment nobody measured. Absent, the
+     * scanner falls back to its neutral default, so the Will learns *that* someone
+     * engaged (familiarity, recency, reliability) without inventing how it felt.
+     */
+    private _writeReceived;
     private _persistExchangeMemory;
     private _onFacetDecision;
     /**
@@ -6922,6 +6993,21 @@ declare class MotorSchemaExecutor implements CognitiveEngine {
     private _author;
     private _grants;
     private _bus;
+    /**
+     * Two-phase outreach authoring. A facet cannot be awaited from inside a tick:
+     * `ExecutiveFacet.report()` only QUEUES in tick-discipline mode and the reasoning
+     * launches from `pump()`, which the ExecutiveEngine calls once per tick — so an
+     * in-tick `await` blocks the very loop that would produce the answer. Observed
+     * live: a 61s freeze of the whole mind inside one tick, then an empty result.
+     * (It passes unit tests because bare facets have no inbox and author inline.)
+     *
+     * So `_deliver` REQUESTS words and returns false (the intent holds 'awaiting'),
+     * the facet answers off-tick, and a later tick delivers. Process-local by design:
+     * an authoring call in flight cannot survive a restart, and the intent would
+     * simply re-request.
+     */
+    private _authoring;
+    private _authored;
     constructor(schemas?: MotorSchema[]);
     attachBus(bus: CognitiveBus): void;
     /** Resolve schemas (incl. learned composites) from the live repertoire first. */
@@ -6961,6 +7047,13 @@ declare class MotorSchemaExecutor implements CognitiveEngine {
      * conversation facet); this is the single enaction → delivery path.
      */
     private _deliver;
+    /**
+     * Ask a facet for the words, off-tick. Fire-and-forget on purpose: awaiting this
+     * from inside `react()` deadlocks the tick loop against the facet pump. Idempotent
+     * per intent — a request already in flight is not duplicated, so the intent may sit
+     * 'awaiting' across many ticks with exactly one LLM call behind it.
+     */
+    private _requestAuthoring;
     private _emitEnacted;
     /**
      * Publish `action.outcome` for EVERY enaction — the shared metacognitive/affective
@@ -7016,6 +7109,12 @@ type EngineRegistry = {
     affectiveBlender: AffectiveBlender;
     workingMemory: WorkingMemory;
     episodicConsolidator: EpisodicConsolidator;
+    /**
+     * The vector index, when semantic recall is configured. Exposed so shutdown can
+     * FLUSH it: it lives outside the state snapshot and previously persisted only from
+     * a debounce timer no shutdown path awaited, so it died with the process.
+     */
+    vectorMemory: VectorMemoryAdapter | null;
     semanticIntegrator: SemanticIntegrator;
     spacedRepetition: SpacedRepetition;
     forgettingCurve: ForgettingCurve;

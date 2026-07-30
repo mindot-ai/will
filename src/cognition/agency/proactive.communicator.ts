@@ -264,9 +264,15 @@ export class ProactiveCommunicator {
       description: `I reach out to ${targetEntityName}: "${fullReply.slice( 0, 80 )}${fullReply.length > 80 ? '…' : ''}"`,
       commands,
       feedback: {
-        outcomeQuality: 0.85,
+        // NOT a success yet. This reports the TRANSPORT, and the act's point is to be
+        // answered — an outcome not yet known at this moment. Scoring delivery as 0.85
+        // taught the mind that reaching out works every time, including the times it
+        // was ignored, which is why it re-asked the same question 19 times in two
+        // minutes. Neutral here; the unanswered/answered signal in outreach.silence.ts
+        // is what actually moves the pull toward this person.
+        outcomeQuality: 0.5,
         surprise: 0.15,
-        lessons: [ `My message is queued for delivery to ${targetEntityName}.` ],
+        lessons: [ `My words are on their way to ${targetEntityName}. Whether they land is not yet known.` ],
       },
     }
   }

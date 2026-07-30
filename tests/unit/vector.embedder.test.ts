@@ -98,3 +98,55 @@ describe('OpenAICompatibleEmbedder — embedBatch concurrency gate (FN16)', () =
     expect( calls ).toBe( 0 )
   })
 })
+
+describe('OpenAICompatibleEmbedder — independent embed() callers share the gate', () => {
+  /** Count peak overlap across whatever requests the body fires. */
+  function peakCounter(){
+    const c = { active: 0, peak: 0 }
+    globalThis.fetch = ( async () => {
+      c.active++; c.peak = Math.max( c.peak, c.active )
+      await new Promise( r => setTimeout( r, 10 ) )
+      c.active--
+      return okEmbedding( [ 1 ] )
+    } ) as unknown as typeof fetch
+    return c
+  }
+
+  it('bounds fan-out across separate embed() calls, not only within one embedBatch', async () => {
+    // The production shape: N facets each recall once, concurrently. embedBatch was
+    // already bounded; this path was not. Measured against gemini-embedding-001, 8
+    // unbounded requests had the slowest three land at 10.7s — past the 5s recall
+    // budget, so their answers were discarded on arrival and the mind recalled nothing.
+    const c = peakCounter()
+    const embedder = make({ maxConcurrency: 2 })
+
+    await Promise.all( Array.from( { length: 8 }, () => embedder.embed('recall me') ) )
+
+    expect( c.peak ).toBe( 2 )
+  })
+
+  it('defaults to 4 in flight — the measured safe fan-out for this provider', async () => {
+    const c = peakCounter()
+    const embedder = make()
+
+    await Promise.all( Array.from( { length: 8 }, () => embedder.embed('recall me') ) )
+
+    expect( c.peak ).toBe( 4 )
+  })
+
+  it('retries a 429 instead of failing the recall outright', async () => {
+    let calls = 0
+    globalThis.fetch = ( async () => {
+      calls++
+      if( calls === 1 ) return { ok: false, status: 429, statusText: 'Too Many Requests' } as unknown as Response
+      return okEmbedding( [ 7 ] )
+    } ) as unknown as typeof fetch
+
+    process.env.WILL_LLM_RETRY_BASE_MS = '1'
+    try {
+      expect( await make().embed('x') ).toEqual( [ 7 ] )
+      expect( calls ).toBe( 2 )   // a rate limit is a wait, not a lost recall
+    }
+    finally { delete process.env.WILL_LLM_RETRY_BASE_MS }
+  })
+})

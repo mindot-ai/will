@@ -202,6 +202,7 @@ function createContext(simulationId, runId, seed) {
 }
 
 // src/core/orchestrator.ts
+var SLOW_ENGINE_FRACTION = 0.5;
 var DefaultOrchestrator = class {
   _engines = [];
   /** Override in subclasses to control which engines participate in the tick loop. */
@@ -389,6 +390,29 @@ var DefaultOrchestrator = class {
    * calls _executeTick() which handles pause/stop checks internally.
    * The orchestrator is the sole driver of ticks.
    */
+  /**
+   * A plain SimulationEngine's `react()` is implicitly "finish inside the tick" —
+   * only an AsyncEngine is allowed to span ticks, and it does so by LAUNCHING work
+   * and landing it later (see async.engine.ts: "react() never awaits LLM calls").
+   * Nothing enforces that on everyone else, and the failure is silent and severe:
+   * every agency deadline is denominated in TICKS, so an engine that awaits network
+   * I/O does not merely run slowly, it rescales time for the whole mind.
+   *
+   * Measured: one rate-limited embedding call awaited inside EpisodicConsolidator
+   * made two consecutive ticks take 64.9s and 63.5s. `AWAIT_TIMEOUT` — 15 ticks,
+   * normally ~15s — silently became 15 minutes, so a communicate intent sat
+   * 'awaiting' forever and the serial selector never chose anything again. 45
+   * executive decisions produced one intent and zero delivered messages, with no
+   * error anywhere. This turns that into a line in the log the first time it happens.
+   */
+  _warnIfSlow(engine, elapsedMs) {
+    if (engine.hasPendingWork !== void 0) return;
+    const budget = (this._config.tickIntervalMs ?? 1e3) * SLOW_ENGINE_FRACTION;
+    if (elapsedMs <= budget) return;
+    logger.warn(
+      `[Orchestrator] Engine "${engine.name}" held the tick for ${Math.round(elapsedMs)}ms at tick ${this._currentTick} (budget ${Math.round(budget)}ms). A non-async engine must not await network I/O \u2014 tick-denominated deadlines elsewhere are being stretched by this.`
+    );
+  }
   _runLoop(context) {
     if (this._tickTimer) return;
     this._tickTimer = setInterval(async () => {
@@ -448,6 +472,7 @@ var DefaultOrchestrator = class {
       await handler(this._currentTick, snapshot, engineContext);
     const allResults = [];
     const runEngine = async (engine) => {
+      const startedAt = wallClock();
       try {
         const result = await engine.react?.(this._clock.delta, this._currentTick, snapshot, engineContext);
         if (result) allResults.push(result);
@@ -461,6 +486,8 @@ var DefaultOrchestrator = class {
             error
           );
         }
+      } finally {
+        this._warnIfSlow(engine, wallClock() - startedAt);
       }
     };
     for (const engine of this._enginesTick())
@@ -5039,12 +5066,17 @@ var SocialPerception = class {
   constructor(config = {}) {
     this._bus = config.bus ?? null;
     this._agentTypes = new Set(config.agentTypes ?? [
+      "known-entity",
+      // the dossier — how this system names a someone
       "agent",
       "user",
       "contact",
       "persona"
+      // legacy / host-supplied
     ]);
     this._signalTypes = new Set(config.signalTypes ?? [
+      "conversation.received",
+      // someone spoke to us
       "message",
       "action",
       "expression",
@@ -5203,6 +5235,10 @@ var SocialPerception = class {
   _collectStale(state, currentTick) {
     const stale = [];
     for (const [id, entity] of state.entities) {
+      if (entity.type === "conversation.received") {
+        stale.push(id);
+        continue;
+      }
       if (entity.type === "percept.social" && typeof entity.metadata?.tick === "number") {
         if (currentTick - entity.metadata.tick > 2)
           stale.push(id);
@@ -7103,7 +7139,6 @@ var WorkingMemory = class {
   _emitEvents;
   _items = [];
   _modulatedCapacity;
-  _currentFocusId = null;
   _activeGoalCount = 0;
   /**
    * Monotonic suffix counter for injected WM item ids. Replaces Math.random()
@@ -7126,9 +7161,14 @@ var WorkingMemory = class {
     this._bus = bus;
   }
   // ── Engine interface ─────────────────────────────────────
+  // `attention.focus.changed` used to be listed here as the "preferred" focus source.
+  // Nothing has ever published it — focus reaches this engine through the
+  // `attention.focus` STATE ENTITY that AttentionAllocator writes, read in
+  // _applyAttention, and capacity is modulated from circadian alertness in _react.
+  // Both live paths have the same source, so the subscription was pure redundancy
+  // that read as a live wire. Removed rather than published (#114).
   subscribes() {
     return [
-      "attention.focus.changed",
       "goal.state.changed",
       "executive.prediction.formed"
     ];
@@ -7139,14 +7179,6 @@ var WorkingMemory = class {
   onCognitiveEvent(e) {
     this._model.observe(e.type, e.salience);
     switch (e.type) {
-      case "attention.focus.changed": {
-        const p = e.payload;
-        const focusId = p["entityId"];
-        if (focusId) this._currentFocusId = focusId;
-        const capacity = p["capacity"];
-        if (capacity != null) this._modulatedCapacity = Math.round(capacity * this._maxChunks);
-        break;
-      }
       case "goal.state.changed": {
         const p = e.payload;
         if (p["activeCount"] != null) this._activeGoalCount = p["activeCount"];
@@ -7164,7 +7196,6 @@ var WorkingMemory = class {
     return {
       items: this._items.length,
       modulatedCap: this._modulatedCapacity,
-      focusId: this._currentFocusId,
       activeGoals: this._activeGoalCount
     };
   }
@@ -7300,14 +7331,12 @@ var WorkingMemory = class {
     }
   }
   /**
-   * Mark the currently focused entity's WM item as attended this tick.
-   * Also checks for attention.focus entities in state as a fallback.
+   * Mark the currently focused entity's WM item as attended this tick, from the
+   * `attention.focus` entities AttentionAllocator writes. (A second, bus-driven
+   * branch used to sit above this one, labelled "preferred"; the event behind it was
+   * never published, so this loop has always been the only path — see #114.)
    */
   _applyAttention(state, tick) {
-    if (this._currentFocusId) {
-      const item = this._items.find((i) => i.sourceEntityId === this._currentFocusId);
-      if (item && !item.attendedAt.includes(tick)) item.attendedAt.push(tick);
-    }
     for (const entity of state.entities.values()) {
       if (entity.type !== "attention.focus") continue;
       const targetId = entity.metadata?.targetEntityId;
@@ -7391,6 +7420,13 @@ var EpisodicConsolidator = class {
   _bus = null;
   // Vector memory integration
   _vectorMemory = null;
+  /**
+   * In-flight background indexing. Indexing is deliberately not awaited inside
+   * react() (a rate-limit retry chain would stall the whole tick loop), so this is
+   * the handle for the two callers that genuinely must wait for it: shutdown,
+   * before persisting the index, and tests asserting on it.
+   */
+  _indexing = Promise.resolve();
   _embedder = null;
   _autoIndex;
   _model = new GenerativeModel();
@@ -7503,7 +7539,11 @@ var EpisodicConsolidator = class {
         episode: ep,
         content: ep.content
       }));
-      await this._vectorMemory.indexBatch(episodesWithContent);
+      this._indexing = this._vectorMemory.indexBatch(episodesWithContent).catch((err) => {
+        logger.warn(
+          `[EpisodicConsolidator] indexing deferred for ${newEpisodes.length} episode(s) \u2014 ${err instanceof Error ? err.message : String(err)}`
+        );
+      });
     }
     this._ticksSinceSync++;
     if (this._ticksSinceSync >= this._syncInterval && this._store.length > 0) {
@@ -7581,6 +7621,10 @@ var EpisodicConsolidator = class {
    * Other metadata narrowing (sourceType / tags) remains the caller's job on the
    * returned episodes (which carry all metadata).
    */
+  /** Await any background indexing still in flight. Shutdown and tests only. */
+  async flushIndexing() {
+    await this._indexing;
+  }
   async semanticQuery(query, filters) {
     if (!this._vectorMemory) {
       logger.warn("[EpisodicConsolidator] semanticQuery called without vectorMemory adapter");
@@ -7597,6 +7641,9 @@ var EpisodicConsolidator = class {
       this._vectorMemory.search(query, {
         maxResults: fetch2,
         minSimilarity: filters?.minSimilarity
+      }).catch((err) => {
+        logger.warn(`[EpisodicConsolidator] recall search failed \u2014 ${err instanceof Error ? err.message : String(err)}`);
+        return [];
       }),
       new Promise((resolve) => {
         timer = setTimeout(() => resolve(timedOut), timeoutMs);
@@ -8190,6 +8237,8 @@ var COMMUNICATE_ACTION_TYPES = /* @__PURE__ */ new Set([
   "text",
   "message"
 ]);
+var WORDS_ARG_KEYS = /* @__PURE__ */ new Set(["content", "message", "text", "body"]);
+var ADDRESS_ARG_KEYS = /* @__PURE__ */ new Set(["to", "recipient", "target", "targetEntityId", "entityId"]);
 function resolveKnownEntity(target, state) {
   const t = target.trim().toLowerCase();
   for (const e of state.entities.values()) {
@@ -8199,6 +8248,16 @@ function resolveKnownEntity(target, state) {
     const name = typeof m?.["name"] === "string" ? m["name"] : void 0;
     if (keid && keid.toLowerCase() === t) return keid;
     if (name && name.toLowerCase() === t) return keid;
+  }
+  return void 0;
+}
+function knownEntityName(keid, state) {
+  for (const e of state.entities.values()) {
+    if (e.type !== "known-entity") continue;
+    const m = e.metadata;
+    if (m?.["keid"] !== keid) continue;
+    const name = typeof m["name"] === "string" ? m["name"].trim() : "";
+    return name.length > 0 ? name : void 0;
   }
   return void 0;
 }
@@ -8224,16 +8283,20 @@ function buildIdeomotorIntents(output, state, footprint) {
       const keid2 = resolveKnownEntity(named, state);
       if (!keid2 || seen.has(keid2)) continue;
       seen.add(keid2);
+      const said = [...WORDS_ARG_KEYS].map((k) => args[k]).find((v) => typeof v === "string" && v.trim().length > 0);
+      const parameters = {};
+      for (const [k, v] of Object.entries(args))
+        if (!WORDS_ARG_KEYS.has(k) && !ADDRESS_ARG_KEYS.has(k)) parameters[k] = v;
+      if (said) parameters["gist"] = said;
+      const targetName = knownEntityName(keid2, state);
+      if (targetName) parameters["targetEntityName"] = targetName;
       set.push({
         id: `ideomotor-reach-out-${keid2}`,
         type: "ideomotor.intent",
         metadata: {
           schema: "reach-out",
           targetEntityId: keid2,
-          // Carry the authored words through. The host-ability branch below already
-          // does this; omitting it here meant ProactiveCommunicator reached its
-          // "didn't write anything" arm even when the mind HAD written the message.
-          ...Object.keys(args).length > 0 ? { parameters: args } : {},
+          ...Object.keys(parameters).length > 0 ? { parameters } : {},
           priority,
           origin: "executive",
           tick: footprint.tickObserved
@@ -10430,16 +10493,6 @@ function buildSemanticQuery(state, goalManager) {
   const valence = state.metrics.get("affect.valence") ?? 0;
   const dominantEmotion = valence > 0.3 ? "positive" : valence < -0.3 ? "negative" : "neutral";
   if (dominantEmotion !== "neutral") parts.push(`Feeling ${dominantEmotion}`);
-  const senderNames = /* @__PURE__ */ new Set();
-  for (const entity of state.entities.values()) {
-    if (entity.type !== "communication") continue;
-    const msgTick = entity.metadata?.tick ?? 0;
-    if (state.tick - msgTick > 30) continue;
-    if (entity.metadata?.processedByExecutive) continue;
-    const name = entity.metadata?.agentName;
-    if (name && name !== "unknown") senderNames.add(name);
-  }
-  if (senderNames.size > 0) parts.push(`Talking with: ${[...senderNames].join(", ")}`);
   const percepts = extractPercepts(state).slice(0, 3);
   if (percepts.length > 0) {
     parts.push(`Recently observed: ${percepts.map((p) => p.summary).join("; ")}`);
@@ -11912,8 +11965,6 @@ function hasPendingInstructions(state, pendingMessages) {
       const salience = entity.metadata?.salience ?? 0;
       if (salience > 0.7) return true;
     }
-    if (entity.type === "communication" && !entity.metadata?.processedByExecutive)
-      return true;
   }
   return pendingMessages.length > 0;
 }
@@ -12763,27 +12814,6 @@ var MessageQueue = class {
   /** Entity IDs of communication entities that have been replied to this session. */
   _repliedEntityIds = /* @__PURE__ */ new Set();
   /**
-   * Scan the simulation state for unprocessed communication entities
-   * and queue them into pendingMessages. Call every tick.
-   */
-  scanState(state, tick) {
-    const seenIds = new Set(this.pendingMessages.map((m) => m.id));
-    for (const [id, entity] of state.entities) {
-      if (entity.type !== "communication") continue;
-      if (entity.metadata?.processedByExecutive) continue;
-      if (seenIds.has(id)) continue;
-      const msgTick = entity.metadata?.tick ?? 0;
-      this.pendingMessages.push({
-        id,
-        content: entity.metadata?.content ?? "",
-        sender: entity.metadata?.agentName ?? "unknown",
-        senderId: entity.metadata?.keid ?? "unknown",
-        tick: msgTick
-      });
-      logger.info(`[executive] queued message from ${entity.metadata?.agentName ?? "unknown"} (tick=${msgTick})`);
-    }
-  }
-  /**
    * Clear messages that were included in the most recent LLM call.
    * Any that arrived after the call started remain for the next cycle.
    */
@@ -12801,32 +12831,6 @@ var MessageQueue = class {
    */
   markReplied(entityId) {
     this._repliedEntityIds.add(entityId);
-  }
-  /**
-   * Build the set of communication entity IDs visible in state within the
-   * 30-tick window, plus any pending messages. Used to mark them as processed.
-   */
-  getVisibleMessageIds(state, tick) {
-    const ids = new Set(this.pendingMessages.map((m) => m.id));
-    for (const [id, entity] of state.entities) {
-      if (entity.type !== "communication") continue;
-      const msgTick = entity.metadata?.tick ?? 0;
-      if (tick - msgTick > 30) continue;
-      ids.add(id);
-    }
-    return ids;
-  }
-  /**
-   * Get stale communication entity IDs (>50 ticks old) for cleanup.
-   */
-  getStaleMessageIds(state, tick) {
-    const stale = [];
-    for (const [id, entity] of state.entities) {
-      if (entity.type !== "communication") continue;
-      const msgTick = entity.metadata?.tick ?? 0;
-      tick - msgTick > 50 && stale.push(id);
-    }
-    return stale;
   }
 };
 
@@ -18369,6 +18373,8 @@ var AuditionEngine = class extends BaseSenseEngine {
    * other percept uses. Wired to `stateManager.setEntity` in assembleMind().
    */
   _memorySink = null;
+  /** Deterministic id source for `conversation.received` — see _writeReceived. */
+  _receivedSeq = 0;
   /** Speaker attachment strength accessor (0–1) — weights salience by relationship. */
   _getAttachmentScore = null;
   /** Active-goal topic text accessor — for salience topic-overlap. */
@@ -18570,6 +18576,7 @@ var AuditionEngine = class extends BaseSenseEngine {
     this._digests.append(threadId, "user", content);
     this._inflightInbound.set(entityId, content);
     this._inflightThread.set(entityId, threadId);
+    this._writeReceived(entityId, speakerName, content, threadId);
     const turn = this._beginTurn(entityId);
     const reported = await this._routeToFacet(percept, speakerName);
     if (!reported) {
@@ -18804,6 +18811,34 @@ var AuditionEngine = class extends BaseSenseEngine {
    * (Section 1.2) routes ingest through the tick loop. The entity carries no
    * wall-clock timestamp — `setEntity` stamps createdAt/tick from the sim clock.
    */
+  /**
+   * The inbound as a social signal in state — mirror of `conversation.sent`.
+   *
+   * Shaped for `SocialPerception._scanSocialSignals`, which reads `sourceKeid` for
+   * who acted and `directedAtSelf` for whether it was aimed at us. Valence is left
+   * UNSET on purpose: the words have not been appraised yet, and guessing a number
+   * here would feed reputation and affect a sentiment nobody measured. Absent, the
+   * scanner falls back to its neutral default, so the Will learns *that* someone
+   * engaged (familiarity, recency, reliability) without inventing how it felt.
+   */
+  _writeReceived(entityId, speakerName, content, threadId) {
+    if (!this._memorySink) return;
+    this._receivedSeq += 1;
+    this._memorySink({
+      id: `conv-received-${entityId}-${this._receivedSeq}`,
+      type: "conversation.received",
+      metadata: {
+        sourceKeid: entityId,
+        sourceName: speakerName,
+        directedAtSelf: true,
+        // an inbound turn is addressed to us by definition
+        action: "communication",
+        preview: content.slice(0, 140),
+        chars: content.length,
+        ...threadId ? { threadId } : {}
+      }
+    });
+  }
   _persistExchangeMemory(entityId, threadId, reply, confidence, entityName) {
     const inbound = this._inflightInbound.get(entityId) ?? "";
     this._inflightInbound.delete(entityId);
@@ -18961,6 +18996,8 @@ var DEFAULT_WEIGHTS = {
   drive: 0.25,
   habit: 0.2,
   plan: 0.3,
+  will: 0.3,
+  social: 0.3,
   cost: 0.2,
   inhib: 0.3,
   risk: 0.2
@@ -19009,7 +19046,7 @@ function risk(a, bias) {
   return clamp015(Math.max(0, -a.expectedValence) * 0.5 + bias.threat * 0.5);
 }
 function scoreAffordance(a, bias, w = DEFAULT_WEIGHTS) {
-  const raw = w.goal * goalRelevance(a, bias) + w.reward * a.expectedReward + w.novelty * novelty(a) + w.drive * driveUrgency(a, bias) + w.habit * a.habitStrength + w.plan * (a.planBias ?? 0) - w.cost * a.cost - w.inhib * bias.inhibition - w.risk * risk(a, bias);
+  const raw = w.goal * goalRelevance(a, bias) + w.reward * a.expectedReward + w.novelty * novelty(a) + w.drive * driveUrgency(a, bias) + w.habit * a.habitStrength + w.plan * (a.planBias ?? 0) + w.will * (a.willBias ?? 0) + w.social * (a.socialPrior ?? 0) - w.cost * a.cost - w.inhib * bias.inhibition - w.risk * risk(a, bias);
   const availability = a.availability ?? 1;
   return raw > 0 ? raw * availability : raw;
 }
@@ -19152,13 +19189,15 @@ var AffordanceSynthesizer = class {
       const schemaId = str(m?.["schema"]);
       const schema = schemaId ? schemas.find((s) => s.id === schemaId) : void 0;
       if (!schema) continue;
+      const willBias = clamp016(num(m?.["priority"], 0.8));
       candidates.push({
-        salience: IDEOMOTOR_BASE_SALIENCE + num(m?.["priority"], 0.8),
+        salience: IDEOMOTOR_BASE_SALIENCE + willBias,
         affordance: this._build(schema, tick, state, valence, energyLow, skills, {
           evokedBy: id,
           targetEntityId: str(m?.["targetEntityId"]),
           parameters: m?.["parameters"] ?? {},
-          source: "ideomotor"
+          source: "ideomotor",
+          willBias
         })
       });
     }
@@ -19217,6 +19256,7 @@ var AffordanceSynthesizer = class {
   _build(schema, tick, state, valence, energyLow, skills, ctx) {
     const skill = skills?.get(schema.id);
     const availability = this._repertoire?.availabilityOf(schema.id) ?? 1;
+    const socialPrior = ctx.targetEntityId ? socialStanding(state, ctx.targetEntityId) : 0;
     const expectedReward = skill?.valueEstimate ?? clamp016(((schema.baseValence ?? 0) + 1) / 2);
     const expectedValence = schema.baseValence ?? valence;
     const habitStrength = skill?.habitStrength ?? 0;
@@ -19239,7 +19279,9 @@ var AffordanceSynthesizer = class {
       tags: schema.tags ?? [],
       ...schema.description ? { description: schema.description } : {},
       ...availability < 1 ? { availability } : {},
+      ...socialPrior !== 0 ? { socialPrior } : {},
       planBias: ctx.planBias,
+      willBias: ctx.willBias,
       planId: ctx.planId,
       stepId: ctx.stepId,
       tick
@@ -19263,7 +19305,9 @@ var AffordanceSynthesizer = class {
         tags: a.tags,
         description: a.description,
         ...a.availability !== void 0 ? { availability: a.availability } : {},
+        ...a.socialPrior !== void 0 ? { socialPrior: a.socialPrior } : {},
         planBias: a.planBias,
+        willBias: a.willBias,
         planId: a.planId,
         stepId: a.stepId,
         tick: a.tick
@@ -19306,6 +19350,20 @@ function str(v) {
 }
 function clamp016(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
+}
+function socialStanding(state, keid) {
+  let trust = 0;
+  for (const e of state.entities.values()) {
+    if (e.type !== "reputation") continue;
+    const m = e.metadata;
+    if (m?.["keid"] !== keid) continue;
+    const t = num(m["trustworthiness"], 0.5);
+    const c = clamp016(num(m["confidence"], 0));
+    trust = (t - 0.5) * 2 * c;
+    break;
+  }
+  const mood = num(state.metrics.get("affect.valence"), 0) * 0.25;
+  return Math.max(-1, Math.min(1, trust + mood));
 }
 
 // src/stem/policy/arbiter.ts
@@ -19778,6 +19836,8 @@ function readAffordance(id, m) {
     available: meta["available"] === true,
     tags: Array.isArray(meta["tags"]) ? meta["tags"].filter((t) => typeof t === "string") : [],
     planBias: typeof meta["planBias"] === "number" ? meta["planBias"] : void 0,
+    willBias: typeof meta["willBias"] === "number" ? meta["willBias"] : void 0,
+    socialPrior: typeof meta["socialPrior"] === "number" ? meta["socialPrior"] : void 0,
     planId: str2(meta["planId"]),
     stepId: str2(meta["stepId"]),
     tick: num2(meta["tick"], 0)
@@ -20041,6 +20101,21 @@ var MotorSchemaExecutor = class {
   _author = null;
   _grants = null;
   _bus = null;
+  /**
+   * Two-phase outreach authoring. A facet cannot be awaited from inside a tick:
+   * `ExecutiveFacet.report()` only QUEUES in tick-discipline mode and the reasoning
+   * launches from `pump()`, which the ExecutiveEngine calls once per tick — so an
+   * in-tick `await` blocks the very loop that would produce the answer. Observed
+   * live: a 61s freeze of the whole mind inside one tick, then an empty result.
+   * (It passes unit tests because bare facets have no inbox and author inline.)
+   *
+   * So `_deliver` REQUESTS words and returns false (the intent holds 'awaiting'),
+   * the facet answers off-tick, and a later tick delivers. Process-local by design:
+   * an authoring call in flight cannot survive a restart, and the intent would
+   * simply re-request.
+   */
+  _authoring = /* @__PURE__ */ new Set();
+  _authored = /* @__PURE__ */ new Map();
   constructor(schemas = INNATE_SCHEMAS) {
     for (const s of schemas) this._schemas.set(s.id, s);
   }
@@ -20116,8 +20191,24 @@ var MotorSchemaExecutor = class {
         if (revoked.has(id)) del.push(id, revocationId(id));
         else if (parentId && revoked.has(parentId)) del.push(id);
       }
+    const spokeThisTick = /* @__PURE__ */ new Set();
     for (const [id, e] of state.entities) {
       if (e.type !== "agency.intent" || str5(e.metadata?.["status"]) !== "awaiting") continue;
+      if (!this._authored.has(id)) continue;
+      const intent = readIntent(id, e.metadata);
+      const predicted = {
+        expectedReward: num3(e.metadata?.["predictedReward"], intent.expectedReward),
+        expectedValence: num3(e.metadata?.["predictedValence"], intent.expectedValence)
+      };
+      if (await this._deliver(id, intent, predicted, state, tick, set, del, metrics))
+        spokeThisTick.add(id);
+    }
+    for (const id of this._authored.keys())
+      if (!state.entities.has(id)) this._authored.delete(id);
+    for (const [id, e] of state.entities) {
+      if (e.type !== "agency.intent" || str5(e.metadata?.["status"]) !== "awaiting") continue;
+      if (spokeThisTick.has(id)) continue;
+      if (this._authoring.has(id)) continue;
       if (e.metadata?.["escalated"] === true) continue;
       const dispatchedAt = num3(e.metadata?.["dispatchedAt"], tick);
       if (tick - dispatchedAt < AWAIT_TIMEOUT) continue;
@@ -20337,16 +20428,12 @@ var MotorSchemaExecutor = class {
       return true;
     }
     const authored = str5(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]);
-    let bubbles = authored ? [authored] : [];
-    if (bubbles.length === 0 && this._author) {
-      const name = str5(intent.parameters["targetEntityName"]) ?? intent.targetEntityId ?? "them";
-      try {
-        bubbles = await this._author.authorOutreach(intent.targetEntityId ?? "", name, str5(intent.parameters["gist"]));
-      } catch (err) {
-        logger.warn(`[motor] outreach authoring failed: ${errMsg(err)}`);
-      }
+    let bubbles = authored ? [authored] : this._authored.get(id) ?? [];
+    this._authored.delete(id);
+    if (bubbles.length === 0) {
+      this._requestAuthoring(id, intent);
+      return false;
     }
-    if (bubbles.length === 0) return false;
     const request = {
       effector,
       parameters: { ...intent.parameters, messages: bubbles },
@@ -20394,6 +20481,25 @@ var MotorSchemaExecutor = class {
     );
     metrics.push(["agency.communicate.delivered", 1]);
     return true;
+  }
+  /**
+   * Ask a facet for the words, off-tick. Fire-and-forget on purpose: awaiting this
+   * from inside `react()` deadlocks the tick loop against the facet pump. Idempotent
+   * per intent — a request already in flight is not duplicated, so the intent may sit
+   * 'awaiting' across many ticks with exactly one LLM call behind it.
+   */
+  _requestAuthoring(id, intent) {
+    if (!this._author || this._authoring.has(id)) return;
+    const name = str5(intent.parameters["targetEntityName"]) ?? intent.targetEntityId ?? "them";
+    this._authoring.add(id);
+    void this._author.authorOutreach(intent.targetEntityId ?? "", name, str5(intent.parameters["gist"])).then((bubbles) => {
+      if (bubbles.length > 0) this._authored.set(id, bubbles);
+      else logger.warn(`[motor] outreach authoring returned nothing for "${intent.schema}"`);
+    }).catch((err) => {
+      logger.warn(`[motor] outreach authoring failed: ${errMsg(err)}`);
+    }).finally(() => {
+      this._authoring.delete(id);
+    });
   }
   // ── bus emission ─────────────────────────────────────────────
   _emitEnacted(intent, enaction, predicted, tick) {
@@ -22582,14 +22688,23 @@ var DefaultVectorMemoryAdapter = class {
     }
     if (victims.length > 0) this._dirty = true;
   }
+  /**
+   * Throttle, NOT a debounce. The previous version cleared and re-armed the timer on
+   * every index(), so it only ever fired after 5s of complete inactivity — and a mind
+   * consolidating steadily indexes far more often than that, so the write was pushed
+   * back indefinitely and the index never reached disk while it was awake.
+   *
+   * A pending timer is now left alone: the first write after a quiet period sets the
+   * deadline, and everything indexed within the window rides along on it. Persist is
+   * bounded at 5s from the FIRST pending change rather than the last.
+   */
   _schedulePersist() {
-    if (this._persistDebounceTimer)
-      clearTimeout(this._persistDebounceTimer);
+    if (this._persistDebounceTimer) return;
     this._persistDebounceTimer = setTimeout(() => {
+      this._persistDebounceTimer = null;
       this.persist().catch((err) => {
         logger.error(`[VectorMemoryAdapter] Persist failed:`, err);
       });
-      this._persistDebounceTimer = null;
     }, 5e3);
   }
 };
@@ -22603,16 +22718,34 @@ var OpenAICompatibleEmbedder = class {
   _maxConcurrency;
   _timeoutMs;
   _tokenTracker;
+  /**
+   * Own gate — the same LLMSemaphore the LLM calls use, on a separate instance so
+   * embeddings and reasoning do not compete for one another's slots. It bounds the
+   * fan-out that produced the 10.7s tail, and `withGate` additionally retries a 429
+   * with backoff, which a bare `embed()` previously surfaced as a hard failure.
+   */
+  _gate;
   constructor(config) {
     this.modelName = config.modelName;
     this.dimensions = config.dimensions;
     this._apiUrl = config.apiUrl;
     this._apiKey = config.apiKey ?? null;
-    this._maxConcurrency = Math.max(1, config.maxConcurrency ?? config.batchSize ?? 8);
+    this._maxConcurrency = Math.max(1, config.maxConcurrency ?? config.batchSize ?? 4);
+    this._gate = new LLMSemaphore(this._maxConcurrency);
     this._timeoutMs = config.timeoutMs ?? 3e4;
     this._tokenTracker = config.tokenTracker ?? null;
   }
+  /**
+   * Embed one item, gated. Every caller funnels through here — a facet building a
+   * prompt, the master recalling, the consolidator indexing — so the gate is the
+   * only place total in-flight fan-out is bounded. Waiting for a slot is strictly
+   * better than the alternative it replaces: an ungated request that returns after
+   * the recall budget has already expired is a request whose answer is thrown away.
+   */
   async embed(content, fn = "recall") {
+    return withGate(() => this._embedOnce(content, fn), `embed:${this.modelName}`, this._gate);
+  }
+  async _embedOnce(content, fn) {
     let response;
     try {
       response = await fetch(`${this._apiUrl}/embeddings`, {
@@ -23065,9 +23198,15 @@ var ProactiveCommunicator = class {
       description: `I reach out to ${targetEntityName}: "${fullReply.slice(0, 80)}${fullReply.length > 80 ? "\u2026" : ""}"`,
       commands,
       feedback: {
-        outcomeQuality: 0.85,
+        // NOT a success yet. This reports the TRANSPORT, and the act's point is to be
+        // answered — an outcome not yet known at this moment. Scoring delivery as 0.85
+        // taught the mind that reaching out works every time, including the times it
+        // was ignored, which is why it re-asked the same question 19 times in two
+        // minutes. Neutral here; the unanswered/answered signal in outreach.silence.ts
+        // is what actually moves the pull toward this person.
+        outcomeQuality: 0.5,
         surprise: 0.15,
-        lessons: [`My message is queued for delivery to ${targetEntityName}.`]
+        lessons: [`My words are on their way to ${targetEntityName}. Whether they land is not yet known.`]
       }
     };
   }
@@ -23927,6 +24066,10 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
     affectiveBlender,
     workingMemory,
     episodicConsolidator,
+    // Exposed so shutdown can FLUSH it. The adapter only ever persisted itself from
+    // a 5s debounce timer that no shutdown path awaited, so the index died with the
+    // process — see WillStem.archiveWill.
+    vectorMemory,
     semanticIntegrator,
     spacedRepetition,
     forgettingCurve,
@@ -26847,6 +26990,7 @@ var WillStem = class {
       instance.simulation.stateManager.applyCommands(flushCmds);
     const pauseState = instance.simulation.stateManager.snapshot();
     instance.simulation.snapshotManager.persistNow(pauseState).catch((err) => logger.error(`[WillStem] snapshot persist failed on pause (${id}):`, err));
+    instance.cognition.vectorMemory?.persist().catch((err) => logger.error(`[WillStem] vector index persist failed on pause (${id}):`, err));
     this._biography.writeSessionSummary(instance);
     this._biography.writeEmotionalBiographySummary(instance);
     instance.sessionLogger?.close();
@@ -26942,6 +27086,8 @@ var WillStem = class {
       instance.simulation.stateManager.applyCommands(flushCmds);
     const archiveState = instance.simulation.stateManager.snapshot();
     await instance.simulation.snapshotManager.persistNow(archiveState);
+    await instance.cognition.episodicConsolidator.flushIndexing();
+    await instance.cognition.vectorMemory?.persist();
   }
   // Session-biography writers (behavioral + emotional) extracted to
   // BiographyWriter (R5-f); WillStem calls them from pause/archive and the
@@ -27628,7 +27774,7 @@ var Will = class _Will {
    * create() (minus identity, which the artifact supplies).
    */
   static async wake(pma, opts) {
-    const id = opts.id ?? `${slug(opts.name)}-${Math.random().toString(36).slice(2, 8)}`;
+    const id = opts.id ?? pma.willId ?? `${slug(opts.name)}-${Math.random().toString(36).slice(2, 8)}`;
     const stem = new WillStem();
     const will = new _Will(stem, id, opts.name);
     for (const [name, entry] of Object.entries(opts.effectors ?? {}))

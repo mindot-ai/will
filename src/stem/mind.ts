@@ -1064,6 +1064,10 @@ function _constructCognition(
     affectiveBlender,
     workingMemory,
     episodicConsolidator,
+    // Exposed so shutdown can FLUSH it. The adapter only ever persisted itself from
+    // a 5s debounce timer that no shutdown path awaited, so the index died with the
+    // process — see WillStem.archiveWill.
+    vectorMemory,
     semanticIntegrator,
     spacedRepetition,
     forgettingCurve,

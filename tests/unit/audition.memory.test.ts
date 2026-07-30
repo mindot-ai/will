@@ -53,8 +53,12 @@ describe('AuditionEngine — conversation memory (Section 5)', () => {
 
     await engine.ingest( text('hello there') )
 
-    expect( entities ).toHaveLength( 1 )
-    const e = entities[0]
+    // The sink is a general state writer — it also carries the inbound social
+    // signal (conversation.received) now, so select the exchange rather than
+    // assuming the sink saw exactly one thing.
+    const exchanges = entities.filter( x => x.type === 'working_memory.item')
+    expect( exchanges ).toHaveLength( 1 )
+    const e = exchanges[0]
     expect( e.type ).toBe('working_memory.item')
     expect( e.metadata.wmType ).toBe('conversation.exchange')
     expect( e.metadata.summary ).toContain('hello there')
@@ -76,8 +80,9 @@ describe('AuditionEngine — conversation memory (Section 5)', () => {
 
     await engine.ingest( text('remember this') )
 
-    expect( entities ).toHaveLength( 1 )
-    expect( entities[0].metadata.summary ).toContain('remember this')
+    const exchanges = entities.filter( x => x.type === 'working_memory.item')
+    expect( exchanges ).toHaveLength( 1 )
+    expect( exchanges[0].metadata.summary ).toContain('remember this')
   } )
 
   // §5 — recall is unified: the facet sets focus.recallQuery (the live message),

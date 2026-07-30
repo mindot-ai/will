@@ -69,10 +69,27 @@ export class SocialPerception implements SimulationEngine, CognitiveEngine {
 
   constructor( config: SocialPerceptionConfig = {} ){
     this._bus = config.bus ?? null
+    // These defaults must name entity types this system ACTUALLY emits. The original
+    // set ('agent', 'user', 'contact', 'persona' / 'message', 'action', 'expression',
+    // 'social_signal', 'communication') described a vocabulary that never existed
+    // here — measured against a live session, the overlap with the emitted types was
+    // empty. This engine therefore scanned every tick and matched nothing, for the
+    // life of every Will, and since it is the SOLE publisher of `interaction.occurred`
+    // the entire social stack downstream of it (reputation, affect, theory-of-mind,
+    // attachment, frustration) never received a single input.
+    //
+    // Legacy names are kept alongside the real ones: they cost nothing, and a host
+    // injecting its own social entities may still use them.
     this._agentTypes = new Set( config.agentTypes ?? [
-      'agent', 'user', 'contact', 'persona',
+      'known-entity',                                   // the dossier — how this system names a someone
+      'agent', 'user', 'contact', 'persona',            // legacy / host-supplied
     ])
+    // Inbound only. `conversation.sent` is deliberately ABSENT: this engine perceives
+    // *others* acting toward us, and our own outbound is not someone else's action —
+    // scanning it would let the Will build impressions of people out of its own
+    // monologue, which is worse than learning nothing.
     this._signalTypes = new Set( config.signalTypes ?? [
+      'conversation.received',                          // someone spoke to us
       'message', 'action', 'expression', 'social_signal', 'communication',
     ])
     this._maxPerceptsPerTick = config.maxPerceptsPerTick ?? 20
@@ -310,6 +327,13 @@ export class SocialPerception implements SimulationEngine, CognitiveEngine {
   private _collectStale( state: ReadonlySimulationState, currentTick: Tick ): string[] {
     const stale: string[] = []
     for( const [ id, entity ] of state.entities ){
+      // A received turn is a one-shot EVENT, consumed on the tick it is scanned —
+      // this same react() has already turned it into a percept and an
+      // `interaction.occurred`. It is written off-tick by AuditionEngine and so
+      // carries no `tick` to age on; without this it would never be collected and
+      // would re-publish the same interaction every tick for the life of the mind.
+      if( entity.type === 'conversation.received'){ stale.push( id ); continue }
+
       // Expire processed percept.social entities after 2 ticks
       if( entity.type === 'percept.social' && typeof entity.metadata?.tick === 'number'){
         if( currentTick - entity.metadata.tick > 2 )

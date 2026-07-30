@@ -88,6 +88,22 @@ export class MotorSchemaExecutor implements CognitiveEngine {
   private _grants: AccessGrants | null = null
   private _bus: CognitiveBus | null = null
 
+  /**
+   * Two-phase outreach authoring. A facet cannot be awaited from inside a tick:
+   * `ExecutiveFacet.report()` only QUEUES in tick-discipline mode and the reasoning
+   * launches from `pump()`, which the ExecutiveEngine calls once per tick — so an
+   * in-tick `await` blocks the very loop that would produce the answer. Observed
+   * live: a 61s freeze of the whole mind inside one tick, then an empty result.
+   * (It passes unit tests because bare facets have no inbox and author inline.)
+   *
+   * So `_deliver` REQUESTS words and returns false (the intent holds 'awaiting'),
+   * the facet answers off-tick, and a later tick delivers. Process-local by design:
+   * an authoring call in flight cannot survive a restart, and the intent would
+   * simply re-request.
+   */
+  private _authoring = new Set<string>()
+  private _authored  = new Map<string, string[]>()
+
   constructor( schemas: MotorSchema[] = INNATE_SCHEMAS ){
     for( const s of schemas ) this._schemas.set( s.id, s )
   }
@@ -173,12 +189,45 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         else if( parentId && revoked.has( parentId ) ) del.push( id )
       }
 
+    // ── Words that landed off-tick → deliver now ─────────────────
+    // Second half of two-phase authoring: a previous tick asked a facet for the words
+    // and held the intent 'awaiting'; the facet answered between ticks. Runs BEFORE
+    // the timeout sweep so words arriving on the same tick the clock would expire are
+    // still spoken rather than discarded.
+    const spokeThisTick = new Set<string>()
+    for( const [ id, e ] of state.entities ){
+      if( e.type !== 'agency.intent' || str( e.metadata?.['status'] ) !== 'awaiting') continue
+      if( !this._authored.has( id ) ) continue
+
+      const intent = readIntent( id, e.metadata )
+      const predicted: EfferenceCopy = {
+        expectedReward:  num( e.metadata?.['predictedReward'],  intent.expectedReward ),
+        expectedValence: num( e.metadata?.['predictedValence'], intent.expectedValence ),
+      }
+      if( await this._deliver( id, intent, predicted, state, tick, set, del, metrics ) )
+        spokeThisTick.add( id )
+    }
+
+    // Words whose intent no longer exists (revoked, timed out, superseded) are words
+    // that will never be said — drop them so the map cannot grow without bound.
+    for( const id of this._authored.keys() )
+      if( !state.entities.has( id ) ) this._authored.delete( id )
+
     // ── Timeout stranded async intents ───────────────────────────
     // An 'awaiting' intent whose host/delivery never returned would block the
     // serial Will forever. After AWAIT_TIMEOUT ticks, abandon it as a failed
     // outcome (which also teaches reafference the action is unreliable here).
     for( const [ id, e ] of state.entities ){
       if( e.type !== 'agency.intent' || str( e.metadata?.['status'] ) !== 'awaiting') continue
+      // Already delivered above — its outcome and deletion are queued for this tick.
+      if( spokeThisTick.has( id ) ) continue
+      // Words are being authored right now. The clock PAUSES rather than extends: a
+      // facet LLM call is 10–30s of latency we do not control, and any fixed budget
+      // large enough to cover a slow one is also large enough to strand a dead one.
+      // While a call is genuinely in flight the world has not failed to answer. The
+      // pause is bounded, not open-ended: `authorOutreach` always settles (its own 60s
+      // timeout resolves empty), so `_authoring` always clears and the clock resumes.
+      if( this._authoring.has( id ) ) continue
       // POLICY_REAFFERENCE P4 — an escalated intent is HELD: the stem owns its
       // lifecycle (extended TTL → approve/deny/expire), so the executor must not
       // time it out at AWAIT_TIMEOUT and reconcile it as a phantom failure.
@@ -437,17 +486,16 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       return true
     }
 
-    // Content authored upstream when present (host / host-facet); otherwise, for a
-    // self-initiated communicate the agency just selected, author it now via a facet
-    // — the unified conversation voice, since no inbound triggered it. Empty ⇒ await.
+    // Content authored upstream when present (host / host-facet), else words a facet
+    // authored off-tick and landed since a previous tick asked for them. Neither ⇒
+    // request authoring (never awaited here — see `_authoring`) and hold 'awaiting'.
     const authored = str( intent.parameters['content'] ) ?? firstMessage( intent.parameters['messages'] )
-    let bubbles: string[] = authored ? [ authored ] : []
-    if( bubbles.length === 0 && this._author ){
-      const name = str( intent.parameters['targetEntityName'] ) ?? intent.targetEntityId ?? 'them'
-      try { bubbles = await this._author.authorOutreach( intent.targetEntityId ?? '', name, str( intent.parameters['gist'] ) ) }
-      catch( err ){ logger.warn(`[motor] outreach authoring failed: ${ errMsg( err ) }`) }
+    let bubbles: string[] = authored ? [ authored ] : ( this._authored.get( id ) ?? [] )
+    this._authored.delete( id )
+    if( bubbles.length === 0 ){
+      this._requestAuthoring( id, intent )
+      return false   // nothing to send yet → await
     }
-    if( bubbles.length === 0 ) return false   // nothing authored to send → await
 
     const request: ActionRequest = {
       effector,
@@ -482,6 +530,27 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       clamp01( Math.abs( predicted.expectedReward - result.feedback.outcomeQuality ) ), tick )
     metrics.push([ 'agency.communicate.delivered', 1 ])
     return true
+  }
+
+  /**
+   * Ask a facet for the words, off-tick. Fire-and-forget on purpose: awaiting this
+   * from inside `react()` deadlocks the tick loop against the facet pump. Idempotent
+   * per intent — a request already in flight is not duplicated, so the intent may sit
+   * 'awaiting' across many ticks with exactly one LLM call behind it.
+   */
+  private _requestAuthoring( id: string, intent: Intent ): void {
+    if( !this._author || this._authoring.has( id ) ) return
+
+    const name = str( intent.parameters['targetEntityName'] ) ?? intent.targetEntityId ?? 'them'
+    this._authoring.add( id )
+    void this._author
+      .authorOutreach( intent.targetEntityId ?? '', name, str( intent.parameters['gist'] ) )
+      .then( bubbles => {
+        if( bubbles.length > 0 ) this._authored.set( id, bubbles )
+        else logger.warn(`[motor] outreach authoring returned nothing for "${ intent.schema }"`)
+      } )
+      .catch( err => { logger.warn(`[motor] outreach authoring failed: ${ errMsg( err ) }`) } )
+      .finally( () => { this._authoring.delete( id ) } )
   }
 
   // ── bus emission ─────────────────────────────────────────────

@@ -141,6 +141,29 @@ export interface Affordance {
    */
   planBias?:       number
   /**
+   * Top-down volitional bias 0..1 — set when the executive DELIBERATELY willed this
+   * affordance (source 'ideomotor'), carrying the confidence it decided with. Like
+   * planBias it lifts activation without bypassing the competition: a willed act must
+   * still out-compete the field, but it no longer arrives with the same standing as an
+   * ambient possibility. Without this term the ideomotor leg created candidates the
+   * arithmetic could not tell apart from idle ones, and a cheap unconditional reflex
+   * ('express', cost 0.02) beat a deliberate 'reach-out' 176 times out of 176.
+   */
+  willBias?:       number
+  /**
+   * Learned social standing of this affordance's addressee, −1..1 (0 = neutral or
+   * unknown). Set only for an act aimed at someone. Every input is LEARNED, none
+   * hardcoded: ReputationTracker's trustworthiness — which is fed by
+   * `interaction.occurred` and so only became live once inbound conversation reached
+   * social cognition (#113) — weighted by that model's own confidence, plus the mind's
+   * current affective tone as a gentle tilt on reaching out at all.
+   *
+   * This is what makes "they never answer me" reach the competition: it arrives as a
+   * fading opinion of a person the mind formed itself and can revise, not as a damping
+   * curve applied behind its back.
+   */
+  socialPrior?:    number
+  /**
    * Policy availability 0..1 (POLICY_REAFFERENCE P2) — learned from refusals,
    * distinct from `available` (precondition satisfaction) and from competence.
    * Present only when < 1 (a refusal has dented it); absent ⇒ fully available,

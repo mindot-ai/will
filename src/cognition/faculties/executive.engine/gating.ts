@@ -18,8 +18,10 @@ function hasPendingInstructions( state: ReadonlySimulationState, pendingMessages
       if( salience > 0.7 ) return true
     }
 
-    if( entity.type === 'communication' && !entity.metadata?.processedByExecutive )
-      return true
+    // An unprocessed `communication` entity used to wake the master here. Nothing has
+    // ever written that type (#114), and the current design deliberately routes inbound
+    // to a facet instead — the master learns of it via `audition.task.signal` → a
+    // high-salience percept, which the percept branch above already catches.
   }
 
   return pendingMessages.length > 0

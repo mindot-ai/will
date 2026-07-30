@@ -473,17 +473,11 @@ function buildSemanticQuery(
   const dominantEmotion = valence > 0.3 ? 'positive' : valence < -0.3 ? 'negative' : 'neutral'
   if( dominantEmotion !== 'neutral') parts.push(`Feeling ${dominantEmotion}`)
 
-  // Active conversation entities — pulls memories about current interlocutors
-  const senderNames = new Set<string>()
-  for( const entity of state.entities.values() ){
-    if( entity.type !== 'communication') continue
-    const msgTick = ( entity.metadata?.tick as number ) ?? 0
-    if( state.tick - msgTick > 30 ) continue
-    if( entity.metadata?.processedByExecutive ) continue
-    const name = entity.metadata?.agentName as string | undefined
-    if( name && name !== 'unknown') senderNames.add( name )
-  }
-  if( senderNames.size > 0 ) parts.push(`Talking with: ${[ ...senderNames ].join(', ')}`)
+  // A "Talking with: …" hint used to be built here from `communication` entities.
+  // Nothing has ever written that type (#114), so the clause never fired. Removed
+  // rather than repointed: the inbound entity that now exists (`conversation.received`)
+  // is consumed within one tick, so it is not a dependable source for a recall hint —
+  // restoring this wants a durable interlocutor signal, which is its own decision.
 
   // Recent percepts (top 3 by salience)
   const percepts = extractPercepts( state ).slice( 0, 3 )

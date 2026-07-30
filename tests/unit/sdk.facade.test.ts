@@ -74,6 +74,30 @@ describe('Will facade', () => {
     }
     finally { await revived.stop() }
   }, 30_000 )
+
+  it('wake() keeps the artifact\'s willId — the path key for the vector store', async () => {
+    // The id is the path key for everything durable that lives OUTSIDE the artifact:
+    // data/wills/<id>/vector_index, snapshots, session logs. Minting a fresh random id
+    // on wake pointed a woken mind at an empty vector store every boot — identity and
+    // beliefs returned (artifact-carried) while episodic recall was permanently empty.
+    const will = await Will.create( { ...base, name: 'Keeper', identity: { prompt: 'I persist.' } } )
+    const originalId = will.id
+    const pma = await will.hibernate()
+    expect( pma.willId ).toBe( originalId )
+
+    const revived = await Will.wake( pma, { ...base, name: 'Keeper' } )
+    try { expect( revived.id ).toBe( originalId ) }
+    finally { await revived.stop() }
+  }, 30_000 )
+
+  it('an explicit opts.id still overrides the artifact', async () => {
+    const will = await Will.create( { ...base, name: 'Fork', identity: { prompt: 'I fork.' } } )
+    const pma = await will.hibernate()
+
+    const revived = await Will.wake( pma, { ...base, name: 'Fork', id: 'fork-explicit' } )
+    try { expect( revived.id ).toBe('fork-explicit') }
+    finally { await revived.stop() }
+  }, 30_000 )
 } )
 
 describe('Will facade — subject surface', () => {

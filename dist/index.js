@@ -7849,8 +7849,11 @@ var EpisodicConsolidator = class {
     if (this._vectorMemory) {
       await this._vectorMemory.load();
       if (this._vectorMemory.size === 0 && this._store.length > 0) {
-        await this._vectorMemory.rebuildFromStore(this._store);
-        logger.info(`[episodic] vector index rebuilt with ${this._store.length} episodes`);
+        this._indexing = this._vectorMemory.rebuildFromStore(this._store).then(() => {
+          logger.info(`[episodic] vector index rebuilt with ${this._store.length} episodes`);
+        }).catch((err) => {
+          logger.warn(`[episodic] vector index rebuild deferred \u2014 ${err instanceof Error ? err.message : String(err)}`);
+        });
       } else if (this._vectorMemory.size > 0) {
         logger.info(`[episodic] vector index loaded from disk (${this._vectorMemory.size} entries)`);
       }

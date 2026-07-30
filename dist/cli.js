@@ -9791,8 +9791,11 @@ var EpisodicConsolidator = class {
     if (this._vectorMemory) {
       await this._vectorMemory.load();
       if (this._vectorMemory.size === 0 && this._store.length > 0) {
-        await this._vectorMemory.rebuildFromStore(this._store);
-        logger.info(`[episodic] vector index rebuilt with ${this._store.length} episodes`);
+        this._indexing = this._vectorMemory.rebuildFromStore(this._store).then(() => {
+          logger.info(`[episodic] vector index rebuilt with ${this._store.length} episodes`);
+        }).catch((err) => {
+          logger.warn(`[episodic] vector index rebuild deferred \u2014 ${err instanceof Error ? err.message : String(err)}`);
+        });
       } else if (this._vectorMemory.size > 0) {
         logger.info(`[episodic] vector index loaded from disk (${this._vectorMemory.size} entries)`);
       }
@@ -27942,7 +27945,9 @@ var MAX_FETCH_BYTES = 256 * 1024;
 async function connectDiscord(will, opts) {
   const log = opts.log ?? ((m) => console.error(`[will:discord] ${m}`));
   const roster = new ChannelRoster(opts.rosterPath ?? `.will/${will.id}.discord.json`);
-  const allowed = opts.channels?.length ? new Set(opts.channels) : null;
+  const allowed = opts.channels?.length && !opts.channels.includes("*") ? new Set(opts.channels) : null;
+  const mentionEverywhere = opts.mentionOnly === true;
+  const mentionIn = Array.isArray(opts.mentionOnly) && opts.mentionOnly.length ? new Set(opts.mentionOnly) : null;
   const client = opts.client ?? await createDiscordClient();
   let lastActiveChannelId = opts.homeChannelId ?? null;
   client.on("messageCreate", (message) => {
@@ -27954,7 +27959,7 @@ async function connectDiscord(will, opts) {
     const isDM = !message.guildId;
     if (!isDM && allowed && !allowed.has(message.channelId)) return;
     const addressed = isDM || (message.mentions?.has(self.id) ?? false);
-    if (opts.mentionOnly && !addressed) return;
+    if (!addressed && (mentionEverywhere || mentionIn?.has(message.channelId))) return;
     const entityId = `discord:${message.author.id}`;
     const speaker = message.member?.displayName ?? message.author.displayName ?? message.author.username;
     roster.record({
@@ -28096,6 +28101,18 @@ async function createDiscordClient() {
     partials: [Partials.Channel]
     // DMs arrive on uncached channels
   });
+}
+function parseMentionOnly(raw) {
+  const v = raw?.trim();
+  if (!v) return false;
+  if (/^(1|true|yes)$/i.test(v)) return true;
+  if (/^(0|false|no)$/i.test(v)) return false;
+  const ids = v.split(",").map((s) => s.trim()).filter(Boolean);
+  return ids.length ? ids : false;
+}
+function parseChannels(raw) {
+  const ids = raw?.split(",").map((s) => s.trim()).filter(Boolean);
+  return ids?.length ? ids : void 0;
 }
 
 // src/channels/whatsapp.ts
@@ -28281,7 +28298,12 @@ var USAGE = `usage: will <mcp | serve | discord | whatsapp>
   mcp       host a persistent mind over MCP stdio (Claude Desktop / Claude Code)
   serve     host a persistent mind over HTTP (any language; WILL_PORT, default 7777)
   discord   put a persistent mind in a Discord server (DISCORD_BOT_TOKEN; optional
-            WILL_DISCORD_CHANNELS, WILL_DISCORD_MENTION_ONLY, WILL_DISCORD_HOME_CHANNEL)
+            WILL_DISCORD_CHANNELS      "*" or unset = every channel it can see,
+                                       else a comma-separated allowlist
+            WILL_DISCORD_MENTION_ONLY  1/true = only when @mentioned, anywhere;
+                                       or a comma-separated channel list to gate
+                                       just those; DMs are always perceived
+            WILL_DISCORD_HOME_CHANNEL  where it speaks when it has no other route)
   whatsapp  put a persistent mind on WhatsApp \u2014 QR-pairs as a linked device; no token.
             UNOFFICIAL protocol (ban risk; use a spare number \u2014 docs/channels/whatsapp.md).
             Optional WILL_WHATSAPP_CHATS, WILL_WHATSAPP_MENTION_ONLY, WILL_WHATSAPP_HOME_CHAT
@@ -28310,11 +28332,10 @@ ${USAGE}` : USAGE);
     return;
   }
   if (sub === "discord") {
-    const csv = (v) => v?.split(",").map((s) => s.trim()).filter(Boolean);
     const bridge = await connectDiscord(will, {
       token: process.env.DISCORD_BOT_TOKEN,
-      channels: csv(process.env.WILL_DISCORD_CHANNELS),
-      mentionOnly: /^(1|true|yes)$/i.test(process.env.WILL_DISCORD_MENTION_ONLY ?? ""),
+      channels: parseChannels(process.env.WILL_DISCORD_CHANNELS),
+      mentionOnly: parseMentionOnly(process.env.WILL_DISCORD_MENTION_ONLY),
       homeChannelId: process.env.WILL_DISCORD_HOME_CHANNEL,
       rosterPath: pmaPath.replace(/(\.pma)?\.json$/, "") + ".discord.json"
     });

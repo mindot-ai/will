@@ -63,10 +63,25 @@ interface DiscordLikeClient {
 interface DiscordBridgeOptions {
     /** Bot token (Discord developer portal). Unused when `client` is injected pre-logged-in. */
     token?: string;
-    /** Channel ids the Will inhabits. Unset = every channel it can see. */
-    channels?: string[];
-    /** Perceive guild messages only when the Will is @mentioned (DMs always perceived). */
-    mentionOnly?: boolean;
+    /**
+     * Channel ids the Will inhabits. Unset — or the single wildcard `'*'` — means
+     * every channel it can see, so adding it to a new channel in Discord is enough.
+     * A list restrains it to exactly those, and a message anywhere else is dropped
+     * at the bridge: the Will never perceives it and its silence there is not a choice.
+     */
+    channels?: readonly string[];
+    /**
+     * Where the Will only perceives guild messages that @mention it. DMs are always
+     * perceived either way.
+     *
+     *   `true`            — everywhere
+     *   `[ 'id', … ]`     — only in those channels; it listens openly elsewhere
+     *   omitted / `false` — nowhere
+     *
+     * The list form is what makes a wide-open roster usable: present in every channel,
+     * but a quiet participant in the busy ones.
+     */
+    mentionOnly?: boolean | readonly string[];
     /** Fallback channel for utterances with no reachable addressee. */
     homeChannelId?: string;
     /** Roster path (default: ./.will/<willId>.discord.json). */
@@ -90,5 +105,26 @@ interface DiscordBridgeOptions {
  * itself is not stopped; it simply loses this surface.
  */
 declare function connectDiscord(will: Will, opts: DiscordBridgeOptions): Promise<ChannelBridge>;
+/**
+ * Parse `WILL_DISCORD_MENTION_ONLY` into the `mentionOnly` option.
+ *
+ * Accepts a boolean OR a channel list, because "only speak when spoken to" is
+ * rarely a whole-server property — it is how you stay present in a busy channel
+ * without narrating in it.
+ *
+ *   `1` / `true` / `yes`   → true (everywhere)
+ *   `0` / `false` / unset  → false (nowhere)
+ *   `123,456`              → only those channels
+ *
+ * Exported so every host parses it identically; the CLI and any SDK host share
+ * this rather than each re-deriving the syntax.
+ */
+declare function parseMentionOnly(raw?: string): boolean | string[];
+/**
+ * Parse `WILL_DISCORD_CHANNELS`. `*` (or unset/empty) means every channel the Will
+ * can see — being added to a channel in Discord is then all it takes. Anything else
+ * restrains it to exactly the ids listed.
+ */
+declare function parseChannels(raw?: string): string[] | undefined;
 
-export { type DiscordBridgeOptions, type DiscordLikeAttachment, type DiscordLikeChannel, type DiscordLikeClient, type DiscordLikeMessage, connectDiscord };
+export { type DiscordBridgeOptions, type DiscordLikeAttachment, type DiscordLikeChannel, type DiscordLikeClient, type DiscordLikeMessage, connectDiscord, parseChannels, parseMentionOnly };

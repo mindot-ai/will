@@ -27,7 +27,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { routeLogsToStderr, bootWillFromEnv } from '#root/host/boot'
 import { buildWillMcpServer } from '#root/mcp/server'
 import { buildWillHttpServer } from '#root/serve/server'
-import { connectDiscord } from '#channels/discord'
+import { connectDiscord, parseChannels, parseMentionOnly } from '#channels/discord'
 import { connectWhatsApp } from '#channels/whatsapp'
 
 // stdout is the MCP protocol channel under `will mcp` — route logs FIRST.
@@ -38,7 +38,12 @@ const USAGE = `usage: will <mcp | serve | discord | whatsapp>
   mcp       host a persistent mind over MCP stdio (Claude Desktop / Claude Code)
   serve     host a persistent mind over HTTP (any language; WILL_PORT, default 7777)
   discord   put a persistent mind in a Discord server (DISCORD_BOT_TOKEN; optional
-            WILL_DISCORD_CHANNELS, WILL_DISCORD_MENTION_ONLY, WILL_DISCORD_HOME_CHANNEL)
+            WILL_DISCORD_CHANNELS      "*" or unset = every channel it can see,
+                                       else a comma-separated allowlist
+            WILL_DISCORD_MENTION_ONLY  1/true = only when @mentioned, anywhere;
+                                       or a comma-separated channel list to gate
+                                       just those; DMs are always perceived
+            WILL_DISCORD_HOME_CHANNEL  where it speaks when it has no other route)
   whatsapp  put a persistent mind on WhatsApp — QR-pairs as a linked device; no token.
             UNOFFICIAL protocol (ban risk; use a spare number — docs/channels/whatsapp.md).
             Optional WILL_WHATSAPP_CHATS, WILL_WHATSAPP_MENTION_ONLY, WILL_WHATSAPP_HOME_CHAT
@@ -76,8 +81,8 @@ async function main(): Promise<void> {
     const csv = ( v?: string ) => v?.split(',').map( s => s.trim() ).filter( Boolean )
     const bridge = await connectDiscord( will, {
       token:         process.env.DISCORD_BOT_TOKEN!,
-      channels:      csv( process.env.WILL_DISCORD_CHANNELS ),
-      mentionOnly:   /^(1|true|yes)$/i.test( process.env.WILL_DISCORD_MENTION_ONLY ?? ''),
+      channels:      parseChannels( process.env.WILL_DISCORD_CHANNELS ),
+      mentionOnly:   parseMentionOnly( process.env.WILL_DISCORD_MENTION_ONLY ),
       homeChannelId: process.env.WILL_DISCORD_HOME_CHANNEL,
       rosterPath:    pmaPath.replace( /(\.pma)?\.json$/, '') + '.discord.json',
     } )

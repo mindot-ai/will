@@ -33,6 +33,14 @@
   handed over rather than spoken. `readAttachments: false` opts out and still
   names the file. (#105, #106)
 
+- **…and they arrive as a Map, not a list.** The first cut of the above iterated
+  `message.attachments` directly. discord.js hands over a `Collection`, which
+  extends `Map`, so `for..of` yielded `[id, attachment]` pairs and every field
+  read `undefined` — a shared file was announced as `unnamed` and never fetched.
+  Every test stayed green, because the fake injected an array. Both shapes are
+  normalised now, and the regression test uses the `Map` shape that actually
+  ships: it fails against the old code, which is the only reason to trust it.
+
 ## 0.8.0 — 2026-07-29 · the mind thinks at more than one depth
 
 A mind does several kinds of work, and they were all being done by one model.

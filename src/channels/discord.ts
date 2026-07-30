@@ -48,6 +48,13 @@ export interface DiscordLikeChannel {
   sendTyping?(): Promise<unknown>
 }
 
+export interface DiscordLikeAttachment {
+  name?:        string | null
+  contentType?: string | null
+  size?:        number
+  url?:         string
+}
+
 export interface DiscordLikeMessage {
   content: string
   cleanContent?: string
@@ -57,9 +64,16 @@ export interface DiscordLikeMessage {
   member?: { displayName?: string } | null
   mentions?: { has( userId: string ): boolean }
   channel: DiscordLikeChannel
-  /** discord.js Collection of attachments — iterable of values. Absent in tests
-   *  that inject bare message objects, which is why every use is guarded. */
-  attachments?: Iterable<{ name?: string | null; contentType?: string | null; size?: number; url?: string }>
+  /**
+   * Files riding with the message.
+   *
+   * discord.js hands us a `Collection`, which extends `Map` — so iterating it
+   * directly yields `[id, attachment]` PAIRS, not attachments. Typing this as a
+   * bare `Iterable` was wrong and silently produced `name: undefined` against
+   * the real client while passing every test, because the test fake injects an
+   * array. Both shapes are accepted now and normalised in `collectAttachments`.
+   */
+  attachments?: ReadonlyMap<string, DiscordLikeAttachment> | Iterable<DiscordLikeAttachment>
 }
 
 export interface DiscordLikeClient {
@@ -169,11 +183,23 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
     } )
   }
 
-  /** discord.js hands us a Collection; tests inject plain objects or nothing. */
+  /**
+   * Normalise whatever the client gave us into attachments.
+   *
+   * `.values()` first: a discord.js Collection is a Map, so `for..of` over it
+   * yields `[id, attachment]` pairs and every field reads `undefined`. Arrays
+   * expose `.values()` too and yield their elements, so one branch covers the
+   * real client, a plain array, and a Map alike.
+   */
   function collectAttachments( message: DiscordLikeMessage ): ChannelAttachment[] {
     if( !message.attachments ) return []
+    const source = message.attachments as { values?: () => Iterable<DiscordLikeAttachment> }
+    const items: Iterable<DiscordLikeAttachment> = typeof source.values === 'function'
+      ? source.values()
+      : message.attachments as Iterable<DiscordLikeAttachment>
+
     const out: ChannelAttachment[] = []
-    for( const a of message.attachments )
+    for( const a of items )
       out.push( {
         name: a.name ?? 'unnamed',
         ...( a.contentType ? { contentType: a.contentType } : {} ),

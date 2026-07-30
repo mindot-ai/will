@@ -302,3 +302,48 @@ describe('discord bridge — attachments', () => {
     finally { globalThis.fetch = original }
   } )
 } )
+
+// A regression guard with teeth. The first cut of attachment support typed
+// `attachments` as a bare Iterable and did `for..of` over it — correct for the
+// array this fake used, WRONG for the discord.js Collection, which extends Map
+// and therefore yields [id, attachment] pairs. Every field read `undefined`
+// against the real client while all four tests above stayed green. So the shape
+// that ships must be the shape under test.
+describe('discord bridge — attachments arrive as a Map (the discord.js Collection shape)', () => {
+  const asCollection = ( ...items: Array<Record<string, unknown>> ) =>
+    new Map( items.map( ( a, i ) => [ `att-${ i }`, a ] ) )
+
+  it('reads a Map-shaped attachment set, not its [key, value] pairs', async () => {
+    const original = globalThis.fetch
+    globalThis.fetch = ( async () => new Response('# Integration\nDone: bridge. Stalled: rollout.') ) as unknown as typeof fetch
+    try {
+      const { client, will } = await bridgeUp()
+      client.emit( {
+        content: 'Here it is', channelId: 'c1', author: { id: 'U1' }, member: { displayName: 'Fabrice' },
+        attachments: asCollection( {
+          name: 'message.txt', contentType: 'text/plain; charset=utf-8', size: 6518,
+          url: 'https://cdn.discordapp.com/attachments/1/2/message.txt',
+        } ) as never,
+      } )
+      await flush()
+
+      const text = will.perceived[0]!.text
+      expect( text ).toContain('Here it is')
+      expect( text ).toContain('message.txt')            // the NAME resolved, not undefined
+      expect( text ).not.toContain('unnamed')
+      expect( text ).toContain('Stalled: rollout.')      // and the body was actually fetched
+    }
+    finally { globalThis.fetch = original }
+  } )
+
+  it('still handles a plain array of attachments', async () => {
+    const { client, will } = await bridgeUp( { readAttachments: false } )
+    client.emit( {
+      content: '', channelId: 'c1', author: { id: 'U1' },
+      attachments: [ { name: 'notes.md', contentType: 'text/markdown', size: 12 } ],
+    } )
+    await flush()
+    expect( will.perceived[0]!.text ).toContain('notes.md')
+    expect( will.perceived[0]!.text ).not.toContain('unnamed')
+  } )
+} )

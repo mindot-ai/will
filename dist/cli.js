@@ -27806,8 +27806,10 @@ async function connectDiscord(will, opts) {
   }
   function collectAttachments(message) {
     if (!message.attachments) return [];
+    const source = message.attachments;
+    const items = typeof source.values === "function" ? source.values() : message.attachments;
     const out = [];
-    for (const a of message.attachments)
+    for (const a of items)
       out.push({
         name: a.name ?? "unnamed",
         ...a.contentType ? { contentType: a.contentType } : {},

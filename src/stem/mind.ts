@@ -561,6 +561,16 @@ export function _resolveVectorMemory(
   let apiKey:     string | undefined
   let modelName:  string
   let dimensions: number
+  /**
+   * Max embedding requests in flight, MEASURED per provider rather than guessed —
+   * the safe number differs by an order of magnitude and the failure modes differ
+   * too. gemini-embedding-001 accepts 8 concurrent but silently queues them, with
+   * the slowest landing at 10.7s (past the recall budget, so the answer is thrown
+   * away on arrival). jina-embeddings-v3 answers in ~0.5s but refuses outright above
+   * 2: at 3 concurrent 1-in-3 is a 429, at 4 it is half, while 12 sequential is
+   * flawless. Its ceiling is burst, not volume.
+   */
+  let concurrency = 4
 
   const slash = rawModel.indexOf('/')
   if( slash > 0 ){
@@ -586,11 +596,12 @@ export function _resolveVectorMemory(
         // a mismatch fails loudly with the number to set rather than corrupting recall.
         // Override with WILL_EMBEDDING_DIMENSIONS, which also lets v3's Matryoshka
         // truncation be requested explicitly.
-        apiUrl     = 'https://api.jina.ai/v1'
-        apiKey     = process.env.WILL_EMBEDDING_API_KEY ?? process.env.JINA_API_KEY
-        dimensions = modelName.includes('v4') ? 2048
-                   : modelName.includes('v2') ? 768
-                   : 1024                                     // v3 / clip-v2 native
+        apiUrl      = 'https://api.jina.ai/v1'
+        apiKey      = process.env.WILL_EMBEDDING_API_KEY ?? process.env.JINA_API_KEY
+        dimensions  = modelName.includes('v4') ? 2048
+                    : modelName.includes('v2') ? 768
+                    : 1024                                    // v3 / clip-v2 native (verified live)
+        concurrency = 2                                       // measured: 3 starts 429ing
         break
       default:
         apiUrl     = process.env.WILL_EMBEDDING_URL ?? 'https://api.openai.com/v1'
@@ -609,6 +620,11 @@ export function _resolveVectorMemory(
   if( process.env.WILL_EMBEDDING_DIMENSIONS )
     dimensions = parseInt( process.env.WILL_EMBEDDING_DIMENSIONS, 10 )
 
+  // …as does an explicit concurrency, for a paid tier or a local endpoint where the
+  // measured default is needlessly conservative.
+  if( process.env.WILL_EMBEDDING_CONCURRENCY )
+    concurrency = Math.max( 1, parseInt( process.env.WILL_EMBEDDING_CONCURRENCY, 10 ) )
+
   if( !mockMode && !apiKey ){
     console.warn(`[mind] semantic recall requested (WILL_EMBEDDING_MODEL=${rawModel}) but no API key resolved — vector memory disabled`)
     return { embedder: null, vectorMemory: null }
@@ -616,7 +632,7 @@ export function _resolveVectorMemory(
 
   const embedder = mockMode
     ? new MockEmbedder()
-    : new OpenAICompatibleEmbedder({ modelName, dimensions, apiUrl, apiKey: apiKey!, tokenTracker })
+    : new OpenAICompatibleEmbedder({ modelName, dimensions, apiUrl, apiKey: apiKey!, tokenTracker, maxConcurrency: concurrency })
 
   // Optional recall-precision override. Default (0.35) suits text-embedding-3-small;
   // raise toward 0.5+ for higher-precision models or to cut marginal recalls.

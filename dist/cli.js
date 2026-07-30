@@ -22853,6 +22853,7 @@ function _resolveVectorMemory(willId, seed, overrideAdapter, disable, tokenTrack
   let apiKey;
   let modelName;
   let dimensions;
+  let concurrency = 4;
   const slash = rawModel.indexOf("/");
   if (slash > 0) {
     const provider = rawModel.slice(0, slash);
@@ -22872,6 +22873,7 @@ function _resolveVectorMemory(willId, seed, overrideAdapter, disable, tokenTrack
         apiUrl = "https://api.jina.ai/v1";
         apiKey = process.env.WILL_EMBEDDING_API_KEY ?? process.env.JINA_API_KEY;
         dimensions = modelName.includes("v4") ? 2048 : modelName.includes("v2") ? 768 : 1024;
+        concurrency = 2;
         break;
       default:
         apiUrl = process.env.WILL_EMBEDDING_URL ?? "https://api.openai.com/v1";
@@ -22886,11 +22888,13 @@ function _resolveVectorMemory(willId, seed, overrideAdapter, disable, tokenTrack
   }
   if (process.env.WILL_EMBEDDING_DIMENSIONS)
     dimensions = parseInt(process.env.WILL_EMBEDDING_DIMENSIONS, 10);
+  if (process.env.WILL_EMBEDDING_CONCURRENCY)
+    concurrency = Math.max(1, parseInt(process.env.WILL_EMBEDDING_CONCURRENCY, 10));
   if (!mockMode && !apiKey) {
     console.warn(`[mind] semantic recall requested (WILL_EMBEDDING_MODEL=${rawModel}) but no API key resolved \u2014 vector memory disabled`);
     return { embedder: null, vectorMemory: null };
   }
-  const embedder = mockMode ? new MockEmbedder() : new OpenAICompatibleEmbedder({ modelName, dimensions, apiUrl, apiKey, tokenTracker });
+  const embedder = mockMode ? new MockEmbedder() : new OpenAICompatibleEmbedder({ modelName, dimensions, apiUrl, apiKey, tokenTracker, maxConcurrency: concurrency });
   const minSimilarity = process.env.WILL_SEMANTIC_MIN_SIMILARITY ? parseFloat(process.env.WILL_SEMANTIC_MIN_SIMILARITY) : void 0;
   const vectorMemory = new DefaultVectorMemoryAdapter(embedder, {
     persistPath: `./data/wills/${willId}/vector_index`,

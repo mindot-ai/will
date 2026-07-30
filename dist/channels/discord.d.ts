@@ -1,4 +1,4 @@
-import { cN as Will } from '../will-CyfxHjj5.js';
+import { cN as Will } from '../will-DZhROd63.js';
 import { C as ChannelBridge } from '../types-E9-HV-SW.js';
 
 interface DiscordLikeChannel {
@@ -23,6 +23,14 @@ interface DiscordLikeMessage {
         has(userId: string): boolean;
     };
     channel: DiscordLikeChannel;
+    /** discord.js Collection of attachments — iterable of values. Absent in tests
+     *  that inject bare message objects, which is why every use is guarded. */
+    attachments?: Iterable<{
+        name?: string | null;
+        contentType?: string | null;
+        size?: number;
+        url?: string;
+    }>;
 }
 interface DiscordLikeClient {
     user: {
@@ -55,6 +63,15 @@ interface DiscordBridgeOptions {
     homeChannelId?: string;
     /** Roster path (default: ./.will/<willId>.discord.json). */
     rosterPath?: string;
+    /**
+     * Read the contents of text-like attachments (.md, .txt, .json, …) into the
+     * percept, rather than only naming them. Default true.
+     *
+     * Only Discord's own CDN is ever fetched, and only up to a size cap. Set false
+     * for a bridge that should never pull remote bytes — the Will still perceives
+     * that a file arrived and can ask about it.
+     */
+    readAttachments?: boolean;
     /** Test / power-user seam: bring your own client; discord.js is never imported. */
     client?: DiscordLikeClient;
     log?: (msg: string) => void;

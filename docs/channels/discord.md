@@ -40,6 +40,11 @@ relationships — on the next start. Who-is-reachable-where survives too
   shared channel, then their DM, then `WILL_DISCORD_HOME_CHANNEL`.
 - **Each channel is its own conversation thread** — the mind keeps them apart
   the way you do.
+- **Shared files are perceived.** Text-like attachments (`.md`, `.txt`, `.json`,
+  …) are read into the percept; anything else is named so the Will knows a file
+  arrived and can ask about it. This matters more than it sounds: Discord turns
+  a long pasted markdown block into a `.md` upload with an *empty* message body,
+  so a bridge that read only the text would see the person go silent.
 
 ## Configuration
 
@@ -95,6 +100,14 @@ one. Work down this list:
 - **Perception scope = attack surface.** The bridge grants no tools and runs no
   commands; the Will can only *say things* here. Abilities come separately (and
   explicitly) via effectors or [MCP tools](../../README.md#employing-mcp-tools--the-mind-gets-abilities).
+- **Attachment reading is CDN-only.** Bodies are fetched from Discord's own
+  `cdn.discordapp.com` / `media.discordapp.net` and nowhere else — an inbound
+  message's `url` is untrusted input, and following it anywhere would make
+  perception an open redirect. Contents are size-capped and enter the percept
+  fenced and labelled as *handed over*, not as speech: a document is long and
+  looks authoritative, which is precisely the shape of a good injection. Pass
+  `readAttachments: false` (SDK) for a bridge that never pulls remote bytes —
+  files are still named.
 - **Busy servers:** start with `WILL_DISCORD_CHANNELS` scoped to one or two
   rooms. Perceiving is cheap (no LLM per message), but attention is finite —
   a firehose crowds out what matters.

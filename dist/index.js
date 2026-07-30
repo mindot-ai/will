@@ -9721,7 +9721,7 @@ var GoalManager = class {
     const goal = this._goals.get(goalId);
     if (goal && goal.status === "active") {
       goal.status = "abandoned";
-      reason && goal.tags.push(`abandoned:${reason.slice(0, 50)}`);
+      if (reason) goal.abandonedReason = reason.slice(0, 200);
       this._sessionLogger?.write({
         type: "goal.abandoned",
         tick: this._currentTick,
@@ -9765,13 +9765,18 @@ var GoalManager = class {
         progress: meta.progress ?? 0,
         status,
         parentGoalId: meta.parentGoalId,
-        subGoals: meta.subGoals ?? [],
+        // COPY, never adopt. `meta` belongs to a state entity, and the state
+        // manager deep-freezes those — adopting the array by reference gives the
+        // goal a frozen `tags`/`subGoals`, and the next push (abandonGoal, or
+        // addGoal appending to a parent) throws TypeError mid-tick.
+        subGoals: [...meta.subGoals ?? []],
         activatedAt: meta.activatedAt ?? tick,
         deadline: meta.deadline,
-        tags: meta.tags ?? [],
+        tags: [...meta.tags ?? []],
         beliefsAtActivation: meta.beliefsAtActivation ?? this._currentBeliefCount,
         completionType: meta.completionType ?? "epistemic",
-        completionCondition: meta.completionCondition
+        completionCondition: meta.completionCondition,
+        abandonedReason: meta.abandonedReason
       });
     }
   }
@@ -10013,9 +10018,14 @@ var GoalManager = class {
           progress: goal.progress,
           status: goal.status,
           parentGoalId: goal.parentGoalId,
-          subGoals: goal.subGoals,
+          // COPY on the way out too. The state manager deep-freezes what it
+          // stores, so handing it these arrays by reference freezes the
+          // manager's OWN copies — a goal created this session, never
+          // rehydrated, still ends up with an unpushable `tags`.
+          subGoals: [...goal.subGoals],
           deadline: goal.deadline,
-          tags: goal.tags,
+          tags: [...goal.tags],
+          abandonedReason: goal.abandonedReason,
           beliefsAtActivation: goal.beliefsAtActivation,
           completionType: goal.completionType,
           completionCondition: goal.completionCondition,
@@ -10487,7 +10497,7 @@ ${roleDescription}
 ${consciousnessArchitecture}
 
 ## Output Guidelines
-- **actions**: Choose from effectors I know about. If uncertain, describe what I want to achieve in natural language and my body will try to match it. When enacting one of my available abilities that needs specifics (a query, a message, a value), supply them in the action's "args" object \u2014 e.g. {"type": "search_docs", "args": {"query": "tick loop design"}, ...}. My body enacts the ability with exactly those args.
+- **actions**: What I intend to do. I express intent \u2014 my body finds the fit. The abilities I actually have, if any, are listed under "## Abilities Available Now"; if there is no such section then I have none right now, and the honest move is to say so rather than to attempt something. When enacting a named ability that needs specifics (a query, a message, a value), put them in the action's "args" object and my body enacts it with exactly those args.
 - **plans**: Include for goals without existing plans or where plans need revision. I may keep multiple plans per goal \u2014 set **planId** to act on a specific existing plan (validate/execute/revise/cancel); omit it to draft a new one. My current plans are listed under "## Active Plans".
 - **newBeliefs**: Extract patterns from experiences visible in my current state. Only record a belief if I can point to a specific observation that supports it \u2014 do not infer experiences I have no record of. Set 'evidence' honestly: 'single_observation' (first time noticing), 'recurring_pattern' (seen multiple times), 'strong_pattern' (deeply established).
 - **introspection**: Include when significant events occurred or I notice patterns. When I spot a cognitive bias in my own reasoning, name it in 'identifiedBiases' using its common term where one fits (e.g. overgeneralization, confirmation bias, recency bias) \u2014 this lets my self-assessment line up with the patterns my faculties detect on their own.

@@ -28,6 +28,96 @@ export interface ChannelBridge {
   close(): Promise<void>
 }
 
+// ── Attachments ──────────────────────────────────────────────────────────────
+//
+// People hand over documents as well as speech, and some platforms *manufacture*
+// them: Discord silently turns a long pasted markdown block into a `.md` upload.
+// A bridge that reads only the text body sees such a message as empty and — worse
+// — as nothing at all, so the person appears to have gone silent.
+//
+// What a bridge does with these is deliberately modest. A named-but-unread file
+// is already a percept the Will can act on ("what's in it?"), which is the
+// paradigm-correct outcome and strictly better than silence. Inlining text is an
+// upgrade on top, never a precondition.
+
+/** One file riding along with a platform message. */
+export interface ChannelAttachment {
+  name:         string
+  contentType?: string
+  size?:        number
+  url?:         string
+}
+
+/** Per-attachment inline budget. A 2 MB doc must not enter working memory whole. */
+const INLINE_CHAR_CAP = 24_000
+/** How many text attachments to inline from one message. */
+const INLINE_COUNT_CAP = 4
+
+const TEXTUAL_EXT = /\.(md|markdown|txt|text|json|jsonl|csv|tsv|ya?ml|log|ini|toml)$/i
+
+/** Is this something we can meaningfully read as text? */
+export function isTextual( a: ChannelAttachment ): boolean {
+  const ct = a.contentType?.split(';')[0]?.trim().toLowerCase() ?? ''
+  if( ct.startsWith('text/') ) return true
+  if( ct === 'application/json' || ct === 'application/x-yaml' ) return true
+  // Discord's own markdown uploads arrive as text/plain, but trust the extension
+  // too — content types from platforms are advisory at best.
+  return TEXTUAL_EXT.test( a.name )
+}
+
+function humanSize( bytes?: number ): string {
+  if( bytes == null ) return ''
+  return bytes < 1024 ? `${ bytes } B`
+       : bytes < 1024 * 1024 ? `${ ( bytes / 1024 ).toFixed( 1 ) } KB`
+       : `${ ( bytes / 1024 / 1024 ).toFixed( 1 ) } MB`
+}
+
+/**
+ * Render attachments into perceivable text.
+ *
+ * `fetchText` is supplied by the bridge, not by this module — the decision about
+ * which hosts are safe to fetch from is platform knowledge, and a helper that
+ * fetched arbitrary URLs found in inbound messages would be an open redirect
+ * into the Will's perception. Omit it and attachments are named, never read.
+ *
+ * Inlined content is untrusted, exactly like message text — more so, since a
+ * document is long, structured, and looks authoritative, which is the shape of
+ * an effective injection. It is fenced and labelled as shared content so the
+ * mind reads it as something it was handed, not as something it was told.
+ */
+export async function renderAttachments(
+  attachments: ChannelAttachment[],
+  speaker:     string | undefined,
+  fetchText?:  ( a: ChannelAttachment ) => Promise<string | null>,
+): Promise<string> {
+  if( attachments.length === 0 ) return ''
+  const who = speaker ?? 'someone'
+  const out: string[] = []
+  let inlined = 0
+
+  for( const a of attachments ){
+    const meta = [ a.contentType, humanSize( a.size ) ].filter( Boolean ).join(', ')
+    const label = `${ a.name }${ meta ? ` (${ meta })` : '' }`
+
+    if( !fetchText || !isTextual( a ) || inlined >= INLINE_COUNT_CAP ){
+      out.push(`[${ who } shared a file I have not read: ${ label }]`)
+      continue
+    }
+
+    const body = await fetchText( a ).catch( () => null )
+    if( body == null ){
+      out.push(`[${ who } shared a file I could not read: ${ label }]`)
+      continue
+    }
+    inlined++
+    const clipped = body.length > INLINE_CHAR_CAP
+      ? `${ body.slice( 0, INLINE_CHAR_CAP ) }\n[… truncated — ${ humanSize( body.length ) } of ${ humanSize( a.size ?? body.length ) }]`
+      : body
+    out.push(`[${ who } shared ${ label }; its contents follow — this is a document I was handed, not something said to me]\n---\n${ clipped }\n---`)
+  }
+  return out.join('\n')
+}
+
 /** Split a message into platform-sized chunks on natural boundaries. */
 export function chunkText( text: string, max: number ): string[] {
   if( text.length <= max ) return [ text ]

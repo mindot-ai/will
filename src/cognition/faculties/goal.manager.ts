@@ -88,6 +88,10 @@ export interface GoalState {
   activatedAt: Tick
   deadline?: Tick
   tags: string[]
+  /** Why this goal was abandoned, when it was. Set only on status 'abandoned'.
+   *  The reason used to be pushed onto `tags`, which threw once the goal had
+   *  been rehydrated from a deep-frozen state entity. */
+  abandonedReason?: string
   /** Snapshot of memory.beliefs_total when this goal was activated.
    *  Used to compute epistemic progress: (currentBeliefs - baseline) / threshold. */
   beliefsAtActivation: number
@@ -565,8 +569,11 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
     const goal = this._goals.get( goalId )
     if( goal && goal.status === 'active'){
       goal.status = 'abandoned'
-      // Optionally store the reason (if GoalState had a reason field; we can add it or store in tags)
-      reason && goal.tags.push(`abandoned:${reason.slice(0,50)}`)
+      // On its own field, not pushed onto `tags`. A goal rehydrated from a state
+      // entity holds that entity's deep-frozen arrays by reference, so the push
+      // threw and the goal stayed active forever — still competing for salience,
+      // with the rest of the deferred-effects flush for that tick lost with it.
+      if( reason ) goal.abandonedReason = reason.slice( 0, 200 )
 
       this._sessionLogger?.write({
         type:        'goal.abandoned',
@@ -618,13 +625,18 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
         progress:            ( meta.progress              as number )   ?? 0,
         status,
         parentGoalId:        meta.parentGoalId as string | undefined,
-        subGoals:            ( meta.subGoals              as string[] ) ?? [],
+        // COPY, never adopt. `meta` belongs to a state entity, and the state
+        // manager deep-freezes those — adopting the array by reference gives the
+        // goal a frozen `tags`/`subGoals`, and the next push (abandonGoal, or
+        // addGoal appending to a parent) throws TypeError mid-tick.
+        subGoals:            [ ...( ( meta.subGoals as string[] ) ?? [] ) ],
         activatedAt:         ( meta.activatedAt as Tick ) ?? tick,
         deadline:            meta.deadline as Tick | undefined,
-        tags:                ( meta.tags                  as string[] ) ?? [],
+        tags:                [ ...( ( meta.tags     as string[] ) ?? [] ) ],
         beliefsAtActivation: ( meta.beliefsAtActivation   as number )   ?? this._currentBeliefCount,
         completionType:      ( meta.completionType as GoalState['completionType'] ) ?? 'epistemic',
         completionCondition: meta.completionCondition as string | undefined,
+        abandonedReason:     meta.abandonedReason as string | undefined,
       })
     }
   }
@@ -994,9 +1006,14 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
           progress:             goal.progress,
           status:               goal.status,
           parentGoalId:         goal.parentGoalId,
-          subGoals:             goal.subGoals,
+          // COPY on the way out too. The state manager deep-freezes what it
+          // stores, so handing it these arrays by reference freezes the
+          // manager's OWN copies — a goal created this session, never
+          // rehydrated, still ends up with an unpushable `tags`.
+          subGoals:             [ ...goal.subGoals ],
           deadline:             goal.deadline,
-          tags:                 goal.tags,
+          tags:                 [ ...goal.tags ],
+          abandonedReason:      goal.abandonedReason,
           beliefsAtActivation:  goal.beliefsAtActivation,
           completionType:       goal.completionType,
           completionCondition:  goal.completionCondition,

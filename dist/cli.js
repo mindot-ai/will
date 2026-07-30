@@ -11630,7 +11630,7 @@ var GoalManager = class {
     const goal = this._goals.get(goalId);
     if (goal && goal.status === "active") {
       goal.status = "abandoned";
-      reason && goal.tags.push(`abandoned:${reason.slice(0, 50)}`);
+      if (reason) goal.abandonedReason = reason.slice(0, 200);
       this._sessionLogger?.write({
         type: "goal.abandoned",
         tick: this._currentTick,
@@ -11674,13 +11674,18 @@ var GoalManager = class {
         progress: meta.progress ?? 0,
         status,
         parentGoalId: meta.parentGoalId,
-        subGoals: meta.subGoals ?? [],
+        // COPY, never adopt. `meta` belongs to a state entity, and the state
+        // manager deep-freezes those — adopting the array by reference gives the
+        // goal a frozen `tags`/`subGoals`, and the next push (abandonGoal, or
+        // addGoal appending to a parent) throws TypeError mid-tick.
+        subGoals: [...meta.subGoals ?? []],
         activatedAt: meta.activatedAt ?? tick,
         deadline: meta.deadline,
-        tags: meta.tags ?? [],
+        tags: [...meta.tags ?? []],
         beliefsAtActivation: meta.beliefsAtActivation ?? this._currentBeliefCount,
         completionType: meta.completionType ?? "epistemic",
-        completionCondition: meta.completionCondition
+        completionCondition: meta.completionCondition,
+        abandonedReason: meta.abandonedReason
       });
     }
   }
@@ -11922,9 +11927,14 @@ var GoalManager = class {
           progress: goal.progress,
           status: goal.status,
           parentGoalId: goal.parentGoalId,
-          subGoals: goal.subGoals,
+          // COPY on the way out too. The state manager deep-freezes what it
+          // stores, so handing it these arrays by reference freezes the
+          // manager's OWN copies — a goal created this session, never
+          // rehydrated, still ends up with an unpushable `tags`.
+          subGoals: [...goal.subGoals],
           deadline: goal.deadline,
-          tags: goal.tags,
+          tags: [...goal.tags],
+          abandonedReason: goal.abandonedReason,
           beliefsAtActivation: goal.beliefsAtActivation,
           completionType: goal.completionType,
           completionCondition: goal.completionCondition,
@@ -12786,7 +12796,7 @@ ${roleDescription}
 ${consciousnessArchitecture}
 
 ## Output Guidelines
-- **actions**: Choose from effectors I know about. If uncertain, describe what I want to achieve in natural language and my body will try to match it. When enacting one of my available abilities that needs specifics (a query, a message, a value), supply them in the action's "args" object \u2014 e.g. {"type": "search_docs", "args": {"query": "tick loop design"}, ...}. My body enacts the ability with exactly those args.
+- **actions**: What I intend to do. I express intent \u2014 my body finds the fit. The abilities I actually have, if any, are listed under "## Abilities Available Now"; if there is no such section then I have none right now, and the honest move is to say so rather than to attempt something. When enacting a named ability that needs specifics (a query, a message, a value), put them in the action's "args" object and my body enacts it with exactly those args.
 - **plans**: Include for goals without existing plans or where plans need revision. I may keep multiple plans per goal \u2014 set **planId** to act on a specific existing plan (validate/execute/revise/cancel); omit it to draft a new one. My current plans are listed under "## Active Plans".
 - **newBeliefs**: Extract patterns from experiences visible in my current state. Only record a belief if I can point to a specific observation that supports it \u2014 do not infer experiences I have no record of. Set 'evidence' honestly: 'single_observation' (first time noticing), 'recurring_pattern' (seen multiple times), 'strong_pattern' (deeply established).
 - **introspection**: Include when significant events occurred or I notice patterns. When I spot a cognitive bias in my own reasoning, name it in 'identifiedBiases' using its common term where one fits (e.g. overgeneralization, confirmation bias, recency bias) \u2014 this lets my self-assessment line up with the patterns my faculties detect on their own.
@@ -27692,6 +27702,46 @@ var ChannelRoster = class {
 };
 
 // src/channels/types.ts
+var INLINE_CHAR_CAP = 24e3;
+var INLINE_COUNT_CAP = 4;
+var TEXTUAL_EXT = /\.(md|markdown|txt|text|json|jsonl|csv|tsv|ya?ml|log|ini|toml)$/i;
+function isTextual(a) {
+  const ct = a.contentType?.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (ct.startsWith("text/")) return true;
+  if (ct === "application/json" || ct === "application/x-yaml") return true;
+  return TEXTUAL_EXT.test(a.name);
+}
+function humanSize(bytes) {
+  if (bytes == null) return "";
+  return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+async function renderAttachments(attachments, speaker, fetchText) {
+  if (attachments.length === 0) return "";
+  const who = speaker ?? "someone";
+  const out = [];
+  let inlined = 0;
+  for (const a of attachments) {
+    const meta = [a.contentType, humanSize(a.size)].filter(Boolean).join(", ");
+    const label = `${a.name}${meta ? ` (${meta})` : ""}`;
+    if (!fetchText || !isTextual(a) || inlined >= INLINE_COUNT_CAP) {
+      out.push(`[${who} shared a file I have not read: ${label}]`);
+      continue;
+    }
+    const body = await fetchText(a).catch(() => null);
+    if (body == null) {
+      out.push(`[${who} shared a file I could not read: ${label}]`);
+      continue;
+    }
+    inlined++;
+    const clipped = body.length > INLINE_CHAR_CAP ? `${body.slice(0, INLINE_CHAR_CAP)}
+[\u2026 truncated \u2014 ${humanSize(body.length)} of ${humanSize(a.size ?? body.length)}]` : body;
+    out.push(`[${who} shared ${label}; its contents follow \u2014 this is a document I was handed, not something said to me]
+---
+${clipped}
+---`);
+  }
+  return out.join("\n");
+}
 function chunkText(text, max) {
   if (text.length <= max) return [text];
   const chunks = [];
@@ -27709,6 +27759,8 @@ function chunkText(text, max) {
 
 // src/channels/discord.ts
 var DISCORD_MESSAGE_LIMIT = 2e3;
+var DISCORD_CDN_HOSTS = /* @__PURE__ */ new Set(["cdn.discordapp.com", "media.discordapp.net"]);
+var MAX_FETCH_BYTES = 256 * 1024;
 async function connectDiscord(will, opts) {
   const log = opts.log ?? ((m) => console.error(`[will:discord] ${m}`));
   const roster = new ChannelRoster(opts.rosterPath ?? `.will/${will.id}.discord.json`);
@@ -27736,14 +27788,56 @@ async function connectDiscord(will, opts) {
     if (!isDM) lastActiveChannelId = message.channelId;
     if (addressed) await message.channel.sendTyping?.().catch(() => {
     });
-    const text = message.cleanContent || message.content;
-    if (!text.trim()) return;
+    const said = (message.cleanContent || message.content).trim();
+    const files = collectAttachments(message);
+    if (!said && files.length === 0) return;
+    const shared = await renderAttachments(
+      files,
+      speaker,
+      opts.readAttachments === false ? void 0 : fetchAttachmentText
+    );
+    const text = [said, shared].filter(Boolean).join("\n");
     await will.perceive({
       text,
       from: entityId,
       thread: `discord:${message.channelId}`,
       ...speaker ? { speaker } : {}
     });
+  }
+  function collectAttachments(message) {
+    if (!message.attachments) return [];
+    const out = [];
+    for (const a of message.attachments)
+      out.push({
+        name: a.name ?? "unnamed",
+        ...a.contentType ? { contentType: a.contentType } : {},
+        ...a.size != null ? { size: a.size } : {},
+        ...a.url ? { url: a.url } : {}
+      });
+    return out;
+  }
+  async function fetchAttachmentText(a) {
+    if (!a.url || !isTextual(a)) return null;
+    let host;
+    try {
+      host = new URL(a.url).hostname;
+    } catch {
+      return null;
+    }
+    if (!DISCORD_CDN_HOSTS.has(host)) {
+      log(`refusing to fetch attachment '${a.name}' from non-CDN host ${host}`);
+      return null;
+    }
+    if (a.size != null && a.size > MAX_FETCH_BYTES) {
+      log(`attachment '${a.name}' is ${a.size} bytes \u2014 naming it without reading`);
+      return null;
+    }
+    const res = await fetch(a.url, { signal: AbortSignal.timeout(1e4) });
+    if (!res.ok) {
+      log(`attachment '${a.name}' fetch failed: ${res.status}`);
+      return null;
+    }
+    return (await res.text()).slice(0, MAX_FETCH_BYTES);
   }
   let closed = false;
   will.on("message", (m) => {

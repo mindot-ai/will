@@ -24,9 +24,22 @@
 
 import type { Will, WillMessage } from '#sdk/will'
 import { ChannelRoster } from '#channels/roster'
-import { chunkText, type ChannelBridge } from '#channels/types'
+import { chunkText, renderAttachments, isTextual, type ChannelBridge, type ChannelAttachment } from '#channels/types'
 
 const DISCORD_MESSAGE_LIMIT = 2000
+
+/**
+ * The only hosts the bridge will fetch attachment bodies from.
+ *
+ * Deliberately an allowlist of Discord's own CDN. An inbound message is
+ * untrusted input; following URLs it names would turn perception into an open
+ * redirect, and a `url` field is no more trustworthy than the message text.
+ */
+const DISCORD_CDN_HOSTS = new Set( [ 'cdn.discordapp.com', 'media.discordapp.net' ] )
+
+/** Refuse to pull a large file into a percept — the cap in renderAttachments
+ *  bounds what is *kept*, this bounds what is fetched at all. */
+const MAX_FETCH_BYTES = 256 * 1024
 
 // ── The slice of discord.js the bridge actually uses (structural) ───────────
 
@@ -44,6 +57,9 @@ export interface DiscordLikeMessage {
   member?: { displayName?: string } | null
   mentions?: { has( userId: string ): boolean }
   channel: DiscordLikeChannel
+  /** discord.js Collection of attachments — iterable of values. Absent in tests
+   *  that inject bare message objects, which is why every use is guarded. */
+  attachments?: Iterable<{ name?: string | null; contentType?: string | null; size?: number; url?: string }>
 }
 
 export interface DiscordLikeClient {
@@ -71,6 +87,15 @@ export interface DiscordBridgeOptions {
   homeChannelId?: string
   /** Roster path (default: ./.will/<willId>.discord.json). */
   rosterPath?: string
+  /**
+   * Read the contents of text-like attachments (.md, .txt, .json, …) into the
+   * percept, rather than only naming them. Default true.
+   *
+   * Only Discord's own CDN is ever fetched, and only up to a size cap. Set false
+   * for a bridge that should never pull remote bytes — the Will still perceives
+   * that a file arrived and can ask about it.
+   */
+  readAttachments?: boolean
   /** Test / power-user seam: bring your own client; discord.js is never imported. */
   client?: DiscordLikeClient
   log?: ( msg: string ) => void
@@ -121,8 +146,20 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
     // may still choose silence, and typing expires on its own.
     if( addressed ) await message.channel.sendTyping?.().catch( () => {} )
 
-    const text = message.cleanContent || message.content
-    if( !text.trim() ) return
+    const said  = ( message.cleanContent || message.content ).trim()
+    const files = collectAttachments( message )
+
+    // An attachment-only message used to die here on the empty body: no percept,
+    // no log line, nothing. From the mind's side the person had simply gone
+    // quiet — and Discord *makes* these, turning a long pasted markdown block
+    // into a .md upload. Only a message with neither words nor files is nothing.
+    if( !said && files.length === 0 ) return
+
+    const shared = await renderAttachments(
+      files, speaker,
+      opts.readAttachments === false ? undefined : fetchAttachmentText,
+    )
+    const text = [ said, shared ].filter( Boolean ).join('\n')
 
     await will.perceive( {
       text,
@@ -130,6 +167,42 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
       thread: `discord:${ message.channelId }`,
       ...( speaker ? { speaker } : {} ),
     } )
+  }
+
+  /** discord.js hands us a Collection; tests inject plain objects or nothing. */
+  function collectAttachments( message: DiscordLikeMessage ): ChannelAttachment[] {
+    if( !message.attachments ) return []
+    const out: ChannelAttachment[] = []
+    for( const a of message.attachments )
+      out.push( {
+        name: a.name ?? 'unnamed',
+        ...( a.contentType ? { contentType: a.contentType } : {} ),
+        ...( a.size != null ? { size: a.size } : {} ),
+        ...( a.url ? { url: a.url } : {} ),
+      } )
+    return out
+  }
+
+  /** Fetch one text attachment — Discord CDN only, size-capped. */
+  async function fetchAttachmentText( a: ChannelAttachment ): Promise<string | null> {
+    if( !a.url || !isTextual( a ) ) return null
+    let host: string
+    try { host = new URL( a.url ).hostname }
+    catch { return null }
+    if( !DISCORD_CDN_HOSTS.has( host ) ){
+      log(`refusing to fetch attachment '${ a.name }' from non-CDN host ${ host }`)
+      return null
+    }
+    if( a.size != null && a.size > MAX_FETCH_BYTES ){
+      log(`attachment '${ a.name }' is ${ a.size } bytes — naming it without reading`)
+      return null
+    }
+    const res = await fetch( a.url, { signal: AbortSignal.timeout( 10_000 ) } )
+    if( !res.ok ){
+      log(`attachment '${ a.name }' fetch failed: ${ res.status }`)
+      return null
+    }
+    return ( await res.text() ).slice( 0, MAX_FETCH_BYTES )
   }
 
   // ── outbound: projected utterance → the addressee ─────────────────────────

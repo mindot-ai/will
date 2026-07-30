@@ -309,3 +309,84 @@ describe('buildStateCommands — ideomotor ability leg (executive args)', () => 
     expect( ideomotorOf( commands, 'reach-out')?.metadata?.['targetEntityId'] ).toBe('ada')
   } )
 } )
+
+// ── the communicate leg must accept the addressee the PROMPT asks for ───────
+//
+// The output guidelines document actions as {type, reasoning, expectedOutcome,
+// target?, args?} and tell the mind to put specifics in `args`. So a mind writing
+// a message naturally produces `args: { to, content }`. The communicate branch
+// used to read `action.target` alone and `continue` on its absence — so real,
+// fully-authored sentences never became an intent, never competed, and were never
+// enqueued. Reafference then taught the Will that talking to that PERSON fails.
+//
+// It also dropped `args` entirely, so even a correctly-targeted communicate lost
+// its words and hit ProactiveCommunicator's "didn't write anything" arm.
+describe('buildStateCommands — a communicate action reaches the outbox', () => {
+  const run = ( output: ExecutiveOutputFull, state: ReadonlySimulationState ) => {
+    const log = freshLog()
+    return buildStateCommands( output, footprintAt( 1 ), state, makeDeps( log, new ExecutiveSummarizer() ), [] ).commands
+  }
+
+  const withAda = ( extra: Array<{ id: string; type: string; metadata?: Record<string, unknown> }> = [] ) =>
+    stateWithExternalAffordance('unrelated', [
+      { id: 'ke-ada', type: 'known-entity', metadata: { keid: 'ada', kind: 'sentient', name: 'Ada' } },
+      ...extra,
+    ] )
+
+  it('resolves the addressee from args.to when the action carries no target', () => {
+    const commands = run(
+      outputWithAction( { type: 'message', reasoning: 'r', expectedOutcome: 'o',
+        args: { to: 'Ada', content: 'What are you working on?' } } ),
+      withAda(),
+    )
+    const intent = ideomotorOf( commands, 'reach-out')
+    expect( intent?.metadata?.['targetEntityId'] ).toBe('ada')
+  } )
+
+  it('carries the authored words through as parameters', () => {
+    const commands = run(
+      outputWithAction( { type: 'message', reasoning: 'r', expectedOutcome: 'o',
+        args: { to: 'Ada', content: 'What are you working on?' } } ),
+      withAda(),
+    )
+    const params = ideomotorOf( commands, 'reach-out')?.metadata?.['parameters'] as Record<string, unknown>
+    expect( params?.['content'] ).toBe('What are you working on?')
+  } )
+
+  it('accepts `recipient` too — the mind does not always pick the same key', () => {
+    const commands = run(
+      outputWithAction( { type: 'message', reasoning: 'r', expectedOutcome: 'o',
+        args: { recipient: 'Ada', content: 'Following up.' } } ),
+      withAda(),
+    )
+    expect( ideomotorOf( commands, 'reach-out')?.metadata?.['targetEntityId'] ).toBe('ada')
+  } )
+
+  it('an explicit action.target still wins, and still carries args', () => {
+    const commands = run(
+      outputWithAction( { type: 'talk', reasoning: 'r', expectedOutcome: 'o', target: 'Ada',
+        args: { content: 'Directly addressed.' } } ),
+      withAda(),
+    )
+    const intent = ideomotorOf( commands, 'reach-out')
+    expect( intent?.metadata?.['targetEntityId'] ).toBe('ada')
+    expect( ( intent?.metadata?.['parameters'] as Record<string, unknown> )?.['content'] ).toBe('Directly addressed.')
+  } )
+
+  it('still forms no intent when there is genuinely no one named', () => {
+    const commands = run(
+      outputWithAction( { type: 'message', reasoning: 'r', expectedOutcome: 'o', args: { content: 'Into the void.' } } ),
+      withAda(),
+    )
+    expect( ideomotorOf( commands, 'reach-out') ).toBeUndefined()
+  } )
+
+  it('forms no intent for someone it does not know', () => {
+    const commands = run(
+      outputWithAction( { type: 'message', reasoning: 'r', expectedOutcome: 'o',
+        args: { to: 'Stranger', content: 'Hello?' } } ),
+      withAda(),
+    )
+    expect( ideomotorOf( commands, 'reach-out') ).toBeUndefined()
+  } )
+} )

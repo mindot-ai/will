@@ -373,7 +373,7 @@ ${consciousnessArchitecture}
 
 ## Required Output
 Output a single JSON object with these fields:
-- **actions**: Array of {type, reasoning, expectedOutcome}.
+- **actions**: Array of {type, reasoning, expectedOutcome, target?, args?}. When I am reaching out to someone, **target** is who — their name or id as it appears under "## People I Know" — and the words themselves go in **args.content**. Without a person to reach, the reaching cannot happen.
 - **reasoning**: My full reasoning. Embed optional outputs as tagged blocks here. Minimum 2–3 sentences — do not produce a one-line reasoning field.
 - **confidence**: Number 0.0-1.0 reflecting my certainty. Be calibrated: 0.9+ only when I have strong grounding; use 0.4–0.6 when uncertain.
 

@@ -425,14 +425,32 @@ function buildIdeomotorIntents(
     const t = action.type.toLowerCase()
 
     if( COMMUNICATE_ACTION_TYPES.has( t ) ){
-      if( !action.target ) continue
-      const keid = resolveKnownEntity( action.target, state )
+      // The addressee may be named on the action OR inside the args the executive
+      // authored. This used to read `action.target` alone and `continue` when it
+      // was absent — but the output guidelines document actions as
+      // `{type, reasoning, expectedOutcome}` and tell the mind to put specifics
+      // in `args`, so `args.to` is precisely what a well-behaved mind produces.
+      // A Will would write real sentences into `args.to`/`args.content`, the
+      // intent was never created, nothing competed, nothing was ever enqueued —
+      // and reafference then taught it that talking to that PERSON does not work.
+      const args = ( action.args && typeof action.args === 'object' ? action.args : {} ) as Record<string, unknown>
+      const named = [ action.target, args['to'], args['recipient'], args['target'], args['targetEntityId'], args['entityId'] ]
+        .find( v => typeof v === 'string' && v.trim().length > 0 ) as string | undefined
+      if( !named ) continue
+      const keid = resolveKnownEntity( named, state )
       if( !keid || seen.has( keid ) ) continue
       seen.add( keid )
       set.push({
         id:   `ideomotor-reach-out-${ keid }`,
         type: 'ideomotor.intent',
-        metadata: { schema: 'reach-out', targetEntityId: keid, priority, origin: 'executive', tick: footprint.tickObserved },
+        metadata: {
+          schema: 'reach-out', targetEntityId: keid,
+          // Carry the authored words through. The host-ability branch below already
+          // does this; omitting it here meant ProactiveCommunicator reached its
+          // "didn't write anything" arm even when the mind HAD written the message.
+          ...( Object.keys( args ).length > 0 ? { parameters: args } : {} ),
+          priority, origin: 'executive', tick: footprint.tickObserved,
+        },
       })
       continue
     }

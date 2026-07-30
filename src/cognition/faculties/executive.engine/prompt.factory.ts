@@ -49,6 +49,17 @@ import type { LLMCallFunction } from '#cognition/utilities/token.tracker'
 import type { ExecutiveSummarizer } from '#llm/summarizer'
 import type { ExecutiveContext, PendingMessage, IdeationCandidate } from '#faculties/executive.engine/types'
 import { buildExecutiveContext, type ContextDependencies } from '#faculties/executive.engine/context'
+import { INNATE_SCHEMAS } from '#agency/schemas/innate'
+
+/**
+ * The stances a mind always has, named so it need not guess at them.
+ *
+ * Static, so it costs nothing in prompt-cache stability. Without it a Will can
+ * only learn action names from whichever affordances win the salience
+ * competition into its percepts — and it invents plausible ones for whatever it
+ * cannot see (`query`, `message`), which resolve to nothing.
+ */
+const INNATE_ACTION_NAMES = INNATE_SCHEMAS.map( s => s.id ).sort().join(', ')
 
 // ── Re-export for callers that imported the old alias ────────
 export type { ContextDependencies as ContextDependenciesForFresh } from '#faculties/executive.engine/context'
@@ -360,7 +371,7 @@ ${roleDescription}
 ${consciousnessArchitecture}
 
 ## Output Guidelines
-- **actions**: What I intend to do. I express intent — my body finds the fit. The abilities I actually have, if any, are listed under "## Abilities Available Now"; if there is no such section then I have none right now, and the honest move is to say so rather than to attempt something. When enacting a named ability that needs specifics (a query, a message, a value), put them in the action's "args" object and my body enacts it with exactly those args.
+- **actions**: What I intend to do. I express intent — my body finds the fit. My own stances are always with me (listed with the output schema below); *acquired* abilities, if any, appear under "## Abilities Available Now", and when there is no such section I have none of those — so a thing I want done that needs one is a thing to say I cannot do, not to attempt. When enacting a named ability that needs specifics (a query, a message, a value), put them in the action's "args" object and my body enacts it with exactly those args.
 - **plans**: Include for goals without existing plans or where plans need revision. I may keep multiple plans per goal — set **planId** to act on a specific existing plan (validate/execute/revise/cancel); omit it to draft a new one. My current plans are listed under "## Active Plans".
 - **newBeliefs**: Extract patterns from experiences visible in my current state. Only record a belief if I can point to a specific observation that supports it — do not infer experiences I have no record of. Set 'evidence' honestly: 'single_observation' (first time noticing), 'recurring_pattern' (seen multiple times), 'strong_pattern' (deeply established).
 - **introspection**: Include when significant events occurred or I notice patterns. When I spot a cognitive bias in my own reasoning, name it in 'identifiedBiases' using its common term where one fits (e.g. overgeneralization, confirmation bias, recency bias) — this lets my self-assessment line up with the patterns my faculties detect on their own.
@@ -373,7 +384,7 @@ ${consciousnessArchitecture}
 
 ## Required Output
 Output a single JSON object with these fields:
-- **actions**: Array of {type, reasoning, expectedOutcome, target?, args?}. When I am reaching out to someone, **target** is who — their name or id as it appears under "## People I Know" — and the words themselves go in **args.content**. Without a person to reach, the reaching cannot happen.
+- **actions**: Array of {type, reasoning, expectedOutcome, target?, args?}. The stances I always have are: ${ INNATE_ACTION_NAMES } — \`reach-out\` is how I say something to someone. Anything else must be an ability named under "## Abilities Available Now". A **type** outside those two sets is not something I can do; naming one achieves nothing at all. When I reach out, **target** is who — their name or id as it appears under "## People I Know" — and the words themselves go in **args.content**. Without a person to reach, the reaching cannot happen.
 - **reasoning**: My full reasoning. Embed optional outputs as tagged blocks here. Minimum 2–3 sentences — do not produce a one-line reasoning field.
 - **confidence**: Number 0.0-1.0 reflecting my certainty. Be calibrated: 0.9+ only when I have strong grounding; use 0.4–0.6 when uncertain.
 

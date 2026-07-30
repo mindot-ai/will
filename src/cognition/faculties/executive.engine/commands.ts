@@ -9,6 +9,7 @@ import type { ExecutiveSummarizer } from '#llm/summarizer'
 import type { GoalManager } from '#faculties/goal.manager'
 import type { GenerativeModel } from '#cognition/generative.model'
 import type { SemanticIntegrator } from '#faculties/semantic.engine/integrator'
+import { INNATE_SCHEMA_BY_ID } from '#agency/schemas/innate'
 
 /** Maps the LLM's evidence enum to a numeric supportingEpisodes value for the belief store. */
 export const EVIDENCE_TO_COUNT: Record<string, number> = {
@@ -408,6 +409,8 @@ function buildIdeomotorIntents(
 ): { set: EntityInput[]; delete: string[] } {
   const set:  EntityInput[] = []
   const seen = new Set<string>()
+  /** Action names that named nothing this cycle — surfaced back to the mind below. */
+  const unresolved = new Set<string>()
   const priority = clamp01( output.confidence ?? 0.8 )
 
   // The host abilities currently afforded (source 'external' in the live field) —
@@ -457,7 +460,16 @@ function buildIdeomotorIntents(
 
     // A host ability the executive imagines enacting, with its conscious args.
     const schema = externalBySchema.get( t )
-    if( !schema || seen.has(`ability:${ schema }`) ) continue
+    if( !schema ){
+      // The name resolves to NOTHING: not a communicate type, not an innate
+      // stance, not an ability the field affords. Record it so the mind can find
+      // out. Silence here is what let a Will spend eleven consecutive actions on
+      // an invented `query`, observe that nothing ever came of them, and conclude
+      // its MEMORY was broken — the one explanation that was not true.
+      if( !INNATE_SCHEMA_BY_ID.has( t ) ) unresolved.add( action.type )
+      continue
+    }
+    if( seen.has(`ability:${ schema }`) ) continue
     seen.add(`ability:${ schema }`)
     const keid = action.target ? resolveKnownEntity( action.target, state ) : undefined
     set.push({
@@ -472,6 +484,29 @@ function buildIdeomotorIntents(
     })
   }
 
+  // An action that named nothing is REPORTED, not swallowed.
+  //
+  // The executive's actions bias the agency competition; they are not commands, so
+  // a name that matches no schema is not a dispatch error and nothing downstream
+  // ever objected. But an unopposed no-op is indistinguishable from an act that
+  // was tried and achieved nothing, and the mind reasons from the difference.
+  // Observed: eleven consecutive `query` actions (a name that does not exist),
+  // then "five consecutive queries with no memory trace is a failure mode" and a
+  // plan to diagnose its own memory. Telling it the name was not real costs one
+  // entity and removes a whole class of false self-belief.
+  if( unresolved.size > 0 )
+    set.push({
+      id:   'action.unresolved',
+      type: 'action.unresolved',
+      metadata: {
+        names:   [ ...unresolved ],
+        summary: `I named ${ [ ...unresolved ].map( n => `'${ n }'` ).join(', ') } as an action, but ${ unresolved.size > 1 ? 'those are not things' : 'that is not a thing' } I can do — no such ability is in my repertoire or afforded right now. Nothing happened. To act I have to name something I actually have.`,
+        salience: 0.75,
+        origin:   'executive',
+        tick:     footprint.tickObserved,
+      },
+    })
+
   // Clear stale executive-sourced intents the executive no longer imagines this cycle.
   const currentIds = new Set( set.map( s => s.id ) )
   const del: string[] = []
@@ -480,6 +515,11 @@ function buildIdeomotorIntents(
         && ( e.metadata as Record<string, unknown> | undefined )?.['origin'] === 'executive'
         && !currentIds.has( id ) )
       del.push( id )
+
+  // Clear the report once the mind names only real actions again — it should read
+  // as "that last attempt was not a thing", not as a permanent defect in itself.
+  if( unresolved.size === 0 && state.entities.has('action.unresolved') )
+    del.push('action.unresolved')
 
   return { set, delete: del }
 }

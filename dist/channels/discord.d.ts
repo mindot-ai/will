@@ -5,6 +5,12 @@ interface DiscordLikeChannel {
     send(content: string): Promise<unknown>;
     sendTyping?(): Promise<unknown>;
 }
+interface DiscordLikeAttachment {
+    name?: string | null;
+    contentType?: string | null;
+    size?: number;
+    url?: string;
+}
 interface DiscordLikeMessage {
     content: string;
     cleanContent?: string;
@@ -23,14 +29,16 @@ interface DiscordLikeMessage {
         has(userId: string): boolean;
     };
     channel: DiscordLikeChannel;
-    /** discord.js Collection of attachments — iterable of values. Absent in tests
-     *  that inject bare message objects, which is why every use is guarded. */
-    attachments?: Iterable<{
-        name?: string | null;
-        contentType?: string | null;
-        size?: number;
-        url?: string;
-    }>;
+    /**
+     * Files riding with the message.
+     *
+     * discord.js hands us a `Collection`, which extends `Map` — so iterating it
+     * directly yields `[id, attachment]` PAIRS, not attachments. Typing this as a
+     * bare `Iterable` was wrong and silently produced `name: undefined` against
+     * the real client while passing every test, because the test fake injects an
+     * array. Both shapes are accepted now and normalised in `collectAttachments`.
+     */
+    attachments?: ReadonlyMap<string, DiscordLikeAttachment> | Iterable<DiscordLikeAttachment>;
 }
 interface DiscordLikeClient {
     user: {
@@ -83,4 +91,4 @@ interface DiscordBridgeOptions {
  */
 declare function connectDiscord(will: Will, opts: DiscordBridgeOptions): Promise<ChannelBridge>;
 
-export { type DiscordBridgeOptions, type DiscordLikeChannel, type DiscordLikeClient, type DiscordLikeMessage, connectDiscord };
+export { type DiscordBridgeOptions, type DiscordLikeAttachment, type DiscordLikeChannel, type DiscordLikeClient, type DiscordLikeMessage, connectDiscord };

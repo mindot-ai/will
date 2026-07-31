@@ -86,3 +86,4 @@ export function auditAssemblyWiring( engines: readonly SimulationEngine[] ): Wir
 export function wiringKeys( records: WiringRecord[], status: WiringRecord['status'] ): string[] {
   return records.filter( r => r.status === status ).map( r => `${r.engine}.${r.method}`).sort()
 }
+

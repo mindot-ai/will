@@ -27,9 +27,11 @@
 // engine's own state ref changes), so the two never diverge.
 //
 // Deliberately left in the engine (not here):
-//   • the `executive.facet.sync` / `audition.task.signal` bus subscriptions
-//     and the `_facetSyncSubscribed` guard — they push into the engine's
-//     gating salience buffer and are shared with the escalation path;
+//   • `executive.facet.sync` / `audition.task.signal` handling — dispatched from
+//     ExecutiveEngine.onCognitiveEvent (the bus keeps ONE subscription per
+//     engineId, so a dedicated `subscribe(this.name, …)` is overwritten by the
+//     orchestrator's registration); they push into the engine's gating salience
+//     buffer and are shared with the escalation path;
 //   • the `executive.master.sync` publish — it reads the master's reasoning
 //     output; the engine publishes it gated on `size`.
 //

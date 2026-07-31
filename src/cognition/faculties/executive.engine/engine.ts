@@ -187,7 +187,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   // engine keeps only the bus-subscription guard, since those subscriptions
   // feed the gating salience buffer and are shared with the escalation path.
   private readonly _facetSupervisor = new FacetSupervisor()
-  private _facetSyncSubscribed = false
 
   /**
    * Who each live facet is engaged with, learned from `executive.facet.sync`.
@@ -252,8 +251,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       goallessTickCount: 0,
       lowValenceTickCount: 0
     }
-
-    this._ensureFacetSyncSubscription()
   }
 
   // ── Dependency injection ───────────────────────────────────
@@ -277,7 +274,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   /** Called by CognitiveOrchestrator.addEngine() — injects the shared bus. */
   attachBus( bus: CognitiveBus ): void {
     this._bus = bus
-    this._ensureFacetSyncSubscription()
   }
 
   /**
@@ -453,11 +449,25 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   onCognitiveEvent( event: CognitiveEvent ): StateCommands | void {
     if( event.sourceEngine === this.name ) return
 
-    // Set attention state for bandwidth allowance
-    // One facet per ~0.3 free capacity units, floor at 1
+    // Spare attention scales the facet allowance within the persona's ceiling.
     if( event.type === 'attention.state.changed'){
       const p = event.payload as { freeFraction: number }
       this._facetSupervisor.setAttentionState( p.freeFraction )
+      return
+    }
+
+    // The facet legs. These MUST be dispatched here rather than through their own
+    // `bus.subscribe` calls: the bus keeps one subscription per engineId, and the
+    // orchestrator's `subscribe( engine.name, engine.subscribes(), … )` runs after
+    // `attachBus`, so anything registered separately is silently replaced. This
+    // `['*']` subscription is the engine's only live one.
+    if( event.type === 'executive.facet.sync'){
+      this._onFacetSync( event )
+      return
+    }
+
+    if( event.type === 'audition.task.signal'){
+      this._onAuditionTaskSignal( event )
       return
     }
 
@@ -1111,139 +1121,104 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       .map( s => ({ entityId: s.entityId, ...( s.name ? { name: s.name } : {} ), sinceTick: s.tick }) )
   }
 
-  private _ensureFacetSyncSubscription(): void {
-    if( this._facetSyncSubscribed || !this._bus ) return
-    this._facetSyncSubscribed = true
+  /**
+   * Facet sync — remember WHO each facet is with, and wake the master.
+   *
+   * Reached from `onCognitiveEvent`, NOT from its own `bus.subscribe`. The bus
+   * stores one subscription per engineId (`_subscriptions.set( engineId, … )`),
+   * so a second `subscribe(this.name, …)` silently REPLACES the first — and the
+   * orchestrator registers `subscribe( engine.name, engine.subscribes(), … )`
+   * after `attachBus`, which replaced everything registered here. Two dedicated
+   * handlers used to be installed at this point; the second overwrote the first
+   * and the orchestrator then overwrote that, so neither ever ran. The escalation
+   * leg had been dead in production for its whole life: a facet could escalate,
+   * the audition engine published, and nothing was listening.
+   */
+  private _onFacetSync( event: CognitiveEvent ): void {
+    const payload = event.payload as {
+      facetId?: string
+      reasoning?: string
+      confidence?: number
+      tick?: number
+      subjectEntityId?: string
+      subjectName?: string
+    }
 
-    // ── executive.facet.sync ─────────────────────────────────────
-    // Facet sync events enter the salience buffer so the master
-    // can re-evaluate when enough facet activity accumulates.
-    this._bus.subscribe(
-      this.name,
-      [ 'executive.facet.sync' ],
-      ( event ) => {
-        const payload = event.payload as {
-          facetId?: string
-          reasoning?: string
-          confidence?: number
-          tick?: number
-          subjectEntityId?: string
-          subjectName?: string
-        }
+    // Remember WHO this facet is with, not just that it reported.
+    if( payload.facetId && payload.subjectEntityId )
+      this._facetSubjects.set( payload.facetId, {
+        entityId: payload.subjectEntityId,
+        ...( payload.subjectName ? { name: payload.subjectName } : {} ),
+        tick: payload.tick ?? this._lastExecutiveTick ?? 0,
+      })
 
-        // Remember WHO this facet is with, not just that it reported.
-        if( payload.facetId && payload.subjectEntityId )
-          this._facetSubjects.set( payload.facetId, {
-            entityId: payload.subjectEntityId,
-            ...( payload.subjectName ? { name: payload.subjectName } : {} ),
-            tick: payload.tick ?? this._lastExecutiveTick ?? 0,
-          })
+    // Unconditional (not gated on WORKSPACE_THRESHOLD like ordinary traffic):
+    // a facet reporting back is the master's own attention returning, and the
+    // point of the spike is that it re-evaluates rather than waiting out its
+    // interval.
+    this._gatingState.salienceBuffer.push({
+      event,
+      tick: payload.tick ?? event.logicalTime ?? 0,
+    })
 
-        const syntheticEvent = {
-          id: '',
-          type: 'executive.facet.sync',
-          version: 1,
-          sequenceNumber: 1,
-          sourceEngine: `executive-facet-${payload.facetId ?? 'unknown'}`,
-          salience: Math.max( 0.5, payload.confidence ?? 0.5 ),
-          payload,
-          wallTime: payload.tick as number,
-          logicalTime: payload.tick as number
-        }
-
-        this._gatingState.salienceBuffer.push( {
-          event: syntheticEvent,
-          tick: payload.tick ?? 0
-        } )
-
-        logger.info(
-          `[executive] master received facet sync from ${payload.facetId}` +
-          ( payload.subjectName || payload.subjectEntityId
-            ? ` (with ${payload.subjectName ?? payload.subjectEntityId})` : '') +
-          ` (confidence=${payload.confidence?.toFixed( 2 )})`
-        )
-      }
+    logger.info(
+      `[executive] master received facet sync from ${payload.facetId}` +
+      ( payload.subjectName || payload.subjectEntityId
+        ? ` (with ${payload.subjectName ?? payload.subjectEntityId})` : '') +
+      ` (confidence=${payload.confidence?.toFixed( 2 )})`
     )
+  }
 
-    // ── audition.task.signal ─────────────────────────────────────
-    // Published by AuditionEngine when a conversation facet emits the
-    // 'escalate' action type — signalling that the conversation revealed
-    // a task requiring the master's cognitive machinery (plan creation,
-    // goal reprioritization, identity reflection).
-    //
-    // IMPORTANT — master stays out of the reply path entirely:
-    //   • The conversation facet has already sent (or will send) the
-    //     acknowledgement to the user ("Got it, I'll get started on that.").
-    //   • The master's job is purely cognitive: create a [PLANS] block,
-    //     update goals, or reflect. Any follow-up communication to the user
-    //     flows through plan step execution (effector: 'text') via
-    //     ActionExecutor → ProactiveCommunicator — NEVER via [REPLY].
-    //
-    // Implementation:
-    //   • Write a high-salience 'percept' entity to simulation state so
-    //     Exteroception surfaces it under "## Percepts (What I Notice)".
-    //   • Spike the salience buffer so the master fires soon.
-    //   • Do NOT push into _messageQueue.pendingMessages — that would
-    //     cause the master to produce a [REPLY], creating a duplicate
-    //     message and breaking the facet/master communication boundary.
-    this._bus.subscribe(
-      this.name,
-      [ 'audition.task.signal' ],
-      ( event ) => {
-        const payload = event.payload as {
-          entityId:   string
-          threadId:   string
-          reasoning:  string
-          confidence: number
-          /** Set when a facet formed an intention toward a THIRD party (see EscalationBuffer). */
-          undertaking?: { target: string; gist?: string }
-        }
+  /**
+   * A conversation surfaced something the master owns — either work to plan
+   * (`escalate`) or an intention toward a third party (`undertaking`).
+   *
+   * Master stays out of the reply path entirely:
+   *   • The conversation facet has already sent (or will send) the
+   *     acknowledgement to the user ("Got it, I'll get started on that.").
+   *   • The master's job is purely cognitive: create a [PLANS] block, update
+   *     goals, reflect, or decide whether it still means to make that contact.
+   *     Any follow-up communication flows through the agency competition —
+   *     NEVER via [REPLY].
+   *
+   * The escalation is buffered rather than written directly: state is read-only
+   * here, so `EscalationBuffer.drainToPercepts()` emits it as a StateCommand on
+   * the next master cycle, where Exteroception surfaces it under
+   * "## Percepts (What I Notice)".
+   */
+  private _onAuditionTaskSignal( event: CognitiveEvent ): void {
+    const payload = event.payload as {
+      entityId:   string
+      threadId:   string
+      reasoning:  string
+      confidence: number
+      /** Set when a facet formed an intention toward a THIRD party (see EscalationBuffer). */
+      undertaking?: { target: string; gist?: string }
+    }
 
-        // Write a percept entity so Exteroception surfaces this in
-        // "## Percepts (What I Notice)" — master sees it as an
-        // environmental signal prompting cognitive work, not a reply.
-        if( this._lastStateRef ){
-          // State is read-only here; we can't write directly.
-          // Instead, buffer the escalation for injection on next tick.
-          // The master's shouldAct() will fire due to the salience spike below.
-          // The actual percept write happens in onReasoningComplete() via
-          // a synthetic percept we store here and emit as a StateCommand.
-          this._escalations.push({
-            entityId:  payload.entityId,
-            threadId:  payload.threadId,
-            reasoning: ( payload.reasoning ?? '').slice( 0, 400 ),
-            tick:      this._lastExecutiveTick ?? 0,
-            ...( payload.undertaking ? { undertaking: payload.undertaking } : {} ),
-          })
-        }
+    this._escalations.push({
+      entityId:  payload.entityId,
+      threadId:  payload.threadId,
+      reasoning: ( payload.reasoning ?? '').slice( 0, 400 ),
+      tick:      this._lastExecutiveTick ?? 0,
+      ...( payload.undertaking ? { undertaking: payload.undertaking } : {} ),
+    })
 
-        // Spike the salience buffer so the master fires soon rather than
-        // waiting for the next scheduled interval.
-        const syntheticEvent = {
-          id: '',
-          type: 'audition.task.signal',
-          version: 1,
-          sequenceNumber: 1,
-          sourceEngine: 'audition-engine',
-          salience: event.salience ?? 0.9,
-          payload,
-          wallTime: wallClock(),  // telemetry field; logicalTime carries the deterministic clock
-          logicalTime: this._lastExecutiveTick ?? 0
-        }
+    // Spike the salience buffer so the master fires soon rather than waiting for
+    // the next scheduled interval. Do NOT push into _messageQueue.pendingMessages
+    // — that would make the master produce a [REPLY], duplicating the facet's
+    // message and breaking the facet/master communication boundary.
+    this._gatingState.salienceBuffer.push({
+      event,
+      tick: this._lastExecutiveTick ?? 0,
+    })
 
-        this._gatingState.salienceBuffer.push( {
-          event: syntheticEvent,
-          tick: this._lastExecutiveTick ?? 0
-        } )
-
-        logger.info(
-          payload.undertaking
-            ? `[executive] master queued undertaking from conversation with ${payload.entityId} ` +
-              `→ reach ${payload.undertaking.target} (confidence=${payload.confidence.toFixed( 2 )})`
-            : `[executive] master queued escalation percept from entity ${payload.entityId} ` +
-              `(confidence=${payload.confidence.toFixed( 2 )})`
-        )
-      }
+    logger.info(
+      payload.undertaking
+        ? `[executive] master queued undertaking from conversation with ${payload.entityId} ` +
+          `→ reach ${payload.undertaking.target} (confidence=${payload.confidence?.toFixed( 2 )})`
+        : `[executive] master queued escalation percept from entity ${payload.entityId} ` +
+          `(confidence=${payload.confidence?.toFixed( 2 )})`
     )
   }
 

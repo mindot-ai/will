@@ -308,8 +308,13 @@ export class MoralEvaluator implements SimulationEngine, CognitiveEngine {
           })
       }
 
-      // Own actions that could be violations
-      if( entity.type === 'action.own' || entity.type === 'decision.record'){
+      // Own actions that could be violations. `decision.record` is what carries
+      // them (InhibitionController writes it); an `action.own` alternative was
+      // scanned alongside it and never written by anything (#114). Unlike the
+      // social/threat host seams, this is an INTERNAL record of the mind's own
+      // conduct — not something a host supplies — so the dead half is removed
+      // rather than documented.
+      if( entity.type === 'decision.record'){
         const
         outcome    = entity.metadata?.outcome as string ?? '',
         harmful    = entity.metadata?.harmful === true,
@@ -386,7 +391,7 @@ export class MoralEvaluator implements SimulationEngine, CognitiveEngine {
     let actionCount = 0
 
     for( const entity of state.entities.values() ){
-      if( entity.type !== 'action.own' && entity.type !== 'decision.record') continue
+      if( entity.type !== 'decision.record') continue
 
       const
       virtuous = entity.metadata?.virtuous === true,

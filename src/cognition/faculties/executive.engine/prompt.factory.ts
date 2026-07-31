@@ -47,7 +47,7 @@
 import type { ReadonlySimulationState } from '#core/types'
 import type { LLMCallFunction } from '#cognition/utilities/token.tracker'
 import type { ExecutiveSummarizer } from '#llm/summarizer'
-import type { ExecutiveContext, PendingMessage, IdeationCandidate } from '#faculties/executive.engine/types'
+import type { ExecutiveContext, IdeationCandidate } from '#faculties/executive.engine/types'
 import { buildExecutiveContext, type ContextDependencies } from '#faculties/executive.engine/context'
 import { INNATE_SCHEMAS } from '#agency/schemas/innate'
 
@@ -231,7 +231,6 @@ export interface PromptBuildOptions {
   state:                ReadonlySimulationState
   qualityModulation:    number
   epistemicUncertainty: number
-  pendingMessages?:     PendingMessage[]
   focus:                FocusSection
   deps:                 PromptDependencies
   /** Optional: Recent action types for diversity tracking */

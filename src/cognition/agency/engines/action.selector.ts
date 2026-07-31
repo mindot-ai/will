@@ -738,6 +738,14 @@ function effectiveWeights( state: ReadonlySimulationState ): ScoreWeights {
     // lowers it (follows up sooner). Clamped at 0 so a prior can flatten the
     // damping into indifference but never turn repeating into a *reward*.
     repeat:  Math.max( 0, num( p['repeatDamping'], DEFAULT_WEIGHTS.repeat  ) ),
+    // How much the mind's learned read on a person biases acting toward them.
+    // Deliberately NOT clamped at 0 — this weight is genuinely signed territory,
+    // and it is the tenant's to occupy. A warm, reciprocal mind leans toward
+    // whoever answers; a dogged, duty-bound one chases a silence precisely
+    // because it is silent. Both are coherent people. The container supplies the
+    // term and the persona supplies the sign; hardcoding it here would be the
+    // container deciding what kind of colleague every tenant has to be.
+    social:  num( p['socialWeight'], DEFAULT_WEIGHTS.social ),
   }
 }
 

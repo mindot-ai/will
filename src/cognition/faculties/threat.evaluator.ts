@@ -169,6 +169,13 @@ export class ThreatEvaluator implements SimulationEngine, CognitiveEngine {
    * metadata.hostile === true). Updates _threatFromHostile and re-emits
    * the full threat/emotion metrics so that downstream engines always see
    * a current picture even when no bus event arrives.
+   *
+   * `threat` is a HOST SEAM, not a starved input (#114). No core engine writes
+   * one — appraisal runs entirely off this engine's six bus inputs (energy,
+   * sleep, stress, novelty, metacognition, prediction), all of which are live.
+   * A host embedding a Will in a world with actual hostile agents writes `threat`
+   * entities to make them felt. Empty here means nothing is hostile, not that
+   * nothing is wired.
    */
   async react(
     _delta:   Duration,

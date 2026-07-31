@@ -69,7 +69,6 @@ import { buildFallbackOutput, parseResponse } from '#faculties/executive.engine/
 import { selectProcess, ideationTemperature, DELIBERATE_THRESHOLD } from '#faculties/executive.engine/effort.gate'
 import { proposeCandidates } from '#faculties/executive.engine/deliberate.reasoning'
 import { readEffectiveParams } from '#cognition/persona.prior'
-import { MessageQueue } from '#faculties/executive.engine/messages'
 import {
   buildStateCommands,
   publishCognitiveEvents,
@@ -143,7 +142,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   private _testMode = false
 
   // ── Message queue ──────────────────────────────────────────
-  private _messageQueue = new MessageQueue()
 
   // ── Action diversity tracking ──────────────────────────────
   private _recentActionTypes: string[] = []
@@ -623,7 +621,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // Evaluate gating
     const gatingDeps: GatingDependencies = {
       generativeModel: this._generativeModel,
-      pendingMessages: this._messageQueue.pendingMessages,
       hasPendingWork: this.hasPendingWork
     }
 
@@ -665,7 +662,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     stream: IntermediateStream,
   ): Promise<unknown> {
     this._lastStateRef = state
-    this._messageQueue.pendingCallStartTick = state.tick
 
     // Mark which buffer entries this cycle consumes. Anything pushed after this
     // point arrives during the LLM call and was never part of the broadcast, so
@@ -708,7 +704,13 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       priorConfidence:   this._lastExecutiveOutput?.confidence ?? 0.5,
       novelty:           state.metrics.get('perception.novelty') ?? 0,
       stressLoad:        state.metrics.get('stress.load') ?? 0,
-      hasPendingMessage: this._messageQueue.pendingMessages.length > 0,
+      // Something a conversation surfaced is waiting on the master and has not
+      // been dealt with. This used to read the pending-message queue, which was
+      // never filled — so the effort gate's `pending_reply` term was structurally
+      // zero for every master that has ever run. Escalations are the master's real
+      // version of "someone is waiting on me": the facets do the replying, the
+      // master owns what they escalate.
+      hasPendingMessage: this._escalations.size > 0,
     }, deliberateThreshold )
     stream.report('process_selected', {
       process:     processSelection.process,
@@ -751,8 +753,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         state,
         qualityModulation,
         epistemicUncertainty,
-        pendingMessages: [ ...this._messageQueue.pendingMessages ],
-        focus,
+          focus,
         deps: promptDeps,
         recentActionTypes: [ ...this._recentActionTypes ],
         mode: 'master',
@@ -790,7 +791,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       state,
       qualityModulation,
       epistemicUncertainty,
-      pendingMessages: [ ...this._messageQueue.pendingMessages ],
       focus,
       deps: promptDeps,
       recentActionTypes: [ ...this._recentActionTypes ],
@@ -809,7 +809,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       // D2: context counts for per-tick cognitive state snapshot
       workingMemoryItems: execContext.workingMemory.length,
       goalCount:          execContext.goals.length,
-      pendingMessages:    this._messageQueue.pendingMessages.length,
       beliefCount:        execContext.beliefs.length,
       beliefsOmitted:     execContext.beliefsOmitted,
       promptPath: this._llmDirector?.writeDebugPrompt( state.tick, systemPrompt, userMessage ) ?? ''
@@ -1079,7 +1078,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       } )
 
     // Clear processed messages
-    this._messageQueue.clearProcessedMessages()
 
     // Merge escalation percepts into final commands, and retire the ones already
     // honoured. See _dischargedUndertakings for why this is not optional.
@@ -1293,9 +1291,10 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     })
 
     // Spike the salience buffer so the master fires soon rather than waiting for
-    // the next scheduled interval. Do NOT push into _messageQueue.pendingMessages
-    // — that would make the master produce a [REPLY], duplicating the facet's
-    // message and breaking the facet/master communication boundary.
+    // the next scheduled interval. The master must NOT be handed the inbound as a
+    // message to answer — that would make it produce a [REPLY], duplicating the
+    // facet's and breaking the facet/master boundary. (The queue that once carried
+    // inbound this way was removed in #114: nothing ever filled it.)
     this._gatingState.salienceBuffer.push({
       event,
       tick: this._lastExecutiveTick ?? 0,

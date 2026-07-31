@@ -115,6 +115,38 @@ describe('enactionFootprint — how much of my own act is still in flight', () =
   } )
 } )
 
+// ── the satiation window belongs to the tenant ────────────────
+
+describe("enactionFootprint — the window is the persona's, not the echo TTL's", () => {
+  it('still damps at the cadence that defeated the borrowed 30-tick window', () => {
+    // Re-deliveries were landing ~25 ticks apart against a 30-tick echo TTL, so the
+    // damping had decayed to ~0.17 exactly when the next impulse arrived. A window
+    // that reflects "how long before saying it again feels right" — the seeded
+    // default is 60 — still has real weight there.
+    const d = [ delivered( FABRICE, 100 ) ]
+    expect( enactionFootprint( d, 'reach-out', FABRICE, 125 ) ).toBeCloseTo( 5 / 30, 2 )
+    expect( enactionFootprint( d, 'reach-out', FABRICE, 125, 60 ) ).toBeCloseTo( 35 / 60, 2 )
+  } )
+
+  it("measures from when the act happened, not from the descriptor's expiry", () => {
+    // Different questions: expiry is when the world's echo stops being plausible,
+    // this is how long the mind stays satisfied.
+    const d = [ delivered( FABRICE, 100 ) ]
+    expect( enactionFootprint( d, 'reach-out', FABRICE, 100, 60 ) ).toBeCloseTo( 1, 5 )
+    expect( enactionFootprint( d, 'reach-out', FABRICE, 160, 60 ) ).toBe( 0 )
+  } )
+
+  it('a tenant that repeats itself freely can flatten the window to nothing', () => {
+    expect( enactionFootprint( [ delivered( FABRICE, 100 ) ], 'reach-out', FABRICE, 101, 0 ) ).toBe( 0 )
+  } )
+
+  it('defaults to the echo TTL when a harness seeds no window', () => {
+    const d = [ delivered( FABRICE, 100 ) ]
+    expect( enactionFootprint( d, 'reach-out', FABRICE, 115 ) )
+      .toBeCloseTo( enactionFootprint( d, 'reach-out', FABRICE, 115, CONSEQUENCE_TTL_TICKS ), 5 )
+  } )
+} )
+
 // ── the restore boundary ──────────────────────────────────────
 
 describe('liveConsequences — descriptors do not survive into the next session', () => {

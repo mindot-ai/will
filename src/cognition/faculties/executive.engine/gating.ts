@@ -2,7 +2,6 @@
 // src/cognition/faculties/executive.engine/gating.ts
 // ─────────────────────────────────────────────────────────────
 
-import type { PendingMessage } from '#faculties/executive.engine/types'
 import type { Tick, ReadonlySimulationState } from '#core/types'
 import type { GenerativeModel } from '#cognition/generative.model'
 import {
@@ -11,25 +10,28 @@ import {
 } from '#faculties/executive.engine/config'
 import type { CognitiveEvent } from '#cognition/bus'
 
-function hasPendingInstructions( state: ReadonlySimulationState, pendingMessages: PendingMessage[] ): boolean {
-  for( const entity of state.entities.values() ){
+/**
+ * Something in the world is loud enough to wake a resting mind.
+ *
+ * Percept salience is the whole test now. Two other wake sources used to sit here
+ * and neither could ever fire: an unprocessed `communication` entity (a type
+ * nothing has ever written) and a non-empty pending-message queue (never pushed
+ * to, and the current design forbids it — inbound reaches a facet, and the master
+ * learns of it through `audition.task.signal` → a high-salience percept, which
+ * this catches). Both removed with the queue itself (#114).
+ */
+function hasPendingInstructions( state: ReadonlySimulationState ): boolean {
+  for( const entity of state.entities.values() )
     if( entity.type === 'percept' || entity.type === 'percept.social'){
       const salience = (entity.metadata?.salience as number) ?? 0
       if( salience > 0.7 ) return true
     }
 
-    // An unprocessed `communication` entity used to wake the master here. Nothing has
-    // ever written that type (#114), and the current design deliberately routes inbound
-    // to a facet instead — the master learns of it via `audition.task.signal` → a
-    // high-salience percept, which the percept branch above already catches.
-  }
-
-  return pendingMessages.length > 0
+  return false
 }
 
 export interface GatingDependencies {
   generativeModel: GenerativeModel
-  pendingMessages: PendingMessage[]
   hasPendingWork: boolean
 }
 
@@ -112,7 +114,7 @@ export function evaluateGating(
   if( isResting > 0 || isSleeping > 0 ){
     const
     significantEvent = novelty > 0.8,
-    hasPending = hasPendingInstructions( state, deps.pendingMessages )
+    hasPending = hasPendingInstructions( state )
 
     if( significantEvent || hasPending )
       return {
@@ -143,10 +145,6 @@ export function evaluateGating(
   
   if( energy < 15 )
     return { shouldActivate: true, reason: 'energy_critical', cleanedBuffer }
-
-  // ── Pending messages — always fire ────────────────────────
-  if( deps.pendingMessages.length > 0 )
-    return { shouldActivate: true, reason: 'pending_message', cleanedBuffer }
 
   // ── Normal interval scheduling ────────────────────────────
   if( tick - gs.lastExecutiveTick >= gs.executiveInterval ){

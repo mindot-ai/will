@@ -36,7 +36,8 @@ import type { Affordance, AffordanceSource, MotorSchema, LearnedSkill, SchemaPre
 import type { SchemaRepertoire } from '#agency/schemas/repertoire'
 import { INNATE_SCHEMAS } from '#agency/schemas/innate'
 import { collectGoalTargets } from '#agency/selection.scoring'
-import { liveConsequences, enactionFootprint, type ConsequenceDescriptor } from '#agency/consequence'
+import { readEffectiveParams } from '#cognition/persona.prior'
+import { liveConsequences, enactionFootprint, CONSEQUENCE_TTL_TICKS, type ConsequenceDescriptor } from '#agency/consequence'
 
 /** Default field width for non-innate affordances when no attention metric exists. */
 const DEFAULT_ATTENTION_CAP = 5
@@ -67,6 +68,9 @@ export class AffordanceSynthesizer implements CognitiveEngine {
    * because `_build` runs per candidate and reading them is a full-entity scan.
    */
   private _inFlight: readonly ConsequenceDescriptor[] = []
+
+  /** Ticks an act stays satiating (engine-config-action-selector.repeatWindowTicks). */
+  private _satiationWindow: number = CONSEQUENCE_TTL_TICKS
   private _bus:         CognitiveBus | null = null
   private _defaultCap:  number
   private _lastFieldSize = 0
@@ -125,6 +129,11 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // candidate whose (schema, target) matches one of these carries a decaying
     // `justEnacted`, so having just done a thing damps doing it again.
     this._inFlight = liveConsequences( state.entities, tick )
+    // How long this mind sits with something it has already done before doing it
+    // again — the tenant's, not the container's. Falls back to the echo TTL only
+    // when unseeded, so a bare harness behaves as before.
+    this._satiationWindow = readEffectiveParams( state, 'engine-config-action-selector').repeatWindowTicks
+      ?? CONSEQUENCE_TTL_TICKS
 
     const set:    EntityInput[] = []
     const del:    string[]      = []
@@ -348,7 +357,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     const cost            = clamp01( schema.cost * ( energyLow ? 1.5 : 1 ) )
 
     // This act's own footprint, if it is still in flight toward this same person.
-    const justEnacted = enactionFootprint( this._inFlight, schema.id, ctx.targetEntityId, tick )
+    const justEnacted = enactionFootprint( this._inFlight, schema.id, ctx.targetEntityId, tick, this._satiationWindow )
 
     const key    = ctx.targetEntityId ?? ctx.evokedBy ?? schema.id
     const source = ctx.source ?? schema.source

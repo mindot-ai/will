@@ -158,6 +158,15 @@ const CONSCIENTIOUSNESS_FOCI_GAIN    = -1.2 // −attention.maxFoci per unit con
 // demonstrated persistence chases the answer. Scaled against a base of 0.30.
 const AGREEABLENESS_PATIENCE_GAIN    = 0.12  // +repeatDamping per unit agreeableness
 const PERSISTENCE_FOLLOWUP_GAIN      = -0.10 // −repeatDamping per unit persistence
+// The same disposition on the WINDOW rather than the strength: how long what it
+// said stands before coming back to it. Scaled against a base of 60 ticks.
+const AGREEABLENESS_WINDOW_GAIN      = 24   // +repeatWindowTicks per unit agreeableness
+const PERSISTENCE_WINDOW_GAIN        = -20  // −repeatWindowTicks per unit persistence
+// Who the mind is drawn toward. Agreeableness leans into reciprocity (toward the
+// people who answer); demonstrated persistence leans the other way, and can carry
+// this SIGNED weight negative — a mind that reaches hardest for the silence.
+const AGREEABLENESS_RECIPROCITY_GAIN = 0.12  // +action-selector.socialWeight per unit agreeableness
+const PERSISTENCE_RECIPROCITY_GAIN   = -0.14 // −action-selector.socialWeight per unit persistence
 
 // Emotional stability (formed from observed affect dynamics, not task success) develops
 // the affect *reactivity gain* down: a steadier Will lets frustration snowball into
@@ -373,6 +382,8 @@ export class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
       [ 'persona.executive.max_facets_delta',     next.priors[ 'engine-config-executive' ]?.maxFacets ?? 0 ],
       [ 'persona.attention.max_foci_delta',       next.priors[ 'engine-config-attention' ]?.maxFoci ?? 0 ],
       [ 'persona.selector.repeat_damping_delta',  next.priors[ 'engine-config-action-selector' ]?.repeatDamping ?? 0 ],
+      [ 'persona.selector.repeat_window_delta',   next.priors[ 'engine-config-action-selector' ]?.repeatWindowTicks ?? 0 ],
+      [ 'persona.selector.social_weight_delta',   next.priors[ 'engine-config-action-selector' ]?.socialWeight ?? 0 ],
       [ 'persona.reward.social_weight_delta', next.priors[ 'engine-config-reward' ]?.socialWeight ?? 0 ],
       [ 'persona.frustration.anger_reactivity_delta', next.priors[ 'engine-config-frustration' ]?.angerReactivity ?? 0 ],
       [ 'persona.novelty.significance_threshold_delta', next.priors[ 'engine-config-novelty' ]?.significanceThreshold ?? 0 ],
@@ -820,6 +831,45 @@ export class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
         gain: PERSISTENCE_FOLLOWUP_GAIN,
         engineConfigId: 'engine-config-action-selector',
         param: 'repeatDamping'
+      },
+      // 27f. The same patience on the satiation WINDOW rather than its strength —
+      //      27e decides how hard having spoken damps speaking again, this decides
+      //      for how long. Kept separate because a mind can be quick to repeat but
+      //      only briefly, or slow to repeat but for a long time.
+      {
+        magnitude: agreeableDev,
+        threshold: GRIT_THRESHOLD,
+        gain: AGREEABLENESS_WINDOW_GAIN,
+        engineConfigId: 'engine-config-action-selector',
+        param: 'repeatWindowTicks'
+      },
+      {
+        magnitude: persistDev,
+        threshold: GRIT_THRESHOLD,
+        gain: PERSISTENCE_WINDOW_GAIN,
+        engineConfigId: 'engine-config-action-selector',
+        param: 'repeatWindowTicks'
+      },
+      // 27g. Who the Will is drawn toward. `socialWeight` scales its learned read on
+      //      a person in the action competition, and it is the one weight left
+      //      deliberately SIGNED: agreeableness leans into reciprocity (toward the
+      //      people who answer), demonstrated persistence leans against it and can
+      //      carry the weight negative — a mind that reaches hardest for the silence
+      //      precisely because it is silent. Both are coherent colleagues, so the
+      //      container declines to pick and lets the persona land where it lands.
+      {
+        magnitude: agreeableDev,
+        threshold: GRIT_THRESHOLD,
+        gain: AGREEABLENESS_RECIPROCITY_GAIN,
+        engineConfigId: 'engine-config-action-selector',
+        param: 'socialWeight'
+      },
+      {
+        magnitude: persistDev,
+        threshold: GRIT_THRESHOLD,
+        gain: PERSISTENCE_RECIPROCITY_GAIN,
+        engineConfigId: 'engine-config-action-selector',
+        param: 'socialWeight'
       },
       // 28b. Same disposition, the AGENCY selector's owner (R2): a conscientious Will also
       //      resists having an in-flight action preempted — raise the selector's switch-cost

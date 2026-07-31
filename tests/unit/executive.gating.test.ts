@@ -50,7 +50,7 @@ const allGatedModel = { observe: () => ( { gated: true } ) } as unknown as Gener
 const surpriseModel = { observe: () => ( { gated: false } ) } as unknown as GenerativeModel
 
 function deps( generativeModel: GenerativeModel ): GatingDependencies {
-  return { generativeModel, pendingMessages: [], hasPendingWork: false }
+  return { generativeModel, hasPendingWork: false }
 }
 
 function gatingState( over: Partial<GatingState> ): GatingState {

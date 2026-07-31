@@ -187,13 +187,23 @@ export function enactionFootprint(
   schema:         string,
   targetEntityId: string | undefined,
   tick:           Tick,
+  windowTicks:    number = CONSEQUENCE_TTL_TICKS,
 ): number {
   if( !targetEntityId ) return 0
+  if( windowTicks <= 0 ) return 0
 
   let strongest = 0
   for( const d of descriptors ){
     if( d.schema !== schema || d.targetEntityId !== targetEntityId ) continue
-    const remaining = ( d.expiresAt - tick ) / CONSEQUENCE_TTL_TICKS
+    // Measured from when the act happened, against the SATIATION window — not from
+    // the descriptor's own expiry, which is the echo window and a different
+    // question. Conflating them meant "how long before I say this again" was
+    // pinned to "how long until the world's reply could still arrive", and the
+    // second is necessarily short. Observed: re-deliveries landing ~25 ticks
+    // apart against a 30-tick echo TTL, so the damping had decayed to almost
+    // nothing exactly when the next impulse arrived.
+    const elapsed   = tick - d.tick
+    const remaining = ( windowTicks - elapsed ) / windowTicks
     if( remaining > strongest ) strongest = remaining
   }
 

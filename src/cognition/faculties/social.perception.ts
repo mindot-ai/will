@@ -78,8 +78,12 @@ export class SocialPerception implements SimulationEngine, CognitiveEngine {
     // the entire social stack downstream of it (reputation, affect, theory-of-mind,
     // attachment, frustration) never received a single input.
     //
-    // Legacy names are kept alongside the real ones: they cost nothing, and a host
-    // injecting its own social entities may still use them.
+    // The extra names are a HOST SEAM, not dead weight (#114). A Will is a
+    // container something else rents: a host embedding one in its own world
+    // injects social entities under its own vocabulary, and these are the names
+    // that vocabulary is expected to use. Empty means nobody is speaking, not
+    // that nothing is wired — the distinction matters because a starved consumer
+    // and a quiet one look identical from outside.
     this._agentTypes = new Set( config.agentTypes ?? [
       'known-entity',                                   // the dossier — how this system names a someone
       'agent', 'user', 'contact', 'persona',            // legacy / host-supplied

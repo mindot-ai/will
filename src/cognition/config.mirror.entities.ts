@@ -379,6 +379,16 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
         // down, so "gives people room" vs "chases an answer" is a trait rather
         // than a constant.
         repeatDamping: 0.30,
+        // Ticks an act keeps satiating the urge to repeat it. Separate from the
+        // consequence TTL on purpose: that one is "how long until the world's echo
+        // could still arrive" (short, and about perception), this is "how long
+        // before saying it again feels right" (a disposition). Same two traits as
+        // repeatDamping move it — patience lengthens, persistence shortens.
+        repeatWindowTicks: 60,
+        // How much a learned read on someone biases acting toward them. SIGNED and
+        // unclamped: a warm mind leans toward whoever answers, a dogged one chases
+        // the silence. The container will not choose between those.
+        socialWeight:  0.30,
       },
     },
 

@@ -1081,10 +1081,16 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // Clear processed messages
     this._messageQueue.clearProcessedMessages()
 
-    // Merge escalation percepts into final commands
-    if( escalationPercepts.length ){
+    // Merge escalation percepts into final commands, and retire the ones already
+    // honoured. See _dischargedUndertakings for why this is not optional.
+    const { keep, discharge } = this._reconcileUndertakings( escalationPercepts, this._lastStateRef! )
+    if( keep.length ){
       commands.set ??= []
-      commands.set.push( ...escalationPercepts )
+      commands.set.push( ...keep )
+    }
+    if( discharge.length ){
+      commands.delete ??= []
+      commands.delete.push( ...discharge )
     }
 
     // Track entities modified
@@ -1134,6 +1140,88 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
    * leg had been dead in production for its whole life: a facet could escalate,
    * the audition engine published, and nothing was listening.
    */
+  /**
+   * Retire undertakings the mind has already honoured, and refuse to restate one
+   * it is already carrying.
+   *
+   * An undertaking percept says, in the first person, "I said I would reach X and
+   * nothing has gone to them yet". That sentence has to stop being true at some
+   * point, and nothing made it stop. Measured on a live Will: SEVEN of them
+   * accumulated in state, every one still asserting nothing had been sent, while
+   * a `conversation.sent` to that person sat right beside them. She read seven
+   * standing unfulfilled promises every cycle and dutifully sent the same message
+   * again, five times in five minutes and once more in the next session — the
+   * percept meant to stop her forgetting a promise was making her unable to
+   * believe she had kept it.
+   *
+   * Discharged by EVIDENCE, not by a timer: a `conversation.sent` to that target,
+   * written no earlier than the undertaking, means the contact happened. That
+   * record is durable and snapshots with the state, so the discharge survives a
+   * restart exactly as the promise does — which the tick-scoped satiation in
+   * `enactionFootprint` deliberately cannot.
+   *
+   * It stays a decision, not an erasure. Retiring the percept removes the standing
+   * claim that the words are unsent; whether to say more to that person is then an
+   * ordinary competition like any other.
+   */
+  private _reconcileUndertakings(
+    incoming: EntityInput[],
+    state:    ReadonlySimulationState,
+  ): { keep: EntityInput[]; discharge: string[] } {
+    /** Latest tick at which anything was sent to each target. */
+    const contacted = new Map<string, number>()
+    for( const [ , e ] of state.entities ){
+      if( e.type !== 'conversation.sent') continue
+      const m      = e.metadata as Record<string, unknown> | undefined
+      const target = typeof m?.['targetEntityId'] === 'string' ? m['targetEntityId'] as string : undefined
+      if( !target ) continue
+      const at = typeof m?.['tick'] === 'number' ? m['tick'] as number : 0
+      contacted.set( target, Math.max( contacted.get( target ) ?? 0, at ) )
+    }
+
+    /** An undertaking is spent once we have reached its target since making it. */
+    const honoured = ( target: string | undefined, madeAt: number ): boolean =>
+      !!target && ( contacted.get( target ) ?? -1 ) >= madeAt
+
+    const undertakingOf = ( m: Record<string, unknown> | undefined ) =>
+      m?.['category'] === 'undertaking'
+        ? {
+          target: typeof m['undertakingTarget'] === 'string' ? m['undertakingTarget'] as string : undefined,
+          madeAt: typeof m['tick'] === 'number' ? m['tick'] as number : 0,
+        }
+        : undefined
+
+    const discharge: string[] = []
+    /** Targets we are already carrying a live, unhonoured undertaking toward. */
+    const carrying = new Set<string>()
+
+    for( const [ id, e ] of state.entities ){
+      if( e.type !== 'percept') continue
+      const u = undertakingOf( e.metadata as Record<string, unknown> | undefined )
+      if( !u ) continue
+
+      if( honoured( u.target, u.madeAt ) ) discharge.push( id )
+      else if( u.target ) carrying.add( u.target )
+    }
+
+    // Drop an incoming restatement of something already honoured or already held.
+    // Duplicates were how seven of these piled up: each master cycle drained a
+    // fresh copy of a promise that could never be marked kept.
+    const keep = incoming.filter( p => {
+      const u = undertakingOf( p.metadata as Record<string, unknown> | undefined )
+      if( !u?.target ) return true
+      if( honoured( u.target, u.madeAt ) ) return false
+      if( carrying.has( u.target ) ) return false
+      carrying.add( u.target )
+      return true
+    } )
+
+    if( discharge.length )
+      logger.info(`[executive] ${ discharge.length } undertaking(s) discharged — the contact was made`)
+
+    return { keep, discharge }
+  }
+
   private _onFacetSync( event: CognitiveEvent ): void {
     const payload = event.payload as {
       facetId?: string

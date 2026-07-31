@@ -32,6 +32,7 @@ import type { ExecutiveOutputFull } from '#faculties/executive.engine/types'
 import { GenerativeModel } from '#cognition/generative.model'
 import { EscalationBuffer } from '#faculties/executive.engine/escalation.buffer'
 import { partitionOutwardIntents } from '#senses/audition.engine/engine'
+import { ExecutiveEngine } from '#faculties/executive.engine'
 import type { ReadonlySimulationState, ReasoningFootprint, EntityInput } from '#core/types'
 
 // ── harness ───────────────────────────────────────────────────
@@ -258,5 +259,97 @@ describe('EscalationBuffer — an undertaking made inside a conversation', () =>
     const m = buf.drainToPercepts().percepts[0]!.metadata as Record<string, unknown>
     expect( m.category ).toBe('task-escalation')
     expect( m.summary ).toBe('[Task from conversation with e] they want the repo set up')
+  } )
+} )
+
+// ── 4. an undertaking has to be able to end ──────────────────
+
+/**
+ * The percept that stops a promise being forgotten made it impossible to believe
+ * one had been kept.
+ *
+ * Measured on a live Will: SEVEN undertaking percepts accumulated in state, every
+ * one still asserting "Nothing has gone to them yet", while a `conversation.sent`
+ * to that person sat beside them. She re-read seven standing unfulfilled promises
+ * every cycle and re-sent the same relay five times in five minutes, then again in
+ * the following session. Nothing retired them and nothing deduplicated them.
+ *
+ * Discharge is by EVIDENCE — a `conversation.sent` to that target no older than
+ * the promise. That record snapshots with the state, so a kept promise stays kept
+ * across a restart, which tick-scoped satiation cannot manage.
+ */
+describe('undertakings are discharged by having made the contact', () => {
+  const FKEM    = 'discord:1525573163482742907'
+  const FABRICE = 'discord:1019376031150379101'
+
+  /** The engine's private reconciler — internals on purpose; the wiring is what matters. */
+  const reconcile = ( engine: ExecutiveEngine, incoming: EntityInput[], state: ReadonlySimulationState ) =>
+    ( engine as unknown as {
+      _reconcileUndertakings( i: EntityInput[], s: ReadonlySimulationState ): { keep: EntityInput[]; discharge: string[] }
+    } )._reconcileUndertakings( incoming, state )
+
+  const undertaking = ( id: string, target: string, madeAt: number ): EntityInput => ({
+    id, type: 'percept',
+    metadata: { category: 'undertaking', undertakingTarget: target, tick: madeAt, summary: 'I said I would reach them' },
+  })
+
+  const sentTo = ( target: string, at: number ) => ({
+    id: `conv-sent-${ target }-${ at }`, type: 'conversation.sent',
+    metadata: { targetEntityId: target, tick: at },
+  })
+
+  const stateOf = ( ...entities: { id: string; type: string; metadata?: unknown }[] ) =>
+    ({ tick: 300, entities: new Map( entities.map( e => [ e.id, e ] ) ) } as unknown as ReadonlySimulationState )
+
+  it('retires a promise once the contact has been made', () => {
+    const state = stateOf( undertaking('u1', FKEM, 100 ), sentTo( FKEM, 120 ) )
+    const { discharge } = reconcile( new ExecutiveEngine(), [], state )
+    expect( discharge ).toEqual( [ 'u1' ] )
+  } )
+
+  it('keeps one whose contact has NOT been made', () => {
+    const state = stateOf( undertaking('u1', FKEM, 100 ) )
+    expect( reconcile( new ExecutiveEngine(), [], state ).discharge ).toEqual( [] )
+  } )
+
+  it('does not count a message sent BEFORE the promise as keeping it', () => {
+    // Having messaged someone yesterday is not having relayed what you promised today.
+    const state = stateOf( undertaking('u1', FKEM, 200 ), sentTo( FKEM, 120 ) )
+    expect( reconcile( new ExecutiveEngine(), [], state ).discharge ).toEqual( [] )
+  } )
+
+  it('does not let a message to one person discharge a promise to another', () => {
+    const state = stateOf( undertaking('u1', FKEM, 100 ), sentTo( FABRICE, 150 ) )
+    expect( reconcile( new ExecutiveEngine(), [], state ).discharge ).toEqual( [] )
+  } )
+
+  it('refuses to restate a promise it is already carrying', () => {
+    // How seven piled up: every master cycle drained a fresh copy of a promise
+    // that could never be marked kept.
+    const state = stateOf( undertaking('u1', FKEM, 100 ) )
+    const { keep } = reconcile( new ExecutiveEngine(), [ undertaking('u2', FKEM, 180 ) ], state )
+    expect( keep ).toEqual( [] )
+  } )
+
+  it('refuses an incoming promise that is already honoured on arrival', () => {
+    const state = stateOf( sentTo( FKEM, 150 ) )
+    const { keep } = reconcile( new ExecutiveEngine(), [ undertaking('u1', FKEM, 100 ) ], state )
+    expect( keep ).toEqual( [] )
+  } )
+
+  it('admits a genuinely new promise toward someone else', () => {
+    const state = stateOf( undertaking('u1', FKEM, 100 ) )
+    const { keep } = reconcile( new ExecutiveEngine(), [ undertaking('u2', FABRICE, 180 ) ], state )
+    expect( keep.map( k => k.id ) ).toEqual( [ 'u2' ] )
+  } )
+
+  it('leaves ordinary task escalations alone', () => {
+    const task: EntityInput = {
+      id: 'esc1', type: 'percept',
+      metadata: { category: 'task-escalation', summary: 'they want the repo set up' },
+    }
+    const { keep, discharge } = reconcile( new ExecutiveEngine(), [ task ], stateOf() )
+    expect( keep.map( k => k.id ) ).toEqual( [ 'esc1' ] )
+    expect( discharge ).toEqual( [] )
   } )
 } )

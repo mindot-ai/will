@@ -106,6 +106,12 @@ export class EscalationBuffer {
             source:   'audition-facet',
             entityId: esc.entityId,
             threadId: esc.threadId,
+            // Who was promised, and when the promise was made. The executive
+            // reconciles against these (see _reconcileUndertakings): once the mind
+            // has actually reached this target since `tick`, the percept is retired
+            // rather than left standing as a claim the words are still unsent.
+            undertakingTarget: esc.undertaking.target,
+            tick:              esc.tick,
           },
         }
         : {

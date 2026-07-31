@@ -28,6 +28,13 @@ export interface PendingEscalation {
   threadId:  string
   reasoning: string
   tick:      number
+  /**
+   * Present when the conversation produced an intention toward a THIRD party
+   * ("I'll reach out to FKEM now") rather than work for the master to plan. The
+   * facet never opens that channel itself, so this is the only thing standing
+   * between having decided to make contact and having made it.
+   */
+  undertaking?: { target: string; gist?: string }
 }
 
 /** Requester context captured from the first buffered escalation, used to tag new goals. */
@@ -61,21 +68,60 @@ export class EscalationBuffer {
    */
   drainToPercepts(): DrainedEscalations {
     const percepts: EntityInput[] = []
+    let seq = 0
     for( const esc of this._pending ){
-      percepts.push({
-        id:        `escalation-percept-${esc.entityId}-${esc.tick}`,
-        type:      'percept',
-        metadata: {
-          category:   'task-escalation',
-          summary:    `[Task from conversation with ${esc.entityId}] ${esc.reasoning}`,
-          salience:   0.85,
-          source:     'audition-facet',
-          entityId:   esc.entityId,
-          threadId:   esc.threadId,
-          // Guides the master's response: plan, don't reply
-          directive:  'Create a plan or update goals. Do not emit [REPLY] — the facet handles communication.',
+      // Distinct ids per drain: two undertakings from one conversation on one tick
+      // are two separate things the mind decided to do, and keying on (entity, tick)
+      // alone would silently collapse them into whichever came last.
+      const id = `escalation-percept-${esc.entityId}-${esc.tick}-${seq++}`
+
+      percepts.push( esc.undertaking
+        ? {
+          id,
+          type: 'percept',
+          metadata: {
+            category: 'undertaking',
+            // First person: this is the mind noticing what IT said it would do, not
+            // a report handed to it. What makes it act is that the words are still
+            // unsent — an undertaking it has already honoured reads the same until
+            // it checks, which is exactly the check we want it making.
+            // Everything actionable goes in `summary`: that is the only field the
+            // executive context actually renders (context.ts extractPercepts reads
+            // summary/content and nothing else), so the sibling `directive` below is
+            // written and never read. Kept on the task branch only because removing it
+            // would change nothing and it documents the intent of that path.
+            //
+            // The closing clause is the whole point. A mind that has SAID it will make
+            // contact remembers deciding, and cannot tell from the inside whether the
+            // words went out — so it follows up on a message it never sent. Naming the
+            // gap is what lets it check. It stays a decision either way: it may have
+            // changed its mind, or judge this the wrong moment, and a reach-out
+            // competes with everything else like any other action.
+            summary: `In my conversation with ${esc.entityId} I said I would reach ${esc.undertaking.target}`
+              + ( esc.undertaking.gist ? ` — what I meant to say: "${esc.undertaking.gist.slice( 0, 220 )}"` : '')
+              + `. Nothing has gone to them yet; saying it in that conversation did not send it.`
+              + ` If I still mean it, I reach out with target '${esc.undertaking.target}'.`
+              + ` If I no longer do, I let it go — but I do not leave it half-done while telling them it is handled.`,
+            salience: 0.85,
+            source:   'audition-facet',
+            entityId: esc.entityId,
+            threadId: esc.threadId,
+          },
         }
-      })
+        : {
+          id,
+          type: 'percept',
+          metadata: {
+            category:   'task-escalation',
+            summary:    `[Task from conversation with ${esc.entityId}] ${esc.reasoning}`,
+            salience:   0.85,
+            source:     'audition-facet',
+            entityId:   esc.entityId,
+            threadId:   esc.threadId,
+            // Guides the master's response: plan, don't reply
+            directive:  'Create a plan or update goals. Do not emit [REPLY] — the facet handles communication.',
+          },
+        } )
     }
 
     // Capture requester context before clearing — used to tag new goals.

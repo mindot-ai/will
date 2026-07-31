@@ -16,7 +16,10 @@
 //   • _facets        — live facet instances, keyed by id
 //   • _facetCounter  — monotonic id source (facet-1, facet-2, …)
 //   • _attentionFreeCapacity — free attention (0–1), updated from
-//     `attention.state.changed`; one facet is allowed per ~0.3 free units.
+//     `attention.state.changed`; it SCALES the ceiling below rather than being it.
+//   • the ceiling itself is `engine-config-executive.maxFacets` read through the
+//     persona-prior — how many things this particular mind can hold at once, a
+//     trait the metacognition loop develops, not a constant.
 //
 // It also keeps `_lastStateRef` / `_sessionLogger` fresh so a facet's
 // deferred destroy() logs against the same live values the engine would —
@@ -43,6 +46,15 @@ import { ExecutiveFacet, type ExecutiveFacetHandle } from '#faculties/executive.
 import type { CompletionInbox } from '#cognition/completion.inbox'
 import type { ContextDependencies } from '#faculties/executive.engine/context'
 import type { PromptDependencies } from '#faculties/executive.engine/prompt.factory'
+import { readEffectiveParams } from '#cognition/persona.prior'
+
+/**
+ * Facets a Will can hold at once when nothing is seeded — the same value
+ * `buildEngineConfigEntities` seeds, so a supervisor running against a state with
+ * no engine-config mirror (unit tests, bare harnesses) behaves like a real mind
+ * rather than collapsing to the old cap of 3.
+ */
+const DEFAULT_MAX_FACETS = 10
 
 /**
  * The engine attachments a spawn needs, captured at call time. bus / director
@@ -88,6 +100,9 @@ export class FacetSupervisor {
   /** Number of live facets — the engine gates `master.sync` on this. */
   get size(): number { return this._facets.size }
 
+  /** Ids of the facets currently alive — the engine prunes its subject map against these. */
+  liveFacetIds(): Set<string> { return new Set( this._facets.keys() ) }
+
   attachSessionLogger( logger: SessionLogger | null ): void {
     this._sessionLogger = logger
   }
@@ -96,10 +111,10 @@ export class FacetSupervisor {
    * Update the attention budget from an `attention.state.changed` event.
    *
    * `freeFraction` is the allocator's normalized 0–1 spare-attention signal
-   * (free capacity ÷ baseline capacity). It is consumed directly — one facet per
-   * ~0.3 free units — so the budget binds on the same scale the `0.3` constant
-   * and the default (`1` → 3 facets) assume. (Pre-fix this received the raw 0–100
-   * capacity, inflating the budget ~100× so facets were bounded only by TTL/LRU.)
+   * (free capacity ÷ baseline capacity). It scales the persona's facet ceiling:
+   * fully free ⇒ the whole ceiling, half free ⇒ about half of it, never below 1.
+   * (It must stay normalized — an earlier version received the raw 0–100 capacity,
+   * inflating the budget ~100× so facets were bounded only by TTL/LRU.)
    */
   setAttentionState( freeFraction: number ): void {
     this._attentionFreeCapacity = Math.max( 0, freeFraction )
@@ -210,8 +225,24 @@ export class FacetSupervisor {
     // destroy() logs the same tick the engine would.
     this._lastStateRef = deps.stateRef
 
-    // One facet per ~0.3 free capacity units, floor at 1
-    const maxFacets = Math.max( 1, Math.floor( this._attentionFreeCapacity / 0.3 ) )
+    // How many focused facets this mind can hold at once.
+    //
+    // Two layers, deliberately separate:
+    //   • the CEILING is who this person is — `engine-config-executive.maxFacets`
+    //     read through the persona-prior, so openness widens it and
+    //     conscientiousness narrows it as the Will demonstrates those traits. It is
+    //     a property of the mind, not a constant in the code.
+    //   • the live ALLOWANCE is how loaded it is right now — spare attention scales
+    //     the ceiling, so a tired or saturated mind takes on fewer new threads and
+    //     recovers the room as attention frees up.
+    //
+    // Previously the second layer WAS the ceiling (one facet per 0.3 free units,
+    // max 3), which put a hard architectural cap on the mind that no personality
+    // could move: at 52% night capacity it resolved to exactly 1, so a Will could
+    // hold one conversation and every second person to speak evicted the first.
+    const ceiling   = Math.max( 1, Math.round( readEffectiveParams( deps.stateRef, 'engine-config-executive').maxFacets ?? DEFAULT_MAX_FACETS ) )
+    const maxFacets = Math.max( 1, Math.min( ceiling, Math.round( ceiling * this._attentionFreeCapacity ) ) )
+
     if( this._facets.size >= maxFacets ){
       if( !this._evictLruOnPressure ){
         logger.info(`[executive] attention full (${this._facets.size}/${maxFacets} facets) `)

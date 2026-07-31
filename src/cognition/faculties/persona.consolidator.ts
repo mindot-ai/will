@@ -135,6 +135,16 @@ const CONSCIENTIOUSNESS_MORAL_GAIN = -0.2   // −moral.eventThreshold per unit 
 // native scales — see the selector's effectiveSwitchCost. Lower gain to match the smaller base.
 const CONSCIENTIOUSNESS_SELECTOR_FOCUS_GAIN = 0.1  // +action-selector.switchCost per unit conscientiousness (resists action-interruption)
 
+// Attentional BREADTH — how many focused facets this mind holds at once
+// (engine-config-executive.maxFacets, the FacetSupervisor's ceiling). Two opposing
+// dispositional pulls on one param, the pattern rules 17/17b already use: an open
+// mind spreads itself across more at once, a conscientious one narrows to fewer and
+// sees them through. Scaled against a base of 10, so a strongly-expressed trait moves
+// the ceiling by a few threads, not by an order of magnitude — and consolidatePrior's
+// per-step and cumulative caps bound it regardless.
+const OPENNESS_BREADTH_GAIN          = 4    // +executive.maxFacets per unit openness (hold more at once)
+const CONSCIENTIOUSNESS_BREADTH_GAIN = -3   // −executive.maxFacets per unit conscientiousness (fewer, seen through)
+
 // Emotional stability (formed from observed affect dynamics, not task success) develops
 // the affect *reactivity gain* down: a steadier Will lets frustration snowball into
 // chronic irritability more slowly. Distinct axis from resilience — resilience tunes how
@@ -346,6 +356,7 @@ export class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
       [ 'persona.executive.impulsivity_delta',   next.priors[ 'engine-config-executive' ]?.impulsivity ?? 0 ],
       [ 'persona.frustration.irritability_rate_delta', next.priors[ 'engine-config-frustration' ]?.irritabilityRate ?? 0 ],
       [ 'persona.executive.deliberate_threshold_delta', next.priors[ 'engine-config-executive' ]?.deliberateThreshold ?? 0 ],
+      [ 'persona.executive.max_facets_delta',     next.priors[ 'engine-config-executive' ]?.maxFacets ?? 0 ],
       [ 'persona.reward.social_weight_delta', next.priors[ 'engine-config-reward' ]?.socialWeight ?? 0 ],
       [ 'persona.frustration.anger_reactivity_delta', next.priors[ 'engine-config-frustration' ]?.angerReactivity ?? 0 ],
       [ 'persona.novelty.significance_threshold_delta', next.priors[ 'engine-config-novelty' ]?.significanceThreshold ?? 0 ],
@@ -729,6 +740,27 @@ export class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
         gain: CONSCIENTIOUSNESS_FOCUS_GAIN,
         engineConfigId: 'engine-config-task-switcher',
         param: 'baseSwitchCost'
+      },
+      // 27c. Attentional BREADTH — how many things this mind holds at once (the
+      //      FacetSupervisor's facet ceiling). Openness widens it; conscientiousness
+      //      narrows it. Two opposing pulls on one param (rules 17/17b's pattern), so a
+      //      Will that is both lands somewhere of its own rather than at either extreme.
+      //      This is what makes "I can hold five conversations" or "I do one thing at a
+      //      time" a fact about the person instead of a constant — the ceiling is the
+      //      persona's; spare attention only scales the live allowance within it.
+      {
+        magnitude: openDev,
+        threshold: GRIT_THRESHOLD,
+        gain: OPENNESS_BREADTH_GAIN,
+        engineConfigId: 'engine-config-executive',
+        param: 'maxFacets'
+      },
+      {
+        magnitude: conscDev,
+        threshold: GRIT_THRESHOLD,
+        gain: CONSCIENTIOUSNESS_BREADTH_GAIN,
+        engineConfigId: 'engine-config-executive',
+        param: 'maxFacets'
       },
       // 28b. Same disposition, the AGENCY selector's owner (R2): a conscientious Will also
       //      resists having an in-flight action preempted — raise the selector's switch-cost

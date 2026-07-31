@@ -60,6 +60,7 @@ import type { ExecutiveEngine } from '#faculties/executive.engine'
 import type { ExecutiveFacetHandle, FacetDecision } from '#faculties/executive.engine/facet'
 import { DEFAULT_FACET_AWARENESS, type FocusSection } from '#faculties/executive.engine/prompt.factory'
 import type { ExecutiveOutputFull } from '#faculties/executive.engine/types'
+import { COMMUNICATE_ACTION_TYPES } from '#faculties/executive.engine/commands'
 import type { EpisodicConsolidator } from '#faculties/episodic.consolidator'
 import type { OutboxWriter } from '#stem/tracts/outbox.writer'
 import { GenerativeModel } from '#cognition/generative.model'
@@ -83,6 +84,22 @@ interface ConversationDecision {
   /** Individual reply bubbles for display (separate SSE chunks). */
   replyBubbles:           string[]
   targetEntityId:         string
+  /**
+   * Actions this facet aimed at someone OTHER than the person it is talking to.
+   *
+   * A conversation facet is the mind talking to ONE person. When it decides mid-
+   * conversation to contact a third party ("I'll reach out to FKEM now"), it must
+   * not open that channel itself — a facet bound to Fabrice messaging FKEM is the
+   * parallel-conversation failure, and it would collide with any facet already
+   * talking to FKEM. So the intention is surfaced to the master, which is singular
+   * and owns whom the mind contacts.
+   *
+   * Before this existed, `extractDecision` read `output.actions` only to test for
+   * 'escalate' and dropped the rest: a third-party action was delivered nowhere,
+   * became no intent, competed in nothing and left no reafference — the mind said
+   * it would make contact, believed it had, and nothing ever went out.
+   */
+  outwardIntents?:        { target: string; gist?: string; reasoning?: string }[]
   newGoals?:              ExecutiveOutputFull['newGoals']
   goalsToAbandon?:        ExecutiveOutputFull['goalsToAbandon']
   newBeliefs?:            ExecutiveOutputFull['newBeliefs']
@@ -113,6 +130,46 @@ interface CoalesceWindow {
   resolve: () => void
 }
 
+
+/**
+ * Split a facet's actions into the ones aimed at the person it is talking to
+ * (delivered as the reply, which the [REPLY_TEXT] block already carries) and the
+ * ones aimed at someone else (returned here, for the master to own).
+ *
+ * "Aimed at this person" is matched against both the bound keid and the name the
+ * facet was given for them, because a mind writes whichever it is looking at —
+ * the trace shows it using `discord:1019…` and `Fabrice` interchangeably within a
+ * single decision. Anything else — including a name the mind has heard but never
+ * bound to anyone — is outward, and gets carried rather than dropped: whether it
+ * can be reached at all is the master's problem to notice, not this partition's.
+ */
+export function partitionOutwardIntents(
+  actions:     ExecutiveOutputFull['actions'] | undefined,
+  boundKeid:   string,
+  boundName:   string,
+): { target: string; gist?: string; reasoning?: string }[] {
+  const mine = new Set( [ boundKeid, boundName ].map( s => s.trim().toLowerCase() ).filter( Boolean ) )
+  const out: { target: string; gist?: string; reasoning?: string }[] = []
+
+  for( const action of actions ?? [] ){
+    if( !COMMUNICATE_ACTION_TYPES.has( action.type.toLowerCase() ) ) continue
+
+    const args   = ( action.args && typeof action.args === 'object' ? action.args : {} ) as Record<string, unknown>
+    const target = [ action.target, args['to'], args['recipient'], args['target'] ]
+      .find( v => typeof v === 'string' && v.trim().length > 0 ) as string | undefined
+
+    // No addressee named at all ⇒ it meant the person in front of it; the
+    // [REPLY_TEXT] block is already that reply.
+    if( !target || mine.has( target.trim().toLowerCase() ) ) continue
+
+    const gist = [ args['content'], args['message'], args['text'], args['body'] ]
+      .find( v => typeof v === 'string' && v.trim().length > 0 ) as string | undefined
+
+    out.push({ target: target.trim(), ...( gist ? { gist } : {} ), ...( action.reasoning ? { reasoning: action.reasoning } : {} ) })
+  }
+
+  return out
+}
 
 // ── Conversation output format ─────────────────────────────────
 // Two-step format: JSON first (private reasoning), then [REPLY_TEXT] (streamed to client).
@@ -703,6 +760,11 @@ export class AuditionEngine extends BaseSenseEngine {
       awareness:         [ ...DEFAULT_FACET_AWARENESS, 'plans' ],
       awarenessEntityId: percept.speakerEntityId,
 
+      // Who this facet is with — reported to the master on every facet sync so the
+      // singular seat knows whose conversations these are, not just how many.
+      subjectEntityId:   percept.speakerEntityId,
+      subjectName:       speakerName,
+
       instructions: [
         'I am in a live conversation with this person. I respond as myself.',
         'I stay grounded in my real memories and feelings — I do not invent experiences I have no record of.',
@@ -721,10 +783,15 @@ export class AuditionEngine extends BaseSenseEngine {
                                   .map( b => b.trim() )
                                   .filter( Boolean )
 
+        const outwardIntents = partitionOutwardIntents(
+          output.actions, percept.speakerEntityId, speakerName,
+        )
+
         return {
           reply:                   bubbles.join('\n'),
           replyBubbles:            bubbles,
           targetEntityId:          percept.speakerEntityId,
+          ...( outwardIntents.length > 0 ? { outwardIntents } : {} ),
           newGoals:                output.newGoals,
           goalsToAbandon:          output.goalsToAbandon,
           newBeliefs:              output.newBeliefs,
@@ -766,6 +833,8 @@ export class AuditionEngine extends BaseSenseEngine {
       recallQuery:       gist ?? entityName,
       awareness:         [ ...DEFAULT_FACET_AWARENESS, 'plans' ],
       awarenessEntityId: entityId,
+      subjectEntityId:   entityId,
+      subjectName:       entityName,
       instructions:
         'Considering who I am, my goals, and how I feel, I say what I genuinely want to say to ' +
         'them now. I speak as myself; I stay grounded in my real memories — I do not invent experiences ' +
@@ -935,6 +1004,33 @@ export class AuditionEngine extends BaseSenseEngine {
             `"${d.reply.slice( 0, 80 )}${d.reply.length > 80 ? '…' : ''}"`
           )
       }
+
+      // ── Outward intentions ────────────────────────────────────
+      // The facet decided, mid-conversation, to say something to someone ELSE.
+      // It does not do that itself (see ConversationDecision.outwardIntents) — it
+      // hands the intention to the master, which is singular and owns whom the
+      // mind contacts. The master perceives it as an undertaking it made and
+      // decides whether it still means it; nothing here forces the contact.
+      if( d.outwardIntents?.length && this._bus )
+        for( const intent of d.outwardIntents ){
+          logger.info(
+            `[audition-engine] Outward intent from ${entityId}'s facet → ${intent.target} ` +
+            `(handing to master; the facet does not open that channel itself)`
+          )
+          this._bus.publish({
+            type: 'audition.task.signal',
+            version: 1,
+            sourceEngine: this.name,
+            salience: 0.9,
+            payload: {
+              entityId,
+              threadId,
+              reasoning:  intent.reasoning ?? '',
+              confidence: decision.confidence,
+              undertaking: { target: intent.target, ...( intent.gist ? { gist: intent.gist } : {} ) },
+            }
+          })
+        }
 
       // ── Master escalation signal ──────────────────────────────
       // Published when the facet emits an 'escalate' action type.

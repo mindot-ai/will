@@ -202,6 +202,18 @@ export interface FocusSection {
    */
   awarenessEntityId?: string
   /**
+   * Optional: WHO this facet is engaged with — the keid and the name the mind has
+   * learned for them. Reported back to the master on every `executive.facet.sync`.
+   *
+   * Without it the master was told, in its own system prompt, that "focused facets
+   * may run simultaneously… their reasoning syncs back to me" while the sync payload
+   * carried only a facetId and a confidence number — so a mind holding two live
+   * conversations could not tell you whose they were. The master is the singular
+   * seat: it has to know who is at the table to reason about them together.
+   */
+  subjectEntityId?: string
+  subjectName?:     string
+  /**
    * Optional: Provided by the creating engine to convert the LLM's parsed output
    * into a domain-specific decision payload.
    *
@@ -251,6 +263,15 @@ export interface PromptBuildOptions {
    * fast path. See PromptFactory.buildIdeationFormatInstruction().
    */
   ideationCandidates?: IdeationCandidate[]
+  /**
+   * Master mode only — who the mind is in conversation with RIGHT NOW, from the
+   * live facets' `executive.facet.sync` reports. The master does not run those
+   * conversations, but it is the one seat that sees all of them, and it decides
+   * whom to contact; deciding that without knowing who is already mid-thread is
+   * how one mind ends up opening a second conversation with someone it is already
+   * talking to — or telling one person it has contacted another when it has not.
+   */
+  activeConversations?: { entityId: string; name?: string; sinceTick: number }[]
 }
 
 // ── PromptFactory ────────────────────────────────────────────
@@ -708,6 +729,17 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
         } ).join('\n')}`
       : ''
 
+    // Who the mind is mid-conversation with. Facets run those threads; this is the
+    // master's view of the table — the whole point of the singular seat is that it
+    // can hold several conversations as one situation rather than as N strangers.
+    // Names come from what the mind has actually learned; the id is shown because
+    // that is what a reach-out must be addressed to.
+    const conversationsBlock = ( options.mode !== 'facet' && options.activeConversations?.length )
+      ? `## In Conversation Now\n${options.activeConversations.map( c =>
+          `- ${c.name ?? 'someone'} (id: ${c.entityId})`
+        ).join('\n')}\nThese threads are already open — I am in them. Reaching out to one of these people again starts a second, parallel thread with them.`
+      : ''
+
     // Task focus — what the Will is committed to and the felt cost of switching away.
     // Surfaces task-persistence; the pull-to-stay scales with the (conscientiousness-
     // developable) switch cost. Empty/absent ⇒ no block.
@@ -736,6 +768,7 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       memoriesBlock,
       beliefsBlock,
       socialBlock,
+      conversationsBlock,
       focusBlock,
       identityNudge.trim(),
       ideationBlock,

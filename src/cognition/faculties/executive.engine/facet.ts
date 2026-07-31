@@ -613,6 +613,10 @@ export class ExecutiveFacet {
         reasoning: output.reasoning,
         confidence: output.confidence,
         actionTypes: output.actions.map( a => a.type ),
+        // WHO this facet is engaged with (FocusSection.subject*). The master keeps
+        // the singular seat, so it needs the person, not just the facet number.
+        ...( focus.subjectEntityId ? { subjectEntityId: focus.subjectEntityId } : {} ),
+        ...( focus.subjectName     ? { subjectName:     focus.subjectName     } : {} ),
         tick: currentState.tick
       }
     } )

@@ -177,6 +177,15 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   private readonly _facetSupervisor = new FacetSupervisor()
   private _facetSyncSubscribed = false
 
+  /**
+   * Who each live facet is engaged with, learned from `executive.facet.sync`.
+   * Keyed by facetId; the last sync wins. Rendered into the master's own prompt so
+   * the singular seat can reason across its conversations "as if they were sitting
+   * at the same table" — which it cannot do while it only knows facet numbers.
+   * Stale entries age out on read (see _activeConversations).
+   */
+  private _facetSubjects = new Map<string, { entityId: string; name?: string; tick: number }>()
+
   // ── Cognitive models ───────────────────────────────────────
   private readonly _model = new GenerativeModel()
   private readonly _generativeModel = new GenerativeModel( 0.2, 100 )
@@ -655,6 +664,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         deps: promptDeps,
         recentActionTypes: [ ...this._recentActionTypes ],
         mode: 'master',
+        activeConversations: this._activeConversations(),
         outputFormat: PromptFactory.buildIdeationFormatInstruction(),
       } )
       // Propose temperature scales with the creativity trait (TODO #4): a creative Will
@@ -693,6 +703,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       deps: promptDeps,
       recentActionTypes: [ ...this._recentActionTypes ],
       mode: 'master',
+      activeConversations: this._activeConversations(),
       ideationCandidates
     } )
 
@@ -1001,6 +1012,23 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
   // ── Private helpers ────────────────────────────────────────
 
+  /**
+   * The people the mind is in conversation with right now, newest first.
+   *
+   * Pruned against the supervisor's live facets on every read: a reaped facet is a
+   * conversation that has ended, and a master that still believes it is mid-thread
+   * with someone reasons about a table that is no longer there.
+   */
+  private _activeConversations(): { entityId: string; name?: string; sinceTick: number }[] {
+    const live = this._facetSupervisor.liveFacetIds()
+    for( const id of [ ...this._facetSubjects.keys() ] )
+      if( !live.has( id ) ) this._facetSubjects.delete( id )
+
+    return [ ...this._facetSubjects.values() ]
+      .sort( ( a, b ) => b.tick - a.tick )
+      .map( s => ({ entityId: s.entityId, ...( s.name ? { name: s.name } : {} ), sinceTick: s.tick }) )
+  }
+
   private _ensureFacetSyncSubscription(): void {
     if( this._facetSyncSubscribed || !this._bus ) return
     this._facetSyncSubscribed = true
@@ -1017,7 +1045,17 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
           reasoning?: string
           confidence?: number
           tick?: number
+          subjectEntityId?: string
+          subjectName?: string
         }
+
+        // Remember WHO this facet is with, not just that it reported.
+        if( payload.facetId && payload.subjectEntityId )
+          this._facetSubjects.set( payload.facetId, {
+            entityId: payload.subjectEntityId,
+            ...( payload.subjectName ? { name: payload.subjectName } : {} ),
+            tick: payload.tick ?? this._lastExecutiveTick ?? 0,
+          })
 
         const syntheticEvent = {
           id: '',
@@ -1037,8 +1075,10 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         } )
 
         logger.info(
-          `[executive] master received facet sync from ${payload.facetId} ` +
-          `(confidence=${payload.confidence?.toFixed( 2 )})`
+          `[executive] master received facet sync from ${payload.facetId}` +
+          ( payload.subjectName || payload.subjectEntityId
+            ? ` (with ${payload.subjectName ?? payload.subjectEntityId})` : '') +
+          ` (confidence=${payload.confidence?.toFixed( 2 )})`
         )
       }
     )
@@ -1073,6 +1113,8 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
           threadId:   string
           reasoning:  string
           confidence: number
+          /** Set when a facet formed an intention toward a THIRD party (see EscalationBuffer). */
+          undertaking?: { target: string; gist?: string }
         }
 
         // Write a percept entity so Exteroception surfaces this in
@@ -1087,8 +1129,9 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
           this._escalations.push({
             entityId:  payload.entityId,
             threadId:  payload.threadId,
-            reasoning: payload.reasoning.slice( 0, 400 ),
+            reasoning: ( payload.reasoning ?? '').slice( 0, 400 ),
             tick:      this._lastExecutiveTick ?? 0,
+            ...( payload.undertaking ? { undertaking: payload.undertaking } : {} ),
           })
         }
 
@@ -1112,8 +1155,11 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         } )
 
         logger.info(
-          `[executive] master queued escalation percept from entity ${payload.entityId} ` +
-          `(confidence=${payload.confidence.toFixed( 2 )})`
+          payload.undertaking
+            ? `[executive] master queued undertaking from conversation with ${payload.entityId} ` +
+              `→ reach ${payload.undertaking.target} (confidence=${payload.confidence.toFixed( 2 )})`
+            : `[executive] master queued escalation percept from entity ${payload.entityId} ` +
+              `(confidence=${payload.confidence.toFixed( 2 )})`
         )
       }
     )

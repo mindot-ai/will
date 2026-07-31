@@ -373,7 +373,13 @@ export function publishCognitiveEvents(
   })
 }
 
-const COMMUNICATE_ACTION_TYPES = new Set([
+/**
+ * Action names that mean "say something to someone". Exported because the
+ * conversation facet partitions its OWN actions by the same rule (an action
+ * aimed at a third party is an intention the master owns, not a reply the facet
+ * may deliver) — one definition, so the two ends cannot drift apart.
+ */
+export const COMMUNICATE_ACTION_TYPES = new Set([
   'communicate', 'speak', 'initiate_conversation', 'reach-out', 'reach_out', 'talk', 'text', 'message',
 ])
 
@@ -433,6 +439,8 @@ function buildIdeomotorIntents(
   const seen = new Set<string>()
   /** Action names that named nothing this cycle — surfaced back to the mind below. */
   const unresolved = new Set<string>()
+  /** Addressees the mind meant to reach but cannot resolve to anyone it knows. */
+  const unaddressed = new Set<string>()
   const priority = clamp01( output.confidence ?? 0.8 )
 
   // The host abilities currently afforded (source 'external' in the live field) —
@@ -461,9 +469,16 @@ function buildIdeomotorIntents(
       const args = ( action.args && typeof action.args === 'object' ? action.args : {} ) as Record<string, unknown>
       const named = [ action.target, args['to'], args['recipient'], args['target'], args['targetEntityId'], args['entityId'] ]
         .find( v => typeof v === 'string' && v.trim().length > 0 ) as string | undefined
-      if( !named ) continue
+      // Naming NOBODY and naming someone unreachable are different failures, and
+      // both used to `continue` in silence — the intent was never created, nothing
+      // competed, and the mind had no way to find out. Observed: a facet decided to
+      // contact a colleague by a name the mind had heard in conversation but never
+      // bound to a dossier; the whole intention evaporated without a trace, and the
+      // person it had just promised never heard from it.
+      if( !named ){ unaddressed.add('(no one)'); continue }
       const keid = resolveKnownEntity( named, state )
-      if( !keid || seen.has( keid ) ) continue
+      if( !keid ){ unaddressed.add( named ); continue }
+      if( seen.has( keid ) ) continue
       seen.add( keid )
       // The master forms the INTENT; it does not author the words. Whatever it wrote
       // is the DIRECTION for the outreach facet (AuditionEngine.authorOutreach) to
@@ -545,6 +560,28 @@ function buildIdeomotorIntents(
       },
     })
 
+  // An addressee that resolves to nobody is REPORTED, not swallowed.
+  //
+  // Same principle as the unresolved-name report above, one layer down: there the
+  // *verb* named nothing, here the *person* does. The mind can hear a name in
+  // conversation ("coordinate that through FKEM") long before that name is bound
+  // to anyone it can actually reach, and reaching-out to an unbound name simply
+  // does not happen. Told, it can do the human thing — ask how to reach them, or
+  // ask whoever mentioned them to make the introduction. Untold, it believes it
+  // made contact and follows up on a message it never sent.
+  if( unaddressed.size > 0 )
+    set.push({
+      id:   'action.unaddressed',
+      type: 'action.unaddressed',
+      metadata: {
+        names:   [ ...unaddressed ],
+        summary: `I meant to reach ${ [ ...unaddressed ].map( n => `'${ n }'` ).join(', ') }, but ${ unaddressed.size > 1 ? 'those names match no one' : 'that name matches no one' } I know how to contact — no message went out. If I want to reach them I need a way to: someone can introduce us, or tell me where to find them.`,
+        salience: 0.8,
+        origin:   'executive',
+        tick:     footprint.tickObserved,
+      },
+    })
+
   // Clear stale executive-sourced intents the executive no longer imagines this cycle.
   const currentIds = new Set( set.map( s => s.id ) )
   const del: string[] = []
@@ -558,6 +595,8 @@ function buildIdeomotorIntents(
   // as "that last attempt was not a thing", not as a permanent defect in itself.
   if( unresolved.size === 0 && state.entities.has('action.unresolved') )
     del.push('action.unresolved')
+  if( unaddressed.size === 0 && state.entities.has('action.unaddressed') )
+    del.push('action.unaddressed')
 
   return { set, delete: del }
 }

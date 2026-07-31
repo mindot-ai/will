@@ -908,6 +908,19 @@ export class PMALoader {
         pma.behavioral.explorationRate !== undefined ||
         pma.behavioral.impulsivity !== undefined ){
 
+      // MERGE onto the seeded mirror, never replace it.
+      //
+      // createWill() seeds engine-config-executive first (executiveInterval,
+      // cooldownTicks, deliberateThreshold, maxFacets); loadPMA() runs after. A
+      // whole-entity write here dropped every param the PMA does not carry — so
+      // for every Will restored from an artifact (i.e. every production Will), the
+      // executive's dual-process gate lost its base, `readBaseParams` returned
+      // nothing for `deliberateThreshold`, and consolidatePrior skipped its
+      // adjustments outright: the analytical/decisiveness edges that are supposed
+      // to develop how readily this mind stops to think had no base to move.
+      const seeded = sm.getEntity('engine-config-executive')
+      const seededParams = ( seeded?.metadata as { params?: Record<string, unknown> } | undefined )?.params ?? {}
+
       sm.setEntity({
         id:        'engine-config-executive',
         type:      'engine.config',
@@ -916,6 +929,7 @@ export class PMALoader {
         metadata: {
           engine: 'executive',
           params: {
+            ...seededParams,
             riskTolerance:   pma.behavioral.riskTolerance   ?? 0.5,
             explorationRate: pma.behavioral.explorationRate ?? 0.3,
             impulsivity:     pma.behavioral.impulsivity     ?? 0.3,

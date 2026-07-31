@@ -129,6 +129,7 @@ const PRIOR_DESCRIPTIONS: Record<string, { lower: string; raise: string }> = {
   'engine-config-executive.riskTolerance':            { lower: 'playing it safer',                            raise: 'taking bigger risks' },
   'engine-config-frustration.irritabilityRate':       { lower: 'letting frustration snowball into a bad mood more slowly', raise: 'getting wound up into a bad mood faster' },
   'engine-config-executive.deliberateThreshold':      { lower: 'stopping to think things through more readily',  raise: 'going with my gut more, deliberating less' },
+  'engine-config-executive.maxFacets':                { lower: 'keeping fewer things going at once, one at a time', raise: 'holding more conversations and threads at once' },
   'engine-config-reward.socialWeight':                { lower: 'caring less about social warmth',               raise: 'finding warmth and connection more rewarding' },
   'engine-config-frustration.angerReactivity':        { lower: 'letting slights go, yielding rather than bristling', raise: 'bristling harder when I feel wronged' },
   'engine-config-novelty.significanceThreshold':      { lower: 'noticing what is new and unusual more readily',  raise: 'needing more for something to strike me as new' },

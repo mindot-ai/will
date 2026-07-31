@@ -316,6 +316,13 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
         // DOWN from demonstrated `analytical` disposition via the persona-prior mirror,
         // so a more analytical Will deliberates more readily; this is the baseline.
         deliberateThreshold: 0.5,
+        // How many focused facets this Will can hold at once before spawning starts
+        // evicting (FacetSupervisor). A structural ceiling, not the live budget:
+        // attention scales the allowance *within* it each tick, so a tired or loaded
+        // mind narrows on its own. The metacog loop develops it via the persona-prior
+        // (openness widens, conscientiousness narrows), which is what makes "how many
+        // things I can hold at once" a property of this person rather than a constant.
+        maxFacets: 10,
       },
     },
     {

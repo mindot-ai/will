@@ -29,9 +29,24 @@ const freshState = (): ReadonlySimulationState =>
   ( { tick: 1, time: 1000, entities: new Map(), metrics: new Map() } as unknown as ReadonlySimulationState )
 const CTX = {} as SimulationContext
 
+// The supervisor resolves its facet ceiling from the engine-config mirror through
+// the persona-prior, so the state it spawns against must carry one — the same
+// `engine-config-executive` entity buildEngineConfigEntities seeds at boot. What
+// this test measures is the ATTENTION half of the budget: the ceiling is held
+// fixed at its default of 10 so any difference between phases is the free
+// fraction moving, not the persona.
 function spawnDeps( tick: number ){
-  return { bus: createTestBus(), llmDirector: {} as any, stateRef: { tick } as any,
-           contextDeps: {} as any, promptDeps: {} as any, willId: 'w' }
+  return {
+    bus: createTestBus(), llmDirector: {} as any,
+    stateRef: {
+      tick,
+      entities: new Map( [ [ 'engine-config-executive', {
+        id: 'engine-config-executive', type: 'engine.config',
+        metadata: { engine: 'executive', params: { maxFacets: 10 } },
+      } ] ] ),
+    } as any,
+    contextDeps: {} as any, promptDeps: {} as any, willId: 'w',
+  }
 }
 
 describe('Attention budget control loop (focus/rest → maxFacets)', () => {
@@ -96,8 +111,12 @@ describe('Attention budget control loop (focus/rest → maxFacets)', () => {
 
     // The decision moved the budget, end-to-end.
     expect( facetsWhenFocused ).toBeGreaterThan( facetsWhenResting )
-    expect( facetsWhenFocused ).toBe( 3 )    // freeFraction ~1.0 → floor(1.0/0.3) = 3
-    expect( facetsWhenResting ).toBe( 1 )    // freeFraction 0.4  → floor(0.4/0.3) = 1
+    // Attention scales the persona's ceiling (10 here) rather than replacing it:
+    // choosing to focus opens the whole of it, choosing to rest narrows it to
+    // roughly the free fraction of it — and resting still leaves room for more
+    // than one thread, which the old floor(free/0.3) arithmetic did not.
+    expect( facetsWhenFocused ).toBe( 10 )   // freeFraction ~1.0 → round(10 × 1.0)
+    expect( facetsWhenResting ).toBe( 4 )    // freeFraction  0.4 → round(10 × 0.4)
   } )
 } )
 

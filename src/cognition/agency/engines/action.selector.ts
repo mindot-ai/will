@@ -457,7 +457,15 @@ export class ActionSelector implements CognitiveEngine {
       const sameAction = winner.affordance.schema === awaiting.schema && ( winner.affordance.targetEntityId ?? '') === awaiting.target
       if( sameAction ) return busy( eligible.length )   // field still favours what we await
 
-      const staleness         = Math.min( 1, ( tick - awaiting.dispatchedAt ) / AWAIT_STALE_TICKS )
+      // Clamped at BOTH ends. The upper bound was always there; the lower one matters
+      // because a restored intent's age is negative (state snapshots, the tick counter
+      // restarts at 1), and an unclamped negative staleness flips the decay into
+      // amplification: `1 - (-39 × 0.5)` = 20.6×, turning a 0.47 incumbent into 9.74 and
+      // making it permanently unpreemptable. The executor now clears such intents, so
+      // this is the second line of defence rather than the fix — but an incumbent's
+      // hysteresis must never be able to exceed its own recorded activation, whatever
+      // arithmetic feeds it.
+      const staleness         = Math.min( 1, Math.max( 0, ( tick - awaiting.dispatchedAt ) / AWAIT_STALE_TICKS ) )
       const incumbentStrength = awaiting.activation * ( 1 - staleness * STALE_DECAY )
       const switchCost        = effSwitchCost * ( 1 - stakes( winner.affordance, bias ) )
 

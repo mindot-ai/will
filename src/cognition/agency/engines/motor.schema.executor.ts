@@ -233,7 +233,32 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       // time it out at AWAIT_TIMEOUT and reconcile it as a phantom failure.
       if( e.metadata?.['escalated'] === true ) continue
       const dispatchedAt = num( e.metadata?.['dispatchedAt'], tick )
-      if( tick - dispatchedAt < AWAIT_TIMEOUT ) continue
+      const age          = tick - dispatchedAt
+
+      // Dispatched LATER than now ⇒ it was in flight when the mind went to sleep.
+      // Intents snapshot with the state and the tick counter restarts at 1 on wake,
+      // so a restored `awaiting` intent has a NEGATIVE age — and every guard here
+      // inverts on it: `age < AWAIT_TIMEOUT` is trivially true for -589, so it never
+      // timed out, and the selector's staleness went negative, INFLATING the
+      // incumbent's strength instead of decaying it. Measured on a live Will:
+      // incumbent 9.742 against challengers of 0.52, unpreemptable and immortal.
+      // One person's stale intent held the channel and every attempt to contact
+      // anyone else was refused, indefinitely, across restarts.
+      //
+      // Cleared WITHOUT a failure outcome: hibernating is not the world declining
+      // to answer. Reconciling it as a timeout would teach reafference that
+      // reaching that person does not work, which is a lesson about the process
+      // lifecycle, not about them.
+      if( age < 0 ){
+        del.push( id )
+        logger.info(
+          `[motor] cleared "${ str( e.metadata?.['schema'] ) ?? 'intent' }" left awaiting ` +
+          `across a restart (dispatched at tick ${ dispatchedAt }, now ${ tick })`
+        )
+        continue
+      }
+
+      if( age < AWAIT_TIMEOUT ) continue
 
       const intent    = readIntent( id, e.metadata )
       const predicted: EfferenceCopy = {

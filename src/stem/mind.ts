@@ -99,7 +99,7 @@ import {
   OlfactionEngine,
   GustationEngine
 } from '#cognition/index'
-import { buildEngineConfigEntities, EngineConfigEntity } from '#cognition/config.mirror.entities'
+import { buildEngineConfigEntities, mergeEngineConfig, EngineConfigEntity } from '#cognition/config.mirror.entities'
 
 // ── Public types ─────────────────────────────────────────────
 
@@ -1325,13 +1325,7 @@ function _seedInitialGoals( simulation: DefaultSimulation, config: WillConfig ):
  */
 function _seedEngineConfigs( simulation: DefaultSimulation, entities: EngineConfigEntity[] ): void {
   for( const cfg of entities )
-    simulation.stateManager.setEntity({
-      id:        cfg.id,
-      type:      'engine.config',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      metadata:  { engine: cfg.engine, params: cfg.params },
-    })
+    mergeEngineConfig( simulation.stateManager, cfg, 'incoming')
 }
 
 /**
@@ -1352,21 +1346,11 @@ function _seedEngineConfigs( simulation: DefaultSimulation, entities: EngineConf
  */
 export function backfillEngineConfigs( simulation: DefaultSimulation, entities: EngineConfigEntity[] ): void {
   for( const cfg of entities ){
-    const existing = simulation.stateManager.getEntity( cfg.id )
-    if( !existing ){ _seedEngineConfigs( simulation, [ cfg ] ); continue }
-
-    const current = ( existing.metadata as { params?: Record<string, unknown> } | undefined )?.params ?? {}
-    const missing = Object.keys( cfg.params ).filter( k => !( k in current ) )
-    if( missing.length === 0 ) continue
-
-    simulation.stateManager.setEntity({
-      id:        cfg.id,
-      type:      'engine.config',
-      createdAt: existing.createdAt,
-      updatedAt: Date.now(),
-      metadata:  { engine: cfg.engine, params: { ...cfg.params, ...current } },
-    })
-    logger.info(`[WillStem] ${cfg.id}: added ${missing.length} new param(s) — ${missing.join(', ')}`)
+    // 'existing' — state is the authority here. It carries PMA seeding and
+    // whatever the persona has learned, so only genuinely missing keys are added.
+    const added = mergeEngineConfig( simulation.stateManager, cfg, 'existing')
+    if( added.length > 0 )
+      logger.info(`[WillStem] ${cfg.id}: added ${added.length} new param(s) — ${added.join(', ')}`)
   }
 }
 

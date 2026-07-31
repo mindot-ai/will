@@ -32,6 +32,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { join }                     from 'node:path'
 
 import type { SimulationState }    from '#core/types'
+import { mergeEngineConfig }        from '#cognition/config.mirror.entities'
 import type { DefaultSimulation }  from '#core/simulation'
 import type { Cognition }          from '#types'
 import type {
@@ -892,23 +893,13 @@ export class PMALoader {
     // MERGE, never replace — same trap as engine-config-executive. The mirror
     // seeds `emitBlendEvents` here and the PMA carries only `inertia`, so a
     // whole-entity write silently dropped it for every restored Will.
-    const blenderSeeded = ( sm.getEntity('engine-config-affective-blender')?.metadata as
-      { params?: Record<string, unknown> } | undefined )?.params ?? {}
-
-    sm.setEntity({
-      id:        'engine-config-affective-blender',
-      type:      'engine.config',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      metadata: {
-        engine: 'affective-blender',
-        params: {
-          ...blenderSeeded,
-          inertia: 1 - reactivity,
-          temperamentValence,
-        },
+    mergeEngineConfig( sm, {
+      id: 'engine-config-affective-blender', engine: 'affective-blender',
+      params: {
+        inertia: 1 - reactivity,
+        temperamentValence,
       },
-    })
+    }, 'incoming')
 
     // ── 6. Behavioral parameters ──────────────────────────────
     if( pma.behavioral.riskTolerance !== undefined ||
@@ -925,24 +916,14 @@ export class PMALoader {
       // nothing for `deliberateThreshold`, and consolidatePrior skipped its
       // adjustments outright: the analytical/decisiveness edges that are supposed
       // to develop how readily this mind stops to think had no base to move.
-      const seeded = sm.getEntity('engine-config-executive')
-      const seededParams = ( seeded?.metadata as { params?: Record<string, unknown> } | undefined )?.params ?? {}
-
-      sm.setEntity({
-        id:        'engine-config-executive',
-        type:      'engine.config',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        metadata: {
-          engine: 'executive',
-          params: {
-            ...seededParams,
-            riskTolerance:   pma.behavioral.riskTolerance   ?? 0.5,
-            explorationRate: pma.behavioral.explorationRate ?? 0.3,
-            impulsivity:     pma.behavioral.impulsivity     ?? 0.3,
-          },
+      mergeEngineConfig( sm, {
+        id: 'engine-config-executive', engine: 'executive',
+        params: {
+          riskTolerance:   pma.behavioral.riskTolerance   ?? 0.5,
+          explorationRate: pma.behavioral.explorationRate ?? 0.3,
+          impulsivity:     pma.behavioral.impulsivity     ?? 0.3,
         },
-      })
+      }, 'incoming')
     }
 
     // Configure memory persistence for ForgettingCurve
@@ -950,22 +931,12 @@ export class PMALoader {
       // MERGE — the mirror seeds emotionProtection / pruningThreshold /
       // maxPrunePerTick here and the PMA carries only baseForgettingRate, so a
       // whole-entity write dropped three params on every restore.
-      const forgettingSeeded = ( sm.getEntity('engine-config-forgetting')?.metadata as
-        { params?: Record<string, unknown> } | undefined )?.params ?? {}
-
-      sm.setEntity({
-        id:        'engine-config-forgetting',
-        type:      'engine.config',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        metadata: {
-          engine: 'forgetting-curve',
-          params: {
-            ...forgettingSeeded,
-            baseForgettingRate: 1 - ( pma.identity.memoryPersistence * 0.7 ),
-          },
+      mergeEngineConfig( sm, {
+        id: 'engine-config-forgetting', engine: 'forgetting-curve',
+        params: {
+          baseForgettingRate: 1 - ( pma.identity.memoryPersistence * 0.7 ),
         },
-      })
+      }, 'incoming')
     }
 
     // ── 7. Relationship stubs ─────────────────────────────────

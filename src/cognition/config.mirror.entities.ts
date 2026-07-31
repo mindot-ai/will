@@ -13,6 +13,7 @@
 // reason about its own operational parameters.
 
 import { WillConfig } from '#stem/mind'
+import type { StateManager } from '#core/state.manager'
 
 export interface EngineConfigEntity {
   id:     string
@@ -495,4 +496,64 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
       },
     },
   ]
+}
+
+// ── The single writer ─────────────────────────────────────────
+
+/**
+ * Write an `engine.config` entity — MERGING, always. The only sanctioned way to
+ * write one; `tests/unit/config.mirror.writer.test.ts` fails on a raw
+ * `setEntity({ type: 'engine.config' })` anywhere else.
+ *
+ * Every whole-entity write to one of these has silently dropped params, three
+ * times in one day and each in a different place:
+ *
+ *   • PMALoader replaced `engine-config-executive` with the three behavioural
+ *     params a PMA carries, dropping `deliberateThreshold` — so `readBaseParams`
+ *     returned nothing for it and `consolidatePrior` skipped the analytical and
+ *     decisiveness edges outright, for every Will ever restored from an artifact.
+ *   • The same loader dropped `emitBlendEvents` from the blender and three params
+ *     from forgetting.
+ *   • Snapshot restore replaced the whole mirror, so a Will woke with the config
+ *     it FIRST hibernated under and could never receive a param added later —
+ *     `maxFacets` and `deliberateThreshold` were inert on a live Will for its
+ *     entire life.
+ *
+ * `precedence` says which side wins on a key both hold. Neither ever drops a key.
+ *
+ *   'incoming' — the caller is the authority (boot seed; a PMA supplying the
+ *                tenant's own dispositions). Keys it does not mention survive.
+ *   'existing' — state is the authority (post-restore backfill). Only genuinely
+ *                missing keys are added, so learned and PMA'd values are safe.
+ *
+ * Returns the keys it actually added or changed, for the caller to log.
+ */
+export function mergeEngineConfig(
+  store:      StateManager,
+  cfg:        EngineConfigEntity,
+  precedence: 'incoming' | 'existing' = 'incoming',
+): string[] {
+  const existing = store.getEntity( cfg.id )
+  const current  = ( existing?.metadata as { params?: Record<string, unknown> } | undefined )?.params ?? {}
+
+  const params = precedence === 'existing'
+    ? { ...cfg.params, ...current }   // state wins; fills only what is missing
+    : { ...current, ...cfg.params }   // caller wins; keeps everything else
+
+  const changed = Object.keys( params ).filter( k => params[ k ] !== current[ k ] )
+  if( existing && changed.length === 0 ) return []
+
+  // No timestamps: StateManager.setEntity is the single place they are stamped,
+  // and it sources them from the SIM clock so entity times replay identically
+  // (R2). It also preserves an existing `createdAt`. The write sites this
+  // replaced all passed `Date.now()`, which was both redundant and a real
+  // determinism hole — the guard test caught it the moment the code moved into
+  // `cognition/`, where wall-clock reads are banned.
+  store.setEntity({
+    id:       cfg.id,
+    type:     'engine.config',
+    metadata: { engine: cfg.engine, params },
+  })
+
+  return changed
 }

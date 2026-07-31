@@ -153,6 +153,12 @@ const CONSCIENTIOUSNESS_BREADTH_GAIN = -3   // −executive.maxFacets per unit c
 const OPENNESS_FOCI_GAIN             = 1.5  // +attention.maxFoci per unit openness
 const CONSCIENTIOUSNESS_FOCI_GAIN    = -1.2 // −attention.maxFoci per unit conscientiousness
 
+// How long the Will sits with something it has already said before saying it again
+// (action-selector.repeatDamping, EXAFFERENCE P5). Agreeableness gives people room;
+// demonstrated persistence chases the answer. Scaled against a base of 0.30.
+const AGREEABLENESS_PATIENCE_GAIN    = 0.12  // +repeatDamping per unit agreeableness
+const PERSISTENCE_FOLLOWUP_GAIN      = -0.10 // −repeatDamping per unit persistence
+
 // Emotional stability (formed from observed affect dynamics, not task success) develops
 // the affect *reactivity gain* down: a steadier Will lets frustration snowball into
 // chronic irritability more slowly. Distinct axis from resilience — resilience tunes how
@@ -366,6 +372,7 @@ export class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
       [ 'persona.executive.deliberate_threshold_delta', next.priors[ 'engine-config-executive' ]?.deliberateThreshold ?? 0 ],
       [ 'persona.executive.max_facets_delta',     next.priors[ 'engine-config-executive' ]?.maxFacets ?? 0 ],
       [ 'persona.attention.max_foci_delta',       next.priors[ 'engine-config-attention' ]?.maxFoci ?? 0 ],
+      [ 'persona.selector.repeat_damping_delta',  next.priors[ 'engine-config-action-selector' ]?.repeatDamping ?? 0 ],
       [ 'persona.reward.social_weight_delta', next.priors[ 'engine-config-reward' ]?.socialWeight ?? 0 ],
       [ 'persona.frustration.anger_reactivity_delta', next.priors[ 'engine-config-frustration' ]?.angerReactivity ?? 0 ],
       [ 'persona.novelty.significance_threshold_delta', next.priors[ 'engine-config-novelty' ]?.significanceThreshold ?? 0 ],
@@ -792,6 +799,27 @@ export class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
         gain: CONSCIENTIOUSNESS_FOCI_GAIN,
         engineConfigId: 'engine-config-attention',
         param: 'maxFoci'
+      },
+      // 27e. How long the Will lets its own words stand before repeating them. A
+      //      delivered act leaves a live footprint (EXAFFERENCE P5) that damps redoing
+      //      it; how HARD it damps is a disposition. An agreeable Will gives people
+      //      room after saying its piece; a persistent one chases the answer sooner.
+      //      Opposing pulls on one param, same as 17/17b. This is the trait behind
+      //      "she messaged me the same thing three times" — the mechanism stops the
+      //      loop, this decides where in the range between patient and dogged she sits.
+      {
+        magnitude: agreeableDev,
+        threshold: GRIT_THRESHOLD,
+        gain: AGREEABLENESS_PATIENCE_GAIN,
+        engineConfigId: 'engine-config-action-selector',
+        param: 'repeatDamping'
+      },
+      {
+        magnitude: persistDev,
+        threshold: GRIT_THRESHOLD,
+        gain: PERSISTENCE_FOLLOWUP_GAIN,
+        engineConfigId: 'engine-config-action-selector',
+        param: 'repeatDamping'
       },
       // 28b. Same disposition, the AGENCY selector's owner (R2): a conscientious Will also
       //      resists having an in-flight action preempted — raise the selector's switch-cost

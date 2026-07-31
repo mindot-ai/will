@@ -68,6 +68,15 @@ export interface ScoreWeights {
   cost:    number
   inhib:   number
   risk:    number
+  /**
+   * How strongly an act's own live footprint damps doing it again (EXAFFERENCE
+   * P5). Satiation, not a lock: it decays with the descriptor, so the pull
+   * returns once the window in which the world could have answered has passed.
+   * Peer of `will` in magnitude — a freshly-delivered message should roughly
+   * cancel the volitional prior that produced it, and no more, so a genuinely
+   * pressing reason to speak again still wins.
+   */
+  repeat:  number
 }
 
 export const DEFAULT_WEIGHTS: ScoreWeights = {
@@ -82,6 +91,7 @@ export const DEFAULT_WEIGHTS: ScoreWeights = {
   cost:    0.20,
   inhib:   0.30,
   risk:    0.20,
+  repeat:  0.30,
 }
 
 /**
@@ -179,6 +189,7 @@ export function scoreAffordance(
     - w.cost    * a.cost
     - w.inhib   * bias.inhibition
     - w.risk    * risk( a, bias )
+    - w.repeat  * ( a.justEnacted ?? 0 )
   )
   // POLICY_REAFFERENCE P2 — policy availability damps a POSITIVE activation only,
   // never flipping its sign: a refused ability competes weakly (so it is rarely

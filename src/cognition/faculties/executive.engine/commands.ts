@@ -10,6 +10,7 @@ import type { GoalManager } from '#faculties/goal.manager'
 import type { GenerativeModel } from '#cognition/generative.model'
 import type { SemanticIntegrator } from '#faculties/semantic.engine/integrator'
 import { INNATE_SCHEMA_BY_ID } from '#agency/schemas/innate'
+import { logger } from '#core/logger'
 
 /** Maps the LLM's evidence enum to a numeric supportingEpisodes value for the belief store. */
 export const EVIDENCE_TO_COUNT: Record<string, number> = {
@@ -498,6 +499,18 @@ function buildIdeomotorIntents(
       if( said ) parameters['gist'] = said
       const targetName = knownEntityName( keid, state )
       if( targetName ) parameters['targetEntityName'] = targetName
+
+      // Named at INFO because this is the seam where a decision to contact someone
+      // either becomes a competing intention or disappears. When a Will named a
+      // colleague seven times over ten minutes and he never heard from it, nothing
+      // in the logs could distinguish "the intent was never created" from "it was
+      // created and lost every competition" — the two have completely different
+      // fixes, and the archaeology to tell them apart needed state snapshots that
+      // sample too coarsely to catch a cycle.
+      logger.info(
+        `[executive] willed reach-out → ${ targetName ?? keid } ` +
+        `(named '${ named }' → ${ keid }, priority=${ priority.toFixed( 2 ) })`
+      )
 
       set.push({
         id:   `ideomotor-reach-out-${ keid }`,

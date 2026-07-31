@@ -36,6 +36,7 @@ import type { Affordance, AffordanceSource, MotorSchema, LearnedSkill, SchemaPre
 import type { SchemaRepertoire } from '#agency/schemas/repertoire'
 import { INNATE_SCHEMAS } from '#agency/schemas/innate'
 import { collectGoalTargets } from '#agency/selection.scoring'
+import { liveConsequences, enactionFootprint, type ConsequenceDescriptor } from '#agency/consequence'
 
 /** Default field width for non-innate affordances when no attention metric exists. */
 const DEFAULT_ATTENTION_CAP = 5
@@ -59,6 +60,13 @@ export class AffordanceSynthesizer implements CognitiveEngine {
   private _schemas:     MotorSchema[]
   private _skills:      SkillAccessor | null = null
   private _repertoire:  SchemaRepertoire | null = null
+
+  /**
+   * This tick's live consequence descriptors — the acts the mind has performed
+   * whose outcome has not yet come back. Refreshed once at the top of react()
+   * because `_build` runs per candidate and reading them is a full-entity scan.
+   */
+  private _inFlight: readonly ConsequenceDescriptor[] = []
   private _bus:         CognitiveBus | null = null
   private _defaultCap:  number
   private _lastFieldSize = 0
@@ -111,6 +119,12 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     const skills    = this._skills?.() ?? this._repertoire?.skills() ?? null
     const valence   = metric( state, 'affect.valence', 0 )
     const energyLow = metric( state, 'energy.level', 0 ) < 30
+
+    // The mind's own acts still in flight (EXAFFERENCE P5). Read once per tick —
+    // `_build` runs for every candidate and this is a full-entity scan. Each
+    // candidate whose (schema, target) matches one of these carries a decaying
+    // `justEnacted`, so having just done a thing damps doing it again.
+    this._inFlight = liveConsequences( state.entities, tick )
 
     const set:    EntityInput[] = []
     const del:    string[]      = []
@@ -333,6 +347,9 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // Low energy makes everything feel costlier.
     const cost            = clamp01( schema.cost * ( energyLow ? 1.5 : 1 ) )
 
+    // This act's own footprint, if it is still in flight toward this same person.
+    const justEnacted = enactionFootprint( this._inFlight, schema.id, ctx.targetEntityId, tick )
+
     const key    = ctx.targetEntityId ?? ctx.evokedBy ?? schema.id
     const source = ctx.source ?? schema.source
     // A non-default-source candidate (ideomotor) gets a distinct id so it can coexist
@@ -355,6 +372,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
       ...( schema.description ? { description: schema.description } : {} ),
       ...( availability < 1 ? { availability } : {} ),
       ...( socialPrior !== 0 ? { socialPrior } : {} ),
+      ...( justEnacted > 0 ? { justEnacted } : {} ),
       planBias:        ctx.planBias,
       willBias:        ctx.willBias,
       planId:          ctx.planId,

@@ -148,6 +148,48 @@ export function matchConsequenceText(
   return null
 }
 
+// ── P5: the act's own footprint, felt as satiation ───────────────────────────
+
+/**
+ * How much of an act's own footprint is still live for this (schema, target),
+ * 1 → 0 as the descriptor ages out. 0 when nothing matching is in flight.
+ *
+ * This is the consumer #112 always described and the descriptors never had. A
+ * delivered message wrote its footprint here and nothing ever read it back, so
+ * the standing `ideomotor.intent` that produced it kept re-winning the
+ * competition and the same words went out again — observed three times, ~21
+ * ticks apart, to the same person, while the mind believed each was the first.
+ *
+ * Deliberately a decaying quantity, not a lock. Right after acting it is ~1 and
+ * the pull to repeat is strongly damped; as the window in which the world could
+ * still answer runs out it returns to 0 and the appetite comes back on its own.
+ * That is a refractory period, not a rule: the mind may still repeat itself if
+ * something has become pressing enough to out-compete the damping, which is
+ * exactly what a person does when the silence starts to matter.
+ *
+ * Matches on (schema, target) rather than on the words, because at the moment
+ * the competition runs the words do not exist yet — a facet authors them later.
+ * "I have just reached out to this person and do not yet know how it landed" is
+ * the honest predicate, and it is the one that governs whether to speak again.
+ */
+export function enactionFootprint(
+  descriptors:    readonly ConsequenceDescriptor[],
+  schema:         string,
+  targetEntityId: string | undefined,
+  tick:           Tick,
+): number {
+  if( !targetEntityId ) return 0
+
+  let strongest = 0
+  for( const d of descriptors ){
+    if( d.schema !== schema || d.targetEntityId !== targetEntityId ) continue
+    const remaining = ( d.expiresAt - tick ) / CONSEQUENCE_TTL_TICKS
+    if( remaining > strongest ) strongest = remaining
+  }
+
+  return strongest < 0 ? 0 : strongest > 1 ? 1 : strongest
+}
+
 // ── ACP-P1: entity correspondence (ACTION_CONDITIONED_PREDICTION §2) ─────────
 
 /** Salience multiplier for an entity-correspondence match — gentler than a

@@ -172,6 +172,18 @@ export interface Affordance {
    * gets an occasional re-probe and can climb back as availability recovers.
    */
   availability?:   number
+  /**
+   * How much of this act's OWN footprint is still live, 1 → 0 (EXAFFERENCE P5).
+   * Set when a consequence descriptor for the same (schema, target) has not yet
+   * expired — the mind has just done this and does not yet know how it landed.
+   *
+   * Damps the pull to do it again, and decays back to 0 on its own, so a silence
+   * that starts to matter can still out-compete it. Without this the executive's
+   * standing `ideomotor.intent` outlived the act it produced: the same two
+   * messages were delivered to the same person three times, ~21 ticks apart,
+   * each time as though it were the first.
+   */
+  justEnacted?:    number
   /** Provenance: the plan whose frontier step projected this affordance. */
   planId?:         string
   /** Provenance: the frontier step id — flows through to action.outcome so the plan advances. */

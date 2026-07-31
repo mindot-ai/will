@@ -373,6 +373,12 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
         switchCost:   0.15,
         riskWeight:   0.20,
         noveltyWeight: 0.10,
+        // How hard an act's own live footprint damps doing it again (EXAFFERENCE
+        // P5) — how long this mind sits with something it has already said before
+        // saying it again. Agreeableness develops it up, demonstrated persistence
+        // down, so "gives people room" vs "chases an answer" is a trait rather
+        // than a constant.
+        repeatDamping: 0.30,
       },
     },
 

@@ -371,6 +371,23 @@ export class ActionSelector implements CognitiveEngine {
     const winner = scored[0]
     if( !winner ) return busy( eligible.length )
 
+    // Whenever more than one person is a candidate for contact, record how the
+    // competition between them actually resolved. A Will that names someone and
+    // never messages them looks identical from outside whether the intention was
+    // never formed or was formed and beaten every cycle; this is the only place
+    // that difference is visible, and it is one line per contested tick.
+    // Gated on there being an actual contest, so a mind talking to one person logs
+    // nothing. INFO rather than debug: the host suppresses debug, and a diagnostic
+    // nobody can see is the situation this exists to end.
+    const reachers = scored.filter( s => s.affordance.schema === 'reach-out' && s.affordance.targetEntityId )
+    if( reachers.length > 1 )
+      logger.info(
+        `[selector] reach-out contest: ` + reachers.map( s =>
+          `${ s.affordance.targetEntityId }=${ s.activation.toFixed( 3 ) }` +
+          `${ s.affordance.justEnacted ? ` (justEnacted ${ s.affordance.justEnacted.toFixed( 2 ) })` : '' }`
+        ).join('  ') + `  → won by ${ winner.affordance.targetEntityId ?? winner.affordance.schema }`
+      )
+
     // ── Preempt a mid-composite routine (IMMEDIATE SWITCH) ────────
     // A strong/high-stakes challenger cuts the routine off AND takes the body
     // the same tick. We cannot delete the parent here: the executor runs later
@@ -677,6 +694,11 @@ function effectiveWeights( state: ReadonlySimulationState ): ScoreWeights {
     ...DEFAULT_WEIGHTS,
     risk:    Math.max( 0, num( p['riskWeight'],    DEFAULT_WEIGHTS.risk    ) ),
     novelty: Math.max( 0, num( p['noveltyWeight'], DEFAULT_WEIGHTS.novelty ) ),
+    // How long the mind sits with something it has already said before saying it
+    // again. Agreeableness raises it (does not badger); demonstrated persistence
+    // lowers it (follows up sooner). Clamped at 0 so a prior can flatten the
+    // damping into indifference but never turn repeating into a *reward*.
+    repeat:  Math.max( 0, num( p['repeatDamping'], DEFAULT_WEIGHTS.repeat  ) ),
   }
 }
 

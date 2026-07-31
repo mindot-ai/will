@@ -145,6 +145,7 @@ const PRIOR_DESCRIPTIONS: Record<string, { lower: string; raise: string }> = {
   'engine-config-action-selector.switchCost':         { lower: 'dropping what I am doing for a new pull more easily', raise: 'seeing an action through, harder to knock off course once underway' },
   'engine-config-action-selector.riskWeight':         { lower: 'weighing the downside of what I do less — acting bolder', raise: 'weighing what could go wrong more heavily before I act' },
   'engine-config-action-selector.noveltyWeight':      { lower: 'feeling less pull toward the untried',               raise: 'drawn more strongly to do the untried and unpracticed' },
+  'engine-config-action-selector.repeatDamping':      { lower: 'following up sooner when I have had no answer',      raise: 'giving people room after I have said my piece' },
   'engine-config-moral.eventThreshold':               { lower: 'holding myself to my principles more sharply',  raise: 'letting moral lapses weigh on me less' },
   'engine-config-frustration.decayRate':              { lower: 'staying frustrated for longer after a setback',  raise: 'shaking off frustration and bouncing back faster' },
   'engine-config-reward.socialWarmthBoost':           { lower: 'being warmed less by a kind exchange',          raise: 'being warmed more by every kind exchange' },

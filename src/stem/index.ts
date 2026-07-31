@@ -39,6 +39,7 @@ import { InboundQueue } from '#stem/tracts/inbound.queue'
 import type { ExternalTransport } from '#stem/tracts/transport'
 import { effectorController } from '#stem/tracts/effector.controller'
 import { externalSchemas } from '#agency/schemas/external'
+import { inFlightOnRestore } from '#agency/restart'
 import type { EffectorDeclaration } from '#agency/types'
 import { SensoryController } from '#stem/tracts/sensory.controller'
 import { BiographyWriter } from '#stem/tracts/biography.writer'
@@ -224,8 +225,37 @@ export class WillStem {
       try {
         const previousState = await simulation.snapshotManager.loadLatestFromStorage()
         if( previousState ){
+          // Work that was in flight when the mind slept does not resume — see
+          // agency/restart.ts. Dropped BEFORE restore so it never enters live
+          // state at all, rather than being swept on some later tick.
+          const inFlight = inFlightOnRestore( previousState.entities )
+          for( const id of inFlight ) previousState.entities.delete( id )
+
           simulation.stateManager.restore( previousState, { entities: true, metrics: false } )
-          logger.info(`[WillStem] Restored snapshot for ${config.id} — ${previousState.entities.size} entities loaded`)
+
+          // TIME MUST NOT GO BACKWARDS.
+          //
+          // Entities come back stamped with the tick they were written at, and
+          // the orchestrator overwrites the StateManager's tick from the CLOCK
+          // every tick (`_clock.tick()` → `updateClock`) — so restoring the
+          // manager's tick alone is undone immediately. The clock is the source
+          // of truth and has to resume too.
+          //
+          // Without this, every `tick - stampedTick` in the codebase computed a
+          // negative age. Measured: an awaiting intent read `-589 ticks`, so it
+          // could never time out, and the selector's staleness decay inverted
+          // into amplification (`1 - (-39 × 0.5)` = 20.6×) — a 0.47 incumbent
+          // scoring 9.74, unpreemptable, holding the channel against every other
+          // contact indefinitely and across restarts. It also means tick-stamped
+          // entity ids (`affordance-${tick}-…`, `agency-outcome-${tick}-…`) stop
+          // colliding with a previous session's.
+          simulation.clock.setTick( previousState.tick )
+
+          logger.info(
+            `[WillStem] Restored snapshot for ${config.id} — ${previousState.entities.size} entities loaded, ` +
+            `resuming at tick ${previousState.tick}` +
+            ( inFlight.length ? ` (dropped ${inFlight.length} in-flight)` : '')
+          )
         }
       }
       catch( err ){ logger.warn(`[WillStem] Snapshot restore failed for ${config.id} — starting fresh:`, err ) }

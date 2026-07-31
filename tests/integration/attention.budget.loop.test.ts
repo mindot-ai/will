@@ -120,6 +120,110 @@ describe('Attention budget control loop (focus/rest → maxFacets)', () => {
   } )
 } )
 
+/**
+ * The return leg: attending to a conversation COSTS attention.
+ *
+ * The loop used to run one way only. `freeFraction` scaled the facet budget, but a
+ * facet never appeared in the allocator's `_activeFocus` — it is built purely from
+ * `_extractSalienceSignals`, a salience map over percepts and `attention.demand`
+ * entities — so holding three live conversations reported exactly as much spare
+ * attention as holding none. The budget was scaled by a signal blind to the thing
+ * it was bounding.
+ *
+ * ExecutiveEngine now publishes one `attention.demand` per REASONING facet, so a
+ * facet competes for `maxFoci` slots against every percept and pays `costPerFocus`
+ * out of the same 100-unit capacity. Being in a thread is free; attending to it is
+ * not.
+ */
+describe('Attention economy — a reasoning facet consumes real capacity', () => {
+  /** State carrying `n` facet attention-demands, exactly as the engine writes them. */
+  const stateAttending = ( n: number ): ReadonlySimulationState => {
+    const entities = new Map<string, unknown>()
+    for( let i = 0; i < n; i++ )
+      entities.set( `facet-attending-facet-${i}`, {
+        id: `facet-attending-facet-${i}`, type: 'attention.demand',
+        metadata: { urgency: 0.7, source: 'executive-facet', facetId: `facet-${i}` },
+      } )
+    return { tick: 1, time: 1000, entities, metrics: new Map() } as unknown as ReadonlySimulationState
+  }
+
+  const freeFractionAfter = async ( n: number ): Promise<number> => {
+    const allocator = new AttentionAllocator()
+    let free = 1
+    // Two ticks: the first captures the foci (paying the shift cost), the second
+    // reinforces them — a conversation is a sustained focus, not a one-tick blip.
+    for( const tick of [ 1, 2 ] ){
+      const { commands } = await allocator.react( 50, tick as any, stateAttending( n ), CTX )
+      const m = commands?.metrics?.find( ( [ k ] ) => k === 'attention.free_fraction')
+      if( m ) free = m[1] as number
+    }
+    return free
+  }
+
+  it('spends attention on facets that are reasoning — free fraction falls as threads engage', async () => {
+    const idle  = await freeFractionAfter( 0 )
+    const one   = await freeFractionAfter( 1 )
+    const three = await freeFractionAfter( 3 )
+
+    expect( idle ).toBeGreaterThan( one )
+    expect( one ).toBeGreaterThan( three )
+  } )
+
+  it('feeds that cost back into the facet budget — attending narrows what it will take on', async () => {
+    const sup = new FacetSupervisor({ idleTtlTicks: 10_000, evictLruOnPressure: false })
+
+    const admissible = ( free: number ): number => {
+      sup.setAttentionState( free )
+      const handles: any[] = []
+      for( let i = 0; i < 12; i++ ){
+        const r = sup.spawn( spawnDeps( i ) )
+        if( r.attention === 'available' && r.handle ) handles.push( r.handle )
+        else break
+      }
+      const n = handles.length
+      handles.forEach( h => h.destroy() )
+      return n
+    }
+
+    // The whole point of closing the loop: the mind's own engagement, not just its
+    // vitals, is what narrows the room it has for more.
+    expect( admissible( await freeFractionAfter( 0 ) ) )
+      .toBeGreaterThan( admissible( await freeFractionAfter( 3 ) ) )
+  } )
+
+  it('stops charging past maxFoci — in six threads, attending to four', async () => {
+    // The two-level model's load-bearing property. `maxFoci` (4) caps how many
+    // things get attended to at once, so the cost of engagement saturates: measured
+    // free fraction runs 0.70 idle → 0.55 at three → 0.50 at four, and stays 0.50
+    // at six. A mind cannot talk itself into paralysis by opening more threads, and
+    // the ones past the cap are open-but-unattended rather than free.
+    const four = await freeFractionAfter( 4 )
+    const six  = await freeFractionAfter( 6 )
+
+    expect( six ).toBeCloseTo( four, 5 )
+    expect( four ).toBeLessThan( await freeFractionAfter( 3 ) )
+  } )
+
+  it('charges nothing for a thread that is merely open', async () => {
+    // busyFacetIds() reports only facets with queued reports or an in-flight
+    // _reason(); an idle-but-open facet writes no demand, so it costs nothing.
+    const sup = new FacetSupervisor({ idleTtlTicks: 10_000 })
+    sup.spawn( spawnDeps( 0 ) )
+    sup.spawn( spawnDeps( 1 ) )
+
+    expect( sup.size ).toBe( 2 )
+    expect( sup.busyFacetIds() ).toEqual( [] )
+  } )
+
+  it('reports a facet as attending once it has work queued', async () => {
+    const sup = new FacetSupervisor({ idleTtlTicks: 10_000 })
+    const res = sup.spawn( { ...spawnDeps( 0 ), inbox: { enqueue: vi.fn() } as any } )
+    await res.handle!.report( { type: 'language_percept' } as any )   // queued → busy
+
+    expect( sup.busyFacetIds() ).toEqual( [ res.handle!.facetId ] )
+  } )
+} )
+
 describe('effortTargetForActions — executive action → effort mapping', () => {
   it('focus → 1.0', () => expect( effortTargetForActions( [ 'focus' ] ) ).toBe( 1.0 ) )
   it('rest/sleep/wait/meditate → 0.4', () => {

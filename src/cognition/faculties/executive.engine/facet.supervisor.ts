@@ -103,6 +103,28 @@ export class FacetSupervisor {
   /** Ids of the facets currently alive — the engine prunes its subject map against these. */
   liveFacetIds(): Set<string> { return new Set( this._facets.keys() ) }
 
+  /**
+   * Ids of the facets currently REASONING — queued reports or an in-flight
+   * `_reason()`. These are what the mind is actually attending to, and the engine
+   * turns them into `attention.demand` entities so they cost the AttentionAllocator
+   * real capacity.
+   *
+   * The distinction is the whole two-level model: an open facet is a thread the
+   * mind is IN (bounded by the persona's `maxFacets`), a busy one is a thread it is
+   * ATTENDING TO (bounded by the allocator's `maxFoci`, and paid for out of the
+   * same 100-unit budget as every other focus). You can be in ten conversations and
+   * attending to two. Without this, holding conversations cost the allocator
+   * nothing, so `freeFraction` — the very signal the facet budget scales on —
+   * reported the same spare attention whether the mind was idle or mid-thread with
+   * three people.
+   */
+  busyFacetIds(): string[] {
+    const out: string[] = []
+    for( const [ id, facet ] of this._facets )
+      if( facet.busy ) out.push( id )
+    return out
+  }
+
   attachSessionLogger( logger: SessionLogger | null ): void {
     this._sessionLogger = logger
   }
@@ -226,6 +248,17 @@ export class FacetSupervisor {
     this._lastStateRef = deps.stateRef
 
     // How many focused facets this mind can hold at once.
+    //
+    // This is the OPEN-THREAD level. Its sibling is the allocator's
+    // `engine-config-attention.maxFoci` — how many things the mind ATTENDS TO at
+    // once — and the two are one economy, not two budgets: a facet that is actually
+    // reasoning is published as an `attention.demand` (ExecutiveEngine.
+    // _facetAttentionDemands) and competes for those foci slots against every
+    // percept, paying `costPerFocus` out of the same 100-unit capacity. So a Will
+    // can be IN ten conversations while ATTENDING TO two, and the cost of the ones
+    // it is attending to flows back into the free fraction below. The same
+    // openness/conscientiousness pair develops both levels (consolidator 27c/27d),
+    // so they move together rather than drifting apart.
     //
     // Two layers, deliberately separate:
     //   • the CEILING is who this person is — `engine-config-executive.maxFacets`

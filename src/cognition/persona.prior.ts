@@ -118,6 +118,7 @@ const PRIOR_DESCRIPTIONS: Record<string, { lower: string; raise: string }> = {
   'engine-config-inhibition.baseInhibitionStrength':  { lower: 'acting on impulse more freely',              raise: 'holding myself in check more firmly before acting' },
   'engine-config-self-model.minNewExperiences':       { lower: 're-evaluating who I am on less new experience', raise: 'requiring more new experience before re-evaluating who I am' },
   'engine-config-attention.shiftInertia':             { lower: 'shifting my attention more readily',         raise: 'holding my attention more fixedly' },
+  'engine-config-attention.maxFoci':                  { lower: 'attending to one thing at a time, narrowly',  raise: 'keeping several things in view at once' },
   'engine-config-goal-manager.gritPriority':          { lower: 'refusing to give up on more of what matters to me', raise: 'letting go of goals more readily' },
   'engine-config-goal-manager.gritPatienceScale':     { lower: 'losing patience with stuck goals sooner',    raise: 'staying the course on hard goals far longer' },
   'engine-config-goal-manager.frustrationTolerance':  { lower: 'giving up faster when frustrated',            raise: 'holding steady through frustration' },

@@ -24,7 +24,8 @@ import type {
   SimulationContext,
   ReadonlySimulationState,
   ReasoningFootprint,
-  StateCommands
+  StateCommands,
+  EntityInput
 } from '#core/types'
 import { AsyncEngine } from '#core/async.engine'
 import type { IntermediateStream } from '#core/async.engine'
@@ -83,6 +84,17 @@ import { wallClock } from '#core/wall.clock'
 
 // Re-export for compatibility
 export { ExecutiveFacet, type ExecutiveFacetHandle }
+
+/**
+ * How hard a reasoning facet pulls on attention, as an `attention.demand` urgency.
+ *
+ * Deliberately below 1: holding a live conversation is a real claim on attention,
+ * but the allocator sorts candidates into `maxFoci` slots by salience, and a facet
+ * that always outranked everything would starve perception — the mind would stop
+ * noticing the world whenever it was talking. At 0.7 an urgent percept still wins
+ * a slot; routine traffic does not.
+ */
+const FACET_ATTENTION_URGENCY = 0.7
 
 // ── Engine config ───────────────────────────────────────────
 
@@ -478,7 +490,77 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // Sits at a fixed point in the serial engine order — the issue-side twin of
     // the CompletionInbox drain in Phase 2. See .TODO/FACET_REPLAY_DETERMINISM.md.
     this._facetSupervisor.pump( state )
-    return super.react( delta, tick, state, context )
+
+    const result = await super.react( delta, tick, state, context )
+
+    // Reasoning facets occupy attention. Merged into whatever this tick already
+    // produced — AsyncEngine.react returns commands on every tick, reasoning or not,
+    // so the allocator sees the cost land the tick it is incurred.
+    const focus = this._facetAttentionDemands( state, tick as unknown as number )
+    if( focus.set.length || focus.delete.length ){
+      result.commands ??= {}
+      result.commands.set    = [ ...( result.commands.set    ?? [] ), ...focus.set ]
+      result.commands.delete = [ ...( result.commands.delete ?? [] ), ...focus.delete ]
+    }
+
+    return result
+  }
+
+  /**
+   * What the mind is attending to because a facet is reasoning about it, as
+   * `attention.demand` entities the AttentionAllocator allocates real capacity
+   * against (`_extractSalienceSignals` reads this type; `costPerFocus` is then
+   * charged against the same 100-unit budget as perceptual foci).
+   *
+   * This closes a loop that was open in one direction only: the allocator's
+   * `freeFraction` scaled the facet budget, but facets never appeared in
+   * `_activeFocus`, so holding three conversations reported exactly as much spare
+   * attention as holding none. The budget was being scaled by a signal blind to the
+   * thing it was bounding.
+   *
+   * `urgency` sits below 1 on purpose: a live conversation is a genuine claim on
+   * attention but must not automatically outrank every percept — the allocator sorts
+   * candidates by salience into `maxFoci` slots, and a facet that always won would
+   * starve perception. Only BUSY facets are charged; an open-but-quiet thread is one
+   * the mind is in, not one it is attending to.
+   */
+  private _facetAttentionDemands(
+    state: ReadonlySimulationState,
+    tick: number,
+  ): { set: EntityInput[]; delete: string[] } {
+    const busy = this._facetSupervisor.busyFacetIds()
+    const set: EntityInput[] = []
+    const live = new Set<string>()
+
+    for( const facetId of busy ){
+      const id = `facet-attending-${facetId}`
+      live.add( id )
+      const subject = this._facetSubjects.get( facetId )
+      set.push({
+        id,
+        type: 'attention.demand',
+        metadata: {
+          urgency: FACET_ATTENTION_URGENCY,
+          source:  'executive-facet',
+          facetId,
+          ...( subject?.entityId ? { subjectEntityId: subject.entityId } : {} ),
+          ...( subject?.name     ? { subjectName:     subject.name     } : {} ),
+          // NOT `generatesGoal` — GoalManager turns flagged demands into goals, and
+          // "I am talking to someone" is a state, not something to pursue.
+          tick,
+        },
+      })
+    }
+
+    // Release the attention a facet held once it stops reasoning (or is reaped).
+    const del: string[] = []
+    for( const [ id, e ] of state.entities )
+      if( e.type === 'attention.demand'
+          && ( e.metadata as Record<string, unknown> | undefined )?.['source'] === 'executive-facet'
+          && !live.has( id ) )
+        del.push( id )
+
+    return { set, delete: del }
   }
 
   protected override shouldAct(

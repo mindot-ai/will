@@ -145,6 +145,14 @@ const CONSCIENTIOUSNESS_SELECTOR_FOCUS_GAIN = 0.1  // +action-selector.switchCos
 const OPENNESS_BREADTH_GAIN          = 4    // +executive.maxFacets per unit openness (hold more at once)
 const CONSCIENTIOUSNESS_BREADTH_GAIN = -3   // −executive.maxFacets per unit conscientiousness (fewer, seen through)
 
+// The same breadth disposition at the ATTENDING level — how many things the mind
+// holds in view at once (engine-config-attention.maxFoci, the allocator's slot cap),
+// as opposed to how many threads it keeps open (maxFacets above). One disposition,
+// two owners — rules 28/28b's pattern. Scaled against a base of 4, so the same trait
+// moves both levels proportionally rather than pulling them apart.
+const OPENNESS_FOCI_GAIN             = 1.5  // +attention.maxFoci per unit openness
+const CONSCIENTIOUSNESS_FOCI_GAIN    = -1.2 // −attention.maxFoci per unit conscientiousness
+
 // Emotional stability (formed from observed affect dynamics, not task success) develops
 // the affect *reactivity gain* down: a steadier Will lets frustration snowball into
 // chronic irritability more slowly. Distinct axis from resilience — resilience tunes how
@@ -357,6 +365,7 @@ export class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
       [ 'persona.frustration.irritability_rate_delta', next.priors[ 'engine-config-frustration' ]?.irritabilityRate ?? 0 ],
       [ 'persona.executive.deliberate_threshold_delta', next.priors[ 'engine-config-executive' ]?.deliberateThreshold ?? 0 ],
       [ 'persona.executive.max_facets_delta',     next.priors[ 'engine-config-executive' ]?.maxFacets ?? 0 ],
+      [ 'persona.attention.max_foci_delta',       next.priors[ 'engine-config-attention' ]?.maxFoci ?? 0 ],
       [ 'persona.reward.social_weight_delta', next.priors[ 'engine-config-reward' ]?.socialWeight ?? 0 ],
       [ 'persona.frustration.anger_reactivity_delta', next.priors[ 'engine-config-frustration' ]?.angerReactivity ?? 0 ],
       [ 'persona.novelty.significance_threshold_delta', next.priors[ 'engine-config-novelty' ]?.significanceThreshold ?? 0 ],
@@ -761,6 +770,28 @@ export class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
         gain: CONSCIENTIOUSNESS_BREADTH_GAIN,
         engineConfigId: 'engine-config-executive',
         param: 'maxFacets'
+      },
+      // 27d. The same breadth disposition one level down: how many things the mind
+      //      holds IN VIEW at once (the allocator's `maxFoci` slots), as against how
+      //      many threads it keeps OPEN (27c). A reasoning facet now competes for
+      //      these slots like any percept, so the two levels are one economy — a Will
+      //      can be in ten conversations while attending to two, and which two is
+      //      settled by salience against everything else it could be noticing.
+      //      `maxFoci` was already config-mirrored and read through the persona-prior;
+      //      it just had no description and no edge, so it could never actually move.
+      {
+        magnitude: openDev,
+        threshold: GRIT_THRESHOLD,
+        gain: OPENNESS_FOCI_GAIN,
+        engineConfigId: 'engine-config-attention',
+        param: 'maxFoci'
+      },
+      {
+        magnitude: conscDev,
+        threshold: GRIT_THRESHOLD,
+        gain: CONSCIENTIOUSNESS_FOCI_GAIN,
+        engineConfigId: 'engine-config-attention',
+        param: 'maxFoci'
       },
       // 28b. Same disposition, the AGENCY selector's owner (R2): a conscientious Will also
       //      resists having an in-flight action preempted — raise the selector's switch-cost

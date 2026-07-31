@@ -188,11 +188,34 @@ export function enactionFootprint(
   targetEntityId: string | undefined,
   tick:           Tick,
   windowTicks:    number = CONSEQUENCE_TTL_TICKS,
+  /**
+   * Tick of the last thing SAID to each entity, from `conversation.sent`.
+   *
+   * Descriptors cannot carry satiation on their own: the executor deletes them at
+   * `tick >= expiresAt` (motor.schema.executor's TTL sweep), so nothing survives
+   * past the echo window and a satiation window longer than it was silently a
+   * no-op. Observed live: the same relay delivered twice with `justEnacted` never
+   * once reaching the competition.
+   *
+   * `conversation.sent` is the durable record of having spoken — written by
+   * ProactiveCommunicator at push time, snapshotted with the state, and already
+   * what discharges an undertaking. Keyed by person rather than by schema on
+   * purpose: having just spoken to someone damps speaking to them again, however
+   * that speaking happens to be schematised.
+   */
+  spokenAt?:      ReadonlyMap<string, number>,
 ): number {
   if( !targetEntityId ) return 0
   if( windowTicks <= 0 ) return 0
 
   let strongest = 0
+
+  const spoken = spokenAt?.get( targetEntityId )
+  if( spoken !== undefined ){
+    const remaining = ( windowTicks - ( tick - spoken ) ) / windowTicks
+    if( remaining > strongest ) strongest = remaining
+  }
+
   for( const d of descriptors ){
     if( d.schema !== schema || d.targetEntityId !== targetEntityId ) continue
     // Measured from when the act happened, against the SATIATION window — not from
@@ -208,6 +231,36 @@ export function enactionFootprint(
   }
 
   return strongest < 0 ? 0 : strongest > 1 ? 1 : strongest
+}
+
+/**
+ * When the mind last SAID something to each person, from the durable
+ * `conversation.sent` records. Feeds `enactionFootprint`'s satiation.
+ *
+ * Unlike consequence descriptors these are never swept, so satiation can run on
+ * whatever window the persona wants rather than being capped by the echo TTL.
+ */
+export function spokenAtByEntity(
+  entities: ReadonlyMap<string, { type: string; tick?: number; metadata?: ReadonlyMap<string, unknown> | Record<string, unknown> }>,
+): Map<string, number> {
+  const out = new Map<string, number>()
+
+  for( const [ , e ] of entities ){
+    if( e.type !== 'conversation.sent') continue
+    const m      = ( e.metadata ?? {} ) as Record<string, unknown>
+    const target = typeof m['targetEntityId'] === 'string' ? m['targetEntityId'] as string : undefined
+    if( !target ) continue
+    // `metadata.tick` where the writer set one, else the entity's own tick, which
+    // StateManager.setEntity stamps from the sim clock on every write. The fallback
+    // matters: not every path that records having spoken fills the metadata field,
+    // and defaulting to 0 made every record look infinitely old.
+    const at = typeof m['tick'] === 'number' ? m['tick'] as number
+             : typeof e.tick    === 'number' ? e.tick
+             : 0
+    if( at > ( out.get( target ) ?? -Infinity ) ) out.set( target, at )
+  }
+
+  return out
 }
 
 // ── ACP-P1: entity correspondence (ACTION_CONDITIONED_PREDICTION §2) ─────────

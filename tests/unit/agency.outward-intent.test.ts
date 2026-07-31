@@ -348,6 +348,17 @@ describe('undertakings are discharged by having made the contact', () => {
     expect( keep.map( k => k.id ) ).toEqual( [ 'u2' ] )
   } )
 
+  it('retires an undertaking that predates the target field — it can never be matched', () => {
+    // Seven of these sat in a live snapshot, each asserting "nothing has gone to
+    // them yet" on every cycle with no way to ever be discharged.
+    const legacy: EntityInput = {
+      id: 'old-u', type: 'percept',
+      metadata: { category: 'undertaking', summary: 'I said I would reach them' },
+    }
+    const state = stateOf( { ...legacy, metadata: legacy.metadata } as never )
+    expect( reconcile( new ExecutiveEngine(), [], state ).discharge ).toEqual( [ 'old-u' ] )
+  } )
+
   it('leaves ordinary task escalations alone', () => {
     const task: EntityInput = {
       id: 'esc1', type: 'percept',

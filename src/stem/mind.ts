@@ -1334,6 +1334,42 @@ function _seedEngineConfigs( simulation: DefaultSimulation, entities: EngineConf
     })
 }
 
+/**
+ * Fill in engine-config params a restored Will has never seen, WITHOUT touching
+ * the ones it has.
+ *
+ * Seeding runs inside `assembleMind`; the snapshot restore runs after it and
+ * replaces the entity map wholesale, so a Will woke with whatever config it first
+ * hibernated under — for good. Every tunable added after a tenant's first run was
+ * therefore unreachable by that tenant: measured on a live Will, three params
+ * shipped that day (`repeatDamping`, `repeatWindowTicks`, `socialWeight`) were
+ * simply absent from its restored `engine-config-action-selector`, so the code
+ * reading them silently fell back to defaults and the features did nothing.
+ *
+ * A container has to be able to ship a new capability to a tenant already living
+ * in it. Restored values WIN — they carry PMA seeding and whatever the persona has
+ * learned — and only genuinely missing keys are added.
+ */
+export function backfillEngineConfigs( simulation: DefaultSimulation, entities: EngineConfigEntity[] ): void {
+  for( const cfg of entities ){
+    const existing = simulation.stateManager.getEntity( cfg.id )
+    if( !existing ){ _seedEngineConfigs( simulation, [ cfg ] ); continue }
+
+    const current = ( existing.metadata as { params?: Record<string, unknown> } | undefined )?.params ?? {}
+    const missing = Object.keys( cfg.params ).filter( k => !( k in current ) )
+    if( missing.length === 0 ) continue
+
+    simulation.stateManager.setEntity({
+      id:        cfg.id,
+      type:      'engine.config',
+      createdAt: existing.createdAt,
+      updatedAt: Date.now(),
+      metadata:  { engine: cfg.engine, params: { ...cfg.params, ...current } },
+    })
+    logger.info(`[WillStem] ${cfg.id}: added ${missing.length} new param(s) — ${missing.join(', ')}`)
+  }
+}
+
 // ── Helpers ──────────────────────────────────────────────────
 
 export function resolveExecutiveInterval( config: WillConfig ): number {

@@ -23,7 +23,7 @@ import type { ExecutiveOutputFull } from '#faculties/executive.engine'
 import type { Cognition, OutboxMessage, effectorInvocation, WorldInterface } from '#types'
 import type { TextMessage, SensoryInput } from '#senses/index'
 import type { ActivityEvent, ActivityEventHandler } from '#cognition/faculties/planning.engine/engine'
-import { assembleMind, type WillConfig } from '#stem/mind'
+import { assembleMind, backfillEngineConfigs, resolveExecutiveInterval, type WillConfig } from '#stem/mind'
 import { reviewIdentityCoherence as runCoherenceReview, type CoherenceInput, type CoherenceResult } from '#stem/guards/identity.coherence'
 import { SessionLogger } from '#stem/tracts/session.logger'
 import { fileLoggingEnabled } from '#stem/tracts/transport/stream.transport'
@@ -40,6 +40,7 @@ import type { ExternalTransport } from '#stem/tracts/transport'
 import { effectorController } from '#stem/tracts/effector.controller'
 import { externalSchemas } from '#agency/schemas/external'
 import { inFlightOnRestore } from '#agency/restart'
+import { buildEngineConfigEntities } from '#cognition/config.mirror.entities'
 import type { EffectorDeclaration } from '#agency/types'
 import { SensoryController } from '#stem/tracts/sensory.controller'
 import { BiographyWriter } from '#stem/tracts/biography.writer'
@@ -250,6 +251,13 @@ export class WillStem {
           // entity ids (`affordance-${tick}-…`, `agency-outcome-${tick}-…`) stop
           // colliding with a previous session's.
           simulation.clock.setTick( previousState.tick )
+
+          // The restore above replaced the entity map wholesale, including the
+          // engine-config mirror `assembleMind` had just seeded — so a Will woke
+          // with whatever config it FIRST hibernated under, and every tunable
+          // added since was unreachable to it. Restored values win; only params it
+          // has never seen are added.
+          backfillEngineConfigs( simulation, buildEngineConfigEntities( config, resolveExecutiveInterval( config ) ) )
 
           logger.info(
             `[WillStem] Restored snapshot for ${config.id} — ${previousState.entities.size} entities loaded, ` +

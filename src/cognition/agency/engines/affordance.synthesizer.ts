@@ -37,7 +37,7 @@ import type { SchemaRepertoire } from '#agency/schemas/repertoire'
 import { INNATE_SCHEMAS } from '#agency/schemas/innate'
 import { collectGoalTargets } from '#agency/selection.scoring'
 import { readEffectiveParams } from '#cognition/persona.prior'
-import { liveConsequences, enactionFootprint, CONSEQUENCE_TTL_TICKS, type ConsequenceDescriptor } from '#agency/consequence'
+import { liveConsequences, enactionFootprint, spokenAtByEntity, CONSEQUENCE_TTL_TICKS, type ConsequenceDescriptor } from '#agency/consequence'
 
 /** Default field width for non-innate affordances when no attention metric exists. */
 const DEFAULT_ATTENTION_CAP = 5
@@ -71,6 +71,9 @@ export class AffordanceSynthesizer implements CognitiveEngine {
 
   /** Ticks an act stays satiating (engine-config-action-selector.repeatWindowTicks). */
   private _satiationWindow: number = CONSEQUENCE_TTL_TICKS
+
+  /** Tick of the last thing said to each entity — outlives the descriptor sweep. */
+  private _spokenAt: ReadonlyMap<string, number> = new Map()
   private _bus:         CognitiveBus | null = null
   private _defaultCap:  number
   private _lastFieldSize = 0
@@ -134,6 +137,10 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // when unseeded, so a bare harness behaves as before.
     this._satiationWindow = readEffectiveParams( state, 'engine-config-action-selector').repeatWindowTicks
       ?? CONSEQUENCE_TTL_TICKS
+    // Durable "when did I last speak to them". Descriptors alone cannot carry
+    // satiation — the executor deletes them at their echo TTL, so any window
+    // longer than that was a no-op.
+    this._spokenAt = spokenAtByEntity( state.entities )
 
     const set:    EntityInput[] = []
     const del:    string[]      = []
@@ -357,7 +364,14 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     const cost            = clamp01( schema.cost * ( energyLow ? 1.5 : 1 ) )
 
     // This act's own footprint, if it is still in flight toward this same person.
-    const justEnacted = enactionFootprint( this._inFlight, schema.id, ctx.targetEntityId, tick, this._satiationWindow )
+    // Satiation only applies to acts aimed at someone the mind SPEAKS to — the
+    // `conversation.sent` half is keyed by person, so it must not damp, say,
+    // inspecting them.
+    const speaks = schema.tags?.includes('communication') ?? false
+    const justEnacted = enactionFootprint(
+      this._inFlight, schema.id, ctx.targetEntityId, tick, this._satiationWindow,
+      speaks ? this._spokenAt : undefined,
+    )
 
     const key    = ctx.targetEntityId ?? ctx.evokedBy ?? schema.id
     const source = ctx.source ?? schema.source

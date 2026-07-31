@@ -1173,7 +1173,12 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       const m      = e.metadata as Record<string, unknown> | undefined
       const target = typeof m?.['targetEntityId'] === 'string' ? m['targetEntityId'] as string : undefined
       if( !target ) continue
-      const at = typeof m?.['tick'] === 'number' ? m['tick'] as number : 0
+      // metadata.tick where set, else the entity's own sim-clock tick. Reading
+      // metadata alone defaulted every record to 0, so `contacted >= madeAt` was
+      // false for any promise made after tick 0 — this discharge never once fired.
+      const at = typeof m?.['tick'] === 'number' ? m['tick'] as number
+               : typeof ( e as { tick?: number } ).tick === 'number' ? ( e as { tick?: number } ).tick as number
+               : 0
       contacted.set( target, Math.max( contacted.get( target ) ?? 0, at ) )
     }
 
@@ -1198,8 +1203,15 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       const u = undertakingOf( e.metadata as Record<string, unknown> | undefined )
       if( !u ) continue
 
+      // No target ⇒ it predates the field this reconciliation keys on, so it can
+      // never be matched against a contact and would assert "nothing has gone to
+      // them yet" for the rest of the mind's life. Seven of these were found in a
+      // live snapshot, each one re-read every cycle. Undischargeable is strictly
+      // worse than gone.
+      if( !u.target ){ discharge.push( id ); continue }
+
       if( honoured( u.target, u.madeAt ) ) discharge.push( id )
-      else if( u.target ) carrying.add( u.target )
+      else carrying.add( u.target )
     }
 
     // Drop an incoming restatement of something already honoured or already held.

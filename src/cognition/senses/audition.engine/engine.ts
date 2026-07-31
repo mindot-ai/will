@@ -329,6 +329,8 @@ export class AuditionEngine extends BaseSenseEngine {
   private _memorySink: (( entity: MemoryEntity ) => void) | null = null
   /** Deterministic id source for `conversation.received` — see _writeReceived. */
   private _receivedSeq = 0
+  /** Deterministic id source for `conversation.sent` — see _writeSent. */
+  private _sentSeq = 0
   /** Speaker attachment strength accessor (0–1) — weights salience by relationship. */
   private _getAttachmentScore: (( entityId: string ) => number) | null = null
   /** Active-goal topic text accessor — for salience topic-overlap. */
@@ -920,6 +922,38 @@ export class AuditionEngine extends BaseSenseEngine {
     })
   }
 
+  /**
+   * Record that the mind SPOKE to someone, mirroring `_writeReceived`.
+   *
+   * Only ProactiveCommunicator wrote `conversation.sent`, so a reply — which is
+   * most of what a Will says — left no durable trace of having spoken. Everything
+   * that asks "have I already said something to them?" was therefore blind to
+   * conversation: satiation could not damp repeating a relay delivered as a reply,
+   * and an undertaking discharged inside a conversation stayed forever unkept,
+   * which is exactly how the same message went out again and again.
+   *
+   * Speaking is speaking, whichever path carried it.
+   */
+  private _writeSent( entityId: string, entityName: string | undefined, bubbles: string[] ): void {
+    if( !this._memorySink || bubbles.length === 0 ) return
+    // Monotonic counter, never wallClock(): this entity lives in state and a
+    // wall-clock id makes recorded and replayed runs diverge (R2). setEntity
+    // stamps the sim tick, which is what readers key off.
+    this._sentSeq += 1
+    this._memorySink({
+      id:   `conv-sent-reply-${ entityId }-${ this._sentSeq }`,
+      type: 'conversation.sent',
+      metadata: {
+        targetEntityId:   entityId,
+        targetEntityName: entityName,
+        messageCount:     bubbles.length,
+        preview:          bubbles[0]?.slice( 0, 100 ) ?? '',
+        effectorName:     'text',
+        source:           'audition-facet',
+      },
+    })
+  }
+
   private _persistExchangeMemory( entityId: string, threadId: string, reply: string, confidence: number, entityName?: string ): void {
     const inbound = this._inflightInbound.get( entityId ) ?? ''
     this._inflightInbound.delete( entityId )
@@ -993,6 +1027,8 @@ export class AuditionEngine extends BaseSenseEngine {
             tick:         wallClock(),        // wall-clock tick for session log (telemetry, R2)
             pushToOutbox: !viaTransport,
           })
+
+          this._writeSent( entityId, d.targetEntityId, d.replyBubbles )
 
           if( viaTransport )
             logger.info(

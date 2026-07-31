@@ -25,7 +25,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   enactionFootprint, consequenceEntity, readConsequence, liveConsequences,
-  CONSEQUENCE_TTL_TICKS,
+  spokenAtByEntity, CONSEQUENCE_TTL_TICKS,
 } from '#agency/consequence'
 import { scoreAffordance, DEFAULT_WEIGHTS, type BiasContext } from '#agency/selection.scoring'
 import type { Affordance } from '#agency/types'
@@ -144,6 +144,84 @@ describe("enactionFootprint — the window is the persona's, not the echo TTL's"
     const d = [ delivered( FABRICE, 100 ) ]
     expect( enactionFootprint( d, 'reach-out', FABRICE, 115 ) )
       .toBeCloseTo( enactionFootprint( d, 'reach-out', FABRICE, 115, CONSEQUENCE_TTL_TICKS ), 5 )
+  } )
+} )
+
+// ── satiation has to outlive the descriptor sweep ─────────────
+
+/**
+ * The window param alone was a NO-OP and shipped believing it worked.
+ *
+ * MotorSchemaExecutor deletes every descriptor at `tick >= expiresAt` (its TTL
+ * sweep), so nothing survives past the echo window and a 60-tick satiation window
+ * had nothing left to read. Measured live: the same relay delivered twice with
+ * `justEnacted` never once appearing in the competition.
+ *
+ * The earlier tests missed it by building descriptors by hand and never driving
+ * them through the sweep. `conversation.sent` is the durable record — written at
+ * push time, snapshotted, and already what discharges an undertaking.
+ */
+describe('satiation reads the durable record, not just the descriptor', () => {
+  const sentEntities = ( ...sends: { target: string; at: number }[] ) => new Map(
+    sends.map( ( s, i ) => [ `conv-sent-${ s.target }-${ i }`, {
+      type: 'conversation.sent',
+      metadata: { targetEntityId: s.target, tick: s.at },
+    } ] ),
+  )
+
+  it('still damps after the descriptor would have been swept away', () => {
+    // 40 ticks on: the descriptor is long deleted (TTL 30), but the mind spoke
+    // recently enough that saying it again should still feel wrong.
+    const spoken = spokenAtByEntity( sentEntities({ target: FABRICE, at: 100 }) as never )
+    expect( enactionFootprint( [], 'reach-out', FABRICE, 140, 60, spoken ) ).toBeCloseTo( 20 / 60, 5 )
+  } )
+
+  it('decays to nothing at the end of the persona window', () => {
+    const spoken = spokenAtByEntity( sentEntities({ target: FABRICE, at: 100 }) as never )
+    expect( enactionFootprint( [], 'reach-out', FABRICE, 160, 60, spoken ) ).toBe( 0 )
+    expect( enactionFootprint( [], 'reach-out', FABRICE, 100, 60, spoken ) ).toBeCloseTo( 1, 5 )
+  } )
+
+  it("falls back to the entity's own sim tick when metadata carries none", () => {
+    // Not every writer fills metadata.tick — StateManager stamps `tick` on every
+    // entity, and reading metadata alone defaulted every record to 0. That made
+    // satiation compare against zero and the undertaking discharge test
+    // `contacted >= madeAt` false for any promise made after tick 0: both silently
+    // dead against live state where every conversation.sent was stamped 0.
+    const noMetaTick = new Map( [ [ 'cs1', {
+      type: 'conversation.sent', tick: 120,
+      metadata: { targetEntityId: FABRICE },
+    } ] ] )
+    expect( spokenAtByEntity( noMetaTick as never ).get( FABRICE ) ).toBe( 120 )
+  } )
+
+  it('prefers metadata.tick when the writer did set one', () => {
+    const both = new Map( [ [ 'cs1', {
+      type: 'conversation.sent', tick: 999,
+      metadata: { targetEntityId: FABRICE, tick: 120 },
+    } ] ] )
+    expect( spokenAtByEntity( both as never ).get( FABRICE ) ).toBe( 120 )
+  } )
+
+  it('takes the most recent send when there are several', () => {
+    const spoken = spokenAtByEntity( sentEntities(
+      { target: FABRICE, at: 100 }, { target: FABRICE, at: 130 },
+    ) as never )
+    expect( spoken.get( FABRICE ) ).toBe( 130 )
+  } )
+
+  it('stays per-person', () => {
+    const spoken = spokenAtByEntity( sentEntities({ target: FABRICE, at: 100 }) as never )
+    expect( enactionFootprint( [], 'reach-out', FKEM, 110, 60, spoken ) ).toBe( 0 )
+  } )
+
+  it('is not consulted for acts that are not speaking', () => {
+    // The durable half is keyed by PERSON, so it must not damp inspecting them.
+    // The synthesizer gates on the schema's `communication` tag; absent the map,
+    // behaviour is descriptor-only.
+    const spoken = spokenAtByEntity( sentEntities({ target: FABRICE, at: 100 }) as never )
+    expect( enactionFootprint( [], 'inspect', FABRICE, 110, 60 ) ).toBe( 0 )
+    expect( enactionFootprint( [], 'inspect', FABRICE, 110, 60, spoken ) ).toBeGreaterThan( 0 )
   } )
 } )
 

@@ -376,16 +376,30 @@ export class ActionSelector implements CognitiveEngine {
     // never messages them looks identical from outside whether the intention was
     // never formed or was formed and beaten every cycle; this is the only place
     // that difference is visible, and it is one line per contested tick.
-    // Gated on there being an actual contest, so a mind talking to one person logs
-    // nothing. INFO rather than debug: the host suppresses debug, and a diagnostic
-    // nobody can see is the situation this exists to end.
-    const reachers = scored.filter( s => s.affordance.schema === 'reach-out' && s.affordance.targetEntityId )
-    if( reachers.length > 1 )
+    // Why a WILLED contact did not happen. Gated on the executive having actually
+    // willed one (source 'ideomotor') that is not the winner — so a mind whose
+    // decision is being enacted logs nothing, and a mind that decided to contact
+    // someone and then did not says exactly what beat it.
+    //
+    // The earlier version of this gated on `reachers.length > 1`, assuming the
+    // failure was one addressee out-competing another. It is not: each master cycle
+    // sweeps every executive intent it did not name that cycle, so there is usually
+    // exactly ONE reach-out candidate in the field and the contest log never fired.
+    // The competition that matters is the willed contact against the rest of the
+    // field, which is what this prints.
+    const willedReach = scored.find( s =>
+      s.affordance.schema === 'reach-out'
+      && s.affordance.source === 'ideomotor'
+      && s.affordance.targetEntityId )
+
+    if( willedReach && willedReach !== winner )
       logger.info(
-        `[selector] reach-out contest: ` + reachers.map( s =>
-          `${ s.affordance.targetEntityId }=${ s.activation.toFixed( 3 ) }` +
-          `${ s.affordance.justEnacted ? ` (justEnacted ${ s.affordance.justEnacted.toFixed( 2 ) })` : '' }`
-        ).join('  ') + `  → won by ${ winner.affordance.targetEntityId ?? winner.affordance.schema }`
+        `[selector] willed reach-out → ${ willedReach.affordance.targetEntityId } NOT selected: ` +
+        `${ willedReach.activation.toFixed( 3 ) }` +
+        `${ willedReach.affordance.justEnacted ? ` (justEnacted ${ willedReach.affordance.justEnacted.toFixed( 2 ) })` : '' }` +
+        ` < ${ winner.affordance.schema }` +
+        `${ winner.affordance.targetEntityId ? `→${ winner.affordance.targetEntityId }` : '' }` +
+        ` ${ winner.activation.toFixed( 3 ) }`
       )
 
     // ── Preempt a mid-composite routine (IMMEDIATE SWITCH) ────────
@@ -447,8 +461,25 @@ export class ActionSelector implements CognitiveEngine {
       const incumbentStrength = awaiting.activation * ( 1 - staleness * STALE_DECAY )
       const switchCost        = effSwitchCost * ( 1 - stakes( winner.affordance, bias ) )
 
-      if( winner.activation <= incumbentStrength + switchCost )
+      if( winner.activation <= incumbentStrength + switchCost ){
+        // A challenger aimed at a DIFFERENT person losing to an awaiting incumbent
+        // is the starvation shape: every proactive reach-out sits 'awaiting' while a
+        // facet authors its words (8–18s = many ticks), and the incumbent's recorded
+        // activation does not decay with the challenger's damping. If one addressee
+        // can hold the channel this way, a Will can decide to contact someone else
+        // every cycle and never once do it — which is exactly the report.
+        if( winner.affordance.schema === 'reach-out'
+            && winner.affordance.targetEntityId
+            && winner.affordance.targetEntityId !== awaiting.target )
+          logger.info(
+            `[selector] reach-out → ${ winner.affordance.targetEntityId } BLOCKED by awaiting ` +
+            `${ awaiting.schema } → ${ awaiting.target || '—' }: ` +
+            `challenger ${ winner.activation.toFixed( 3 ) } ≤ incumbent ${ incumbentStrength.toFixed( 3 ) } ` +
+            `+ switch ${ switchCost.toFixed( 3 ) } (awaiting ${ tick - awaiting.dispatchedAt } ticks)`
+          )
+
         return busy( eligible.length )   // not worth interrupting — keep waiting
+      }
 
       preemptDelete = awaiting.id        // PREEMPT — fall through and commit the challenger
       preemptedFrom = awaiting.schema

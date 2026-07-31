@@ -122,7 +122,17 @@ export function liveConsequences(
   for( const [ , e ] of entities ){
     if( e.type !== CONSEQUENCE_TYPE ) continue
     const d = readConsequence( e.metadata )
-    if( d && tick < d.expiresAt ) out.push( d )
+    if( !d ) continue
+    // A descriptor stamped LATER than now came from a previous session: descriptors
+    // snapshot with the state, and the tick counter restarts at 1 on wake. Without
+    // this the expiry test (`tick < expiresAt`) reads every restored descriptor as
+    // freshly live — measured: a Will woke at tick 1 holding three reach-out
+    // descriptors stamped 575–596 with expiry 605–626, so for the WHOLE session it
+    // believed it had just messaged that person moments ago. It damped every
+    // reach-out to them and delivered nothing, and the P2 matcher would equally
+    // have attenuated their genuine replies as its own echo.
+    if( d.tick > tick ) continue
+    if( tick < d.expiresAt ) out.push( d )
   }
   return out.sort( ( a, b ) => ( a.intentId < b.intentId ? -1 : a.intentId > b.intentId ? 1 : 0 ) )
 }

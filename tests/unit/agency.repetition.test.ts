@@ -104,13 +104,62 @@ describe('enactionFootprint — how much of my own act is still in flight', () =
 
   it('reads the descriptors the executor actually writes into state', () => {
     // End-to-end through the real entity shape, not a hand-built descriptor.
-    const entities = new Map( [ [ 'c1', consequenceEntity({
+    const written = consequenceEntity({
       intentId: 'i1', schema: 'reach-out', mode: 'communicate',
       targetEntityId: FABRICE, expiresAt: 130, tick: 100,
-    }) ] ].map( ( [ k, e ] ) => [ k, { type: e.type, metadata: e.metadata } ] ) )
+    })
+    const entities = new Map( [ [ written.id, { type: written.type, metadata: written.metadata } ] ] )
 
     const live = liveConsequences( entities as never, 110 as Tick )
     expect( enactionFootprint( live, 'reach-out', FABRICE, 110 ) ).toBeCloseTo( 0.666, 2 )
+  } )
+} )
+
+// ── the restore boundary ──────────────────────────────────────
+
+describe('liveConsequences — descriptors do not survive into the next session', () => {
+  /** Entities as they come back from a snapshot, keyed by the real entity id. */
+  const restored = ( ...ds: { tick: number; expiresAt: number }[] ) => new Map(
+    ds.map( ( d, i ) => {
+      const e = consequenceEntity({
+        intentId: `i${ i }`, schema: 'reach-out', mode: 'communicate',
+        targetEntityId: FABRICE, expiresAt: d.expiresAt, tick: d.tick,
+      })
+      return [ e.id, { type: e.type, metadata: e.metadata } ]
+    } ),
+  )
+
+  it('ignores a descriptor stamped later than now — it is from before the restore', () => {
+    // The measured shape: a Will hibernated at tick 598 holding three reach-out
+    // descriptors (tick 575–596, expiry 605–626), then woke at tick 1. The expiry
+    // test alone reads all three as freshly live, so for the WHOLE session it
+    // believed it had just messaged that person moments ago.
+    const live = liveConsequences( restored(
+      { tick: 575, expiresAt: 605 },
+      { tick: 594, expiresAt: 624 },
+      { tick: 596, expiresAt: 626 },
+    ) as never, 1 as Tick )
+
+    expect( live ).toEqual( [] )
+  } )
+
+  it('so a restored Will is not damped out of ever contacting that person again', () => {
+    // What the bug actually cost: reach-out fully damped for the entire run. The
+    // session it was introduced in delivered ZERO messages where the prior one
+    // delivered twelve.
+    const live = liveConsequences( restored( { tick: 596, expiresAt: 626 } ) as never, 1 as Tick )
+    expect( enactionFootprint( live, 'reach-out', FABRICE, 1 ) ).toBe( 0 )
+  } )
+
+  it('still honours a descriptor written earlier in THIS session', () => {
+    const live = liveConsequences( restored( { tick: 100, expiresAt: 130 } ) as never, 110 as Tick )
+    expect( live ).toHaveLength( 1 )
+    expect( enactionFootprint( live, 'reach-out', FABRICE, 110 ) ).toBeCloseTo( 0.666, 2 )
+  } )
+
+  it('and one written on this very tick', () => {
+    const live = liveConsequences( restored( { tick: 100, expiresAt: 130 } ) as never, 100 as Tick )
+    expect( live ).toHaveLength( 1 )
   } )
 } )
 

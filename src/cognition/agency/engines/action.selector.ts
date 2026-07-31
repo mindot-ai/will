@@ -387,16 +387,21 @@ export class ActionSelector implements CognitiveEngine {
     // exactly ONE reach-out candidate in the field and the contest log never fired.
     // The competition that matters is the willed contact against the rest of the
     // field, which is what this prints.
-    const willedReach = scored.find( s =>
-      s.affordance.schema === 'reach-out'
+    // EVERY willed contact that lost, not just the strongest. An earlier version
+    // used `.find()`, which reports only the highest-scoring one — so with two
+    // live intents a second loser went unlogged, and the log would have quietly
+    // understated how many people the mind decided to contact and then did not.
+    const lostReaches = scored.filter( s =>
+      s !== winner
+      && s.affordance.schema === 'reach-out'
       && s.affordance.source === 'ideomotor'
       && s.affordance.targetEntityId )
 
-    if( willedReach && willedReach !== winner )
+    for( const lost of lostReaches )
       logger.info(
-        `[selector] willed reach-out → ${ willedReach.affordance.targetEntityId } NOT selected: ` +
-        `${ willedReach.activation.toFixed( 3 ) }` +
-        `${ willedReach.affordance.justEnacted ? ` (justEnacted ${ willedReach.affordance.justEnacted.toFixed( 2 ) })` : '' }` +
+        `[selector] willed reach-out → ${ lost.affordance.targetEntityId } NOT selected: ` +
+        `${ lost.activation.toFixed( 3 ) }` +
+        `${ lost.affordance.justEnacted ? ` (justEnacted ${ lost.affordance.justEnacted.toFixed( 2 ) })` : '' }` +
         ` < ${ winner.affordance.schema }` +
         `${ winner.affordance.targetEntityId ? `→${ winner.affordance.targetEntityId }` : '' }` +
         ` ${ winner.activation.toFixed( 3 ) }`

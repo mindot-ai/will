@@ -87,9 +87,7 @@ export class EscalationBuffer {
             // it checks, which is exactly the check we want it making.
             // Everything actionable goes in `summary`: that is the only field the
             // executive context actually renders (context.ts extractPercepts reads
-            // summary/content and nothing else), so the sibling `directive` below is
-            // written and never read. Kept on the task branch only because removing it
-            // would change nothing and it documents the intent of that path.
+            // summary/content and nothing else).
             //
             // The closing clause is the whole point. A mind that has SAID it will make
             // contact remembers deciding, and cannot tell from the inside whether the
@@ -119,13 +117,16 @@ export class EscalationBuffer {
           type: 'percept',
           metadata: {
             category:   'task-escalation',
-            summary:    `[Task from conversation with ${esc.entityId}] ${esc.reasoning}`,
+            // The steer lives IN the summary because that is the only field the
+            // executive context renders (context.ts extractPercepts reads
+            // summary/content and nothing else). It sat in a sibling `directive`
+            // field for its whole life and never once reached the master.
+            summary:    `[Task from conversation with ${esc.entityId}] ${esc.reasoning}`
+              + ' — this is mine to plan or re-goal; the facet handles the talking.',
             salience:   0.85,
             source:     'audition-facet',
             entityId:   esc.entityId,
             threadId:   esc.threadId,
-            // Guides the master's response: plan, don't reply
-            directive:  'Create a plan or update goals. Do not emit [REPLY] — the facet handles communication.',
           },
         } )
     }

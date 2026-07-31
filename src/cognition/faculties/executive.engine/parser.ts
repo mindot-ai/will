@@ -193,6 +193,7 @@ function parseTaggedBlocks(
     'GOALS_REPRIORITIZE',
     'EFFECTORS',
     'SELF_OBS',
+    'SKILLS',
   ],
   found = taggedTypes.filter( t => text.includes(`[${t}]`) )
   if( found.length > 0 ){
@@ -296,6 +297,13 @@ function parseTaggedBlocks(
   try {
     const selfObsData = parseJsonBlock('SELF_OBS') as { selfObservations?: string[] } | null
     if( selfObsData?.selfObservations ) full.selfObservations = selfObsData.selfObservations
+  }
+  catch { /* ignore */ }
+
+  // Named compound skills — the creation seam for learned composites (#114).
+  try {
+    const skillsData = parseJsonBlock('SKILLS') as { newSkills?: ExecutiveOutputFull['newSkills'] } | null
+    if( skillsData?.newSkills ) full.newSkills = skillsData.newSkills
   }
   catch { /* ignore */ }
 

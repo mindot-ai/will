@@ -829,6 +829,12 @@ export class AuditionEngine extends BaseSenseEngine {
         `I have decided, on my own initiative, to reach out to ${ entityName } (id: ${ entityId }).`,
         'No one prompted this — I am choosing to make contact now.',
         gist ? `What is on my mind: ${ gist }` : '',
+        // The gist is what the MASTER framed, and the master was not talking to
+        // them — so it refers to people in the third person, including sometimes
+        // the very person about to read it. Observed live: "Fabrice says the
+        // server issue is fixed now and he should look into the logs", addressed
+        // TO him. The words are mine to choose; the gist is only what I mean.
+        gist ? `That is my sense of it, not my words to them — I am speaking to ${ entityName } directly, so I say it the way I would say it to their face.` : '',
       ].filter( Boolean ).join('\n'),
       recallQuery:       gist ?? entityName,
       awareness:         [ ...DEFAULT_FACET_AWARENESS, 'plans' ],

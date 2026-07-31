@@ -252,13 +252,18 @@ describe('EscalationBuffer — an undertaking made inside a conversation', () =>
       .toEqual( [ expect.stringMatching( /reach FKEM/ ), expect.stringMatching( /reach Ada/ ) ] )
   } )
 
-  it('leaves a plain task escalation exactly as it was', () => {
+  it('gives a plain task escalation its steer IN the summary, where it is read', () => {
+    // The steer used to live in a sibling `directive` field. `extractPercepts`
+    // renders summary/content and nothing else, so it never once reached the
+    // master in the whole life of that field.
     const buf = new EscalationBuffer()
     buf.push( { entityId: 'e', threadId: 't', reasoning: 'they want the repo set up', tick: 9 } )
 
     const m = buf.drainToPercepts().percepts[0]!.metadata as Record<string, unknown>
     expect( m.category ).toBe('task-escalation')
-    expect( m.summary ).toBe('[Task from conversation with e] they want the repo set up')
+    expect( m.summary ).toMatch( /they want the repo set up/ )
+    expect( m.summary ).toMatch( /mine to plan or re-goal/ )
+    expect( m.directive ).toBeUndefined()
   } )
 } )
 

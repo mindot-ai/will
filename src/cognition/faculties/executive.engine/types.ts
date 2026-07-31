@@ -70,6 +70,8 @@ export interface ExecutiveOutputFull {
   goalsToAbandon?: Array<{ goalId: string; reason: string }>
   goalsToReprioritize?: Array<{ goalId: string; newPriority: number; reason: string }>
   selfObservations?: string[]
+  /** Compound actions the mind is naming as single skills (see ProposedSkill). */
+  newSkills?: ProposedSkill[]
   /**
    * Plain-text reply from a conversation facet — populated by parseResponse()
    * from the [REPLY_TEXT]...[/REPLY_TEXT] block.
@@ -335,6 +337,25 @@ export interface ExecutiveContext {
 }
 
 // ── Pending message ──────────────────────────────────────────
+
+/**
+ * A compound action the mind names as one thing it does — "when I do A then B,
+ * that is <name>". Registered into the SchemaRepertoire as a composite, after
+ * which it competes as a single affordance and can proceduralize into a habit.
+ *
+ * This is the creation seam for the instrumental→habitual gradient. Before it,
+ * `agency.composite.proposed` was subscribed by ReafferenceEngine — whose handler
+ * is the only caller of `registerComposite()` anywhere — and published by nothing,
+ * so no Will could ever hold a skill beyond the innate floor (#114).
+ */
+export interface ProposedSkill {
+  /** What the mind calls it. Becomes the schema id. */
+  id: string
+  /** The sub-schemas it is made of, in order. Two or more, or it is not compound. */
+  composedOf: string[]
+  tags?: string[]
+  cost?: number
+}
 
 export interface PendingMessage {
   id: string

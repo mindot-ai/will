@@ -889,6 +889,12 @@ export class PMALoader {
     const temperamentValence = pma.emotionalBaseline.temperamentValence
     const reactivity = pma.emotionalBaseline.reactivity
 
+    // MERGE, never replace — same trap as engine-config-executive. The mirror
+    // seeds `emitBlendEvents` here and the PMA carries only `inertia`, so a
+    // whole-entity write silently dropped it for every restored Will.
+    const blenderSeeded = ( sm.getEntity('engine-config-affective-blender')?.metadata as
+      { params?: Record<string, unknown> } | undefined )?.params ?? {}
+
     sm.setEntity({
       id:        'engine-config-affective-blender',
       type:      'engine.config',
@@ -897,6 +903,7 @@ export class PMALoader {
       metadata: {
         engine: 'affective-blender',
         params: {
+          ...blenderSeeded,
           inertia: 1 - reactivity,
           temperamentValence,
         },
@@ -940,6 +947,12 @@ export class PMALoader {
 
     // Configure memory persistence for ForgettingCurve
     if( pma.identity.memoryPersistence !== undefined ){
+      // MERGE — the mirror seeds emotionProtection / pruningThreshold /
+      // maxPrunePerTick here and the PMA carries only baseForgettingRate, so a
+      // whole-entity write dropped three params on every restore.
+      const forgettingSeeded = ( sm.getEntity('engine-config-forgetting')?.metadata as
+        { params?: Record<string, unknown> } | undefined )?.params ?? {}
+
       sm.setEntity({
         id:        'engine-config-forgetting',
         type:      'engine.config',
@@ -948,6 +961,7 @@ export class PMALoader {
         metadata: {
           engine: 'forgetting-curve',
           params: {
+            ...forgettingSeeded,
             baseForgettingRate: 1 - ( pma.identity.memoryPersistence * 0.7 ),
           },
         },

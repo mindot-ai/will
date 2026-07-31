@@ -506,7 +506,11 @@ completionType guide:
 
 [SELF_OBS]
 {"selfObservations": ["I noticed that..."]}
-[/SELF_OBS]`
+[/SELF_OBS]
+
+[SKILLS]
+{"newSkills": [{"id": "brief-then-confirm", "composedOf": ["reach-out", "wait"], "tags": ["social"], "cost": 0.15}]}
+[/SKILLS]`
   }
 
   // ── User message ───────────────────────────────────────────

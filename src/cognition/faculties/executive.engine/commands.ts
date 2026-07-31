@@ -323,6 +323,32 @@ export function publishCognitiveEvents(
       }
     })
 
+  // agency.composite.proposed — the mind names a compound action as one skill.
+  //
+  // This is the creation seam for the instrumental→habitual gradient, and it had
+  // no producer: ReafferenceEngine subscribes to this event and its handler is the
+  // ONLY caller of SchemaRepertoire.registerComposite() anywhere in the tree, so
+  // until now no Will could hold a skill beyond the innate floor, for its entire
+  // life (#114). A capability the container offered and no tenant could reach.
+  //
+  // One event per proposal — the consumer registers them individually and drops
+  // anything with fewer than two sub-schemas, since a "composite" of one is just
+  // the schema it already had.
+  for( const skill of output.newSkills ?? [] )
+    bus.publish({
+      type: 'agency.composite.proposed',
+      version: 1,
+      sourceEngine: 'executive-engine',
+      salience: 0.7,
+      payload: {
+        id:         skill.id,
+        composedOf: skill.composedOf,
+        ...( skill.tags ? { tags: skill.tags } : {} ),
+        ...( typeof skill.cost === 'number' ? { cost: skill.cost } : {} ),
+        tick: footprint.tickObserved,
+      }
+    })
+
   // goal.proposed — when executive proposes new goals
   if( output.newGoals?.length )
     bus.publish({

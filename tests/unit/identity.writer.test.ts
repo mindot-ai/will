@@ -191,3 +191,41 @@ describe('readIdentityName — no name is no name', () => {
     expect( readIdentityName( { entities: new Map() } as unknown as ReadonlySimulationState ) ).toBe('')
   } )
 } )
+
+// ── the writer is necessary but not sufficient ────────────────
+
+describe('snapshot restore may not eat the name', () => {
+  it('is guarded in the restore block, not only at the writers', () => {
+    // Making every WRITER merge did not fix this, and only booting a real Will
+    // found out. Restore is not a writer — it is the entire entity map arriving
+    // at once, landing between `_seedIdentity` (which writes the name) and
+    // `loadPMA`. So a mind hibernated before the merging writer existed came back
+    // nameless from a fully repaired build, and told its operator "my self-model
+    // says I'm Will" on a live channel.
+    //
+    // The sibling case was already known and already handled three lines above:
+    // `backfillEngineConfigs` exists because restore ate the engine-config mirror
+    // the same way. Identity had no equivalent.
+    const stem = readFileSync( join( SRC, 'stem', 'index.ts'), 'utf8')
+    const block = stem.slice(
+      stem.indexOf('stateManager.restore('),
+      stem.indexOf('Restored snapshot for'),
+    )
+
+    expect( block, 'the restore block must re-assert the name' ).toContain('mergeIdentity(')
+    expect( block ).toContain('config.name')
+  } )
+
+  it('re-asserts ONLY the name, never the mind\'s own self-knowledge', () => {
+    // prompt / values / traits / traitStats / style are what the mind has LEARNED
+    // about itself. Re-seeding those from boot config on every wake would erase a
+    // life's worth of self-model development every time the process restarted.
+    const stem = readFileSync( join( SRC, 'stem', 'index.ts'), 'utf8')
+    const call = stem.slice( stem.indexOf('mergeIdentity( simulation.stateManager') )
+      .slice( 0, 200 )
+
+    expect( call ).toContain('name: config.name')
+    for( const learned of [ 'prompt', 'values', 'traits', 'style' ] )
+      expect( call, `restore must not re-seed ${learned}` ).not.toContain(`${learned}:`)
+  } )
+} )

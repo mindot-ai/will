@@ -28118,6 +28118,11 @@ var WillStem = class {
           simulation.stateManager.restore(previousState, { entities: true, metrics: false });
           simulation.clock.setTick(previousState.tick);
           backfillEngineConfigs(simulation, buildEngineConfigEntities(config, resolveExecutiveInterval(config)));
+          if (config.name) {
+            const restored = mergeIdentity(simulation.stateManager, { name: config.name });
+            if (restored.length)
+              logger.info(`[WillStem] identity-self: re-asserted name '${config.name}' after restore`);
+          }
           logger.info(
             `[WillStem] Restored snapshot for ${config.id} \u2014 ${previousState.entities.size} entities loaded, resuming at tick ${previousState.tick}` + (inFlight.length ? ` (dropped ${inFlight.length} in-flight)` : "")
           );

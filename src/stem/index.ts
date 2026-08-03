@@ -45,6 +45,7 @@ import type { EffectorDeclaration } from '#agency/types'
 import { SensoryController } from '#stem/tracts/sensory.controller'
 import { BiographyWriter } from '#stem/tracts/biography.writer'
 import { HealthReporter } from '#stem/tracts/health.reporter'
+import { mergeIdentity } from '#cognition/identity.entity'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -258,6 +259,28 @@ export class WillStem {
           // added since was unreachable to it. Restored values win; only params it
           // has never seen are added.
           backfillEngineConfigs( simulation, buildEngineConfigEntities( config, resolveExecutiveInterval( config ) ) )
+
+          // The same wholesale replacement takes `identity-self` — so the name
+          // `_seedIdentity` wrote moments ago is replaced by whatever the snapshot
+          // carries, which for any mind hibernated before the merging writer
+          // existed is NO NAME AT ALL.
+          //
+          // Caught only by booting: making every writer merge is necessary and was
+          // not sufficient, because restore is not a writer — it is the whole map
+          // arriving at once, and it lands between `_seedIdentity` and `loadPMA`.
+          // A live Will woke from a repaired build and still told her operator "my
+          // self-model says I'm Will".
+          //
+          // ONLY the name is re-asserted. Everything else on this entity — prompt,
+          // values, traits, traitStats, style — is the mind's own accumulated
+          // self-knowledge and must come from the snapshot, not from boot config.
+          // The name is the one field the container supplies and the tenant never
+          // learns, which is exactly why it is the one field a restore may not eat.
+          if( config.name ){
+            const restored = mergeIdentity( simulation.stateManager, { name: config.name } )
+            if( restored.length )
+              logger.info(`[WillStem] identity-self: re-asserted name '${config.name}' after restore`)
+          }
 
           logger.info(
             `[WillStem] Restored snapshot for ${config.id} — ${previousState.entities.size} entities loaded, ` +

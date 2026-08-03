@@ -31,6 +31,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   mergeIdentity, identityCommand, readIdentityName, IDENTITY_ENTITY_ID,
+  composeIdentityPrompt, readPersona, WILL_CORE_PREAMBLE,
 } from '#cognition/identity.entity'
 import type { StateManager } from '#core/state.manager'
 import type { ReadonlySimulationState } from '#core/types'
@@ -227,5 +228,56 @@ describe('snapshot restore may not eat the name', () => {
     expect( call ).toContain('name: config.name')
     for( const learned of [ 'prompt', 'values', 'traits', 'style' ] )
       expect( call, `restore must not re-seed ${learned}` ).not.toContain(`${learned}:`)
+  } )
+} )
+
+// ── the container's preamble is not the tenant's to carry ─────
+
+describe('identity prompt is two layers, stored apart', () => {
+  it('composes the current build\'s preamble over the persona', () => {
+    const p = composeIdentityPrompt('I am Lora, COO of Mindot.', 'A Discord workspace.')
+    expect( p.startsWith( WILL_CORE_PREAMBLE ) ).toBe( true )
+    expect( p ).toContain('## Who I Am\nI am Lora, COO of Mindot.')
+    expect( p ).toContain('## My Environment\nA Discord workspace.')
+  } )
+
+  it('omits an empty layer rather than emitting a bare header', () => {
+    expect( composeIdentityPrompt('') ).toBe( WILL_CORE_PREAMBLE )
+    expect( composeIdentityPrompt('I am Ada.') ).not.toContain('## My Environment')
+  } )
+
+  it('reads the persona back without the preamble riding along', () => {
+    expect( readPersona({ persona: 'I am Lora.' }) ).toBe('I am Lora.')
+  } )
+
+  it('recovers the persona from a pre-split composed prompt', () => {
+    // The whole reason `readPersona` has a fallback: artifacts already on disk
+    // stored the COMPOSED string, so distilling one naively would carry the old
+    // preamble forward forever.
+    const composed = composeIdentityPrompt('I am Lora, COO of Mindot.')
+    const back = readPersona({ prompt: composed })
+    expect( back ).toBe('I am Lora, COO of Mindot.')
+    expect( back ).not.toContain('I am NOT a language model')
+  } )
+
+  it('returns nothing for a prompt that is preamble only', () => {
+    expect( readPersona({ prompt: WILL_CORE_PREAMBLE }) ).toBe('')
+    expect( readPersona( undefined ) ).toBe('')
+  } )
+
+  it('the distiller captures the persona layer, the loader recomposes', () => {
+    // A woken mind must get TODAY's preamble. Storing the composed string meant a
+    // fix to that text could never reach a mind that already existed — each one
+    // kept reciting the version it was distilled under.
+    const pma = readFileSync( join( SRC, 'pma', 'index.ts'), 'utf8')
+    expect( pma ).toContain('prompt:  readPersona( m )')
+    expect( pma ).toContain('composeIdentityPrompt( pma.identity.prompt')
+    expect( pma ).toContain('persona: pma.identity.prompt')
+  } )
+
+  it('_seedIdentity stores both the composed view and the persona alone', () => {
+    const mind = readFileSync( join( SRC, 'stem', 'mind.ts'), 'utf8')
+    expect( mind ).toContain('composeIdentityPrompt( fullPersonaText, profileContext )')
+    expect( mind ).toContain('persona: fullPersonaText')
   } )
 } )

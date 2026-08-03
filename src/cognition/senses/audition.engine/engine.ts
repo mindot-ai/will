@@ -1056,7 +1056,24 @@ export class AuditionEngine extends BaseSenseEngine {
    *
    * Speaking is speaking, whichever path carried it.
    */
-  private _writeSent( entityId: string, entityName: string | undefined, bubbles: string[] ): void {
+  private _writeSent(
+    entityId:   string,
+    entityName: string | undefined,
+    bubbles:    string[],
+    /**
+     * Outbox ids for these bubbles — the ONLY thing that lets a later delivery
+     * ack find this record (`OutboxController.confirmDelivery` correlates on
+     * `outboxMessageIds`, there is no other key).
+     *
+     * Omitted, this record could never be marked delivered. Every reply the mind
+     * ever made carried `delivered` unset, forever — so a mind asking itself "did
+     * that land?" found no answer for anything it had SAID, while the answer was
+     * recorded faithfully for everything it had initiated. Silence read exactly
+     * like failure, and it re-sent. The proactive path stored these from the
+     * start; the reply path was simply never given them.
+     */
+    outboxMessageIds?: string[],
+  ): void {
     if( !this._memorySink || bubbles.length === 0 ) return
     this._memorySink({
       id:   this._sentKey('conv-sent-reply', entityId, bubbles.join('\n') ),
@@ -1068,6 +1085,9 @@ export class AuditionEngine extends BaseSenseEngine {
         preview:          bubbles[0]?.slice( 0, 100 ) ?? '',
         effectorName:     'text',
         source:           'audition-facet',
+        tick:             this._lastDecisionTick,
+        delivered:        false,
+        ...( outboxMessageIds?.length ? { outboxMessageIds } : {} ),
       },
     })
   }
@@ -1159,7 +1179,7 @@ export class AuditionEngine extends BaseSenseEngine {
             pushToOutbox: !viaTransport,
           })
 
-          this._writeSent( entityId, d.targetEntityId, d.replyBubbles )
+          this._writeSent( entityId, d.targetEntityId, d.replyBubbles, ids )
 
           if( viaTransport )
             logger.info(

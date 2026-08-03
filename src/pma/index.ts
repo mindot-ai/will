@@ -46,7 +46,7 @@ import {
   loadCompetence,
   type CompetenceSnapshot,
 } from '#agency/competence.codec'
-import { mergeIdentity } from '#cognition/identity.entity'
+import { mergeIdentity, composeIdentityPrompt, readPersona, IDENTITY_ENTITY_ID } from '#cognition/identity.entity'
 
 // ── Schema version ─────────────────────────────────────────────
 // Bump this when any field is removed or semantically changed.
@@ -363,7 +363,12 @@ export class PMADistiller {
       if( entity.type === 'will.identity'){
         const m = entity.metadata ?? {}
         return {
-          prompt:  ( m['prompt']  as string )                     ?? '',
+          // The TENANT's text only. Capturing the composed `prompt` baked the
+          // container's WILL_CORE_PREAMBLE into the artifact, so a woken mind
+          // recited whichever build's preamble had distilled it — forever, and
+          // invisibly. `readPersona` falls back to stripping it out of a composed
+          // prompt, so artifacts written before the split load clean too.
+          prompt:  readPersona( m ),
           values:  ( m['values']  as string[] )                   ?? [],
           traits:  ( m['traits']  as Record<string, number> )     ?? {},
           traitStats: ( m['traitStats'] as PMAIdentity['traitStats'] ) ?? undefined,
@@ -799,8 +804,13 @@ export class PMALoader {
     // supplied at boot by whoever is renting the container. This used to replace
     // the entity outright, so `_seedIdentity`'s `name` — written moments earlier
     // in the same wake — was erased before the first tick, every single wake.
+    // Recomposed, never restored verbatim: `pma.identity.prompt` is layer 2 (the
+    // persona), and layer 1 comes from the build that is running NOW. This is what
+    // makes a preamble fix reach minds that already exist.
+    const environment = sm.getEntity( IDENTITY_ENTITY_ID )?.metadata?.['environment']
     mergeIdentity( sm, {
-      prompt:  pma.identity.prompt,
+      persona: pma.identity.prompt,
+      prompt:  composeIdentityPrompt( pma.identity.prompt, typeof environment === 'string' ? environment : undefined ),
       values:  pma.identity.values,
       traits:  pma.identity.traits,
       traitStats: pma.identity.traitStats,   // restore the Will's own norm (graded salience B/C)

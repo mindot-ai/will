@@ -7764,6 +7764,21 @@ interface WillConfig {
      */
     minExecutiveInterval?: number;
     /**
+     * Enable the DeliberationCache — a learned fast path that composes an executive
+     * output from highly-similar, highly-competent precedent instead of calling the
+     * LLM. Off unless asked for.
+     *
+     * OFF BY DEFAULT ON PURPOSE, and the default is the interesting part: this
+     * changes how a mind THINKS, not how fast it runs. A cache hit means the mind
+     * acted from precedent without deliberating, which is a real thing minds do and
+     * a real thing an operator must opt into for a specific Will — not something a
+     * dependency bump should switch on underneath one that is already living.
+     *
+     * Pass `true` for the built-in conservative settings, or a config object to tune
+     * the retrieval/competence parameters (see cognition/cache/types).
+     */
+    deliberationCache?: boolean | DeliberationCacheConfig;
+    /**
      * Goals seeded before the first tick. If omitted or empty, the Will starts
      * goalless — the executive engine will generate context-appropriate goals on its
      * first cycle (triggered automatically after ~20 goalless ticks).

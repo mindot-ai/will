@@ -146,3 +146,65 @@ describe('a restart does not erase what the mind said last time', () => {
     expect( facet ).toContain('tick: currentState.tick')
   } )
 } )
+
+// ── a reply must be able to learn whether it landed ───────────
+
+describe('the mind can find out that its own words arrived', () => {
+  const audition = code('cognition/senses/audition.engine/engine.ts')
+
+  it('records the outbox ids on the reply\'s conversation.sent', () => {
+    // `OutboxController.confirmDelivery` correlates a delivery ack to a sent
+    // record through `outboxMessageIds` and has no other key. The proactive path
+    // stored them from the start; the reply path never did — so EVERY reply the
+    // mind ever made carried `delivered` unset, permanently. Asking itself "did
+    // that land?" found no answer for anything it had SAID, while the answer was
+    // recorded faithfully for everything it had initiated. Silence read exactly
+    // like failure, and it re-sent.
+    expect( audition ).toContain('outboxMessageIds')
+    expect( audition ).toContain('this._writeSent( entityId, d.targetEntityId, d.replyBubbles, ids )')
+  } )
+
+  it('starts a reply at delivered:false, so unset never means unknown', () => {
+    const write = audition.slice( audition.indexOf('private _writeSent'), audition.indexOf('private _persistExchangeMemory') )
+    expect( write ).toContain('delivered:        false')
+  } )
+
+  it('is the same correlation key the delivery ack actually reads', () => {
+    const controller = code('stem/tracts/outbox.controller.ts')
+    expect( controller ).toContain("entity.metadata?.outboxMessageIds")
+  } )
+} )
+
+// ── honest about what it can and cannot see of itself ─────────
+
+describe('the mind knows the limits of its own introspection', () => {
+  it('is told it has no view of the machinery underneath', () => {
+    // Asked what was wrong with her, a live Will reported "three identical
+    // 'facet-attending-facet-15' attention demands (salience 0.71 each)". No such
+    // entity reaches any prompt; attention demands are never rendered at all. She
+    // invented the id, the count and the number, and her operator went looking.
+    // She had no statement either way, so she filled the gap.
+    const factory = code('cognition/faculties/executive.engine/prompt.factory.ts')
+    expect( factory ).toContain('I have NO view of the machinery underneath')
+    expect( factory ).toContain('where I cannot see, I say I do not know')
+  } )
+} )
+
+// ── a capability with no way in is a missing capability ───────
+
+describe('the deliberation cache is reachable', () => {
+  it('has a config seam', () => {
+    expect( code('stem/mind.ts') ).toContain('deliberationCache?: boolean | DeliberationCacheConfig')
+  } )
+
+  it('is actually called from assembly', () => {
+    // It was complete, tested and snapshot-safe, and `enableCache()` had zero
+    // callers — it shipped in the bundle as code no mind could ever reach.
+    expect( code('stem/mind.ts') ).toContain('executiveEngine.enableCache(')
+  } )
+
+  it('stays OFF unless asked for — it changes how a mind thinks, not how fast it runs', () => {
+    const mind = code('stem/mind.ts')
+    expect( mind ).toContain('if( config.deliberationCache )')
+  } )
+} )

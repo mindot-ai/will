@@ -848,22 +848,51 @@ export class AuditionEngine extends BaseSenseEngine {
       logger.info(`[audition-engine] already composing an outreach to ${ entityId } — not opening a second`)
       return []
     }
-    // Deliberately NOT a supervisor key: an authoring facet is transient and is
-    // exactly what the mind can most afford to evict under pressure. Keying it
-    // would move it into the protected tier alongside live conversations.
-    const spawned = this._executiveEngine.spawnFacet('outreach')
-    if( spawned.attention === 'full' || !spawned.handle ){
-      logger.warn(`[audition-engine] facet budget full — cannot author outreach to ${ entityId }`)
-      return []
-    }
-    const handle = spawned.handle
 
-    handle.setFocus({
+    // Already talking to them? Then this is not a second thread — it is a thing to
+    // say in the one that is open, and it must be said BY that thread.
+    //
+    // A transient facet composing in parallel cannot see the live conversation: not
+    // the thread digest, not what was said two minutes ago, not the thinking the
+    // open facet has been doing about this person. So the mind asked the same
+    // question it had already asked, in different words, while the answer was
+    // sitting in a thread it was not reading. Routing through the open facet costs
+    // nothing extra — the focus rides on the REPORT (see FacetReport.focus), so the
+    // conversation's own standing focus is never touched and the next inbound turn
+    // resumes exactly where it was.
+    const openThread = this._executiveEngine.facetFor(`conversation:${ entityId }`)
+    const handle     = openThread ?? ( () => {
+      // Nobody home — a transient authoring facet, deliberately NOT supervisor-keyed:
+      // it is exactly what the mind can most afford to evict under pressure, and a
+      // key would move it into the protected tier alongside live conversations.
+      const spawned = this._executiveEngine!.spawnFacet('outreach')
+      if( spawned.attention === 'full' || !spawned.handle ){
+        logger.warn(`[audition-engine] facet budget full — cannot author outreach to ${ entityId }`)
+        return undefined
+      }
+      return spawned.handle
+    } )()
+
+    if( !handle ) return []
+
+    if( openThread )
+      logger.info(`[audition-engine] composing outreach to ${ entityId } inside the open conversation (${ openThread.facetId })`)
+
+    // What we have already said to each other, when there IS an open thread. Without
+    // it the mind opens with a question it asked four minutes ago.
+    const digest = openThread ? this._digests.getDigest( this._inflightThread.get( entityId ) ?? entityId ) : ''
+
+    const outreachFocus: FocusSection = ({
       title:    'Reaching out',
       function: 'outreach',
       content: [
-        `I have decided, on my own initiative, to reach out to ${ entityName } (id: ${ entityId }).`,
-        'No one prompted this — I am choosing to make contact now.',
+        openThread
+          ? `I am already in conversation with ${ entityName } (id: ${ entityId }), and there is something I have decided to say to them now — unprompted, not an answer to anything they asked.`
+          : `I have decided, on my own initiative, to reach out to ${ entityName } (id: ${ entityId }).`,
+        openThread
+          ? 'This continues that conversation. I do not re-introduce myself and I do not ask again for something already answered above.'
+          : 'No one prompted this — I am choosing to make contact now.',
+        digest,
         gist ? `What is on my mind: ${ gist }` : '',
         // The gist is what the MASTER framed, and the master was not talking to
         // them — so it refers to people in the third person, including sometimes
@@ -904,14 +933,25 @@ export class AuditionEngine extends BaseSenseEngine {
           () => { logger.warn(`[audition-engine] outreach authoring timed out for ${ entityId }`); done( [] ) },
           60_000,   // generous: the facet LLM authors in ~8–18s
         )
-        unsub = handle.subscribe( d => done( ( d.decision as ConversationDecision ).replyBubbles ?? [] ) )
-        Promise.resolve( handle.report({ type: 'outreach', payload: { entityId, gist } }) ).catch( err => {
+        // ONLY this report's decision. Sharing a live conversation facet means its
+        // ordinary reply decisions arrive on the same subscription, and resolving
+        // on one of those would hand the human's reply back as if the mind had
+        // composed it unprompted — and deliver it twice.
+        unsub = handle.subscribe( d => {
+          if( d.respondingToType !== 'outreach') return
+          done( ( d.decision as ConversationDecision ).replyBubbles ?? [] )
+        } )
+        // The focus rides the REPORT, so a shared conversation facet keeps its own
+        // standing focus and its next inbound turn resumes untouched.
+        Promise.resolve( handle.report({ type: 'outreach', payload: { entityId, gist }, focus: outreachFocus }) ).catch( err => {
           logger.warn(`[audition-engine] outreach report failed for ${ entityId }: ${ ( err as Error ).message }`)
           done( [] )
         } )
       } )
 
-      handle.destroy()
+      // Only tear down what we opened. Destroying a borrowed conversation facet
+      // would end the conversation as a side effect of speaking in it.
+      if( !openThread ) handle.destroy()
       return bubbles
     }
     catch( err ){
@@ -1033,6 +1073,15 @@ export class AuditionEngine extends BaseSenseEngine {
     // Resolve the CURRENT turn's thread (set by _processMessage) rather than the
     // facet's spawn-time thread — correct for an entity that spans threads (§2).
     const threadId = this._inflightThread.get( entityId ) ?? ''
+
+    // An outreach composed INSIDE this conversation (authorOutreach borrowing the
+    // open facet) lands here too, because the session subscription is facet-wide.
+    // Its words belong to `authorOutreach`, which returns them to the agency for
+    // delivery through the proactive path; delivering them here as well would send
+    // the same message twice and answer a turn nobody took. `_endTurn` is not
+    // called either — an outreach is not a turn, and releasing the queue here would
+    // let the next inbound start while a real turn was still in flight.
+    if( decision.respondingToType === 'outreach') return
 
     // finally{} releases the entity's serial turn queue on EVERY exit path —
     // reply delivered, reply suppressed, or escalation only. Without this a

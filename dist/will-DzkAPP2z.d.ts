@@ -4785,6 +4785,18 @@ interface FacetReport {
     contextId?: string;
     /** Optional dynamic instructions to append to the user message */
     instructions?: string;
+    /**
+     * Attend to something else for THIS report only, leaving the facet's standing
+     * focus untouched.
+     *
+     * A facet's focus was a single mutable field, so anything that wanted a live
+     * facet to consider one different thing had to `setFocus()` first — clobbering
+     * whatever the facet was already set up for, and racing with any report already
+     * queued behind it. That is why a self-initiated message to someone the mind was
+     * ALREADY talking to had to be composed by a separate, transient facet that could
+     * not see the live conversation at all.
+     */
+    focus?: FocusSection;
 }
 interface FacetDecision {
     facetId: string;
@@ -5037,6 +5049,11 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         attention: 'available' | 'full';
         handle?: ExecutiveFacetHandle;
     };
+    /**
+     * The facet already attending to `key`, if one is open — without spawning.
+     * See FacetSupervisor.handleFor.
+     */
+    facetFor(key: string): ExecutiveFacetHandle | undefined;
     subscribes(): string[];
     publishes(): CognitiveEventSchema[];
     snapshot(): Record<string, unknown>;

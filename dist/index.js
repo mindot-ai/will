@@ -10788,10 +10788,9 @@ var PromptFactory = class {
       selfTuningLine,
       `**Communication style:** ${identity.style}`
     ].filter(Boolean).join("\n");
-    const iAm = identity.name ? `I am ${identity.name}.` : "";
     const roleDescription = isMaster ? `I am the unified cognitive core of ${identity.name || "this mind"} \u2014 a self-aware synthetic mind.
 I receive my complete internal state and produce ALL cognitive outputs in one response:
-decisions, plans, beliefs, introspections, narrative updates, and self-observations.` : [iAm, `Right now my whole attention is on: **${focus.title}**.`].filter(Boolean).join(" ");
+decisions, plans, beliefs, introspections, narrative updates, and self-observations.` : `Right now my whole attention is on: **${focus.title}**.`;
     const consciousnessArchitecture = isMaster ? `I am the default reasoning mode. Focused facets may run simultaneously, each
 concentrating on specific tasks. Their reasoning syncs back to me.
 I maintain my unified identity across all cycles.` : "";
@@ -11855,19 +11854,20 @@ var ExecutiveFacet = class {
   async _reason(report) {
     if (!this._currentStateRef)
       throw new Error(`[executive.facet] ${this.facetId} no state reference available`);
-    if (!this._currentFocus)
+    const reportFocus = report.focus ?? this._currentFocus;
+    if (!reportFocus)
       throw new Error(`[executive.facet] ${this.facetId} no focus set. Call setFocus() before report().`);
     const currentState = this._currentStateRef;
-    const execContext = await PromptFactory.buildFreshContext(this._contextDeps, currentState, this._currentFocus?.recallQuery);
+    const execContext = await PromptFactory.buildFreshContext(this._contextDeps, currentState, reportFocus.recallQuery);
     const qualityModulation = PromptFactory.computeQualityModulation(currentState);
     const epistemicUncertainty = PromptFactory.computeEpistemicUncertainty(execContext, currentState);
     const focus = this._masterSyncHistory.length > 0 ? {
-      ...this._currentFocus,
-      content: `${this._currentFocus.content}
+      ...reportFocus,
+      content: `${reportFocus.content}
 
 ## What I've Been Turning Over
 ${this._masterSyncHistory.join("\n")}`
-    } : this._currentFocus;
+    } : reportFocus;
     const systemPrompt = PromptFactory.buildSystemPrompt({
       context: execContext,
       focus,
@@ -11888,7 +11888,7 @@ ${this._facetReasoningHistory.join("\n")}` : "";
       stressLoad: currentState.metrics.get("stress.load") ?? 0,
       // A facet's "stakes-bearing moment" is a live message awaiting reply (conversation
       // facets set focus.recallQuery to it); planning/other facets rely on uncertainty.
-      hasPendingMessage: !!this._currentFocus?.recallQuery
+      hasPendingMessage: !!reportFocus.recallQuery
     }, deliberateThreshold);
     let ideationCandidates;
     if (processSelection.process === "deliberate") {
@@ -11915,7 +11915,7 @@ ${this._facetReasoningHistory.join("\n")}` : "";
           category: "executive",
           attribute: "facet",
           process: "ideation",
-          function: this._currentFocus?.function ?? "-",
+          function: reportFocus.function ?? "-",
           scope: this.facetId,
           demand: processSelection.effortScore
         }
@@ -11957,7 +11957,7 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         // facet's analogue of master's 'decision'. This previously fell back to
         // 'facet' — an *attribute* value, which quietly created a bogus bucket
         // in the by-function cost breakdown. The typed axes caught it.
-        function: this._currentFocus?.function ?? "-",
+        function: reportFocus.function ?? "-",
         scope: this.facetId,
         demand: processSelection.effortScore
       };
@@ -13556,6 +13556,18 @@ var FacetSupervisor = class {
   get size() {
     return this._facets.size;
   }
+  /**
+   * The facet already carrying `key`, if any — WITHOUT opening one.
+   *
+   * Lets a caller ask "am I already attending to this?" and act differently when
+   * the answer is yes. The case it exists for: the mind decides, on its own
+   * initiative, to say something to someone it is ALREADY in conversation with.
+   * That is not a second thread; it is a thing to say in the thread that is open.
+   */
+  handleFor(key) {
+    const id = this._byKey.get(key);
+    return id ? this._handles.get(id) : void 0;
+  }
   /** Ids of the facets currently alive — the engine prunes its subject map against these. */
   liveFacetIds() {
     return new Set(this._facets.keys());
@@ -14103,6 +14115,13 @@ var ExecutiveEngine = class extends AsyncEngine {
         summarizer: this._summarizer
       }
     });
+  }
+  /**
+   * The facet already attending to `key`, if one is open — without spawning.
+   * See FacetSupervisor.handleFor.
+   */
+  facetFor(key) {
+    return this._facetSupervisor.handleFor(key);
   }
   // ── CognitiveEngine interface ──────────────────────────────
   subscribes() {
@@ -19858,18 +19877,26 @@ var AuditionEngine = class extends BaseSenseEngine {
       logger.info(`[audition-engine] already composing an outreach to ${entityId} \u2014 not opening a second`);
       return [];
     }
-    const spawned = this._executiveEngine.spawnFacet("outreach");
-    if (spawned.attention === "full" || !spawned.handle) {
-      logger.warn(`[audition-engine] facet budget full \u2014 cannot author outreach to ${entityId}`);
-      return [];
-    }
-    const handle = spawned.handle;
-    handle.setFocus({
+    const openThread = this._executiveEngine.facetFor(`conversation:${entityId}`);
+    const handle = openThread ?? (() => {
+      const spawned = this._executiveEngine.spawnFacet("outreach");
+      if (spawned.attention === "full" || !spawned.handle) {
+        logger.warn(`[audition-engine] facet budget full \u2014 cannot author outreach to ${entityId}`);
+        return void 0;
+      }
+      return spawned.handle;
+    })();
+    if (!handle) return [];
+    if (openThread)
+      logger.info(`[audition-engine] composing outreach to ${entityId} inside the open conversation (${openThread.facetId})`);
+    const digest = openThread ? this._digests.getDigest(this._inflightThread.get(entityId) ?? entityId) : "";
+    const outreachFocus = {
       title: "Reaching out",
       function: "outreach",
       content: [
-        `I have decided, on my own initiative, to reach out to ${entityName} (id: ${entityId}).`,
-        "No one prompted this \u2014 I am choosing to make contact now.",
+        openThread ? `I am already in conversation with ${entityName} (id: ${entityId}), and there is something I have decided to say to them now \u2014 unprompted, not an answer to anything they asked.` : `I have decided, on my own initiative, to reach out to ${entityName} (id: ${entityId}).`,
+        openThread ? "This continues that conversation. I do not re-introduce myself and I do not ask again for something already answered above." : "No one prompted this \u2014 I am choosing to make contact now.",
+        digest,
         gist ? `What is on my mind: ${gist}` : "",
         // The gist is what the MASTER framed, and the master was not talking to
         // them — so it refers to people in the third person, including sometimes
@@ -19891,7 +19918,7 @@ var AuditionEngine = class extends BaseSenseEngine {
         const bubbles = rawReply.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
         return { reply: bubbles.join("\n"), replyBubbles: bubbles, targetEntityId: entityId, requiresMasterAttention: false };
       }
-    });
+    };
     this._outreachInFlight.add(entityId);
     try {
       const bubbles = await new Promise((resolve) => {
@@ -19914,13 +19941,16 @@ var AuditionEngine = class extends BaseSenseEngine {
           6e4
           // generous: the facet LLM authors in ~8–18s
         );
-        unsub = handle.subscribe((d) => done(d.decision.replyBubbles ?? []));
-        Promise.resolve(handle.report({ type: "outreach", payload: { entityId, gist } })).catch((err) => {
+        unsub = handle.subscribe((d) => {
+          if (d.respondingToType !== "outreach") return;
+          done(d.decision.replyBubbles ?? []);
+        });
+        Promise.resolve(handle.report({ type: "outreach", payload: { entityId, gist }, focus: outreachFocus })).catch((err) => {
           logger.warn(`[audition-engine] outreach report failed for ${entityId}: ${err.message}`);
           done([]);
         });
       });
-      handle.destroy();
+      if (!openThread) handle.destroy();
       return bubbles;
     } catch (err) {
       logger.warn(`[audition-engine] outreach authoring failed for ${entityId}: ${err.message}`);
@@ -20015,6 +20045,7 @@ var AuditionEngine = class extends BaseSenseEngine {
   // ── Facet decision handling ─────────────────────────────────
   _onFacetDecision(entityId, decision) {
     const threadId = this._inflightThread.get(entityId) ?? "";
+    if (decision.respondingToType === "outreach") return;
     try {
       const d = decision.decision;
       d.reply && this._digests.append(threadId, "will", d.reply);

@@ -1,4 +1,4 @@
-import { cN as Will } from '../will-DV-sQebC.js';
+import { cN as Will } from '../will-DzkAPP2z.js';
 import { C as ChannelBridge } from '../types-E9-HV-SW.js';
 
 interface DiscordLikeChannel {

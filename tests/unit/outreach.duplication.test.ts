@@ -29,29 +29,50 @@ import { AuditionEngine } from '#senses/audition.engine/engine'
 
 // ── 1. one authoring pass per person ──────────────────────────
 
-/** A mock executive whose outreach facet never settles until released. */
-function heldExecutive(){
+/**
+ * A mock executive whose facets never settle until released.
+ *
+ * `open` pre-registers a facet under a supervisor key, so `facetFor` finds it —
+ * that is how the engine models "already in conversation with this person".
+ */
+function heldExecutive( open: Record<string, string> = {} ){
   let spawns = 0
-  const release: Array<( bubbles: string[] ) => void> = []
+  const release: Array<( bubbles: string[], type?: string ) => void> = []
+  const destroyed: string[] = []
+  const reports: Array<{ facetId: string; type: string; focusTitle?: string; standingFocus?: string }> = []
 
-  const engine = {
-    spawnFacet(){
-      spawns++
-      let subscriber: (( d: unknown ) => void ) | null = null
-      return { attention: 'available' as const, handle: {
-        facetId: `facet-${spawns}`,
-        report(){
-          release.push( bubbles => subscriber?.({
+  const makeFacet = ( facetId: string ) => {
+    const subscribers = new Set<( d: unknown ) => void>()
+    let standing: { title?: string } | undefined
+    return {
+      facetId,
+      report( r: { type: string; focus?: { title?: string } } ){
+        reports.push( { facetId, type: r.type, focusTitle: r.focus?.title, standingFocus: standing?.title } )
+        release.push( ( bubbles, type = r.type ) => {
+          for( const fn of subscribers ) fn({
+            facetId, respondingToType: type,
             decision: { reply: bubbles.join('\n'), replyBubbles: bubbles, targetEntityId: 'fabrice', requiresMasterAttention: false },
             reasoning: '', confidence: 0.9,
-          }) )
-        },
-        subscribe( fn: ( d: unknown ) => void ){ subscriber = fn; return () => { subscriber = null } },
-        setFocus(){}, setStateRef(){}, onChunk(){}, onReaped(){}, destroy(){},
-      } }
+          })
+        } )
+      },
+      subscribe( fn: ( d: unknown ) => void ){ subscribers.add( fn ); return () => { subscribers.delete( fn ) } },
+      setFocus( f: { title?: string } ){ standing = f },
+      setStateRef(){}, onChunk(){}, onReaped(){},
+      destroy(){ destroyed.push( facetId ) },
+    }
+  }
+
+  const keyed = new Map( Object.entries( open ).map( ( [ k, id ] ) => [ k, makeFacet( id ) ] ) )
+
+  const engine = {
+    facetFor( key: string ){ return keyed.get( key ) },
+    spawnFacet(){
+      spawns++
+      return { attention: 'available' as const, handle: makeFacet(`facet-${spawns}`) }
     },
   }
-  return { engine, get spawns(){ return spawns }, release }
+  return { engine, get spawns(){ return spawns }, release, destroyed, reports }
 }
 
 const settle = () => new Promise( r => setTimeout( r, 0 ) )
@@ -110,6 +131,7 @@ describe('authorOutreach — two intents toward one person are one message', () 
   it('clears the guard even when the facet throws, so nobody becomes unreachable', async () => {
     const engine = new AuditionEngine()
     engine.attachExecutiveEngine( {
+      facetFor: () => undefined,
       spawnFacet: () => ( { attention: 'available' as const, handle: {
         facetId: 'f', report(){ throw new Error('boom') },
         subscribe(){ return () => {} },
@@ -153,5 +175,88 @@ describe('the reply contract gives the mind a way to say nothing', () => {
     // This is the part that actually failed: the mind knew it should not speak and
     // said so in the one place that is transmitted.
     expect( format ).toMatch( /anything I put between\s+those markers IS SENT/i )
+  } )
+} )
+
+// ── 3. speaking inside a conversation already open ────────────
+
+describe('an unprompted message to someone I am already talking to', () => {
+  it('is said BY that conversation, not by a stranger composing in parallel', async () => {
+    // The transient facet could not see the live thread — not the digest, not what
+    // was said two minutes ago, not the thinking the open facet had been doing. So
+    // the mind asked a question it had already asked while the answer sat in a
+    // thread it was not reading.
+    const ctrl   = heldExecutive({ 'conversation:fabrice': 'facet-live' })
+    const engine = new AuditionEngine()
+    engine.attachExecutiveEngine( ctrl.engine as never )
+
+    const words = engine.authorOutreach('fabrice', 'Fabrice', 'the RFC is still unanswered')
+    await settle()
+
+    expect( ctrl.spawns, 'no second facet is opened for a person already being talked to').toBe( 0 )
+    expect( ctrl.reports[0]!.facetId ).toBe('facet-live')
+
+    ctrl.release[0]!( [ 'Still nothing back from MindBurn.' ] )
+    expect( await words ).toEqual( [ 'Still nothing back from MindBurn.' ] )
+  } )
+
+  it('rides on the REPORT, leaving the conversation\'s standing focus untouched', async () => {
+    // A setFocus() here would clobber whatever the live turn was set up for, and
+    // race with any report already queued behind it.
+    const ctrl   = heldExecutive({ 'conversation:fabrice': 'facet-live' })
+    const engine = new AuditionEngine()
+    engine.attachExecutiveEngine( ctrl.engine as never )
+
+    void engine.authorOutreach('fabrice', 'Fabrice')
+    await settle()
+
+    expect( ctrl.reports[0]!.focusTitle, 'the outreach focus comes in on the report').toBe('Reaching out')
+    expect( ctrl.reports[0]!.standingFocus, 'and the facet\'s own focus was never set from here').toBeUndefined()
+  } )
+
+  it('never destroys the conversation it borrowed', async () => {
+    const ctrl   = heldExecutive({ 'conversation:fabrice': 'facet-live' })
+    const engine = new AuditionEngine()
+    engine.attachExecutiveEngine( ctrl.engine as never )
+
+    const words = engine.authorOutreach('fabrice', 'Fabrice')
+    await settle()
+    ctrl.release[0]!( [ 'hi' ] )
+    await words
+
+    expect( ctrl.destroyed, 'destroying it would end the conversation as a side effect of speaking in it').toEqual( [] )
+  } )
+
+  it('still destroys a transient it opened itself', async () => {
+    const ctrl   = heldExecutive()   // nobody open
+    const engine = new AuditionEngine()
+    engine.attachExecutiveEngine( ctrl.engine as never )
+
+    const words = engine.authorOutreach('fabrice', 'Fabrice')
+    await settle()
+    ctrl.release[0]!( [ 'hi' ] )
+    await words
+
+    expect( ctrl.destroyed ).toEqual( [ 'facet-1' ] )
+  } )
+
+  it('does not resolve on the conversation\'s ordinary replies', async () => {
+    // Sharing a facet means its reply decisions arrive on the same subscription.
+    // Resolving on one would hand the human's reply back as words the mind had
+    // composed unprompted — and deliver it a second time.
+    const ctrl   = heldExecutive({ 'conversation:fabrice': 'facet-live' })
+    const engine = new AuditionEngine()
+    engine.attachExecutiveEngine( ctrl.engine as never )
+
+    let settled = false
+    const words = engine.authorOutreach('fabrice', 'Fabrice').then( w => { settled = true; return w } )
+    await settle()
+
+    ctrl.release[0]!( [ 'an ordinary reply to something he asked' ], 'language_percept')
+    await settle()
+    expect( settled, 'a reply decision must not settle the outreach').toBe( false )
+
+    ctrl.release[0]!( [ 'the unprompted thing' ], 'outreach')
+    expect( await words ).toEqual( [ 'the unprompted thing' ] )
   } )
 } )

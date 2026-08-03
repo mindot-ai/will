@@ -49,10 +49,21 @@ const build = ( mode: 'master' | 'facet', name = 'Lora' ): string =>
   PromptFactory.buildSystemPrompt( { context: context( name ), focus: focus(), deps: {} as never, mode } )
 
 describe('a facet is told who it is, not what it runs on', () => {
-  it('says the mind\'s own name and what it is attending to', () => {
+  it('says what it is attending to, and nothing about who it is', () => {
+    // The persona is already in this prompt, in full, from the same context the
+    // master gets — so a facet-only "I am Lora." is a SECOND statement of identity
+    // and a second place for the name to disagree with itself. Which is the exact
+    // failure being repaired: the name is stated once, from one source.
     const p = build('facet')
-    expect( p ).toContain('I am Lora.')
+    expect( p ).toContain('Right now my whole attention is on')
     expect( p ).toContain('Active Conversation')
+
+    const role = p.slice( p.indexOf('## My Role'), p.indexOf('## Output Guidelines') )
+    expect( role, 'the role block must not restate the name').not.toContain('Lora')
+  } )
+
+  it('carries the persona verbatim, which is where the name actually lives', () => {
+    expect( build('facet') ).toContain('I am Lora, COO of Mindot.')
   } )
 
   it('never names the architecture that spawned it', () => {
@@ -85,9 +96,12 @@ describe('a nameless mind is nameless, in every mode', () => {
     }
   } )
 
-  it('degrades to a clause that reads properly, not a dangling "I am ."', () => {
-    expect( build('facet', '') ).not.toContain('I am .')
-    expect( build('facet', '') ).toContain('Right now my whole attention is on')
+  it('reads identically for a nameless mind — the facet role names nobody at all', () => {
+    const withName = build('facet', 'Lora')
+    const without  = build('facet', '')
+    const role = ( p: string ) => p.slice( p.indexOf('## My Role'), p.indexOf('## Output Guidelines') )
+    expect( role( withName ) ).toBe( role( without ) )
+    expect( without ).not.toContain('I am .')
   } )
 } )
 

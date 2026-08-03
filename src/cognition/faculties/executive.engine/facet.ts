@@ -53,6 +53,18 @@ export interface FacetReport {
   contextId?: string
   /** Optional dynamic instructions to append to the user message */
   instructions?: string
+  /**
+   * Attend to something else for THIS report only, leaving the facet's standing
+   * focus untouched.
+   *
+   * A facet's focus was a single mutable field, so anything that wanted a live
+   * facet to consider one different thing had to `setFocus()` first — clobbering
+   * whatever the facet was already set up for, and racing with any report already
+   * queued behind it. That is why a self-initiated message to someone the mind was
+   * ALREADY talking to had to be composed by a separate, transient facet that could
+   * not see the live conversation at all.
+   */
+  focus?: FocusSection
 }
 
 export interface FacetDecision {
@@ -354,7 +366,11 @@ export class ExecutiveFacet {
     if( !this._currentStateRef )
       throw new Error(`[executive.facet] ${this.facetId} no state reference available`)
 
-    if( !this._currentFocus )
+    // This report's focus: its own if it carried one, else the facet's standing
+    // one. A per-report focus never mutates `_currentFocus`, so a live thread can
+    // be asked to attend to one different thing and come straight back.
+    const reportFocus = report.focus ?? this._currentFocus
+    if( !reportFocus )
       throw new Error(`[executive.facet] ${this.facetId} no focus set. Call setFocus() before report().`)
 
     const currentState = this._currentStateRef
@@ -362,7 +378,7 @@ export class ExecutiveFacet {
     // Build fresh context from current state
     // A focus may supply a recall query (e.g. the live conversation message) to
     // drive the single "## Relevant Memories" section — one recall surface (§5).
-    const execContext = await PromptFactory.buildFreshContext( this._contextDeps, currentState, this._currentFocus?.recallQuery )
+    const execContext = await PromptFactory.buildFreshContext( this._contextDeps, currentState, reportFocus.recallQuery )
 
     const qualityModulation = PromptFactory.computeQualityModulation( currentState )
     const epistemicUncertainty = PromptFactory.computeEpistemicUncertainty( execContext, currentState )
@@ -371,10 +387,10 @@ export class ExecutiveFacet {
     // the appropriate content via setFocus()
     const focus: FocusSection = this._masterSyncHistory.length > 0
             ? {
-                ...this._currentFocus,
-                content: `${this._currentFocus.content}\n\n## What I've Been Turning Over\n${this._masterSyncHistory.join('\n')}`
+                ...reportFocus,
+                content: `${reportFocus.content}\n\n## What I've Been Turning Over\n${this._masterSyncHistory.join('\n')}`
               }
-            : this._currentFocus
+            : reportFocus
 
     // Build system prompt using PromptFactory — same schema as master, [REPLY] gated out.
     const systemPrompt = PromptFactory.buildSystemPrompt( {
@@ -415,7 +431,7 @@ export class ExecutiveFacet {
       stressLoad:        currentState.metrics.get('stress.load') ?? 0,
       // A facet's "stakes-bearing moment" is a live message awaiting reply (conversation
       // facets set focus.recallQuery to it); planning/other facets rely on uncertainty.
-      hasPendingMessage: !!this._currentFocus?.recallQuery,
+      hasPendingMessage: !!reportFocus.recallQuery,
     }, deliberateThreshold )
 
     let ideationCandidates: IdeationCandidate[] | undefined
@@ -443,7 +459,7 @@ export class ExecutiveFacet {
           category: 'executive',
           attribute: 'facet',
           process: 'ideation',
-          function: this._currentFocus?.function ?? '-',
+          function: reportFocus.function ?? '-',
           scope: this.facetId,
           demand: processSelection.effortScore
         },
@@ -497,7 +513,7 @@ export class ExecutiveFacet {
         // facet's analogue of master's 'decision'. This previously fell back to
         // 'facet' — an *attribute* value, which quietly created a bogus bucket
         // in the by-function cost breakdown. The typed axes caught it.
-        function:  this._currentFocus?.function ?? '-',
+        function:  reportFocus.function ?? '-',
         scope:     this.facetId,
         demand:    processSelection.effortScore,
       }

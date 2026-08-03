@@ -464,6 +464,14 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     } )
   }
 
+  /**
+   * The facet already attending to `key`, if one is open — without spawning.
+   * See FacetSupervisor.handleFor.
+   */
+  facetFor( key: string ): ExecutiveFacetHandle | undefined {
+    return this._facetSupervisor.handleFor( key )
+  }
+
   // ── CognitiveEngine interface ──────────────────────────────
 
   subscribes(): string[] { return [ '*' ] }

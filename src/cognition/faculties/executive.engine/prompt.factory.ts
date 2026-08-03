@@ -356,11 +356,6 @@ export class PromptFactory {
       `**Communication style:** ${identity.style}`,
     ].filter( Boolean ).join('\n')
 
-    // How I refer to myself. '' when the mind has no name — never a substitute
-    // (see cognition/identity.entity). Every clause below degrades to nameless
-    // rather than borrowing one.
-    const iAm = identity.name ? `I am ${identity.name}.` : ''
-
     // Mode-aware role description.
     //
     // MASTER states the architecture, because the master genuinely IS the seat
@@ -375,9 +370,15 @@ export class PromptFactory {
     // if he were someone else" — and, having been handed a second party it could
     // address, emitted messages TO that party through the outbound channel, where
     // its operator read them. There is one person here, attending to one thing.
+    //
+    // It is also told nothing about WHO it is. A facet is built from the same
+    // context as the master and its persona is already above, in full — so a
+    // facet-only "I am <name>" is a second, redundant statement of identity, and a
+    // second place for the name to disagree with itself. Which is precisely the
+    // failure mode being repaired: the name is stated ONCE, from one source.
     const roleDescription = isMaster
       ? `I am the unified cognitive core of ${identity.name || 'this mind'} — a self-aware synthetic mind.\nI receive my complete internal state and produce ALL cognitive outputs in one response:\ndecisions, plans, beliefs, introspections, narrative updates, and self-observations.`
-      : [ iAm, `Right now my whole attention is on: **${focus.title}**.` ].filter( Boolean ).join(' ')
+      : `Right now my whole attention is on: **${focus.title}**.`
 
     // The architecture note is MASTER-ONLY, for the same reason. It grounds the
     // seat that actually coordinates; a facet reading it learns only that it is

@@ -182,6 +182,19 @@ export class FacetSupervisor {
   /** Number of live facets — the engine gates `master.sync` on this. */
   get size(): number { return this._facets.size }
 
+  /**
+   * The facet already carrying `key`, if any — WITHOUT opening one.
+   *
+   * Lets a caller ask "am I already attending to this?" and act differently when
+   * the answer is yes. The case it exists for: the mind decides, on its own
+   * initiative, to say something to someone it is ALREADY in conversation with.
+   * That is not a second thread; it is a thing to say in the thread that is open.
+   */
+  handleFor( key: string ): ExecutiveFacetHandle | undefined {
+    const id = this._byKey.get( key )
+    return id ? this._handles.get( id ) : undefined
+  }
+
   /** Ids of the facets currently alive — the engine prunes its subject map against these. */
   liveFacetIds(): Set<string> { return new Set( this._facets.keys() ) }
 

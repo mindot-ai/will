@@ -350,6 +350,25 @@ export interface WillConfig {
   /** Persona definition seeded into the will.identity entity. */
   identity: WillIdentity
 
+  /**
+   * This config's `identity` is a PLACEHOLDER — the real one arrives from a PMA
+   * artifact moments later, on the same boot.
+   *
+   * Set by `Will.wake`, which passes `{ prompt: '' }` because a woken mind's
+   * persona belongs to its artifact, not to the caller. Without this flag the
+   * creation-time identity guard inspected that placeholder and warned, on every
+   * single wake, that "identity.values is empty", "identity.style is generic" and
+   * "identity is shallow (strength 0)" — three alarms about a config nobody
+   * intended to use, fired before the real identity had loaded.
+   *
+   * It suppresses only the WARNINGS. Errors still throw (an over-long or
+   * malformed prompt is a hard failure whenever it appears), and the artifact's
+   * OWN identity is fully guarded at the load boundary by PMAController.load,
+   * which is the honest place to ask whether this mind's persona is thin — it is
+   * the only point where the answer is knowable.
+   */
+  identityFromArtifact?: boolean
+
   /** Anatomy — 'mind' (default) or the no-LLM 'reflex' shell. */
   anatomy?: Anatomy
 
@@ -732,8 +751,14 @@ export function assembleMind( willId: string, config: WillConfig ): MindAssembly
   })
   if( !idGuard.ok )
     throw new Error(`Invalid Will identity for "${willId}": ${ idGuard.errors.join('; ') }`)
-  for( const w of idGuard.warnings )
-    logger.warn(`[identity-guard] ${willId}: ${w}`)
+  // Warnings only when this identity is the one that will actually be used. On a
+  // wake it is a placeholder (see WillConfig.identityFromArtifact) and the real
+  // persona is guarded at the PMA load boundary instead.
+  if( config.identityFromArtifact )
+    logger.debug(`[identity-guard] ${willId}: identity deferred to artifact — guarded at PMA load`)
+  else
+    for( const w of idGuard.warnings )
+      logger.warn(`[identity-guard] ${willId}: ${w}`)
   config = { ...config, identity: idGuard.sanitized.identity }
 
   // ── Construct ────────────────────────────────────────────

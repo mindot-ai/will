@@ -134,8 +134,9 @@ async function connectWhatsApp(will, opts = {}) {
   async function deliver(m) {
     const peer = m.to ? roster.resolve(m.to) : void 0;
     const chunks = chunkText(m.content, WHATSAPP_MESSAGE_LIMIT);
+    const replyTo = m.thread?.startsWith("whatsapp:") ? m.thread.slice("whatsapp:".length) : void 0;
     const derivedDm = m.to?.startsWith("whatsapp:") ? dmJidFor(m.to.slice("whatsapp:".length)) : void 0;
-    const targets = [peer?.lastChannelId, peer?.dmChannelId, derivedDm, opts.homeChatId ?? void 0, lastActiveChatId ?? void 0];
+    const targets = [replyTo, peer?.lastChannelId, peer?.dmChannelId, derivedDm, opts.homeChatId ?? void 0, lastActiveChatId ?? void 0];
     for (const jid of targets) {
       if (!jid) continue;
       try {

@@ -266,8 +266,22 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
     const peer = m.to ? roster.resolve( m.to ) : undefined
     const chunks = chunkText( m.content, DISCORD_MESSAGE_LIMIT )
 
-    // Preference order: where we last shared a room → their DM → home channel.
-    const channelIds = [ peer?.lastChannelId, peer?.dmChannelId, opts.homeChannelId ?? undefined, lastActiveChannelId ?? undefined ]
+    // A reply goes back to the room it was said in. `m.thread` is the thread from
+    // the `perceive()` that prompted this — `discord:<channelId>` — so it is not a
+    // guess about where this person usually is, it is where they just spoke.
+    //
+    // Everything below it IS a guess, and the guesses were wrong in the way that
+    // matters most: a DM arrived, she answered it in seconds, and the answer went
+    // to the shared server channel because `lastChannelId` still held the last
+    // room they had been in together. She looked like she was ignoring him.
+    //
+    // Unprompted utterances carry no thread — nothing was said to them — so those
+    // still fall through to the roster, which is the right behaviour there.
+    const replyTo = m.thread?.startsWith('discord:') ? m.thread.slice('discord:'.length ) : undefined
+
+    // Preference order: the room they spoke in → where we last shared a room →
+    // their DM → home channel.
+    const channelIds = [ replyTo, peer?.lastChannelId, peer?.dmChannelId, opts.homeChannelId ?? undefined, lastActiveChannelId ?? undefined ]
     for( const id of channelIds ){
       if( !id ) continue
       try {

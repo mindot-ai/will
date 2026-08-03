@@ -24249,8 +24249,11 @@ function assembleMind(willId, config) {
   });
   if (!idGuard.ok)
     throw new Error(`Invalid Will identity for "${willId}": ${idGuard.errors.join("; ")}`);
-  for (const w of idGuard.warnings)
-    logger.warn(`[identity-guard] ${willId}: ${w}`);
+  if (config.identityFromArtifact)
+    logger.debug(`[identity-guard] ${willId}: identity deferred to artifact \u2014 guarded at PMA load`);
+  else
+    for (const w of idGuard.warnings)
+      logger.warn(`[identity-guard] ${willId}: ${w}`);
   config = { ...config, identity: idGuard.sanitized.identity };
   const simulation = _buildSimulation(willId, config, randomSeed);
   const { cognition, outbox } = _constructCognition({ simulation, willId, config, randomSeed, executiveInterval, profile });
@@ -28394,9 +28397,12 @@ var Will = class _Will {
     const will = new _Will(stem, id, opts.name);
     for (const [name, entry] of Object.entries(opts.effectors ?? {}))
       will._register(name, entry);
+    const config = will._buildConfig(id, { ...opts, identity: { prompt: "", ...opts.identity } });
+    config.identityFromArtifact = true;
     await stem.createWill(
-      will._buildConfig(id, { ...opts, identity: { prompt: "", ...opts.identity } }),
+      config,
       true
+      /* startPaused — load the artifact before the first tick */
     );
     stem.loadPMA(id, pma);
     stem.resumeWill(id);
@@ -28604,7 +28610,12 @@ var Will = class _Will {
   _attach() {
     this._unsub = this.stem.addTickListener(this.id, (_snapshot, _tick, outbox, invocations) => {
       for (const msg of outbox) {
-        this._emitMessage({ id: msg.id, content: msg.content, to: msg.targetEntityId });
+        this._emitMessage({
+          id: msg.id,
+          content: msg.content,
+          to: msg.targetEntityId,
+          ...msg.threadId ? { thread: msg.threadId } : {}
+        });
         try {
           this.stem.confirmMessageDelivery(this.id, msg.id, true);
         } catch {
@@ -29353,7 +29364,8 @@ async function connectDiscord(will, opts) {
   async function deliver(m) {
     const peer = m.to ? roster.resolve(m.to) : void 0;
     const chunks = chunkText(m.content, DISCORD_MESSAGE_LIMIT);
-    const channelIds = [peer?.lastChannelId, peer?.dmChannelId, opts.homeChannelId ?? void 0, lastActiveChannelId ?? void 0];
+    const replyTo = m.thread?.startsWith("discord:") ? m.thread.slice("discord:".length) : void 0;
+    const channelIds = [replyTo, peer?.lastChannelId, peer?.dmChannelId, opts.homeChannelId ?? void 0, lastActiveChannelId ?? void 0];
     for (const id of channelIds) {
       if (!id) continue;
       try {
@@ -29500,8 +29512,9 @@ async function connectWhatsApp(will, opts = {}) {
   async function deliver(m) {
     const peer = m.to ? roster.resolve(m.to) : void 0;
     const chunks = chunkText(m.content, WHATSAPP_MESSAGE_LIMIT);
+    const replyTo = m.thread?.startsWith("whatsapp:") ? m.thread.slice("whatsapp:".length) : void 0;
     const derivedDm = m.to?.startsWith("whatsapp:") ? dmJidFor(m.to.slice("whatsapp:".length)) : void 0;
-    const targets = [peer?.lastChannelId, peer?.dmChannelId, derivedDm, opts.homeChatId ?? void 0, lastActiveChatId ?? void 0];
+    const targets = [replyTo, peer?.lastChannelId, peer?.dmChannelId, derivedDm, opts.homeChatId ?? void 0, lastActiveChatId ?? void 0];
     for (const jid of targets) {
       if (!jid) continue;
       try {

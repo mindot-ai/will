@@ -177,11 +177,18 @@ export async function connectWhatsApp( will: Will, opts: WhatsAppBridgeOptions =
     const peer   = m.to ? roster.resolve( m.to ) : undefined
     const chunks = chunkText( m.content, WHATSAPP_MESSAGE_LIMIT )
 
-    // Last shared group → known DM → DM derived from the entity id itself →
-    // home chat → last active chat. Unlike Discord, an unmet-but-addressed
-    // entity is still reachable: `whatsapp:<number>` implies its DM jid.
+    // The chat they actually spoke in → last shared group → known DM → DM derived
+    // from the entity id itself → home chat → last active chat. Unlike Discord, an
+    // unmet-but-addressed entity is still reachable: `whatsapp:<number>` implies
+    // its DM jid.
+    //
+    // `m.thread` leads because everything after it is a guess about where this
+    // person usually is, and a reply belongs in the room the question was asked
+    // in. The Discord bridge had the identical ordering and answered a DM in a
+    // shared server channel — from the operator's side, silence.
+    const replyTo   = m.thread?.startsWith('whatsapp:') ? m.thread.slice('whatsapp:'.length ) : undefined
     const derivedDm = m.to?.startsWith('whatsapp:') ? dmJidFor( m.to.slice('whatsapp:'.length ) ) : undefined
-    const targets = [ peer?.lastChannelId, peer?.dmChannelId, derivedDm, opts.homeChatId ?? undefined, lastActiveChatId ?? undefined ]
+    const targets = [ replyTo, peer?.lastChannelId, peer?.dmChannelId, derivedDm, opts.homeChatId ?? undefined, lastActiveChatId ?? undefined ]
     for( const jid of targets ){
       if( !jid ) continue
       try {

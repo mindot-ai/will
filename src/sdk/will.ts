@@ -66,6 +66,20 @@ export interface WillMessage {
   content: string
   /** Entity id the Will addressed (the speaker you used in say()/tell(), or a bond). */
   to: string
+  /**
+   * The conversation this belongs to — the `thread` from the `perceive()` that
+   * prompted it. Absent when the Will spoke unprompted, which genuinely has no
+   * thread.
+   *
+   * WHERE, not just to whom. The engine knew this the whole way down —
+   * `OutboxMessage.threadId` carries it — and the projection dropped it here, so
+   * a channel adapter had nothing to answer INTO and had to guess from a roster.
+   * Observed live: a DM arrived on `discord:1532693…`, she answered it correctly
+   * and in seconds, and the reply went to the shared server channel because that
+   * was the last room the roster had seen this person in. From the operator's
+   * side she had simply ignored him.
+   */
+  thread?: string
 }
 
 /**
@@ -335,10 +349,13 @@ export class Will {
     for( const [ name, entry ] of Object.entries( opts.effectors ?? {} ) )
       will._register( name, entry )
 
-    await stem.createWill(
-      will._buildConfig( id, { ...opts, identity: { prompt: '', ...opts.identity } } ),
-      true /* startPaused — load the artifact before the first tick */,
-    )
+    const config = will._buildConfig( id, { ...opts, identity: { prompt: '', ...opts.identity } } )
+    // Say out loud that this identity is a placeholder. Otherwise the creation
+    // guard warns about the empty persona we just constructed on purpose — three
+    // alarms per wake, drowning the real check that runs when the artifact loads.
+    config.identityFromArtifact = true
+
+    await stem.createWill( config, true /* startPaused — load the artifact before the first tick */ )
     stem.loadPMA( id, pma )
     stem.resumeWill( id )
     will._attach()
@@ -570,7 +587,10 @@ export class Will {
     this._unsub = this.stem.addTickListener( this.id, ( _snapshot, _tick, outbox, invocations ) => {
       // Outbound messages → event + auto delivery-ack.
       for( const msg of outbox ){
-        this._emitMessage( { id: msg.id, content: msg.content, to: msg.targetEntityId } )
+        this._emitMessage( {
+          id: msg.id, content: msg.content, to: msg.targetEntityId,
+          ...( msg.threadId ? { thread: msg.threadId } : {} ),
+        } )
         try { this.stem.confirmMessageDelivery( this.id, msg.id, true ) } catch { /* best-effort */ }
       }
       // Effector invocations → project the motor act, then run the handler → ack.

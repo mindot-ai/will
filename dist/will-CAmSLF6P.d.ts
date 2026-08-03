@@ -7676,6 +7676,24 @@ interface WillConfig {
     profile?: string | null;
     /** Persona definition seeded into the will.identity entity. */
     identity: WillIdentity;
+    /**
+     * This config's `identity` is a PLACEHOLDER — the real one arrives from a PMA
+     * artifact moments later, on the same boot.
+     *
+     * Set by `Will.wake`, which passes `{ prompt: '' }` because a woken mind's
+     * persona belongs to its artifact, not to the caller. Without this flag the
+     * creation-time identity guard inspected that placeholder and warned, on every
+     * single wake, that "identity.values is empty", "identity.style is generic" and
+     * "identity is shallow (strength 0)" — three alarms about a config nobody
+     * intended to use, fired before the real identity had loaded.
+     *
+     * It suppresses only the WARNINGS. Errors still throw (an over-long or
+     * malformed prompt is a hard failure whenever it appears), and the artifact's
+     * OWN identity is fully guarded at the load boundary by PMAController.load,
+     * which is the honest place to ask whether this mind's persona is thin — it is
+     * the only point where the answer is knowable.
+     */
+    identityFromArtifact?: boolean;
     /** Anatomy — 'mind' (default) or the no-LLM 'reflex' shell. */
     anatomy?: Anatomy;
     /**
@@ -8603,6 +8621,20 @@ interface WillMessage {
     content: string;
     /** Entity id the Will addressed (the speaker you used in say()/tell(), or a bond). */
     to: string;
+    /**
+     * The conversation this belongs to — the `thread` from the `perceive()` that
+     * prompted it. Absent when the Will spoke unprompted, which genuinely has no
+     * thread.
+     *
+     * WHERE, not just to whom. The engine knew this the whole way down —
+     * `OutboxMessage.threadId` carries it — and the projection dropped it here, so
+     * a channel adapter had nothing to answer INTO and had to guess from a roster.
+     * Observed live: a DM arrived on `discord:1532693…`, she answered it correctly
+     * and in seconds, and the reply went to the shared server channel because that
+     * was the last room the roster had seen this person in. From the operator's
+     * side she had simply ignored him.
+     */
+    thread?: string;
 }
 /**
  * A motor act the Will *chose* to enact — a projection of its agency, surfaced

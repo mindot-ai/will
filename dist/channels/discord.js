@@ -204,7 +204,8 @@ async function connectDiscord(will, opts) {
   async function deliver(m) {
     const peer = m.to ? roster.resolve(m.to) : void 0;
     const chunks = chunkText(m.content, DISCORD_MESSAGE_LIMIT);
-    const channelIds = [peer?.lastChannelId, peer?.dmChannelId, opts.homeChannelId ?? void 0, lastActiveChannelId ?? void 0];
+    const replyTo = m.thread?.startsWith("discord:") ? m.thread.slice("discord:".length) : void 0;
+    const channelIds = [replyTo, peer?.lastChannelId, peer?.dmChannelId, opts.homeChannelId ?? void 0, lastActiveChannelId ?? void 0];
     for (const id of channelIds) {
       if (!id) continue;
       try {

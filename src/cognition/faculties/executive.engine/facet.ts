@@ -75,6 +75,16 @@ export interface FacetDecision {
   decision: unknown
   reasoning: string
   confidence: number
+  /**
+   * Sim tick this decision was reasoned at.
+   *
+   * The facet has always known it and never passed it on, so a subscriber writing
+   * state in response had no deterministic clock and reached for a process-local
+   * counter instead — which resets on restart and collides. Never wall-clock: this
+   * reaches ids that live in state, and a wall-clock id makes recorded and replayed
+   * runs diverge (R2).
+   */
+  tick: number
 }
 
 export type FacetEventListener = ( decision: FacetDecision ) => void
@@ -593,7 +603,8 @@ export class ExecutiveFacet {
       respondingToType: report.type,
       decision: this._extractDecisionPayload( output, focus ),
       reasoning: output.reasoning,
-      confidence: output.confidence
+      confidence: output.confidence,
+      tick: currentState.tick as unknown as number
     }
 
     // Promote subscriber-visible fields from the decision object to the event payload

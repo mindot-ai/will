@@ -108,3 +108,41 @@ describe('a woken mind is not warned about the placeholder it was built with', (
     expect( pma ).toContain('guard.warnings')
   } )
 } )
+
+// ── conversation records must outlive the process that wrote them ──
+
+describe('a restart does not erase what the mind said last time', () => {
+  const audition = code('cognition/senses/audition.engine/engine.ts')
+
+  it('keys conversation records on the SIM tick, not a process counter', () => {
+    // `conv-sent-reply-<entity>-<N>` with N a per-process counter restarted at 1
+    // on every boot, so each session overwrote the previous session's records of
+    // the same person. Found by diffing a live snapshot against the Discord
+    // transcript it came from: one id held that morning's greeting and every
+    // earlier conversation keyed to it was simply gone.
+    expect( audition ).not.toMatch( /_sentSeq|_receivedSeq/ )
+    expect( audition ).toContain('_lastDecisionTick')
+    expect( audition ).toMatch( /_sentKey\([\s\S]{0,80}\)/ )
+  } )
+
+  it('takes that tick from the facet decision, never from the wall clock', () => {
+    // These ids live in state; a wall-clock id makes recorded and replayed runs
+    // diverge (R2) — observed once as a replay consuming 17 of 18 completions.
+    expect( audition ).toContain('decision.tick')
+    const key = audition.slice( audition.indexOf('private _sentKey'), audition.indexOf('private _writeReceived') )
+    expect( key ).not.toContain('wallClock')
+    expect( key ).toContain('this._lastDecisionTick')
+  } )
+
+  it('distinguishes two utterances to one person on one tick', () => {
+    // Tick alone is not enough — a reply and an outreach can land on the same one.
+    const key = audition.slice( audition.indexOf('private _sentKey'), audition.indexOf('private _writeReceived') )
+    expect( key ).toContain('fnv1a(')
+  } )
+
+  it('carries the tick on FacetDecision so a subscriber has a clock at all', () => {
+    const facet = code('cognition/faculties/executive.engine/facet.ts')
+    expect( facet ).toMatch( /interface FacetDecision[\s\S]*?tick: number/ )
+    expect( facet ).toContain('tick: currentState.tick')
+  } )
+} )

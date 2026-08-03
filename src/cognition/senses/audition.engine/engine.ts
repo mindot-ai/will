@@ -76,6 +76,7 @@ import type {
   VoiceChunk
 } from '#senses/index'
 import { validateFacetHandoff, type HandoffBody } from '#faculties/executive.engine/escalation.buffer'
+import { fnv1a } from '#agency/consequence'
 
 // ── Internal types ─────────────────────────────────────────────
 
@@ -336,10 +337,12 @@ export class AuditionEngine extends BaseSenseEngine {
    * other percept uses. Wired to `stateManager.setEntity` in assembleMind().
    */
   private _memorySink: (( entity: MemoryEntity ) => void) | null = null
-  /** Deterministic id source for `conversation.received` — see _writeReceived. */
-  private _receivedSeq = 0
-  /** Deterministic id source for `conversation.sent` — see _writeSent. */
-  private _sentSeq = 0
+  /**
+   * Sim tick of the most recent facet decision — the only deterministic clock this
+   * off-tick engine has. Stamped from `FacetDecision.tick`, and used to key the
+   * conversation records it writes into state.
+   */
+  private _lastDecisionTick = 0
   /** Speaker attachment strength accessor (0–1) — weights salience by relationship. */
   private _getAttachmentScore: (( entityId: string ) => number) | null = null
   /** Active-goal topic text accessor — for salience topic-overlap. */
@@ -989,15 +992,45 @@ export class AuditionEngine extends BaseSenseEngine {
    * scanner falls back to its neutral default, so the Will learns *that* someone
    * engaged (familiarity, recency, reliability) without inventing how it felt.
    */
+  /**
+   * A durable, deterministic id for a conversation record.
+   *
+   * `<prefix>-<entity>-<tick>-<hash of the words>`. Every part earns its place:
+   *   • entity — whose conversation this is;
+   *   • tick   — WHEN, from the sim clock, which resumes from the snapshot and so
+   *              keeps rising across restarts;
+   *   • hash   — which utterance, so two things said to one person on one tick stay
+   *              two records.
+   *
+   * What it replaces was `<prefix>-<entity>-<N>` with N a process-local counter.
+   * It restarted at 1 on every boot, so each session OVERWROTE the previous
+   * session's records of the same person — a mind that had spoken with someone
+   * across four restarts held one session's worth of evidence that it ever had.
+   * Found by diffing a live snapshot against the Discord transcript it came from:
+   * `conv-sent-reply-discord:1019…-1` held that morning's greeting, and every
+   * earlier conversation keyed to the same id was simply gone.
+   *
+   * No wallClock: these ids live in state, and a wall-clock id makes the recorded
+   * and replayed runs diverge (R2).
+   */
+  private _sentKey( prefix: string, entityId: string, words: string ): string {
+    return `${ prefix }-${ entityId }-${ this._lastDecisionTick }-${ fnv1a( words ) }`
+  }
+
   private _writeReceived( entityId: string, speakerName: string | undefined, content: string, threadId: string ): void {
     if( !this._memorySink ) return
-    // Monotonic counter, never wallClock(): this entity LIVES IN STATE for a tick, so
-    // a wall-clock id makes the recorded and replayed runs diverge (R2). Observed as
-    // a replay consuming 17 of 18 recorded completions — different ids meant different
-    // percepts meant a different executive firing schedule.
-    this._receivedSeq += 1
+    // Never wallClock(): this entity LIVES IN STATE, so a wall-clock id makes the
+    // recorded and replayed runs diverge (R2). Observed as a replay consuming 17 of
+    // 18 recorded completions — different ids meant different percepts meant a
+    // different executive firing schedule.
+    //
+    // But nor a process-local counter, which is what this was. `conv-received-<id>-N`
+    // restarted at N=1 on every boot, so each session silently OVERWROTE the last
+    // session's records of the same person. A mind that had spoken with someone
+    // across four restarts held one session's worth of evidence that it ever had.
+    // See _sentKey.
     this._memorySink({
-      id:   `conv-received-${ entityId }-${ this._receivedSeq }`,
+      id:   this._sentKey('conv-received', entityId, content ),
       type: 'conversation.received',
       metadata: {
         sourceKeid:     entityId,
@@ -1025,12 +1058,8 @@ export class AuditionEngine extends BaseSenseEngine {
    */
   private _writeSent( entityId: string, entityName: string | undefined, bubbles: string[] ): void {
     if( !this._memorySink || bubbles.length === 0 ) return
-    // Monotonic counter, never wallClock(): this entity lives in state and a
-    // wall-clock id makes recorded and replayed runs diverge (R2). setEntity
-    // stamps the sim tick, which is what readers key off.
-    this._sentSeq += 1
     this._memorySink({
-      id:   `conv-sent-reply-${ entityId }-${ this._sentSeq }`,
+      id:   this._sentKey('conv-sent-reply', entityId, bubbles.join('\n') ),
       type: 'conversation.sent',
       metadata: {
         targetEntityId:   entityId,
@@ -1073,6 +1102,10 @@ export class AuditionEngine extends BaseSenseEngine {
     // Resolve the CURRENT turn's thread (set by _processMessage) rather than the
     // facet's spawn-time thread — correct for an entity that spans threads (§2).
     const threadId = this._inflightThread.get( entityId ) ?? ''
+
+    // The sim tick this was reasoned at — the only deterministic clock an off-tick
+    // engine has, and what the conversation-record ids are keyed on.
+    this._lastDecisionTick = decision.tick ?? this._lastDecisionTick
 
     // An outreach composed INSIDE this conversation (authorOutreach borrowing the
     // open facet) lands here too, because the session subscription is facet-wide.

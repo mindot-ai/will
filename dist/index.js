@@ -12015,7 +12015,8 @@ ${this._facetReasoningHistory.join("\n")}` : "";
       respondingToType: report.type,
       decision: this._extractDecisionPayload(output, focus),
       reasoning: output.reasoning,
-      confidence: output.confidence
+      confidence: output.confidence,
+      tick: currentState.tick
     };
     const dec = typeof decision.decision === "object" && decision.decision !== null ? decision.decision : {};
     this._bus.publish({
@@ -19486,10 +19487,12 @@ var AuditionEngine = class extends BaseSenseEngine {
    * other percept uses. Wired to `stateManager.setEntity` in assembleMind().
    */
   _memorySink = null;
-  /** Deterministic id source for `conversation.received` — see _writeReceived. */
-  _receivedSeq = 0;
-  /** Deterministic id source for `conversation.sent` — see _writeSent. */
-  _sentSeq = 0;
+  /**
+   * Sim tick of the most recent facet decision — the only deterministic clock this
+   * off-tick engine has. Stamped from `FacetDecision.tick`, and used to key the
+   * conversation records it writes into state.
+   */
+  _lastDecisionTick = 0;
   /** Speaker attachment strength accessor (0–1) — weights salience by relationship. */
   _getAttachmentScore = null;
   /** Active-goal topic text accessor — for salience topic-overlap. */
@@ -19979,11 +19982,34 @@ var AuditionEngine = class extends BaseSenseEngine {
    * scanner falls back to its neutral default, so the Will learns *that* someone
    * engaged (familiarity, recency, reliability) without inventing how it felt.
    */
+  /**
+   * A durable, deterministic id for a conversation record.
+   *
+   * `<prefix>-<entity>-<tick>-<hash of the words>`. Every part earns its place:
+   *   • entity — whose conversation this is;
+   *   • tick   — WHEN, from the sim clock, which resumes from the snapshot and so
+   *              keeps rising across restarts;
+   *   • hash   — which utterance, so two things said to one person on one tick stay
+   *              two records.
+   *
+   * What it replaces was `<prefix>-<entity>-<N>` with N a process-local counter.
+   * It restarted at 1 on every boot, so each session OVERWROTE the previous
+   * session's records of the same person — a mind that had spoken with someone
+   * across four restarts held one session's worth of evidence that it ever had.
+   * Found by diffing a live snapshot against the Discord transcript it came from:
+   * `conv-sent-reply-discord:1019…-1` held that morning's greeting, and every
+   * earlier conversation keyed to the same id was simply gone.
+   *
+   * No wallClock: these ids live in state, and a wall-clock id makes the recorded
+   * and replayed runs diverge (R2).
+   */
+  _sentKey(prefix, entityId, words) {
+    return `${prefix}-${entityId}-${this._lastDecisionTick}-${fnv1a(words)}`;
+  }
   _writeReceived(entityId, speakerName, content, threadId) {
     if (!this._memorySink) return;
-    this._receivedSeq += 1;
     this._memorySink({
-      id: `conv-received-${entityId}-${this._receivedSeq}`,
+      id: this._sentKey("conv-received", entityId, content),
       type: "conversation.received",
       metadata: {
         sourceKeid: entityId,
@@ -20011,9 +20037,8 @@ var AuditionEngine = class extends BaseSenseEngine {
    */
   _writeSent(entityId, entityName, bubbles) {
     if (!this._memorySink || bubbles.length === 0) return;
-    this._sentSeq += 1;
     this._memorySink({
-      id: `conv-sent-reply-${entityId}-${this._sentSeq}`,
+      id: this._sentKey("conv-sent-reply", entityId, bubbles.join("\n")),
       type: "conversation.sent",
       metadata: {
         targetEntityId: entityId,
@@ -20045,6 +20070,7 @@ var AuditionEngine = class extends BaseSenseEngine {
   // ── Facet decision handling ─────────────────────────────────
   _onFacetDecision(entityId, decision) {
     const threadId = this._inflightThread.get(entityId) ?? "";
+    this._lastDecisionTick = decision.tick ?? this._lastDecisionTick;
     if (decision.respondingToType === "outreach") return;
     try {
       const d = decision.decision;

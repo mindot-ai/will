@@ -4806,6 +4806,16 @@ interface FacetDecision {
     decision: unknown;
     reasoning: string;
     confidence: number;
+    /**
+     * Sim tick this decision was reasoned at.
+     *
+     * The facet has always known it and never passed it on, so a subscriber writing
+     * state in response had no deterministic clock and reached for a process-local
+     * counter instead — which resets on restart and collides. Never wall-clock: this
+     * reaches ids that live in state, and a wall-clock id makes recorded and replayed
+     * runs diverge (R2).
+     */
+    tick: number;
 }
 type FacetEventListener = (decision: FacetDecision) => void;
 interface ExecutiveFacetHandle {
@@ -6884,10 +6894,12 @@ declare class AuditionEngine extends BaseSenseEngine {
      * other percept uses. Wired to `stateManager.setEntity` in assembleMind().
      */
     private _memorySink;
-    /** Deterministic id source for `conversation.received` — see _writeReceived. */
-    private _receivedSeq;
-    /** Deterministic id source for `conversation.sent` — see _writeSent. */
-    private _sentSeq;
+    /**
+     * Sim tick of the most recent facet decision — the only deterministic clock this
+     * off-tick engine has. Stamped from `FacetDecision.tick`, and used to key the
+     * conversation records it writes into state.
+     */
+    private _lastDecisionTick;
     /** Speaker attachment strength accessor (0–1) — weights salience by relationship. */
     private _getAttachmentScore;
     /** Active-goal topic text accessor — for salience topic-overlap. */
@@ -7020,6 +7032,28 @@ declare class AuditionEngine extends BaseSenseEngine {
      * scanner falls back to its neutral default, so the Will learns *that* someone
      * engaged (familiarity, recency, reliability) without inventing how it felt.
      */
+    /**
+     * A durable, deterministic id for a conversation record.
+     *
+     * `<prefix>-<entity>-<tick>-<hash of the words>`. Every part earns its place:
+     *   • entity — whose conversation this is;
+     *   • tick   — WHEN, from the sim clock, which resumes from the snapshot and so
+     *              keeps rising across restarts;
+     *   • hash   — which utterance, so two things said to one person on one tick stay
+     *              two records.
+     *
+     * What it replaces was `<prefix>-<entity>-<N>` with N a process-local counter.
+     * It restarted at 1 on every boot, so each session OVERWROTE the previous
+     * session's records of the same person — a mind that had spoken with someone
+     * across four restarts held one session's worth of evidence that it ever had.
+     * Found by diffing a live snapshot against the Discord transcript it came from:
+     * `conv-sent-reply-discord:1019…-1` held that morning's greeting, and every
+     * earlier conversation keyed to the same id was simply gone.
+     *
+     * No wallClock: these ids live in state, and a wall-clock id makes the recorded
+     * and replayed runs diverge (R2).
+     */
+    private _sentKey;
     private _writeReceived;
     /**
      * Record that the mind SPOKE to someone, mirroring `_writeReceived`.

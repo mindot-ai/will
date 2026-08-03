@@ -23,6 +23,7 @@ import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import { GenerativeModel } from '#cognition/generative.model'
 import { readEffectiveParams } from '#cognition/persona.prior'
 import { ExecutiveEngine } from '#faculties/executive.engine'
+import { identityCommand } from '#cognition/identity.entity'
 
 export interface AutobiographicalNarratorConfig {
   minIntervalTicks?: number
@@ -171,16 +172,10 @@ export class AutobiographicalNarrator implements SimulationEngine, CognitiveEngi
           for( const { key: trait, value: delta } of executiveOutput.identityUpdates.traits )
             updatedTraits[ trait ] = Math.max( 0, Math.min( 1, ( updatedTraits[ trait ] ?? 0.5 ) + delta ) )
 
-          commands.set!.push({
-            id: 'identity-self',
-            type: 'will.identity',
-            createdAt: existingIdentity.createdAt,
-            metadata: {
-              ...existingIdentity.metadata,
-              traits: updatedTraits,
-              version: ( ( existingIdentity.metadata?.version as number ) ?? 1 ) + 1,
-            },
-          })
+          commands.set!.push( identityCommand( state, {
+            traits: updatedTraits,
+            version: ( ( existingIdentity.metadata?.version as number ) ?? 1 ) + 1,
+          } ) )
         }
       }
 

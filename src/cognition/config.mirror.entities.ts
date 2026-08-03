@@ -324,6 +324,17 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
         // (openness widens, conscientiousness narrows), which is what makes "how many
         // things I can hold at once" a property of this person rather than a constant.
         maxFacets: 10,
+        // How long a QUIET thread stays open before the mind considers it finished
+        // (FacetSupervisor idle reaper). The sibling of maxFacets — that one is how
+        // many threads at once, this one is how long each survives a silence — and
+        // it was the only number in the economy no personality could move.
+        //
+        // ~30 minutes at a typical tick rate. It was hardcoded at 50 ticks, which is
+        // THIRTY SECONDS: every pause longer than a person taking a moment to type
+        // destroyed the conversation, and the reply landed on a facet that had never
+        // heard of them. Generous is safe — maxFacets + eviction bound the population;
+        // this only decides when silence means "over".
+        facetIdleTtlTicks: 3000,
       },
     },
     {

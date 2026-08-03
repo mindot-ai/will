@@ -164,6 +164,7 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
         totalTokens:      usedTok,
         category:         'embedding',
         attribute:        'memory',
+        process:          'cog',        // background: no deliberation happens here
         function:         fn,           // 'recall' (query) | 'index' (write)
         scope:            this.modelName,
         tick:             0,

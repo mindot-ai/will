@@ -1460,8 +1460,10 @@ interface CognitiveEngine extends SimulationEngine {
 type LLMCallCategory = 'executive' | 'summarizer' | 'embedding' | 'identity-guard';
 /** The actor/subsystem doing the work. */
 type LLMCallAttribute = 'master' | 'facet' | 'memory' | 'guard';
+/** The specific cognitive process being paid for. */
+type LLMCallProcess = 'cog' | 'decision' | 'ideation';
 /** The specific cognitive function being paid for. */
-type LLMCallFunction = 'decision' | 'ideation' | 'deliberation' | 'conversation' | 'outreach' | 'planning' | 'supervision' | 'consolidation' | 'recall' | 'index' | 'identity-coherence';
+type LLMCallFunction = '-' | 'deliberation' | 'conversation' | 'outreach' | 'planning' | 'supervision' | 'consolidation' | 'recall' | 'index' | 'identity-coherence';
 /** One attributed ledger record (5-axis attribution + tokens + cost). */
 type TokenLedgerRecord = Record<string, unknown>;
 type TokenRecordListener = (record: TokenLedgerRecord) => void;
@@ -1545,6 +1547,7 @@ interface TokenUsage {
     demand?: number;
     category: LLMCallCategory;
     attribute: LLMCallAttribute;
+    process: LLMCallProcess;
     function: LLMCallFunction;
     /** Optional specific id or namespace: facet id, entity id, model name. */
     scope?: string;
@@ -1595,6 +1598,8 @@ declare class TokenTracker implements SimulationEngine {
     private _categoryTokens;
     private _functionCosts;
     private _functionTokens;
+    private _processCosts;
+    private _processTokens;
     private _providerCosts;
     private _providerTokens;
     private _tickCosts;
@@ -1638,6 +1643,13 @@ declare class TokenTracker implements SimulationEngine {
     get functionBreakdown(): ReadonlyMap<string, number>;
     /** Token counts (prompt + completion) broken down by function. */
     get functionTokenBreakdown(): ReadonlyMap<string, {
+        prompt: number;
+        completion: number;
+    }>;
+    /** Cost broken down by process ('decision' | 'ideation' | 'cog'). */
+    get processBreakdown(): ReadonlyMap<string, number>;
+    /** Token counts (prompt + completion) broken down by process. */
+    get processTokenBreakdown(): ReadonlyMap<string, {
         prompt: number;
         completion: number;
     }>;
@@ -2725,6 +2737,13 @@ declare class ThreatEvaluator implements SimulationEngine, CognitiveEngine {
      * metadata.hostile === true). Updates _threatFromHostile and re-emits
      * the full threat/emotion metrics so that downstream engines always see
      * a current picture even when no bus event arrives.
+     *
+     * `threat` is a HOST SEAM, not a starved input (#114). No core engine writes
+     * one — appraisal runs entirely off this engine's six bus inputs (energy,
+     * sleep, stress, novelty, metacognition, prediction), all of which are live.
+     * A host embedding a Will in a world with actual hostile agents writes `threat`
+     * entities to make them felt. Empty here means nothing is hostile, not that
+     * nothing is wired.
      */
     react(_delta: Duration, _tick: Tick, state: ReadonlySimulationState, _context: SimulationContext): Promise<EngineResult>;
     private _computeScarcityThreat;
@@ -4077,6 +4096,8 @@ interface RoutingRule {
     category?: LLMCallMeta['category'];
     /** Match `LLMCallMeta.attribute` exactly (e.g. 'master', 'facet', 'guard'). */
     attribute?: LLMCallMeta['attribute'];
+    /** Match `LLMCallMeta.process` exactly (e.g. 'decision', 'ideation'). */
+    process?: LLMCallMeta['process'];
     /** Match `LLMCallMeta.function` exactly (e.g. 'decision', 'consolidation'). */
     function?: LLMCallMeta['function'];
     /**
@@ -4247,6 +4268,8 @@ interface LLMCallMeta {
     category: LLMCallCategory;
     /** The actor/subsystem doing the work. */
     attribute: LLMCallAttribute;
+    /** The specific cognitive function. */
+    process: LLMCallProcess;
     /** The specific cognitive function. */
     function: LLMCallFunction;
     /** Optional specific id or namespace: facet id, entity id, model name. */
@@ -4561,6 +4584,8 @@ interface ExecutiveOutputFull {
         reason: string;
     }>;
     selfObservations?: string[];
+    /** Compound actions the mind is naming as single skills (see ProposedSkill). */
+    newSkills?: ProposedSkill[];
     /**
      * Plain-text reply from a conversation facet — populated by parseResponse()
      * from the [REPLY_TEXT]...[/REPLY_TEXT] block.
@@ -4616,6 +4641,24 @@ interface ExecutiveEngineConfig$1 {
     executiveInterval?: number;
     cooldownTicks?: number;
     bus?: CognitiveBus;
+}
+/**
+ * A compound action the mind names as one thing it does — "when I do A then B,
+ * that is <name>". Registered into the SchemaRepertoire as a composite, after
+ * which it competes as a single affordance and can proceduralize into a habit.
+ *
+ * This is the creation seam for the instrumental→habitual gradient. Before it,
+ * `agency.composite.proposed` was subscribed by ReafferenceEngine — whose handler
+ * is the only caller of `registerComposite()` anywhere — and published by nothing,
+ * so no Will could ever hold a skill beyond the innate floor (#114).
+ */
+interface ProposedSkill {
+    /** What the mind calls it. Becomes the schema id. */
+    id: string;
+    /** The sub-schemas it is made of, in order. Two or more, or it is not compound. */
+    composedOf: string[];
+    tags?: string[];
+    cost?: number;
 }
 
 /**
@@ -4705,6 +4748,18 @@ interface FocusSection {
      */
     awarenessEntityId?: string;
     /**
+     * Optional: WHO this facet is engaged with — the keid and the name the mind has
+     * learned for them. Reported back to the master on every `executive.facet.sync`.
+     *
+     * Without it the master was told, in its own system prompt, that "focused facets
+     * may run simultaneously… their reasoning syncs back to me" while the sync payload
+     * carried only a facetId and a confidence number — so a mind holding two live
+     * conversations could not tell you whose they were. The master is the singular
+     * seat: it has to know who is at the table to reason about them together.
+     */
+    subjectEntityId?: string;
+    subjectName?: string;
+    /**
      * Optional: Provided by the creating engine to convert the LLM's parsed output
      * into a domain-specific decision payload.
      *
@@ -4772,6 +4827,44 @@ interface ExecutiveFacetHandle {
     onReaped: (handler: () => void) => void;
 }
 
+/**
+ * DeliberationCache — types and contracts.
+ *
+ * The cache stores past executive outputs keyed by a deterministic
+ * cognitive fingerprint. It is pure, deterministic, and R2-safe:
+ * the same state + same history ⇒ same retrieval + same composition.
+ *
+ * Scope note: Phase 1 caches the ACTIONS block only. The composed output
+ * is a valid `ExecutiveOutputFull` carrying the three required fields
+ * (actions, reasoning, confidence) plus whatever optional blocks the
+ * enabled scopes cover. Everything else stays undefined and the existing
+ * downstream (`buildStateCommands`) treats it as "nothing to do", which is
+ * exactly the intended Phase-1 behaviour.
+ */
+
+/** Which blocks of the executive output the cache may synthesise. */
+type CacheScope = 'actions' | 'goals' | 'beliefs';
+interface DeliberationCacheConfig {
+    /** Maximum patterns to retain. Lowest (competence × recency) evicted when full. */
+    maxPatterns?: number;
+    /** Neighbors retrieved for composition. */
+    k?: number;
+    /** Minimum similarity for a stored pattern to count as a neighbor. */
+    minSimilarity?: number;
+    /** Confidence threshold θ — cache hit requires ρ ≥ θ. Start conservative. */
+    theta?: number;
+    /** Temperature for softmax weights over neighbors. */
+    tau?: number;
+    /** Learning rate (EMA) for competence updates. */
+    eta?: number;
+    /** Competence decay per executive cycle (applied via decay()). */
+    decayPerCycle?: number;
+    /** Verify 1-in-N cache hits against the LLM (0 = never). */
+    verifyEveryNHits?: number;
+    /** Which output blocks to synthesise. Phase 1 default: ['actions']. */
+    scopes?: CacheScope[];
+}
+
 interface ExecutiveEngineConfig {
     executiveInterval?: number;
     cooldownTicks?: number;
@@ -4785,12 +4878,17 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     private _consumedBufferEntries;
     private _llmDirector;
     private _testMode;
-    private _messageQueue;
     private _recentActionTypes;
     private _coherenceVersion;
     private _lastEpistemicUncertainty;
     private _lastExecutiveOutput;
     private _lastExecutiveTick;
+    private _cache;
+    private _cacheRestored;
+    private _pendingVerify;
+    private _lastCacheHit;
+    private _lastCacheConfidence;
+    private _lastCacheNeighborCount;
     private _willId;
     /**
      * The Will's default model (config.model's `executive` role, resolved in
@@ -4812,11 +4910,28 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     private _inbox;
     private _tokenTracker;
     private readonly _facetSupervisor;
-    private _facetSyncSubscribed;
+    /**
+     * Who each live facet is engaged with, learned from `executive.facet.sync`.
+     * Keyed by facetId; the last sync wins. Rendered into the master's own prompt so
+     * the singular seat can reason across its conversations "as if they were sitting
+     * at the same table" — which it cannot do while it only knows facet numbers.
+     * Stale entries age out on read (see _activeConversations).
+     */
+    private _facetSubjects;
     private readonly _model;
     private readonly _generativeModel;
     private _summarizerRestored;
     private _lastStateRef;
+    /**
+     * The tick currently being processed, refreshed every react() — distinct from
+     * `_lastStateRef` (which tracks the REASONING tick and must not move under
+     * onReasoningComplete) and from `_lastExecutiveTick` (the last cycle that ran).
+     *
+     * Off-tick arrivals — a facet handoff, in particular — need to be stamped with
+     * when they actually happened. Using `_lastExecutiveTick` for that dated them to
+     * the last master cycle, which can be hundreds of ticks behind.
+     */
+    private _currentTick;
     private readonly _deferred;
     private _chunkBroadcaster;
     private readonly _escalations;
@@ -4911,7 +5026,14 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * spawn site sets a focus whose `function` matches its role — so the routed
      * answer is the same one, decided later and from the work itself.
      */
-    spawnFacet(role?: 'deliberation' | 'conversation' | 'outreach' | 'supervision'): {
+    spawnFacet(role?: 'deliberation' | 'conversation' | 'outreach' | 'supervision', 
+    /**
+     * What this facet is FOR — see `FacetSpawnDeps.key`. Two spawns with the same
+     * key get the same facet, so callers no longer each invent their own dedup
+     * (and `authorOutreach`, which had none, no longer opens a rival facet on a
+     * person the mind is already talking to).
+     */
+    key?: string): {
         attention: 'available' | 'full';
         handle?: ExecutiveFacetHandle;
     };
@@ -4926,12 +5048,119 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * its `executive.last_tick` metric reflects whether our prior commands landed.
      */
     react(delta: Duration, tick: Tick, state: ReadonlySimulationState, context: SimulationContext): Promise<EngineResult>;
+    /**
+     * What the mind is attending to because a facet is reasoning about it, as
+     * `attention.demand` entities the AttentionAllocator allocates real capacity
+     * against (`_extractSalienceSignals` reads this type; `costPerFocus` is then
+     * charged against the same 100-unit budget as perceptual foci).
+     *
+     * This closes a loop that was open in one direction only: the allocator's
+     * `freeFraction` scaled the facet budget, but facets never appeared in
+     * `_activeFocus`, so holding three conversations reported exactly as much spare
+     * attention as holding none. The budget was being scaled by a signal blind to the
+     * thing it was bounding.
+     *
+     * `urgency` sits below 1 on purpose: a live conversation is a genuine claim on
+     * attention but must not automatically outrank every percept — the allocator sorts
+     * candidates by salience into `maxFoci` slots, and a facet that always won would
+     * starve perception. Only BUSY facets are charged; an open-but-quiet thread is one
+     * the mind is in, not one it is attending to.
+     */
+    private _facetAttentionDemands;
     protected shouldAct(state: ReadonlySimulationState, tick: Tick, _context: SimulationContext): boolean;
     protected readState(state: ReadonlySimulationState, tick: Tick): ReasoningFootprint;
     protected reasonAsync(footprint: ReasoningFootprint, state: ReadonlySimulationState, context: SimulationContext, stream: IntermediateStream): Promise<unknown>;
     protected onIntermediateResult(step: string, result: unknown, _footprint: ReasoningFootprint, _context: SimulationContext): StateCommands | null;
     protected onReasoningComplete(output: unknown, footprint: ReasoningFootprint, _context: SimulationContext): StateCommands;
-    private _ensureFacetSyncSubscription;
+    /**
+     * The people the mind is in conversation with right now, newest first.
+     *
+     * Pruned against the supervisor's live facets on every read: a reaped facet is a
+     * conversation that has ended, and a master that still believes it is mid-thread
+     * with someone reasons about a table that is no longer there.
+     */
+    private _activeConversations;
+    /**
+     * Facet sync — remember WHO each facet is with, and wake the master.
+     *
+     * Reached from `onCognitiveEvent`, NOT from its own `bus.subscribe`. The bus
+     * stores one subscription per engineId (`_subscriptions.set( engineId, … )`),
+     * so a second `subscribe(this.name, …)` silently REPLACES the first — and the
+     * orchestrator registers `subscribe( engine.name, engine.subscribes(), … )`
+     * after `attachBus`, which replaced everything registered here. Two dedicated
+     * handlers used to be installed at this point; the second overwrote the first
+     * and the orchestrator then overwrote that, so neither ever ran. The escalation
+     * leg had been dead in production for its whole life: a facet could escalate,
+     * the audition engine published, and nothing was listening.
+     */
+    /**
+     * Retire undertakings the mind has already honoured, and refuse to restate one
+     * it is already carrying.
+     *
+     * An undertaking percept says, in the first person, "I said I would reach X and
+     * nothing has gone to them yet". That sentence has to stop being true at some
+     * point, and nothing made it stop. Measured on a live Will: SEVEN of them
+     * accumulated in state, every one still asserting nothing had been sent, while
+     * a `conversation.sent` to that person sat right beside them. She read seven
+     * standing unfulfilled promises every cycle and dutifully sent the same message
+     * again, five times in five minutes and once more in the next session — the
+     * percept meant to stop her forgetting a promise was making her unable to
+     * believe she had kept it.
+     *
+     * Discharged by EVIDENCE, not by a timer: a `conversation.sent` to that target,
+     * written no earlier than the undertaking, means the contact happened. That
+     * record is durable and snapshots with the state, so the discharge survives a
+     * restart exactly as the promise does — which the tick-scoped satiation in
+     * `enactionFootprint` deliberately cannot.
+     *
+     * It stays a decision, not an erasure. Retiring the percept removes the standing
+     * claim that the words are unsent; whether to say more to that person is then an
+     * ordinary competition like any other.
+     */
+    private _reconcileUndertakings;
+    private _onFacetSync;
+    /**
+     * A focused part of me surfaced something the singular seat owns — work to plan
+     * (`escalation`) or an intention toward a third party (`undertaking`).
+     *
+     * ONE handler for every facet type. This was `_onAuditionTaskSignal`, listening
+     * on a topic named for one sense engine and typed with one sense engine's nouns
+     * (`entityId`, `threadId`), which meant a planning, supervision or deliberation
+     * facet had no way to hand anything up at all. See EscalationBuffer for the full
+     * rationale; new kinds go in `HandoffBody`, not in a new topic and a new handler
+     * beside this one.
+     *
+     * Master stays out of the reply path entirely:
+     *   • The facet has already said (or will say) whatever the person in front of
+     *     it needed to hear.
+     *   • The master's job is purely cognitive: create a [PLANS] block, update
+     *     goals, reflect, or decide whether it still means to make that contact.
+     *     Any follow-up communication flows through the agency competition —
+     *     NEVER via [REPLY].
+     *
+     * Buffered rather than written directly: state is read-only here, so
+     * `EscalationBuffer.drainToPercepts()` emits it as a StateCommand on the next
+     * master cycle, where Exteroception surfaces it under "## Percepts (What I Notice)".
+     */
+    private _onFacetHandoff;
+    /** Enable the deliberation cache (off by default). Call during mind assembly. */
+    enableCache(config?: DeliberationCacheConfig): void;
+    /** True when the cache is active. */
+    get cacheEnabled(): boolean;
+    /** Telemetry snapshot for harnesses / eval. Null when disabled. */
+    cacheStats(): {
+        size: number;
+        hits: number;
+        misses: number;
+    } | null;
+    /**
+     * Reafference hook — update cache competence from a confirmed action outcome.
+     * Optional, layered on top of the inline verify loop. Reward follows the
+     * research sketch: mean of (action succeeded, stress relief, goal progress).
+     */
+    onActionOutcome(state: ReadonlySimulationState, tick: Tick, success: boolean, stressDelta: number, goalProgressDelta: number): void;
+    private _actionTypesMatch;
+    private _restoreDeliberationCache;
     private _restoreSummarizer;
 }
 
@@ -5294,6 +5523,8 @@ declare class SelfModelUpdater extends AsyncEngine implements CognitiveEngine {
     private _affectObservations;
     private _bus;
     private _semanticIntegrator;
+    /** The reasoning tick's state — onReasoningComplete needs it to merge identity. */
+    private _lastStateRef;
     private readonly _model;
     constructor(config?: SelfModelUpdaterConfig);
     attachBus(bus: CognitiveBus): void;
@@ -6638,6 +6869,8 @@ declare class AuditionEngine extends BaseSenseEngine {
     private _memorySink;
     /** Deterministic id source for `conversation.received` — see _writeReceived. */
     private _receivedSeq;
+    /** Deterministic id source for `conversation.sent` — see _writeSent. */
+    private _sentSeq;
     /** Speaker attachment strength accessor (0–1) — weights salience by relationship. */
     private _getAttachmentScore;
     /** Active-goal topic text accessor — for salience topic-overlap. */
@@ -6646,6 +6879,8 @@ declare class AuditionEngine extends BaseSenseEngine {
     private _inflightInbound;
     /** In-flight thread per entity — stamps chunk envelopes with the current threadId. */
     private _inflightThread;
+    /** Targets with an outreach being composed right now — see authorOutreach. */
+    private _outreachInFlight;
     attachExecutiveEngine(exec: ExecutiveEngine): void;
     /**
      * Inject the OutboxWriter so reply bubbles are delivered through the canonical
@@ -6689,7 +6924,7 @@ declare class AuditionEngine extends BaseSenseEngine {
     attachAttachmentScore(fn: (entityId: string) => number): void;
     /** Inject an active-goal topic-text accessor (reads GoalManager) for salience overlap. */
     attachActiveGoalText(fn: () => string[]): void;
-    /** Override: audition adds the master-escalation signal to the base percept schema. */
+    /** Override: audition adds the facet→master handoff to the base percept schema. */
     publishes(): CognitiveEventSchema[];
     snapshot(): Record<string, unknown>;
     /**
@@ -6769,6 +7004,19 @@ declare class AuditionEngine extends BaseSenseEngine {
      * engaged (familiarity, recency, reliability) without inventing how it felt.
      */
     private _writeReceived;
+    /**
+     * Record that the mind SPOKE to someone, mirroring `_writeReceived`.
+     *
+     * Only ProactiveCommunicator wrote `conversation.sent`, so a reply — which is
+     * most of what a Will says — left no durable trace of having spoken. Everything
+     * that asks "have I already said something to them?" was therefore blind to
+     * conversation: satiation could not damp repeating a relay delivered as a reply,
+     * and an undertaking discharged inside a conversation stayed forever unkept,
+     * which is exactly how the same message went out again and again.
+     *
+     * Speaking is speaking, whichever path carried it.
+     */
+    private _writeSent;
     private _persistExchangeMemory;
     private _onFacetDecision;
     /**
@@ -6860,6 +7108,16 @@ declare class AffordanceSynthesizer implements CognitiveEngine {
     private _schemas;
     private _skills;
     private _repertoire;
+    /**
+     * This tick's live consequence descriptors — the acts the mind has performed
+     * whose outcome has not yet come back. Refreshed once at the top of react()
+     * because `_build` runs per candidate and reading them is a full-entity scan.
+     */
+    private _inFlight;
+    /** Ticks an act stays satiating (engine-config-action-selector.repeatWindowTicks). */
+    private _satiationWindow;
+    /** Tick of the last thing said to each entity — outlives the descriptor sweep. */
+    private _spokenAt;
     private _bus;
     private _defaultCap;
     private _lastFieldSize;

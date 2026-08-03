@@ -51,7 +51,7 @@ export interface IdentityReviewer {
 // MODEL_ROUTING W0 — a one-shot classification at creation time; constant low
 // demand (structurally background, and it runs before there is a mind whose
 // state could modulate it).
-const COHERENCE_META: LLMCallMeta = { category: 'identity-guard', attribute: 'guard', function: 'identity-coherence', demand: BACKGROUND_DEMAND }
+const COHERENCE_META: LLMCallMeta = { category: 'identity-guard', attribute: 'guard', process: 'cog', function: 'identity-coherence', demand: BACKGROUND_DEMAND }
 
 const VALID_KINDS = new Set<CoherenceIssue['kind']>( [ 'contradiction', 'false-capability', 'injection', 'incoherence', 'other' ] )
 

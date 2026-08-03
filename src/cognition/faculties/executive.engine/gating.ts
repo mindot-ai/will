@@ -17,7 +17,7 @@ import type { CognitiveEvent } from '#cognition/bus'
  * and neither could ever fire: an unprocessed `communication` entity (a type
  * nothing has ever written) and a non-empty pending-message queue (never pushed
  * to, and the current design forbids it — inbound reaches a facet, and the master
- * learns of it through `audition.task.signal` → a high-salience percept, which
+ * learns of it through `executive.facet.handoff` → a high-salience percept, which
  * this catches). Both removed with the queue itself (#114).
  */
 function hasPendingInstructions( state: ReadonlySimulationState ): boolean {

@@ -152,7 +152,7 @@ export class ExecutiveSummarizer {
         // MODEL_ROUTING W0 — compression is background work at a constant low
         // demand: distilling excerpts is the same job whether the mind is calm
         // or in crisis, so there is no honest per-tick measure to forward here.
-        { category: 'summarizer', attribute: 'memory', function: 'consolidation', demand: BACKGROUND_DEMAND }
+        { category: 'summarizer', attribute: 'memory', process: 'cog', function: 'consolidation', demand: BACKGROUND_DEMAND }
       )
 
       if( result.text ){

@@ -49,7 +49,7 @@ export async function proposeCandidates( params: ProposeParams ): Promise<Ideati
   try {
     const result = await params.director.call(
       params.systemPrompt, params.ideationUserMessage, params.tick, params.proposeTemperature,
-      params.meta ?? { category: 'executive', attribute: 'master', function: 'ideation' }
+      params.meta ?? { category: 'executive', attribute: 'master', process: 'ideation', function: '-' }
     )
     const candidates = parseIdeation( result.text ).candidates
     return candidates.length > 0 ? candidates : undefined

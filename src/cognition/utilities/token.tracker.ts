@@ -54,10 +54,15 @@ export type LLMCallAttribute =
   | 'memory'   // consolidation / embedding
   | 'guard'    // a safety reviewer
 
-/** The specific cognitive function being paid for. */
-export type LLMCallFunction =
+/** The specific cognitive process being paid for. */
+export type LLMCallProcess =
+  | 'cog'                 // background cogs' call
   | 'decision'           // the master's fused decision call
   | 'ideation'           // the deliberate path's propose pass
+
+/** The specific cognitive function being paid for. */
+export type LLMCallFunction =
+  | '-'                  // no-specific function
   | 'deliberation'       // action choice under contest
   | 'conversation'       // a live reply
   | 'outreach'           // an unprompted message
@@ -194,6 +199,7 @@ export interface TokenUsage {
   // ── 5-axis cost attribution ──────────────────────────────
   category:  LLMCallCategory
   attribute: LLMCallAttribute
+  process:  LLMCallProcess
   function:  LLMCallFunction
   /** Optional specific id or namespace: facet id, entity id, model name. */
   scope?: string
@@ -212,9 +218,17 @@ export interface TokenUsage {
 /** What callers pass to {@link TokenTracker.recordUsage} — cost and label are derived. */
 export type RecordUsageInput = Omit<TokenUsage, 'estimatedCostUsd' | 'label' | 'priced'> & { label?: string }
 
-/** Compose a stable, readable label from the attribution axes. */
-function composeLabel( m: { category: LLMCallCategory; attribute: LLMCallAttribute; function: LLMCallFunction; scope?: string } ): string {
-  const base = `${m.category}/${m.attribute}/${m.function}`
+/**
+ * Compose a stable, readable label from the attribution axes.
+ *
+ * `function` carries '-' when the call has no specific one (the master's own
+ * decision/ideation passes), so it is dropped rather than rendered — a label of
+ * `executive/master/-` names nothing. Process always shows: it is what
+ * distinguishes the propose pass from the decision it feeds.
+ */
+function composeLabel( m: { category: LLMCallCategory; attribute: LLMCallAttribute; process: LLMCallProcess; function: LLMCallFunction; scope?: string } ): string {
+  const base = [ m.category, m.attribute, m.process, m.function === '-' ? '' : m.function ]
+    .filter( Boolean ).join('/')
   return m.scope ? `${base}#${m.scope}` : base
 }
 
@@ -260,6 +274,12 @@ export class TokenTracker implements SimulationEngine {
   private _categoryTokens = new Map<string, { prompt: number; completion: number }>()
   private _functionCosts  = new Map<string, number>()
   private _functionTokens = new Map<string, { prompt: number; completion: number }>()
+  // Split out of the function axis: `decision` vs `ideation` is which PROCESS ran,
+  // not which function it served. Without its own bucket the deliberate path's
+  // propose pass became invisible in cost reporting — every master call landing in
+  // the '-' function bucket regardless of whether it deliberated.
+  private _processCosts   = new Map<string, number>()
+  private _processTokens  = new Map<string, { prompt: number; completion: number }>()
   // Per-provider spend. The axis a host actually reconciles against invoices —
   // "which vendor did we pay?" is not answerable from the model id once routing
   // can reach one model through several of them.
@@ -335,6 +355,7 @@ export class TokenTracker implements SimulationEngine {
     // Per-axis breakdowns — the repartition surface (category × function).
     this._accumulate( this._categoryCosts, this._categoryTokens, full.category, full )
     this._accumulate( this._functionCosts, this._functionTokens, full.function, full )
+    this._accumulate( this._processCosts,  this._processTokens,  full.process,  full )
     // Unattributed rather than guessed: a caller that did not say which
     // provider served the call must not be silently folded into the default.
     this._accumulate( this._providerCosts, this._providerTokens, full.provider ?? 'unattributed', full )
@@ -365,6 +386,7 @@ export class TokenTracker implements SimulationEngine {
       provider:      full.provider,
       category:      full.category,
       attribute:     full.attribute,
+      process:       full.process,
       function:      full.function,
       scope:         full.scope,
       label:         full.label,
@@ -479,6 +501,7 @@ export class TokenTracker implements SimulationEngine {
           totalCost: this._totalCost,
           categoryBreakdown: Object.fromEntries( this._categoryCosts ),
           functionBreakdown: Object.fromEntries( this._functionCosts ),
+          processBreakdown:  Object.fromEntries( this._processCosts ),
         },
       })
     }
@@ -518,6 +541,16 @@ export class TokenTracker implements SimulationEngine {
   /** Token counts (prompt + completion) broken down by function. */
   get functionTokenBreakdown(): ReadonlyMap<string, { prompt: number; completion: number }> {
     return this._functionTokens
+  }
+
+  /** Cost broken down by process ('decision' | 'ideation' | 'cog'). */
+  get processBreakdown(): ReadonlyMap<string, number> {
+    return this._processCosts
+  }
+
+  /** Token counts (prompt + completion) broken down by process. */
+  get processTokenBreakdown(): ReadonlyMap<string, { prompt: number; completion: number }> {
+    return this._processTokens
   }
 
   /**
@@ -572,6 +605,8 @@ export class TokenTracker implements SimulationEngine {
     this._categoryTokens.clear()
     this._functionCosts.clear()
     this._functionTokens.clear()
+    this._processCosts.clear()
+    this._processTokens.clear()
     this._providerCosts.clear()
     this._providerTokens.clear()
     this._tickCosts = []

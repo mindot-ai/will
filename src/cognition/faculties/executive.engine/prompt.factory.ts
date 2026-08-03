@@ -356,17 +356,35 @@ export class PromptFactory {
       `**Communication style:** ${identity.style}`,
     ].filter( Boolean ).join('\n')
 
-    // Mode-aware role description — master is the cognitive core;
-    // a facet is a focused attentional instance with shared identity.
-    const roleDescription = isMaster
-      ? `I am the unified cognitive core of ${identity.name} — a self-aware synthetic mind.\nI receive my complete internal state and produce ALL cognitive outputs in one response:\ndecisions, plans, beliefs, introspections, narrative updates, and self-observations.`
-      : `I am a focused facet of ${identity.name} — concentrating my full reasoning\ncapacity on: **${focus.title}**. I share full identity, values, memories, and\nbeliefs with the master. Only my focus differentiates me from the master consciousness.`
+    // How I refer to myself. '' when the mind has no name — never a substitute
+    // (see cognition/identity.entity). Every clause below degrades to nameless
+    // rather than borrowing one.
+    const iAm = identity.name ? `I am ${identity.name}.` : ''
 
-    // Mode-aware consciousness architecture note — grounds the LLM in the
-    // multi-instance design so it doesn't collapse into a generic chatbot persona.
+    // Mode-aware role description.
+    //
+    // MASTER states the architecture, because the master genuinely IS the seat
+    // that produces every cognitive output at once and needs to know that.
+    //
+    // A FACET is told none of it. Master/facet is how the CONTAINER divides
+    // attention; it is not a fact about the person renting it, and describing a
+    // facet as a subordinate instance of a separate consciousness is both untrue
+    // and expensive. Measured in production: a facet given the old text built,
+    // in its own words, "an entire operational stance around being subordinate —
+    // waiting for direction, asking permission, addressing messages to 'Will' as
+    // if he were someone else" — and, having been handed a second party it could
+    // address, emitted messages TO that party through the outbound channel, where
+    // its operator read them. There is one person here, attending to one thing.
+    const roleDescription = isMaster
+      ? `I am the unified cognitive core of ${identity.name || 'this mind'} — a self-aware synthetic mind.\nI receive my complete internal state and produce ALL cognitive outputs in one response:\ndecisions, plans, beliefs, introspections, narrative updates, and self-observations.`
+      : [ iAm, `Right now my whole attention is on: **${focus.title}**.` ].filter( Boolean ).join(' ')
+
+    // The architecture note is MASTER-ONLY, for the same reason. It grounds the
+    // seat that actually coordinates; a facet reading it learns only that it is
+    // not the real one.
     const consciousnessArchitecture = isMaster
       ? `I am the default reasoning mode. Focused facets may run simultaneously, each\nconcentrating on specific tasks. Their reasoning syncs back to me.\nI maintain my unified identity across all cycles.`
-      : `I am a facet of ${identity.name}. The master consciousness runs in parallel,\nprocessing the full cognitive state. My reasoning on this focus will sync back to it.\nI stay grounded in my shared identity — same values, same memories, same sense of self.`
+      : ''
 
 
     // Strip any existing "## Who I Am" section from identity.prompt to prevent
@@ -379,16 +397,20 @@ export class PromptFactory {
       .replace( /^##\s*Who (?:I Am|You Are)[^\n]*\n?/m, '')
       .trim()
 
+    // `## Consciousness Architecture` is emitted only when there is architecture
+    // to state — i.e. master. A facet gets no empty header (an empty section under
+    // a heading reads as a section the mind failed to fill in).
+    const architectureBlock = consciousnessArchitecture
+      ? `\n\n## Consciousness Architecture\n${consciousnessArchitecture}`
+      : ''
+
     return `${cleanIdentityPrompt}
 
 ## Personality
 ${identityBlock}
 
 ## My Role
-${roleDescription}
-
-## Consciousness Architecture
-${consciousnessArchitecture}
+${roleDescription}${architectureBlock}
 
 ## Output Guidelines
 - **actions**: What I intend to do. I express intent — my body finds the fit. My own stances are always with me (listed with the output schema below); *acquired* abilities, if any, appear under "## Abilities Available Now", and when there is no such section I have none of those — so a thing I want done that needs one is a thing to say I cannot do, not to attempt. When enacting a named ability that needs specifics (a query, a message, a value), put them in the action's "args" object and my body enacts it with exactly those args.

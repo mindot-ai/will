@@ -11,13 +11,13 @@
  * `this._subscriptions.set( engineId, { engineId, topics, handler } )` — so a
  * second `subscribe( this.name, … )` silently replaces the first. The executive
  * registered two dedicated handlers in `attachBus` (facet.sync, then
- * audition.task.signal — the second already clobbering the first), and
+ * executive.facet.handoff — the second already clobbering the first), and
  * `CognitiveOrchestrator.addEngine` then called
  * `subscribe( engine.name, engine.subscribes(), ev => engine.onCognitiveEvent( ev ) )`
  * immediately afterwards, replacing that one too.
  *
  * Net effect: a conversation facet could escalate work to the master, the audition
- * engine published `audition.task.signal`, and NOBODY was listening. `_escalations`
+ * engine published the handoff, and NOBODY was listening. `_escalations`
  * was never fed, so `drainToPercepts()` never had anything to drain and the master
  * never learned what its own facets had surfaced.
  *
@@ -65,9 +65,9 @@ describe('facet → master channel survives the orchestrator\'s subscription', (
   it('delivers a facet escalation to the master as a percept it can actually read', () => {
     const { bus, engine } = wired()
 
-    publish( bus, 'audition.task.signal', {
-      entityId: 'discord:1019', threadId: 't',
-      reasoning: 'they want the repo set up', confidence: 0.8,
+    publish( bus, 'executive.facet.handoff', {
+      subjectEntityId: 'discord:1019', threadId: 't', confidence: 0.8,
+      body: { kind: 'escalation', reasoning: 'they want the repo set up' },
     }, 'audition-engine')
 
     const { percepts } = priv( engine )._escalations.drainToPercepts()
@@ -79,9 +79,9 @@ describe('facet → master channel survives the orchestrator\'s subscription', (
   it('delivers an undertaking toward a third party — the FKEM case, end to end', () => {
     const { bus, engine } = wired()
 
-    publish( bus, 'audition.task.signal', {
-      entityId: 'discord:1019', threadId: 't', reasoning: '', confidence: 0.85,
-      undertaking: { target: 'FKEM', gist: 'can you coordinate the demo meeting?' },
+    publish( bus, 'executive.facet.handoff', {
+      subjectEntityId: 'discord:1019', threadId: 't', confidence: 0.85,
+      body: { kind: 'undertaking', reasoning: '', target: 'FKEM', gist: 'can you coordinate the demo meeting?' },
     }, 'audition-engine')
 
     const m = priv( engine )._escalations.drainToPercepts().percepts[0]!.metadata as Record<string, unknown>

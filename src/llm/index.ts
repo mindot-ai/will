@@ -8,6 +8,7 @@ import type { SessionLogger } from '#stem/tracts/session.logger'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import type {
   TokenTracker, LLMCallCategory, LLMCallAttribute, LLMCallFunction,
+  LLMCallProcess,
 } from '#cognition/utilities/token.tracker'
 import { type ModelRouter, isNullRouter } from '#llm/routing'
 import { getCompletionRecorder, getCompletionSource } from '#core/completion.recorder'
@@ -275,6 +276,8 @@ export interface LLMCallMeta {
   /** The actor/subsystem doing the work. */
   attribute: LLMCallAttribute
   /** The specific cognitive function. */
+  process: LLMCallProcess
+  /** The specific cognitive function. */
   function: LLMCallFunction
   /** Optional specific id or namespace: facet id, entity id, model name. */
   scope?: string
@@ -322,7 +325,7 @@ export const BACKGROUND_DEMAND = 0.1
 export const ESCALATION_DEMAND = 0.7
 
 /** Default attribution when a caller does not tag itself (back-compat). */
-const DEFAULT_CALL_META: LLMCallMeta = { category: 'executive', attribute: 'master', function: 'decision' }
+const DEFAULT_CALL_META: LLMCallMeta = { category: 'executive', attribute: 'master', process: 'decision', function: '-' }
 
 /**
  * Fill in wire and base URL, or say clearly what is missing.
@@ -626,6 +629,7 @@ export class LLMDirector {
       cacheWriteTokens: result.cacheWriteTok,
       category:         meta.category,
       attribute:        meta.attribute,
+      process:          meta.process,
       function:         meta.function,
       scope:            meta.scope,
       label:            meta.label,

@@ -41,7 +41,8 @@ function usage( over: Partial<RecordUsageInput> = {} ): RecordUsageInput {
     totalTokens:      0,
     category:         'executive' as const,
     attribute:        'master' as const,
-    function:         'decision' as const,
+    process:         'decision' as const,
+    function:         '-' as const,
     tick:             1,
     latencyMs:        0,
     ...over,
@@ -121,15 +122,18 @@ describe('TokenTracker — 5-axis repartition', () => {
     expect( byCat.get('embedding')?.prompt ).toBe( 500 )
   } )
 
-  it('splits cost by function (decision vs ideation vs conversation)', () => {
+  it('splits cost by process (decision vs ideation) and by function (conversation)', () => {
     const t = priced()
-    t.recordUsage( usage( { function: 'decision',     model: 'claude-sonnet-4-5', completionTokens: 1_000_000 } ) ) // $15
-    t.recordUsage( usage( { function: 'ideation',     model: 'claude-sonnet-4-5', completionTokens: 1_000_000 } ) ) // $15
+    t.recordUsage( usage( { process: 'decision', model: 'claude-sonnet-4-5', completionTokens: 1_000_000 } ) ) // $15
+    t.recordUsage( usage( { process: 'ideation', model: 'claude-sonnet-4-5', completionTokens: 1_000_000 } ) ) // $15
     t.recordUsage( usage( { attribute: 'facet', function: 'conversation', model: 'claude-sonnet-4-5', completionTokens: 2_000_000 } ) ) // $30
 
+    // decision vs ideation is the PROCESS axis — which one ran, not what it served.
+    const byProc = t.processBreakdown
+    expect( byProc.get('decision') ).toBeCloseTo( 45, 4 )   // the master call + the facet's
+    expect( byProc.get('ideation') ).toBeCloseTo( 15, 4 )
+
     const byFn = t.functionBreakdown
-    expect( byFn.get('decision') ).toBeCloseTo( 15, 4 )
-    expect( byFn.get('ideation') ).toBeCloseTo( 15, 4 )
     expect( byFn.get('conversation') ).toBeCloseTo( 30, 4 )
   } )
 
@@ -137,7 +141,7 @@ describe('TokenTracker — 5-axis repartition', () => {
     const t = priced()
     t.recordUsage( usage( { category: 'executive', attribute: 'facet', function: 'conversation', scope: 'facet-7', promptTokens: 10 } ) )
     const last = t.getUsageLog().at( -1 )!
-    expect( last.label ).toBe('executive/facet/conversation#facet-7')
+    expect( last.label ).toBe('executive/facet/decision/conversation#facet-7')
   } )
 
   it('keeps a caller-supplied label verbatim', () => {
@@ -162,7 +166,7 @@ describe('TokenTracker — attributed on-disk ledger (token-report.jsonl)', () =
     expect( lines ).toHaveLength( 2 )
     expect( lines[0] ).toMatchObject({
       category: 'executive', attribute: 'facet', function: 'conversation', scope: 'facet-7',
-      label: 'executive/facet/conversation#facet-7', inputTok: 100, outputTok: 200,
+      label: 'executive/facet/decision/conversation#facet-7', inputTok: 100, outputTok: 200,
     })
     expect( lines[0].costUsd ).toBeCloseTo( 100 * 3 / 1e6 + 200 * 15 / 1e6, 8 )
     expect( lines[1] ).toMatchObject({ category: 'embedding', function: 'index' })

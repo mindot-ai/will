@@ -30,7 +30,7 @@ import { buildStateCommands } from '#faculties/executive.engine/commands'
 import type { CommandDependencies } from '#faculties/executive.engine/commands'
 import type { ExecutiveOutputFull } from '#faculties/executive.engine/types'
 import { GenerativeModel } from '#cognition/generative.model'
-import { EscalationBuffer } from '#faculties/executive.engine/escalation.buffer'
+import { EscalationBuffer, validateFacetHandoff } from '#faculties/executive.engine/escalation.buffer'
 import { partitionOutwardIntents } from '#senses/audition.engine/engine'
 import { ExecutiveEngine } from '#faculties/executive.engine'
 import type { ReadonlySimulationState, ReasoningFootprint, EntityInput } from '#core/types'
@@ -220,8 +220,8 @@ describe('EscalationBuffer — an undertaking made inside a conversation', () =>
   it('tells the master what it promised, to whom, and that nothing has gone out', () => {
     const buf = new EscalationBuffer()
     buf.push( {
-      entityId: 'discord:1019376031150379101', threadId: 't', reasoning: '', tick: 328,
-      undertaking: { target: 'FKEM', gist: 'Fabrice wants a full demo — can you coordinate a meeting?' },
+      subjectEntityId: 'discord:1019376031150379101', threadId: 't', tick: 328,
+      body: { kind: 'undertaking', reasoning: '', target: 'FKEM', gist: 'Fabrice wants a full demo — can you coordinate a meeting?' },
     } )
 
     const { percepts } = buf.drainToPercepts()
@@ -242,9 +242,9 @@ describe('EscalationBuffer — an undertaking made inside a conversation', () =>
     // Same entity, same tick: keying on (entity, tick) alone silently kept only the
     // last, losing one of two things the mind decided to do.
     const buf = new EscalationBuffer()
-    const base = { entityId: 'discord:1019', threadId: 't', reasoning: '', tick: 42 }
-    buf.push( { ...base, undertaking: { target: 'FKEM' } } )
-    buf.push( { ...base, undertaking: { target: 'Ada' } } )
+    const base = { subjectEntityId: 'discord:1019', threadId: 't', tick: 42 }
+    buf.push( { ...base, body: { kind: 'undertaking' as const, reasoning: '', target: 'FKEM' } } )
+    buf.push( { ...base, body: { kind: 'undertaking' as const, reasoning: '', target: 'Ada' } } )
 
     const { percepts } = buf.drainToPercepts()
     expect( new Set( percepts.map( p => p.id ) ).size ).toBe( 2 )
@@ -257,7 +257,7 @@ describe('EscalationBuffer — an undertaking made inside a conversation', () =>
     // renders summary/content and nothing else, so it never once reached the
     // master in the whole life of that field.
     const buf = new EscalationBuffer()
-    buf.push( { entityId: 'e', threadId: 't', reasoning: 'they want the repo set up', tick: 9 } )
+    buf.push( { subjectEntityId: 'e', threadId: 't', tick: 9, body: { kind: 'escalation', reasoning: 'they want the repo set up' } } )
 
     const m = buf.drainToPercepts().percepts[0]!.metadata as Record<string, unknown>
     expect( m.category ).toBe('task-escalation')
@@ -367,5 +367,64 @@ describe('undertakings are discharged by having made the contact', () => {
     const { keep, discharge } = reconcile( new ExecutiveEngine(), [ task ], stateOf() )
     expect( keep.map( k => k.id ) ).toEqual( [ 'esc1' ] )
     expect( discharge ).toEqual( [] )
+  } )
+} )
+
+// ── 5. the handoff channel belongs to every facet, not to audition ───
+
+describe('executive.facet.handoff — one channel, any facet type', () => {
+  it('renders a handoff from a facet with no person in its focus', () => {
+    // The whole reason the topic was generalised. A planning or supervision facet
+    // has no `entityId`/`threadId` — the old conversation-shaped payload could not
+    // express one, so those facets had no way to hand anything to the master at all.
+    const buf = new EscalationBuffer()
+    buf.push( { facetId: 'facet-3', tick: 12, body: { kind: 'escalation', reasoning: 'the deploy step keeps failing' } } )
+
+    const m = buf.drainToPercepts().percepts[0]!.metadata as Record<string, unknown>
+    expect( m.category ).toBe('task-escalation')
+    expect( m.summary ).toMatch( /the deploy step keeps failing/ )
+    // Degrades to a truthful phrasing rather than inventing a conversation.
+    expect( m.summary ).toMatch( /my own focused work/ )
+    expect( m.entityId ).toBeUndefined()
+  } )
+
+  it('prefers the person\'s NAME over their id when it has one', () => {
+    const buf = new EscalationBuffer()
+    buf.push( {
+      subjectEntityId: 'discord:1019', subjectName: 'Fabrice', tick: 5,
+      body: { kind: 'undertaking', reasoning: '', target: 'FKEM' },
+    } )
+    expect( ( buf.drainToPercepts().percepts[0]!.metadata as Record<string, unknown> ).summary )
+      .toMatch( /In my conversation with Fabrice/ )
+  } )
+
+  it('takes its requester context from a handoff that actually had one', () => {
+    // A keyless handoff drained alongside a conversation one must not blank the
+    // requester used to tag the goals the master creates in response.
+    const buf = new EscalationBuffer()
+    buf.push( { facetId: 'facet-3', tick: 1, body: { kind: 'escalation', reasoning: 'a' } } )
+    buf.push( { subjectEntityId: 'discord:1019', threadId: 't', tick: 2, body: { kind: 'escalation', reasoning: 'b' } } )
+
+    expect( buf.drainToPercepts().requester ).toEqual( { entityId: 'discord:1019', threadId: 't' } )
+  } )
+} )
+
+describe('validateFacetHandoff — the bus checks the shape, not each caller', () => {
+  it('accepts both kinds', () => {
+    expect( validateFacetHandoff({ body: { kind: 'escalation', reasoning: 'r' } }) ).toBeNull()
+    expect( validateFacetHandoff({ body: { kind: 'undertaking', target: 'FKEM' } }) ).toBeNull()
+  } )
+
+  it('rejects an undertaking with nobody to reach — it could never be discharged', () => {
+    // A target-less undertaking asserts "nothing has gone to them yet" forever:
+    // _reconcileUndertakings keys discharge on the target, so it can never be
+    // matched against a contact. Seven of these were found in one live snapshot.
+    expect( validateFacetHandoff({ body: { kind: 'undertaking' } }) ).toMatch( /target/ )
+    expect( validateFacetHandoff({ body: { kind: 'undertaking', target: '  ' } }) ).toMatch( /target/ )
+  } )
+
+  it('rejects a body it does not know, rather than dropping it silently', () => {
+    expect( validateFacetHandoff({ body: { kind: 'telepathy' } }) ).toMatch( /unknown handoff kind/ )
+    expect( validateFacetHandoff({}) ).toMatch( /body is required/ )
   } )
 } )

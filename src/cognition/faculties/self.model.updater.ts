@@ -30,6 +30,7 @@ import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import { GenerativeModel, type GenerativeModelSnapshot } from '#cognition/generative.model'
 import { readEffectiveParams } from '#cognition/persona.prior'
+import { identityCommand } from '#cognition/identity.entity'
 
 /** Shape of the will.identity entity — defined locally to avoid external dependencies. */
 interface Keidentity {
@@ -123,6 +124,8 @@ export class SelfModelUpdater extends AsyncEngine implements CognitiveEngine {
 
   private _bus: CognitiveBus | null = null
   private _semanticIntegrator: SemanticIntegrator | null = null
+  /** The reasoning tick's state — onReasoningComplete needs it to merge identity. */
+  private _lastStateRef: ReadonlySimulationState | null = null
 
   private readonly _model = new GenerativeModel()
 
@@ -345,6 +348,10 @@ export class SelfModelUpdater extends AsyncEngine implements CognitiveEngine {
     context: SimulationContext,
     stream: IntermediateStream
   ): Promise<unknown> {
+    // Kept for onReasoningComplete, which builds the merged identity command and
+    // has no state parameter of its own. Same reasoning tick either way.
+    this._lastStateRef = state
+
     // 1. Compute domain success rates
     const domainAssessments = this._computeDomainAssessments()
 
@@ -439,19 +446,19 @@ export class SelfModelUpdater extends AsyncEngine implements CognitiveEngine {
     this._lastEvaluationTick = footprint.tickObserved
     this._experienceCountAtLastEval = this._cachedEpisodicTotal
 
+    // MERGING (see cognition/identity.entity): the self-model revises what the
+    // mind believes about itself, never who it is. A whole-entity write here
+    // deleted `name` on every evaluation — so even a Will that never touched a
+    // PMA lost its name within its first few hundred ticks.
     const commands: StateCommands = {
-      set: [{
-        id: 'identity-self',
-        type: 'will.identity',
-        metadata: {
-          prompt: updatedIdentity.prompt,
-          values: updatedIdentity.values,
-          traits: updatedIdentity.traits,
-          traitStats,                                  // per-trait baseline + recency (B/C)
-          style: updatedIdentity.style,
-          version: ( updatedIdentity.version ?? 1 ) + 1
-        }
-      }],
+      set: [ identityCommand( this._lastStateRef!, {
+        prompt: updatedIdentity.prompt,
+        values: updatedIdentity.values,
+        traits: updatedIdentity.traits,
+        traitStats,                                  // per-trait baseline + recency (B/C)
+        style: updatedIdentity.style,
+        version: ( updatedIdentity.version ?? 1 ) + 1
+      } ) ],
       metrics: []
     }
 

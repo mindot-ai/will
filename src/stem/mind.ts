@@ -100,6 +100,7 @@ import {
   GustationEngine
 } from '#cognition/index'
 import { buildEngineConfigEntities, mergeEngineConfig, EngineConfigEntity } from '#cognition/config.mirror.entities'
+import { mergeIdentity } from '#cognition/identity.entity'
 
 // ── Public types ─────────────────────────────────────────────
 
@@ -1281,19 +1282,16 @@ function _seedIdentity(
     profileContext  ? `\n\n## My Environment\n${profileContext}` : '',
   ].join('')
 
-  simulation.stateManager.setEntity({
-    id: 'identity-self',
-    type: 'will.identity',
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    metadata: {
-      name: config.name,         // canonical persona name — single source of truth
-      prompt,
-      values: identity.values,
-      traits: identity.traits,
-      style:  identity.style,
-      version: 1
-    }
+  // The one place `name` is ever written. Every other writer merges (see
+  // cognition/identity.entity), so from here on the mind's name can only be
+  // changed on purpose — never dropped as a side effect of revising something else.
+  mergeIdentity( simulation.stateManager, {
+    name: config.name,         // canonical persona name — single source of truth
+    prompt,
+    values: identity.values,
+    traits: identity.traits,
+    style:  identity.style,
+    version: 1
   })
 }
 

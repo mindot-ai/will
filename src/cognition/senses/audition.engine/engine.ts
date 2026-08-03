@@ -13,14 +13,14 @@
  * Architecture:
  *   - External call: WillManager.ingestText() → audition.ingest(TextMessage)
  *   - Percept published on bus:  senses.audition.percept
- *   - Facet reply signals:       audition.task.signal  (when master attention needed)
+ *   - Facet handoffs to the seat: executive.facet.handoff  (escalation | undertaking)
  *   - GoalManager integration:   automatic via executive.facet.progress (bus)
  *   - Chunk streaming:           via multi-subscriber chunk callbacks (transport + SSE)
  *
  * The master executive is NOT involved in replies — it learns about conversations
  * only via executive.facet.sync events published by the conversation facets.
- * Master takes initiative if it receives an audition.task.signal marked
- * requiresMasterAttention: true.
+ * It takes initiative when a facet raises an `executive.facet.handoff` — the one
+ * channel every facet type uses to hand the singular seat something it owns.
  *
  * FocusSection.outputFormat provides a custom format that re-enables [REPLY]
  * (normally gated out in facet mode) while removing PLANS (conversation
@@ -75,6 +75,7 @@ import type {
   TextMessage,
   VoiceChunk
 } from '#senses/index'
+import { validateFacetHandoff, type HandoffBody } from '#faculties/executive.engine/escalation.buffer'
 
 // ── Internal types ─────────────────────────────────────────────
 
@@ -202,25 +203,33 @@ Start a new paragraph (blank line) to send a separate chat bubble.
 Write [REPLY_TEXT] AFTER the closing \`\`\`. This is the only part the speaker sees — keep it grounded, present.
 Separate multiple messages with a blank line for natural conversational pauses (like separate texts).
 
+## Saying nothing
+Silence is a real choice and it is available to me: if I have nothing to say right now — I am
+waiting on them, or speaking again would only repeat myself — I **omit the [REPLY_TEXT] block
+entirely**, or leave it empty. Nothing is sent and nothing is lost; my reasoning above is still
+recorded. What I must never do is narrate the silence inside the block: anything I put between
+those markers IS SENT, so a line like "[no message this cycle — waiting for their reply]" does
+not describe my silence to myself, it delivers that sentence to them.
+
 ## When to use GOALS_NEW (almost always)
 If the speaker requests, mentions, or implies something I should follow through on — embed [GOALS_NEW] in my reasoning.
-This tracks intent across future cycles without requiring master attention.
+This tracks intent across future cycles on its own.
 
 ## When to use the escalate action (rare — only for multi-step tasks)
-Use \`{"type": "escalate", "reasoning": "...", "expectedOutcome": "..."}\` in actions ONLY when the request genuinely requires my master consciousness to create a plan:
+Use \`{"type": "escalate", "reasoning": "...", "expectedOutcome": "..."}\` in actions ONLY when the request genuinely needs a plan I carry out over time rather than an answer I can give now:
 - The task involves multiple steps across future cycles ("build me X", "monitor Y", "set up Z")
 - The request changes my active goal priorities in a significant way
 - I need to coordinate something beyond a single reply
 
-**The "reasoning" field on the escalate action becomes the task description the master sees.**
+**The "reasoning" field on the escalate action becomes the description of the work I pick up.**
 Make it concrete — describe WHAT needs to happen, not just that I am escalating.
 Good: type=escalate, reasoning="User wants weekly mood summaries by email every Monday. Needs: data aggregation, schedule, email delivery.", expectedOutcome="Weekly email delivered."
 Bad:  type=escalate, reasoning="Escalating because this is complex."
 
 When I escalate:
 1. STILL include a [REPLY_TEXT] that acknowledges the request (e.g. "Got it — I'm on it.")
-2. The master will create and execute the plan in the background
-3. Do NOT include a [PLANS] block — plan creation is the master's domain only
+2. I form and carry out the plan away from this conversation, over the cycles that follow
+3. Do NOT include a [PLANS] block — the planning happens there, not here
 
 For simple, single-exchange requests (questions, opinions, short tasks) — do NOT escalate. Just reply.`
 
@@ -339,6 +348,8 @@ export class AuditionEngine extends BaseSenseEngine {
   private _inflightInbound = new Map<string, string>()
   /** In-flight thread per entity — stamps chunk envelopes with the current threadId. */
   private _inflightThread = new Map<string, string>()
+  /** Targets with an outreach being composed right now — see authorOutreach. */
+  private _outreachInFlight = new Set<string>()
 
   // ── Assembly wiring ─────────────────────────────────────────
 
@@ -392,11 +403,11 @@ export class AuditionEngine extends BaseSenseEngine {
 
   // ── CognitiveEngine ─────────────────────────────────────────
 
-  /** Override: audition adds the master-escalation signal to the base percept schema. */
+  /** Override: audition adds the facet→master handoff to the base percept schema. */
   publishes(): CognitiveEventSchema[] {
     return [
-      { type: 'senses.audition.percept', version: 1, validate: () => null },
-      { type: 'audition.task.signal',    version: 1, validate: () => null }
+      { type: 'senses.audition.percept',   version: 1, validate: () => null },
+      { type: 'executive.facet.handoff',   version: 1, validate: validateFacetHandoff },
     ]
   }
   // subscribes() and onCognitiveEvent() inherit the base no-ops (ingest-driven).
@@ -632,7 +643,10 @@ export class AuditionEngine extends BaseSenseEngine {
     let handle = this._facets.get( percept.speakerEntityId )
     if( !handle ){
       // New conversation session — try to spawn a facet.
-      const result = this._executiveEngine.spawnFacet('conversation')
+      // Keyed by speaker: one thread of attention per person. The supervisor now
+      // owns that guarantee (and carries the thread's reasoning across a reap),
+      // so a re-spawn after an idle gap resumes rather than starting cold.
+      const result = this._executiveEngine.spawnFacet('conversation', `conversation:${percept.speakerEntityId}`)
       if( result.attention === 'full' || !result.handle ){
         logger.warn(
           `[audition-engine] Executive attention full — ` +
@@ -817,6 +831,26 @@ export class AuditionEngine extends BaseSenseEngine {
    */
   async authorOutreach( entityId: string, entityName: string, gist?: string ): Promise<string[]> {
     if( !this._executiveEngine ) return []
+
+    // One authoring pass per person at a time.
+    //
+    // This was unguarded, and the agency can hold more than one intent toward the
+    // same target at once (two undertakings, or an undertaking plus a self-initiated
+    // reach). Each one spawned its own transient facet, each facet independently
+    // composed a message, and both were delivered — the same question asked twice,
+    // reworded, seconds apart. The executor's idempotence was keyed by INTENT id,
+    // which cannot see that two intents mean one conversation.
+    //
+    // A concurrent second call returns empty rather than waiting: its intent stays
+    // 'awaiting' and comes back round once this pass has landed and satiation has
+    // had a chance to read it, which is the outcome we want anyway.
+    if( this._outreachInFlight.has( entityId ) ){
+      logger.info(`[audition-engine] already composing an outreach to ${ entityId } — not opening a second`)
+      return []
+    }
+    // Deliberately NOT a supervisor key: an authoring facet is transient and is
+    // exactly what the mind can most afford to evict under pressure. Keying it
+    // would move it into the protected tier alongside live conversations.
     const spawned = this._executiveEngine.spawnFacet('outreach')
     if( spawned.attention === 'full' || !spawned.handle ){
       logger.warn(`[audition-engine] facet budget full — cannot author outreach to ${ entityId }`)
@@ -859,24 +893,39 @@ export class AuditionEngine extends BaseSenseEngine {
     // report() only QUEUES the facet's reasoning; the authored bubbles arrive LATER
     // via the subscription. So wait for the DECISION (not report's resolution), with
     // a safety timeout, then tear the transient facet down.
-    const bubbles = await new Promise<string[]>( resolve => {
-      let settled = false
-      let unsub:  () => void = () => {}
-      let timer:  ReturnType<typeof setTimeout>
-      const done = ( b: string[] ): void => { if( settled ) return; settled = true; clearTimeout( timer ); unsub(); resolve( b ) }
-      timer = setTimeout(
-        () => { logger.warn(`[audition-engine] outreach authoring timed out for ${ entityId }`); done( [] ) },
-        60_000,   // generous: the facet LLM authors in ~8–18s
-      )
-      unsub = handle.subscribe( d => done( ( d.decision as ConversationDecision ).replyBubbles ?? [] ) )
-      Promise.resolve( handle.report({ type: 'outreach', payload: { entityId, gist } }) ).catch( err => {
-        logger.warn(`[audition-engine] outreach report failed for ${ entityId }: ${ ( err as Error ).message }`)
-        done( [] )
+    this._outreachInFlight.add( entityId )
+    try {
+      const bubbles = await new Promise<string[]>( resolve => {
+        let settled = false
+        let unsub:  () => void = () => {}
+        let timer:  ReturnType<typeof setTimeout>
+        const done = ( b: string[] ): void => { if( settled ) return; settled = true; clearTimeout( timer ); unsub(); resolve( b ) }
+        timer = setTimeout(
+          () => { logger.warn(`[audition-engine] outreach authoring timed out for ${ entityId }`); done( [] ) },
+          60_000,   // generous: the facet LLM authors in ~8–18s
+        )
+        unsub = handle.subscribe( d => done( ( d.decision as ConversationDecision ).replyBubbles ?? [] ) )
+        Promise.resolve( handle.report({ type: 'outreach', payload: { entityId, gist } }) ).catch( err => {
+          logger.warn(`[audition-engine] outreach report failed for ${ entityId }: ${ ( err as Error ).message }`)
+          done( [] )
+        } )
       } )
-    } )
 
-    handle.destroy()
-    return bubbles
+      handle.destroy()
+      return bubbles
+    }
+    catch( err ){
+      // A facet that throws is a pass that produced no words — the same outcome as
+      // the timeout, and the caller's contract is already "empty means I could not
+      // author". Letting it escape would reject inside MotorSchemaExecutor's
+      // fire-and-forget authoring chain instead.
+      logger.warn(`[audition-engine] outreach authoring failed for ${ entityId }: ${ ( err as Error ).message }`)
+      return []
+    }
+    // finally{} on every path — the timeout resolves empty rather than throwing, but
+    // a destroy() or report() that throws must not leave this person permanently
+    // un-reachable by leaving the guard set.
+    finally { this._outreachInFlight.delete( entityId ) }
   }
 
   // ── Conversation memory (Section 5) ─────────────────────────
@@ -1053,43 +1102,48 @@ export class AuditionEngine extends BaseSenseEngine {
       // hands the intention to the master, which is singular and owns whom the
       // mind contacts. The master perceives it as an undertaking it made and
       // decides whether it still means it; nothing here forces the contact.
-      if( d.outwardIntents?.length && this._bus )
+      // `executive.facet.handoff` is the ONE channel every facet type uses to hand
+      // the master something. It replaced `audition.task.signal`, which was named
+      // and typed for this engine alone — see EscalationBuffer.
+      const handoff = ( body: HandoffBody ): void => {
+        this._bus?.publish({
+          type: 'executive.facet.handoff',
+          version: 1,
+          sourceEngine: this.name,
+          salience: 0.9,
+          payload: {
+            facetId:         decision.facetId,
+            subjectEntityId: entityId,
+            ...( d.targetEntityId ? { subjectName: d.targetEntityId } : {} ),
+            threadId,
+            confidence:      decision.confidence,
+            // No `tick` — this engine runs off-tick and has no honest sim clock of
+            // its own. The master stamps it from the tick the handoff ARRIVES on,
+            // which is within one tick of when it was formed and, crucially, is a
+            // real clock reading rather than the last time the master happened to run.
+            body,
+          }
+        })
+      }
+
+      if( d.outwardIntents?.length )
         for( const intent of d.outwardIntents ){
           logger.info(
             `[audition-engine] Outward intent from ${entityId}'s facet → ${intent.target} ` +
             `(handing to master; the facet does not open that channel itself)`
           )
-          this._bus.publish({
-            type: 'audition.task.signal',
-            version: 1,
-            sourceEngine: this.name,
-            salience: 0.9,
-            payload: {
-              entityId,
-              threadId,
-              reasoning:  intent.reasoning ?? '',
-              confidence: decision.confidence,
-              undertaking: { target: intent.target, ...( intent.gist ? { gist: intent.gist } : {} ) },
-            }
+          handoff({
+            kind:      'undertaking',
+            target:    intent.target,
+            reasoning: intent.reasoning ?? '',
+            ...( intent.gist ? { gist: intent.gist } : {} ),
           })
         }
 
       // ── Master escalation signal ──────────────────────────────
       // Published when the facet emits an 'escalate' action type.
-      // Master executive subscribes to this and queues it as a PendingMessage.
-      if( d.requiresMasterAttention && this._bus )
-        this._bus.publish({
-          type: 'audition.task.signal',
-          version: 1,
-          sourceEngine: this.name,
-          salience: 0.9,
-          payload: {
-            entityId,
-            threadId,
-            reasoning: decision.reasoning,
-            confidence: decision.confidence
-          }
-        })
+      if( d.requiresMasterAttention )
+        handoff({ kind: 'escalation', reasoning: decision.reasoning })
     }
     finally {
       // Release the entity's turn queue so the next message can be processed.

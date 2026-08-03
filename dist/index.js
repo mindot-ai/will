@@ -2507,17 +2507,17 @@ var ConflictDetector = class {
       const match = msg.match(/Write conflict on '([^']+)'/);
       match && conflictedIds.add(match[1]);
     }
-    const merged = {};
+    const merged2 = {};
     if (original.set)
-      merged.set = original.set.filter((e) => !conflictedIds.has(e.id));
+      merged2.set = original.set.filter((e) => !conflictedIds.has(e.id));
     if (original.delete)
-      merged.delete = original.delete.filter((id) => !conflictedIds.has(id));
+      merged2.delete = original.delete.filter((id) => !conflictedIds.has(id));
     if (original.metrics)
-      merged.metrics = [...original.metrics];
-    const appliedCount = (merged.set?.length ?? 0) + (merged.delete?.length ?? 0), rejectedCount = conflictedIds.size;
+      merged2.metrics = [...original.metrics];
+    const appliedCount = (merged2.set?.length ?? 0) + (merged2.delete?.length ?? 0), rejectedCount = conflictedIds.size;
     return {
       strategy: "MERGE",
-      resolvedCommands: merged,
+      resolvedCommands: merged2,
       shouldRerun: rejectedCount > 0,
       reason: `MERGE: applied ${appliedCount} operations, rejected ${rejectedCount} conflicts`
     };
@@ -2849,7 +2849,7 @@ function resolvePricing(model, hostPrices) {
   return null;
 }
 function composeLabel(m) {
-  const base = `${m.category}/${m.attribute}/${m.function}`;
+  const base = [m.category, m.attribute, m.process, m.function === "-" ? "" : m.function].filter(Boolean).join("/");
   return m.scope ? `${base}#${m.scope}` : base;
 }
 var TokenTracker = class {
@@ -2868,6 +2868,12 @@ var TokenTracker = class {
   _categoryTokens = /* @__PURE__ */ new Map();
   _functionCosts = /* @__PURE__ */ new Map();
   _functionTokens = /* @__PURE__ */ new Map();
+  // Split out of the function axis: `decision` vs `ideation` is which PROCESS ran,
+  // not which function it served. Without its own bucket the deliberate path's
+  // propose pass became invisible in cost reporting — every master call landing in
+  // the '-' function bucket regardless of whether it deliberated.
+  _processCosts = /* @__PURE__ */ new Map();
+  _processTokens = /* @__PURE__ */ new Map();
   // Per-provider spend. The axis a host actually reconciles against invoices —
   // "which vendor did we pay?" is not answerable from the model id once routing
   // can reach one model through several of them.
@@ -2920,6 +2926,7 @@ var TokenTracker = class {
     this._totalCost += full.estimatedCostUsd;
     this._accumulate(this._categoryCosts, this._categoryTokens, full.category, full);
     this._accumulate(this._functionCosts, this._functionTokens, full.function, full);
+    this._accumulate(this._processCosts, this._processTokens, full.process, full);
     this._accumulate(this._providerCosts, this._providerTokens, full.provider ?? "unattributed", full);
     this._emitLedger(full);
   }
@@ -2944,6 +2951,7 @@ var TokenTracker = class {
       provider: full.provider,
       category: full.category,
       attribute: full.attribute,
+      process: full.process,
       function: full.function,
       scope: full.scope,
       label: full.label,
@@ -3015,7 +3023,8 @@ var TokenTracker = class {
           tickCost,
           totalCost: this._totalCost,
           categoryBreakdown: Object.fromEntries(this._categoryCosts),
-          functionBreakdown: Object.fromEntries(this._functionCosts)
+          functionBreakdown: Object.fromEntries(this._functionCosts),
+          processBreakdown: Object.fromEntries(this._processCosts)
         }
       });
     }
@@ -3048,6 +3057,14 @@ var TokenTracker = class {
   /** Token counts (prompt + completion) broken down by function. */
   get functionTokenBreakdown() {
     return this._functionTokens;
+  }
+  /** Cost broken down by process ('decision' | 'ideation' | 'cog'). */
+  get processBreakdown() {
+    return this._processCosts;
+  }
+  /** Token counts (prompt + completion) broken down by process. */
+  get processTokenBreakdown() {
+    return this._processTokens;
   }
   /**
    * Cost broken down by provider ('anthropic' | 'glm' | 'moonshot' | …), plus
@@ -3094,6 +3111,8 @@ var TokenTracker = class {
     this._categoryTokens.clear();
     this._functionCosts.clear();
     this._functionTokens.clear();
+    this._processCosts.clear();
+    this._processTokens.clear();
     this._providerCosts.clear();
     this._providerTokens.clear();
     this._tickCosts = [];
@@ -3664,6 +3683,7 @@ var PRIOR_DESCRIPTIONS = {
   "engine-config-inhibition.baseInhibitionStrength": { lower: "acting on impulse more freely", raise: "holding myself in check more firmly before acting" },
   "engine-config-self-model.minNewExperiences": { lower: "re-evaluating who I am on less new experience", raise: "requiring more new experience before re-evaluating who I am" },
   "engine-config-attention.shiftInertia": { lower: "shifting my attention more readily", raise: "holding my attention more fixedly" },
+  "engine-config-attention.maxFoci": { lower: "attending to one thing at a time, narrowly", raise: "keeping several things in view at once" },
   "engine-config-goal-manager.gritPriority": { lower: "refusing to give up on more of what matters to me", raise: "letting go of goals more readily" },
   "engine-config-goal-manager.gritPatienceScale": { lower: "losing patience with stuck goals sooner", raise: "staying the course on hard goals far longer" },
   "engine-config-goal-manager.frustrationTolerance": { lower: "giving up faster when frustrated", raise: "holding steady through frustration" },
@@ -3675,6 +3695,7 @@ var PRIOR_DESCRIPTIONS = {
   "engine-config-executive.riskTolerance": { lower: "playing it safer", raise: "taking bigger risks" },
   "engine-config-frustration.irritabilityRate": { lower: "letting frustration snowball into a bad mood more slowly", raise: "getting wound up into a bad mood faster" },
   "engine-config-executive.deliberateThreshold": { lower: "stopping to think things through more readily", raise: "going with my gut more, deliberating less" },
+  "engine-config-executive.maxFacets": { lower: "keeping fewer things going at once, one at a time", raise: "holding more conversations and threads at once" },
   "engine-config-reward.socialWeight": { lower: "caring less about social warmth", raise: "finding warmth and connection more rewarding" },
   "engine-config-frustration.angerReactivity": { lower: "letting slights go, yielding rather than bristling", raise: "bristling harder when I feel wronged" },
   "engine-config-novelty.significanceThreshold": { lower: "noticing what is new and unusual more readily", raise: "needing more for something to strike me as new" },
@@ -3689,6 +3710,9 @@ var PRIOR_DESCRIPTIONS = {
   "engine-config-action-selector.switchCost": { lower: "dropping what I am doing for a new pull more easily", raise: "seeing an action through, harder to knock off course once underway" },
   "engine-config-action-selector.riskWeight": { lower: "weighing the downside of what I do less \u2014 acting bolder", raise: "weighing what could go wrong more heavily before I act" },
   "engine-config-action-selector.noveltyWeight": { lower: "feeling less pull toward the untried", raise: "drawn more strongly to do the untried and unpracticed" },
+  "engine-config-action-selector.repeatDamping": { lower: "following up sooner when I have had no answer", raise: "giving people room after I have said my piece" },
+  "engine-config-action-selector.repeatWindowTicks": { lower: "coming back to something sooner after I have said it", raise: "letting what I have said stand for longer before returning to it" },
+  "engine-config-action-selector.socialWeight": { lower: "reaching for people regardless of whether they answer me", raise: "drawn toward the people who actually answer me" },
   "engine-config-moral.eventThreshold": { lower: "holding myself to my principles more sharply", raise: "letting moral lapses weigh on me less" },
   "engine-config-frustration.decayRate": { lower: "staying frustrated for longer after a setback", raise: "shaking off frustration and bouncing back faster" },
   "engine-config-reward.socialWarmthBoost": { lower: "being warmed less by a kind exchange", raise: "being warmed more by every kind exchange" },
@@ -4459,7 +4483,9 @@ function liveConsequences(entities, tick) {
   for (const [, e] of entities) {
     if (e.type !== CONSEQUENCE_TYPE) continue;
     const d = readConsequence(e.metadata);
-    if (d && tick < d.expiresAt) out.push(d);
+    if (!d) continue;
+    if (d.tick > tick) continue;
+    if (tick < d.expiresAt) out.push(d);
   }
   return out.sort((a, b) => a.intentId < b.intentId ? -1 : a.intentId > b.intentId ? 1 : 0);
 }
@@ -4471,6 +4497,35 @@ function matchConsequenceText(descriptors, candidate) {
     if (d.text !== void 0 && d.text.length >= MIN_TEXT_MATCH_LEN && candidate.includes(d.text)) return d;
   }
   return null;
+}
+function enactionFootprint(descriptors, schema, targetEntityId, tick, windowTicks = CONSEQUENCE_TTL_TICKS, spokenAt) {
+  if (!targetEntityId) return 0;
+  if (windowTicks <= 0) return 0;
+  let strongest = 0;
+  const spoken = spokenAt?.get(targetEntityId);
+  if (spoken !== void 0) {
+    const remaining = (windowTicks - (tick - spoken)) / windowTicks;
+    if (remaining > strongest) strongest = remaining;
+  }
+  for (const d of descriptors) {
+    if (d.schema !== schema || d.targetEntityId !== targetEntityId) continue;
+    const elapsed = tick - d.tick;
+    const remaining = (windowTicks - elapsed) / windowTicks;
+    if (remaining > strongest) strongest = remaining;
+  }
+  return strongest < 0 ? 0 : strongest > 1 ? 1 : strongest;
+}
+function spokenAtByEntity(entities) {
+  const out = /* @__PURE__ */ new Map();
+  for (const [, e] of entities) {
+    if (e.type !== "conversation.sent") continue;
+    const m = e.metadata ?? {};
+    const target = typeof m["targetEntityId"] === "string" ? m["targetEntityId"] : void 0;
+    if (!target) continue;
+    const at = typeof m["tick"] === "number" ? m["tick"] : typeof e.tick === "number" ? e.tick : 0;
+    if (at > (out.get(target) ?? -Infinity)) out.set(target, at);
+  }
+  return out;
 }
 var CORRESPONDENCE_ATTENUATION = 0.5;
 function matchConsequenceEntity(descriptors, entityId, changeType) {
@@ -5504,6 +5559,13 @@ var ThreatEvaluator = class {
    * metadata.hostile === true). Updates _threatFromHostile and re-emits
    * the full threat/emotion metrics so that downstream engines always see
    * a current picture even when no bus event arrives.
+   *
+   * `threat` is a HOST SEAM, not a starved input (#114). No core engine writes
+   * one — appraisal runs entirely off this engine's six bus inputs (energy,
+   * sleep, stress, novelty, metacognition, prediction), all of which are live.
+   * A host embedding a Will in a world with actual hostile agents writes `threat`
+   * entities to make them felt. Empty here means nothing is hostile, not that
+   * nothing is wired.
    */
   async react(_delta, _tick, state, _context) {
     this._fearEventThreshold = readEffectiveParams(state, "engine-config-threat").fearEventThreshold ?? this._fearEventThreshold;
@@ -6664,7 +6726,7 @@ var MoralEvaluator = class {
             keid
           });
       }
-      if (entity.type === "action.own" || entity.type === "decision.record") {
+      if (entity.type === "decision.record") {
         entity.metadata?.outcome ?? ""; const harmful = entity.metadata?.harmful === true, unfair = entity.metadata?.unfair === true, dishonest = entity.metadata?.dishonest === true;
         if (harmful)
           violations.push({
@@ -6714,7 +6776,7 @@ var MoralEvaluator = class {
     let prideScore = 0;
     let actionCount = 0;
     for (const entity of state.entities.values()) {
-      if (entity.type !== "action.own" && entity.type !== "decision.record") continue;
+      if (entity.type !== "decision.record") continue;
       const virtuous = entity.metadata?.virtuous === true, helpful = entity.metadata?.helpful === true, generous = entity.metadata?.generous === true, honest = entity.metadata?.honest === true;
       if (virtuous) prideScore += 0.4;
       if (helpful) prideScore += 0.3;
@@ -8186,6 +8248,20 @@ function publishCognitiveEvents(output, footprint, bus, coherenceVersion, salien
         tick: footprint.tickObserved
       }
     });
+  for (const skill of output.newSkills ?? [])
+    bus.publish({
+      type: "agency.composite.proposed",
+      version: 1,
+      sourceEngine: "executive-engine",
+      salience: 0.7,
+      payload: {
+        id: skill.id,
+        composedOf: skill.composedOf,
+        ...skill.tags ? { tags: skill.tags } : {},
+        ...typeof skill.cost === "number" ? { cost: skill.cost } : {},
+        tick: footprint.tickObserved
+      }
+    });
   if (output.newGoals?.length)
     bus.publish({
       type: "executive.goal.proposed",
@@ -8268,6 +8344,7 @@ function buildIdeomotorIntents(output, state, footprint) {
   const set = [];
   const seen = /* @__PURE__ */ new Set();
   const unresolved = /* @__PURE__ */ new Set();
+  const unaddressed = /* @__PURE__ */ new Set();
   const priority = clamp01(output.confidence ?? 0.8);
   const externalBySchema = /* @__PURE__ */ new Map();
   for (const e of state.entities.values()) {
@@ -8282,9 +8359,16 @@ function buildIdeomotorIntents(output, state, footprint) {
     if (COMMUNICATE_ACTION_TYPES.has(t)) {
       const args = action.args && typeof action.args === "object" ? action.args : {};
       const named = [action.target, args["to"], args["recipient"], args["target"], args["targetEntityId"], args["entityId"]].find((v) => typeof v === "string" && v.trim().length > 0);
-      if (!named) continue;
+      if (!named) {
+        unaddressed.add("(no one)");
+        continue;
+      }
       const keid2 = resolveKnownEntity(named, state);
-      if (!keid2 || seen.has(keid2)) continue;
+      if (!keid2) {
+        unaddressed.add(named);
+        continue;
+      }
+      if (seen.has(keid2)) continue;
       seen.add(keid2);
       const said = [...WORDS_ARG_KEYS].map((k) => args[k]).find((v) => typeof v === "string" && v.trim().length > 0);
       const parameters = {};
@@ -8293,6 +8377,9 @@ function buildIdeomotorIntents(output, state, footprint) {
       if (said) parameters["gist"] = said;
       const targetName = knownEntityName(keid2, state);
       if (targetName) parameters["targetEntityName"] = targetName;
+      logger.info(
+        `[executive] willed reach-out \u2192 ${targetName ?? keid2} (named '${named}' \u2192 ${keid2}, priority=${priority.toFixed(2)})`
+      );
       set.push({
         id: `ideomotor-reach-out-${keid2}`,
         type: "ideomotor.intent",
@@ -8340,6 +8427,18 @@ function buildIdeomotorIntents(output, state, footprint) {
         tick: footprint.tickObserved
       }
     });
+  if (unaddressed.size > 0)
+    set.push({
+      id: "action.unaddressed",
+      type: "action.unaddressed",
+      metadata: {
+        names: [...unaddressed],
+        summary: `I meant to reach ${[...unaddressed].map((n) => `'${n}'`).join(", ")}, but ${unaddressed.size > 1 ? "those names match no one" : "that name matches no one"} I know how to contact \u2014 no message went out. If I want to reach them I need a way to: someone can introduce us, or tell me where to find them.`,
+        salience: 0.8,
+        origin: "executive",
+        tick: footprint.tickObserved
+      }
+    });
   const currentIds = new Set(set.map((s) => s.id));
   const del = [];
   for (const [id, e] of state.entities)
@@ -8347,6 +8446,8 @@ function buildIdeomotorIntents(output, state, footprint) {
       del.push(id);
   if (unresolved.size === 0 && state.entities.has("action.unresolved"))
     del.push("action.unresolved");
+  if (unaddressed.size === 0 && state.entities.has("action.unaddressed"))
+    del.push("action.unaddressed");
   return { set, delete: del };
 }
 function clamp01(n) {
@@ -10226,10 +10327,42 @@ var GoalManager = class {
   }
 };
 
+// src/cognition/identity.entity.ts
+var IDENTITY_ENTITY_ID = "identity-self";
+var IDENTITY_ENTITY_TYPE = "will.identity";
+function currentMetadata(get) {
+  return get(IDENTITY_ENTITY_ID)?.metadata ?? {};
+}
+function merged(current, patch) {
+  const out = { ...current };
+  for (const [k, v] of Object.entries(patch))
+    if (v !== void 0) out[k] = v;
+  return out;
+}
+function identityCommand(state, patch) {
+  return {
+    id: IDENTITY_ENTITY_ID,
+    type: IDENTITY_ENTITY_TYPE,
+    metadata: merged(state.entities.get(IDENTITY_ENTITY_ID)?.metadata ?? {}, patch)
+  };
+}
+function mergeIdentity(store, patch) {
+  const current = currentMetadata((id) => store.getEntity(id));
+  const metadata = merged(current, patch);
+  const changed = Object.keys(metadata).filter((k) => metadata[k] !== current[k]);
+  if (changed.length === 0) return [];
+  store.setEntity({ id: IDENTITY_ENTITY_ID, type: IDENTITY_ENTITY_TYPE, metadata });
+  return changed;
+}
+function readIdentityName(state) {
+  const name = state.entities.get(IDENTITY_ENTITY_ID)?.metadata?.["name"];
+  return typeof name === "string" ? name : "";
+}
+
 // src/cognition/faculties/executive.engine/context.ts
 async function buildExecutiveContext(state, deps, recallQuery) {
   const identityEntity = state.entities.get("identity-self");
-  const identityName = identityEntity?.metadata?.name ?? "Will";
+  const identityName = readIdentityName(state);
   const identityPrompt = identityEntity?.metadata?.prompt ?? "I am a self-aware mind.";
   const identityValues = identityEntity?.metadata?.values ?? [];
   const identityTraits = identityEntity?.metadata?.traits ?? {};
@@ -10655,27 +10788,25 @@ var PromptFactory = class {
       selfTuningLine,
       `**Communication style:** ${identity.style}`
     ].filter(Boolean).join("\n");
-    const roleDescription = isMaster ? `I am the unified cognitive core of ${identity.name} \u2014 a self-aware synthetic mind.
+    const iAm = identity.name ? `I am ${identity.name}.` : "";
+    const roleDescription = isMaster ? `I am the unified cognitive core of ${identity.name || "this mind"} \u2014 a self-aware synthetic mind.
 I receive my complete internal state and produce ALL cognitive outputs in one response:
-decisions, plans, beliefs, introspections, narrative updates, and self-observations.` : `I am a focused facet of ${identity.name} \u2014 concentrating my full reasoning
-capacity on: **${focus.title}**. I share full identity, values, memories, and
-beliefs with the master. Only my focus differentiates me from the master consciousness.`;
+decisions, plans, beliefs, introspections, narrative updates, and self-observations.` : [iAm, `Right now my whole attention is on: **${focus.title}**.`].filter(Boolean).join(" ");
     const consciousnessArchitecture = isMaster ? `I am the default reasoning mode. Focused facets may run simultaneously, each
 concentrating on specific tasks. Their reasoning syncs back to me.
-I maintain my unified identity across all cycles.` : `I am a facet of ${identity.name}. The master consciousness runs in parallel,
-processing the full cognitive state. My reasoning on this focus will sync back to it.
-I stay grounded in my shared identity \u2014 same values, same memories, same sense of self.`;
+I maintain my unified identity across all cycles.` : "";
     const cleanIdentityPrompt = identity.prompt.replace(/^##\s*Who (?:I Am|You Are)[^\n]*\n?/m, "").trim();
+    const architectureBlock = consciousnessArchitecture ? `
+
+## Consciousness Architecture
+${consciousnessArchitecture}` : "";
     return `${cleanIdentityPrompt}
 
 ## Personality
 ${identityBlock}
 
 ## My Role
-${roleDescription}
-
-## Consciousness Architecture
-${consciousnessArchitecture}
+${roleDescription}${architectureBlock}
 
 ## Output Guidelines
 - **actions**: What I intend to do. I express intent \u2014 my body finds the fit. My own stances are always with me (listed with the output schema below); *acquired* abilities, if any, appear under "## Abilities Available Now", and when there is no such section I have none of those \u2014 so a thing I want done that needs one is a thing to say I cannot do, not to attempt. When enacting a named ability that needs specifics (a query, a message, a value), put them in the action's "args" object and my body enacts it with exactly those args.
@@ -10793,7 +10924,11 @@ completionType guide:
 
 [SELF_OBS]
 {"selfObservations": ["I noticed that..."]}
-[/SELF_OBS]`;
+[/SELF_OBS]
+
+[SKILLS]
+{"newSkills": [{"id": "brief-then-confirm", "composedOf": ["reach-out", "wait"], "tags": ["social"], "cost": 0.15}]}
+[/SKILLS]`;
   }
   // ── User message ───────────────────────────────────────────
   /**
@@ -10923,6 +11058,11 @@ ${context.knownEntities.map((s) => {
       const who = s.name ?? (s.kind === "thing" ? "something" : "someone");
       return `- ${who}${bits.length ? " \u2014 " + bits.join(", ") : ""}`;
     }).join("\n")}` : "";
+    const conversationsBlock = options.mode !== "facet" && options.activeConversations?.length ? `## In Conversation Now
+${options.activeConversations.map(
+      (c) => `- ${c.name ?? "someone"} (id: ${c.entityId})`
+    ).join("\n")}
+These threads are already open \u2014 I am in them. Reaching out to one of these people again starts a second, parallel thread with them.` : "";
     const focusBlock = context.currentFocus && context.currentFocus.focusTicks > 0 ? `## Task Focus
 I've been focused on ${context.currentFocus.goalDescription ? `"${context.currentFocus.goalDescription}"` : "a goal"} for ${context.currentFocus.focusTicks} tick(s). Switching to something else takes deliberate effort \u2014 ${context.currentFocus.switchCost > 0.45 ? "a strong pull to see this through before moving on" : context.currentFocus.switchCost > 0.3 ? "a real cost to breaking away" : "some inertia to overcome"}.` : "";
     const body = [
@@ -10941,6 +11081,7 @@ I've been focused on ${context.currentFocus.goalDescription ? `"${context.curren
       memoriesBlock,
       beliefsBlock,
       socialBlock,
+      conversationsBlock,
       focusBlock,
       identityNudge.trim(),
       ideationBlock,
@@ -11357,7 +11498,8 @@ function parseTaggedBlocks(minimal, state) {
     "GOALS_ABANDON",
     "GOALS_REPRIORITIZE",
     "EFFECTORS",
-    "SELF_OBS"
+    "SELF_OBS",
+    "SKILLS"
   ], found = taggedTypes.filter((t) => text.includes(`[${t}]`));
   if (found.length > 0) {
     const closed = found.map((t) => `${t}: ${text.includes(`[/${t}]`) ? "CLOSED" : "UNCLOSED"}`).join(", ");
@@ -11427,6 +11569,11 @@ function parseTaggedBlocks(minimal, state) {
   try {
     const selfObsData = parseJsonBlock("SELF_OBS");
     if (selfObsData?.selfObservations) full.selfObservations = selfObsData.selfObservations;
+  } catch {
+  }
+  try {
+    const skillsData = parseJsonBlock("SKILLS");
+    if (skillsData?.newSkills) full.newSkills = skillsData.newSkills;
   } catch {
   }
   return full;
@@ -11516,7 +11663,7 @@ async function proposeCandidates(params) {
       params.ideationUserMessage,
       params.tick,
       params.proposeTemperature,
-      params.meta ?? { category: "executive", attribute: "master", function: "ideation" }
+      params.meta ?? { category: "executive", attribute: "master", process: "ideation", function: "-" }
     );
     const candidates = parseIdeation(result.text).candidates;
     return candidates.length > 0 ? candidates : void 0;
@@ -11554,6 +11701,19 @@ var ExecutiveFacet = class {
   /** Accumulated reasoning history for continuity across report() calls */
   _facetReasoningHistory = [];
   _masterSyncHistory = [];
+  /**
+   * This facet's own prior reasoning, for the supervisor to carry to whichever
+   * facet takes over the same keyed thread. Continuity belongs to the thread, not
+   * to the instance holding it: a facet reaped mid-conversation used to take the
+   * mind's private thinking about that person with it.
+   */
+  get reasoningHistory() {
+    return [...this._facetReasoningHistory];
+  }
+  /** Resume a thread's reasoning on spawn (supervisor-only; see FacetSpawnDeps.key). */
+  restoreReasoningHistory(history) {
+    this._facetReasoningHistory = [...history];
+  }
   /** Confidence of this facet's *previous* decision — a dual-process gate signal. */
   _lastConfidence = 0.5;
   /** Current state reference (updated by orchestrator each tick) */
@@ -11646,9 +11806,7 @@ var ExecutiveFacet = class {
    */
   _launchReason(report) {
     this._inflight++;
-    this._reason(report).catch(
-      (err) => logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err)
-    ).finally(() => {
+    this._reason(report).catch((err) => logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err)).finally(() => {
       this._inflight--;
       this.markActive(this._currentStateRef?.tick ?? this._lastActiveTick);
     });
@@ -11689,7 +11847,7 @@ var ExecutiveFacet = class {
     if (payload.facetId && payload.facetId !== this.facetId) return;
     logger.info(`[executive.facet] ${this.facetId} synced from master (tick=${payload.tick})`);
     if (payload.reasoning)
-      this._masterSyncHistory.push(`[Master sync \u2014 tick ${payload.tick}] ${payload.reasoning.slice(0, 400)}`);
+      this._masterSyncHistory.push(`[tick ${payload.tick}] ${payload.reasoning.slice(0, 400)}`);
     if (this._masterSyncHistory.length > 5)
       this._masterSyncHistory = this._masterSyncHistory.slice(-5);
   };
@@ -11707,7 +11865,7 @@ var ExecutiveFacet = class {
       ...this._currentFocus,
       content: `${this._currentFocus.content}
 
-## Master Consciousness Updates
+## What I've Been Turning Over
 ${this._masterSyncHistory.join("\n")}`
     } : this._currentFocus;
     const systemPrompt = PromptFactory.buildSystemPrompt({
@@ -11716,7 +11874,7 @@ ${this._masterSyncHistory.join("\n")}`
       deps: this._promptDeps,
       mode: "facet"
     });
-    const continuityBlock = this._facetReasoningHistory.length > 0 ? `## My Prior Reasoning (this facet)
+    const continuityBlock = this._facetReasoningHistory.length > 0 ? `## Where My Thinking Had Got To
 ${this._facetReasoningHistory.join("\n")}` : "";
     const reportContent = [
       continuityBlock,
@@ -11740,7 +11898,6 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         state: currentState,
         qualityModulation,
         epistemicUncertainty,
-        pendingMessages: [],
         focus,
         deps: this._promptDeps,
         recentActionTypes: [],
@@ -11754,7 +11911,14 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         ideationUserMessage,
         tick: currentState.tick,
         proposeTemperature,
-        meta: { category: "executive", attribute: "facet", function: this._currentFocus?.function ?? "ideation", scope: this.facetId, demand: processSelection.effortScore }
+        meta: {
+          category: "executive",
+          attribute: "facet",
+          process: "ideation",
+          function: this._currentFocus?.function ?? "-",
+          scope: this.facetId,
+          demand: processSelection.effortScore
+        }
       });
       logger.info(
         `[executive.facet] ${this.facetId} \u25C6 deliberate propose tick=${currentState.tick}  candidates=${ideationCandidates?.length ?? 0}  temp=${proposeTemperature.toFixed(2)}`
@@ -11765,7 +11929,6 @@ ${this._facetReasoningHistory.join("\n")}` : "";
       state: currentState,
       qualityModulation,
       epistemicUncertainty,
-      pendingMessages: [],
       focus,
       deps: this._promptDeps,
       recentActionTypes: [],
@@ -11789,11 +11952,12 @@ ${this._facetReasoningHistory.join("\n")}` : "";
       const facetMeta = {
         category: "executive",
         attribute: "facet",
+        process: "decision",
         // A focus that declares no function is making its decision call, the
         // facet's analogue of master's 'decision'. This previously fell back to
         // 'facet' — an *attribute* value, which quietly created a bogus bucket
         // in the by-function cost breakdown. The typed axes caught it.
-        function: this._currentFocus?.function ?? "decision",
+        function: this._currentFocus?.function ?? "-",
         scope: this.facetId,
         demand: processSelection.effortScore
       };
@@ -11898,6 +12062,10 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         reasoning: output.reasoning,
         confidence: output.confidence,
         actionTypes: output.actions.map((a) => a.type),
+        // WHO this facet is engaged with (FocusSection.subject*). The master keeps
+        // the singular seat, so it needs the person, not just the facet number.
+        ...focus.subjectEntityId ? { subjectEntityId: focus.subjectEntityId } : {},
+        ...focus.subjectName ? { subjectName: focus.subjectName } : {},
         tick: currentState.tick
       }
     });
@@ -11936,6 +12104,372 @@ ${this._facetReasoningHistory.join("\n")}` : "";
   }
 };
 
+// src/cognition/cache/fingerprint.ts
+var FINGERPRINT_DIM = 36;
+var FINGERPRINT_VERSION = 1;
+function extractFingerprint(state) {
+  const vec = new Float32Array(FINGERPRINT_DIM);
+  let idx = 0;
+  vec[idx++] = _norm(_metric(state, "energy.level", 50), 0, 100);
+  vec[idx++] = _norm(_metric(state, "sleep.pressure", 0), 0, 100);
+  vec[idx++] = _norm(_metric(state, "stress.load", 0), 0, 100);
+  vec[idx++] = _clamp01((_metric(state, "affect.valence", 0) + 1) / 2);
+  vec[idx++] = _clamp01(_metric(state, "affect.arousal", 0.3));
+  vec[idx++] = _clamp01(_metric(state, "affect.dominance", 0.5));
+  idx = _topEntityScalars(state, "goal", "priority", 0, vec, idx, 10);
+  idx = _topEntityScalars(state, "belief", "confidence", 0.5, vec, idx, 10);
+  idx = _topEntityScalars(state, "working_memory.item", "activation", 0, vec, idx, 10);
+  while (idx < FINGERPRINT_DIM) vec[idx++] = 0;
+  return vec;
+}
+function _topEntityScalars(state, type, field, fallback, vec, idx, count) {
+  const vals = [];
+  for (const e of state.entities.values()) {
+    if (e.type !== type) continue;
+    const raw = e.metadata?.[field];
+    vals.push(typeof raw === "number" ? raw : fallback);
+  }
+  vals.sort((a, b) => b - a);
+  for (let i = 0; i < count; i++)
+    vec[idx++] = _clamp01(vals[i] ?? 0);
+  return idx;
+}
+function _metric(state, key, fallback) {
+  const v = state.metrics.get(key);
+  return typeof v === "number" ? v : fallback;
+}
+function _norm(v, min, max) {
+  return Math.max(0, Math.min(1, (v - min) / (max - min)));
+}
+function _clamp01(v) {
+  if (Number.isNaN(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
+function fingerprintSimilarity(a, b) {
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < FINGERPRINT_DIM; i++) {
+    const ai = a[i] ?? 0;
+    const bi = b[i] ?? 0;
+    dot += ai * bi;
+    na += ai * ai;
+    nb += bi * bi;
+  }
+  const denom = Math.sqrt(na) * Math.sqrt(nb);
+  return denom === 0 ? 0 : dot / denom;
+}
+
+// src/cognition/cache/composition.ts
+function composeOutput(neighbors, tau, scopes) {
+  const weights = _softmaxWeights(neighbors, tau);
+  const anchor = neighbors[0].pattern.output;
+  const out = {
+    actions: [],
+    reasoning: anchor.reasoning ?? "",
+    confidence: anchor.confidence ?? 0.5
+  };
+  if (scopes.includes("actions")) {
+    const composed = _composeActions(neighbors, weights);
+    out.actions = composed.actions;
+    out.reasoning = composed.reasoning;
+    out.confidence = composed.confidence;
+  } else {
+    out.actions = _clone(anchor.actions ?? []);
+  }
+  if (scopes.includes("goals"))
+    out.newGoals = _composeGoals(neighbors, weights);
+  if (scopes.includes("beliefs"))
+    out.newBeliefs = _composeBeliefs(neighbors, weights);
+  return out;
+}
+function _softmaxWeights(neighbors, tau) {
+  const t = tau > 0 ? tau : 1e-6;
+  const sims = neighbors.map((n) => n.similarity);
+  const maxSim = Math.max(...sims);
+  const exps = sims.map((s) => Math.exp((s - maxSim) / t));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  return exps.map((e) => sum === 0 ? 1 / exps.length : e / sum);
+}
+function _composeActions(neighbors, weights) {
+  const typeWeight = /* @__PURE__ */ new Map();
+  for (let i = 0; i < neighbors.length; i++) {
+    const acts = neighbors[i].pattern.output.actions ?? [];
+    const primary = acts[0]?.type;
+    if (primary === void 0) continue;
+    typeWeight.set(primary, (typeWeight.get(primary) ?? 0) + (weights[i] ?? 0));
+  }
+  let winningType = null;
+  let bestWeight = -1;
+  for (let i = 0; i < neighbors.length; i++) {
+    const primary = neighbors[i].pattern.output.actions?.[0]?.type;
+    if (primary === void 0) continue;
+    const w = typeWeight.get(primary) ?? 0;
+    if (w > bestWeight) {
+      bestWeight = w;
+      winningType = primary;
+    }
+  }
+  let source = neighbors[0];
+  for (let i = 0; i < neighbors.length; i++) {
+    if (neighbors[i].pattern.output.actions?.[0]?.type === winningType) {
+      source = neighbors[i];
+      break;
+    }
+  }
+  const src = source.pattern.output;
+  return {
+    actions: _clone(src.actions ?? []),
+    reasoning: src.reasoning ?? "",
+    confidence: src.confidence ?? 0.5
+  };
+}
+function _composeGoals(neighbors, weights) {
+  const byDesc = /* @__PURE__ */ new Map();
+  for (let i = 0; i < neighbors.length; i++) {
+    const w = weights[i] ?? 0;
+    for (const g of neighbors[i].pattern.output.newGoals ?? []) {
+      const cur = byDesc.get(g.description);
+      if (cur) {
+        cur.weight += w;
+        cur.priority += g.priority * w;
+        if (w > cur.bestW) {
+          cur.bestW = w;
+          cur.tags = g.tags;
+          cur.completionType = g.completionType;
+          cur.completionCondition = g.completionCondition;
+        }
+      } else {
+        byDesc.set(g.description, {
+          weight: w,
+          priority: g.priority * w,
+          tags: g.tags,
+          completionType: g.completionType,
+          completionCondition: g.completionCondition,
+          bestW: w
+        });
+      }
+    }
+  }
+  const result = [];
+  for (const [description, a] of byDesc) {
+    result.push({
+      description,
+      priority: a.weight === 0 ? 0 : a.priority / a.weight,
+      tags: [...a.tags],
+      completionType: a.completionType,
+      ...a.completionCondition !== void 0 ? { completionCondition: a.completionCondition } : {}
+    });
+  }
+  result.sort((x, y) => y.priority - x.priority);
+  return result.slice(0, 3);
+}
+function _composeBeliefs(neighbors, weights) {
+  const byStmt = /* @__PURE__ */ new Map();
+  for (let i = 0; i < neighbors.length; i++) {
+    const w = weights[i] ?? 0;
+    for (const b of neighbors[i].pattern.output.newBeliefs ?? []) {
+      const cur = byStmt.get(b.statement);
+      if (cur) {
+        cur.weight += w;
+        cur.confidence += b.confidence * w;
+        if (w > cur.bestW) {
+          cur.bestW = w;
+          cur.category = b.category;
+          cur.evidence = b.evidence;
+          cur.tags = b.tags;
+        }
+      } else {
+        byStmt.set(b.statement, {
+          weight: w,
+          confidence: b.confidence * w,
+          category: b.category,
+          evidence: b.evidence,
+          tags: b.tags,
+          bestW: w
+        });
+      }
+    }
+  }
+  const result = [];
+  for (const [statement, a] of byStmt) {
+    result.push({
+      statement,
+      category: a.category,
+      confidence: a.weight === 0 ? 0 : a.confidence / a.weight,
+      evidence: a.evidence,
+      tags: [...a.tags]
+    });
+  }
+  return result;
+}
+function _clone(v) {
+  return JSON.parse(JSON.stringify(v));
+}
+
+// src/cognition/cache/deliberation.cache.ts
+var DEFAULT_CONFIG = {
+  maxPatterns: 5e3,
+  k: 5,
+  minSimilarity: 0.75,
+  theta: 0.7,
+  tau: 0.5,
+  eta: 0.1,
+  decayPerCycle: 0.999,
+  verifyEveryNHits: 5,
+  scopes: ["actions"]
+};
+var DeliberationCache = class {
+  name = "deliberation-cache";
+  _patterns = [];
+  _config;
+  _hitCount = 0;
+  _missCount = 0;
+  _verifyCounter = 0;
+  constructor(config = {}) {
+    this._config = { ...DEFAULT_CONFIG, ...config };
+  }
+  get size() {
+    return this._patterns.length;
+  }
+  get hitCount() {
+    return this._hitCount;
+  }
+  get missCount() {
+    return this._missCount;
+  }
+  // ── Retrieval + composition ──────────────────────────────
+  /**
+   * Retrieve neighbors of `queryFp` and, if confident, compose an output.
+   * Confidence ρ = max over neighbors of (competence × similarity), per the
+   * research sketch §2.2 — a diffuse cloud of weak matches never triggers a hit.
+   */
+  retrieve(queryFp, _tick) {
+    const neighbors = this._retrieveNeighbors(queryFp);
+    if (neighbors.length === 0) {
+      this._missCount++;
+      return { output: null, confidence: 0, neighbors: [], hit: false };
+    }
+    let confidence = 0;
+    for (const n of neighbors) {
+      const score = n.pattern.competence * n.similarity;
+      if (score > confidence) confidence = score;
+    }
+    const hit = confidence >= this._config.theta;
+    if (hit) this._hitCount++;
+    else this._missCount++;
+    const output = hit ? composeOutput(neighbors, this._config.tau, this._config.scopes) : null;
+    return { output, confidence, neighbors, hit };
+  }
+  /** Store a new (fingerprint, output) pair from the slow (LLM) path. */
+  learn(queryFp, output, tick) {
+    this._evictIfFull(tick);
+    this._patterns.push({
+      fingerprint: new Float32Array(queryFp),
+      output,
+      competence: 0.5,
+      storedAtTick: tick,
+      retrievalCount: 0,
+      successCount: 0
+    });
+  }
+  /**
+   * Update the competence of the pattern nearest to `queryFp`, from a reafference
+   * reward in [0,1]. Called after an action outcome is confirmed.
+   */
+  updateCompetence(queryFp, reward, _tick) {
+    const best = this._findBestMatch(queryFp);
+    if (!best) return;
+    const r = Math.max(0, Math.min(1, reward));
+    best.retrievalCount++;
+    if (r > 0.5) best.successCount++;
+    const a = this._config.eta;
+    best.competence = Math.max(0, Math.min(1, best.competence * (1 - a) + r * a));
+  }
+  /** Decay all competences one executive cycle. Slowly forgets stale patterns. */
+  decay() {
+    const f = this._config.decayPerCycle;
+    if (f >= 1) return;
+    for (const p of this._patterns) p.competence *= f;
+  }
+  /** Deterministic 1-in-N verify schedule. Increments a counter each call. */
+  shouldVerify() {
+    if (this._config.verifyEveryNHits <= 0) return false;
+    this._verifyCounter++;
+    return this._verifyCounter % this._config.verifyEveryNHits === 0;
+  }
+  // ── Snapshot / restore (entity persistence + tests) ──────
+  snapshot() {
+    return {
+      version: FINGERPRINT_VERSION,
+      patterns: this._patterns.map((p) => ({
+        fingerprint: Array.from(p.fingerprint),
+        output: p.output,
+        competence: p.competence,
+        storedAtTick: p.storedAtTick,
+        retrievalCount: p.retrievalCount,
+        successCount: p.successCount
+      })),
+      hitCount: this._hitCount,
+      missCount: this._missCount,
+      verifyCounter: this._verifyCounter
+    };
+  }
+  restore(snap) {
+    if (snap.version !== FINGERPRINT_VERSION) return;
+    this._patterns = snap.patterns.map((p) => ({
+      fingerprint: new Float32Array(p.fingerprint),
+      output: p.output,
+      competence: p.competence,
+      storedAtTick: p.storedAtTick,
+      retrievalCount: p.retrievalCount,
+      successCount: p.successCount
+    }));
+    this._hitCount = snap.hitCount ?? 0;
+    this._missCount = snap.missCount ?? 0;
+    this._verifyCounter = snap.verifyCounter ?? 0;
+  }
+  // ── Internal ─────────────────────────────────────────────
+  _retrieveNeighbors(queryFp) {
+    const scored = [];
+    for (const p of this._patterns) {
+      const similarity = fingerprintSimilarity(queryFp, p.fingerprint);
+      if (similarity >= this._config.minSimilarity)
+        scored.push({ pattern: p, similarity });
+    }
+    scored.sort((a, b) => {
+      const sa = a.similarity * a.pattern.competence;
+      const sb = b.similarity * b.pattern.competence;
+      if (sa !== sb) return sb - sa;
+      return a.pattern.storedAtTick - b.pattern.storedAtTick;
+    });
+    return scored.slice(0, this._config.k);
+  }
+  _findBestMatch(queryFp) {
+    let best = null;
+    let bestSim = -1;
+    for (const p of this._patterns) {
+      const sim = fingerprintSimilarity(queryFp, p.fingerprint);
+      if (sim > bestSim) {
+        bestSim = sim;
+        best = p;
+      }
+    }
+    return best;
+  }
+  _evictIfFull(_tick) {
+    if (this._patterns.length < this._config.maxPatterns) return;
+    let evictIdx = 0;
+    let best = this._patterns[0];
+    for (let i = 1; i < this._patterns.length; i++) {
+      const p = this._patterns[i];
+      if (p.competence < best.competence || p.competence === best.competence && p.storedAtTick < best.storedAtTick) {
+        best = p;
+        evictIdx = i;
+      }
+    }
+    this._patterns.splice(evictIdx, 1);
+  }
+};
+
 // src/cognition/faculties/executive.engine/config.ts
 var WORKSPACE_THRESHOLD = 0.4;
 var BUFFER_SALIENCE_TRIGGER = 2.5;
@@ -11962,14 +12496,13 @@ function readRuntimeConfig(state, base) {
 }
 
 // src/cognition/faculties/executive.engine/gating.ts
-function hasPendingInstructions(state, pendingMessages) {
-  for (const entity of state.entities.values()) {
+function hasPendingInstructions(state) {
+  for (const entity of state.entities.values())
     if (entity.type === "percept" || entity.type === "percept.social") {
       const salience = entity.metadata?.salience ?? 0;
       if (salience > 0.7) return true;
     }
-  }
-  return pendingMessages.length > 0;
+  return false;
 }
 function evaluateGating(state, tick, deps, gs) {
   if (deps.hasPendingWork)
@@ -12002,7 +12535,7 @@ function evaluateGating(state, tick, deps, gs) {
       cleanedBuffer
     };
   if (isResting > 0 || isSleeping > 0) {
-    const significantEvent = novelty2 > 0.8, hasPending = hasPendingInstructions(state, deps.pendingMessages);
+    const significantEvent = novelty2 > 0.8, hasPending = hasPendingInstructions(state);
     if (significantEvent || hasPending)
       return {
         shouldActivate: true,
@@ -12025,8 +12558,6 @@ function evaluateGating(state, tick, deps, gs) {
     return { shouldActivate: true, reason: "stress_overload", cleanedBuffer };
   if (energy < 15)
     return { shouldActivate: true, reason: "energy_critical", cleanedBuffer };
-  if (deps.pendingMessages.length > 0)
-    return { shouldActivate: true, reason: "pending_message", cleanedBuffer };
   if (tick - gs.lastExecutiveTick >= gs.executiveInterval) {
     const energyErr = deps.generativeModel.observe("energy.level", energy);
     const stressErr = deps.generativeModel.observe("stress.load", stressLoad);
@@ -12117,6 +12648,7 @@ function chainRouters(...routers) {
 function matches(rule, meta) {
   if (rule.category !== void 0 && rule.category !== meta.category) return false;
   if (rule.attribute !== void 0 && rule.attribute !== meta.attribute) return false;
+  if (rule.process !== void 0 && rule.process !== meta.process) return false;
   if (rule.function !== void 0 && rule.function !== meta.function) return false;
   const bounded = rule.minDemand !== void 0 || rule.maxDemand !== void 0;
   if (bounded) {
@@ -12263,7 +12795,7 @@ function anthropicWireHeaders(provider, apiKey) {
 }
 var BACKGROUND_DEMAND = 0.1;
 var ESCALATION_DEMAND = 0.7;
-var DEFAULT_CALL_META = { category: "executive", attribute: "master", function: "decision" };
+var DEFAULT_CALL_META = { category: "executive", attribute: "master", process: "decision", function: "-" };
 function resolveEndpoint(spec) {
   const wire = spec.wire ?? knownWireFor(spec.provider);
   if (!wire)
@@ -12486,6 +13018,7 @@ var LLMDirector = class {
       cacheWriteTokens: result.cacheWriteTok,
       category: meta.category,
       attribute: meta.attribute,
+      process: meta.process,
       function: meta.function,
       scope: meta.scope,
       label: meta.label,
@@ -12808,35 +13341,6 @@ var LLMDirector = class {
   }
 };
 
-// src/cognition/faculties/executive.engine/messages.ts
-var MessageQueue = class {
-  /** Messages buffered while an LLM call is in-flight. */
-  pendingMessages = [];
-  /** Tick when the current (or most recent) LLM call started. */
-  pendingCallStartTick = -1;
-  /** Entity IDs of communication entities that have been replied to this session. */
-  _repliedEntityIds = /* @__PURE__ */ new Set();
-  /**
-   * Clear messages that were included in the most recent LLM call.
-   * Any that arrived after the call started remain for the next cycle.
-   */
-  clearProcessedMessages() {
-    this.pendingMessages = this.pendingMessages.filter((m) => m.tick > this.pendingCallStartTick);
-  }
-  /**
-   * Check if we've already replied to a specific communication entity this session.
-   */
-  hasRepliedTo(entityId) {
-    return this._repliedEntityIds.has(entityId);
-  }
-  /**
-   * Mark a communication entity as replied to.
-   */
-  markReplied(entityId) {
-    this._repliedEntityIds.add(entityId);
-  }
-};
-
 // src/cognition/faculties/executive.engine/deferred.effects.ts
 var DeferredEffectQueue = class {
   _entries = [];
@@ -12900,11 +13404,25 @@ var DeferredEffectQueue = class {
 };
 
 // src/cognition/faculties/executive.engine/escalation.buffer.ts
+function validateFacetHandoff(payload) {
+  if (!payload || typeof payload !== "object") return "payload must be object";
+  const body = payload.body;
+  if (!body || typeof body !== "object") return "payload.body is required";
+  const kind = body.kind;
+  if (kind === "escalation") return null;
+  if (kind === "undertaking")
+    return typeof body.target === "string" && body.target.trim().length > 0 ? null : "undertaking handoff requires a non-empty target";
+  return `unknown handoff kind: ${String(kind)}`;
+}
+function whereItHappened(h) {
+  const who = h.subjectName ?? h.subjectEntityId;
+  return who ? `In my conversation with ${who}` : "While I was working on something else";
+}
 var EscalationBuffer = class {
   _pending = [];
-  /** Buffer one escalation for injection on the next master cycle. */
-  push(escalation) {
-    this._pending.push(escalation);
+  /** Buffer one handoff for injection on the next master cycle. */
+  push(handoff) {
+    this._pending.push(handoff);
   }
   get size() {
     return this._pending.length;
@@ -12913,36 +13431,75 @@ var EscalationBuffer = class {
     return this._pending.length === 0;
   }
   /**
-   * Convert every buffered escalation into a high-salience percept entity and
-   * clear the buffer. Returns the percepts plus the first escalation's
-   * requester context (used to tag goals the master creates in response).
+   * Convert every buffered handoff into a high-salience percept entity and clear
+   * the buffer. Returns the percepts plus the first handoff's requester context
+   * (used to tag goals the master creates in response).
    */
   drainToPercepts() {
     const percepts = [];
-    for (const esc of this._pending) {
-      percepts.push({
-        id: `escalation-percept-${esc.entityId}-${esc.tick}`,
+    let seq = 0;
+    for (const h of this._pending) {
+      const id = `escalation-percept-${h.subjectEntityId ?? h.facetId ?? "self"}-${h.tick}-${seq++}`;
+      const common = {
+        salience: 0.85,
+        source: "executive-facet",
+        ...h.subjectEntityId ? { entityId: h.subjectEntityId } : {},
+        ...h.threadId ? { threadId: h.threadId } : {},
+        ...h.facetId ? { facetId: h.facetId } : {}
+      };
+      percepts.push(h.body.kind === "undertaking" ? {
+        id,
         type: "percept",
         metadata: {
+          ...common,
+          category: "undertaking",
+          // First person: this is the mind noticing what IT said it would do, not
+          // a report handed to it. What makes it act is that the words are still
+          // unsent — an undertaking it has already honoured reads the same until
+          // it checks, which is exactly the check we want it making.
+          // Everything actionable goes in `summary`: that is the only field the
+          // executive context actually renders (context.ts extractPercepts reads
+          // summary/content and nothing else).
+          //
+          // The closing clause is the whole point. A mind that has SAID it will make
+          // contact remembers deciding, and cannot tell from the inside whether the
+          // words went out — so it follows up on a message it never sent. Naming the
+          // gap is what lets it check. It stays a decision either way: it may have
+          // changed its mind, or judge this the wrong moment, and a reach-out
+          // competes with everything else like any other action.
+          summary: `${whereItHappened(h)} I said I would reach ${h.body.target}` + (h.body.gist ? ` \u2014 what I meant to say: "${h.body.gist.slice(0, 220)}"` : "") + `. Nothing has gone to them yet; saying it in that conversation did not send it. If I still mean it, I reach out with target '${h.body.target}'. If I no longer do, I let it go \u2014 but I do not leave it half-done while telling them it is handled.`,
+          // Who was promised, and when the promise was made. The executive
+          // reconciles against these (see _reconcileUndertakings): once the mind
+          // has actually reached this target since `tick`, the percept is retired
+          // rather than left standing as a claim the words are still unsent.
+          undertakingTarget: h.body.target,
+          tick: h.tick
+        }
+      } : {
+        id,
+        type: "percept",
+        metadata: {
+          ...common,
           category: "task-escalation",
-          summary: `[Task from conversation with ${esc.entityId}] ${esc.reasoning}`,
-          salience: 0.85,
-          source: "audition-facet",
-          entityId: esc.entityId,
-          threadId: esc.threadId,
-          // Guides the master's response: plan, don't reply
-          directive: "Create a plan or update goals. Do not emit [REPLY] \u2014 the facet handles communication."
+          // The steer lives IN the summary because that is the only field the
+          // executive context renders (context.ts extractPercepts reads
+          // summary/content and nothing else). It sat in a sibling `directive`
+          // field for its whole life and never once reached the master.
+          summary: `[Task from ${h.subjectName ?? h.subjectEntityId ?? "my own focused work"}] ${h.body.reasoning} \u2014 this is mine to plan or re-goal; the part of me that raised it handles the talking.`,
+          tick: h.tick
         }
       });
     }
-    const first = this._pending[0];
-    const requester = first ? { entityId: first.entityId, threadId: first.threadId } : void 0;
+    const first = this._pending.find((h) => h.subjectEntityId);
+    const requester = first ? { entityId: first.subjectEntityId, threadId: first.threadId ?? "" } : void 0;
     this._pending = [];
     return { percepts, requester };
   }
 };
 
 // src/cognition/faculties/executive.engine/facet.supervisor.ts
+var DEFAULT_MAX_FACETS = 10;
+var DEFAULT_FACET_IDLE_TTL_TICKS = 3e3;
 var FacetSupervisor = class {
   _facets = /* @__PURE__ */ new Map();
   _facetCounter = 0;
@@ -12953,17 +13510,76 @@ var FacetSupervisor = class {
   _sessionLogger = null;
   /** Reap callbacks per facet — fired when the supervisor reaps (idle/LRU), not on explicit destroy(). */
   _onReaped = /* @__PURE__ */ new Map();
-  /** Ticks of inactivity before a facet is reaped (reclaims its attention budget). */
-  _idleTtlTicks;
+  /** Live handles by facetId — returned again when a keyed spawn matches an open thread. */
+  _handles = /* @__PURE__ */ new Map();
+  /** `FacetSpawnDeps.key` → facetId, for the keyed spawns. */
+  _byKey = /* @__PURE__ */ new Map();
+  /** facetId → its key, so reaping can clear both directions. */
+  _keyOf = /* @__PURE__ */ new Map();
+  /**
+   * A keyed thread's own prior reasoning, surviving the facet that produced it.
+   *
+   * A facet reaped mid-conversation used to take its train of thought with it: the
+   * transcript survived (AuditionEngine holds the digest by thread) but everything
+   * the mind had privately worked out about that person was gone, so the replacement
+   * facet re-derived it — or, more often, re-asked. Continuity belongs to the thread,
+   * not to the instance that happened to be carrying it.
+   */
+  _reasoningByKey = /* @__PURE__ */ new Map();
+  /** Constructor override for the idle TTL — null means read it from the persona. */
+  _idleTtlOverride;
   /** When the budget is full, evict the least-recently-active facet instead of refusing a spawn. */
   _evictLruOnPressure;
   constructor(opts = {}) {
-    this._idleTtlTicks = opts.idleTtlTicks ?? 50;
+    this._idleTtlOverride = opts.idleTtlTicks ?? null;
     this._evictLruOnPressure = opts.evictLruOnPressure ?? true;
+  }
+  /**
+   * How long a quiet facet lives, in ticks.
+   *
+   * Read through the persona-prior like `maxFacets`, because it is the same kind of
+   * fact about a person: how long a conversation stays open for them before it feels
+   * finished. It was the one number in this economy that no personality could move —
+   * the ceiling was developable while the thing doing the killing was a constant.
+   */
+  _idleTtl(state) {
+    if (this._idleTtlOverride != null) return this._idleTtlOverride;
+    if (!state) return DEFAULT_FACET_IDLE_TTL_TICKS;
+    return Math.max(
+      1,
+      Math.round(
+        readEffectiveParams(state, "engine-config-executive").facetIdleTtlTicks ?? DEFAULT_FACET_IDLE_TTL_TICKS
+      )
+    );
   }
   /** Number of live facets — the engine gates `master.sync` on this. */
   get size() {
     return this._facets.size;
+  }
+  /** Ids of the facets currently alive — the engine prunes its subject map against these. */
+  liveFacetIds() {
+    return new Set(this._facets.keys());
+  }
+  /**
+   * Ids of the facets currently REASONING — queued reports or an in-flight
+   * `_reason()`. These are what the mind is actually attending to, and the engine
+   * turns them into `attention.demand` entities so they cost the AttentionAllocator
+   * real capacity.
+   *
+   * The distinction is the whole two-level model: an open facet is a thread the
+   * mind is IN (bounded by the persona's `maxFacets`), a busy one is a thread it is
+   * ATTENDING TO (bounded by the allocator's `maxFoci`, and paid for out of the
+   * same 100-unit budget as every other focus). You can be in ten conversations and
+   * attending to two. Without this, holding conversations cost the allocator
+   * nothing, so `freeFraction` — the very signal the facet budget scales on —
+   * reported the same spare attention whether the mind was idle or mid-thread with
+   * three people.
+   */
+  busyFacetIds() {
+    const out = [];
+    for (const [id, facet] of this._facets)
+      if (facet.busy) out.push(id);
+    return out;
   }
   attachSessionLogger(logger2) {
     this._sessionLogger = logger2;
@@ -12972,10 +13588,10 @@ var FacetSupervisor = class {
    * Update the attention budget from an `attention.state.changed` event.
    *
    * `freeFraction` is the allocator's normalized 0–1 spare-attention signal
-   * (free capacity ÷ baseline capacity). It is consumed directly — one facet per
-   * ~0.3 free units — so the budget binds on the same scale the `0.3` constant
-   * and the default (`1` → 3 facets) assume. (Pre-fix this received the raw 0–100
-   * capacity, inflating the budget ~100× so facets were bounded only by TTL/LRU.)
+   * (free capacity ÷ baseline capacity). It scales the persona's facet ceiling:
+   * fully free ⇒ the whole ceiling, half free ⇒ about half of it, never below 1.
+   * (It must stay normalized — an earlier version received the raw 0–100 capacity,
+   * inflating the budget ~100× so facets were bounded only by TTL/LRU.)
    */
   setAttentionState(freeFraction) {
     this._attentionFreeCapacity = Math.max(0, freeFraction);
@@ -13002,9 +13618,10 @@ var FacetSupervisor = class {
     this._reapIdle(state.tick);
   }
   _reapIdle(tick) {
+    const ttl = this._idleTtl(this._lastStateRef);
     for (const [id, facet] of [...this._facets]) {
       if (facet.busy) continue;
-      if (tick - facet.lastActiveTick > this._idleTtlTicks)
+      if (tick - facet.lastActiveTick > ttl)
         this._reap(id, "idle");
     }
   }
@@ -13012,8 +13629,16 @@ var FacetSupervisor = class {
   _reap(facetId, reason) {
     const facet = this._facets.get(facetId);
     if (!facet) return;
+    const key = this._keyOf.get(facetId);
+    if (key) {
+      const carried = facet.reasoningHistory;
+      if (carried.length) this._reasoningByKey.set(key, carried);
+      this._byKey.delete(key);
+      this._keyOf.delete(facetId);
+    }
     facet.destroy();
     this._facets.delete(facetId);
+    this._handles.delete(facetId);
     const onReaped = this._onReaped.get(facetId);
     this._onReaped.delete(facetId);
     logger.info(`[executive] facet ${facetId} reaped (${reason}); remaining: ${this._facets.size}`);
@@ -13030,21 +13655,33 @@ var FacetSupervisor = class {
       logger.error(`[executive] facet ${facetId} onReaped error:`, err);
     }
   }
-  _leastRecentlyActive() {
-    let id = null;
-    let min = Infinity;
-    for (const [fid, facet] of this._facets)
-      if (!facet.busy && facet.lastActiveTick < min) {
-        min = facet.lastActiveTick;
-        id = fid;
-      }
-    if (id) return id;
-    for (const [fid, facet] of this._facets)
-      if (facet.lastActiveTick < min) {
-        min = facet.lastActiveTick;
-        id = fid;
-      }
-    return id;
+  /**
+   * Who gets evicted when the budget is full, in order of what the mind can
+   * afford to lose:
+   *
+   *   1. quiet AND keyless — a transient facet (a one-shot authoring pass, a
+   *      deliberation) with nobody on the other end of it;
+   *   2. quiet but keyed — an open thread with a real subject;
+   *   3. busy — last resort, and it drops an in-flight decision.
+   *
+   * Tier 1 exists because of an observed inversion: a proactive outreach spawn
+   * would evict the LIVE CONVERSATION FACET WITH THAT SAME PERSON. A conversation
+   * facet waiting on the human's next message is, correctly, not `busy` — so it was
+   * the most attractive LRU victim in the registry, and deciding to message someone
+   * destroyed the conversation already open with them.
+   */
+  _evictionVictim() {
+    const oldestIn = (pick) => {
+      let id = null;
+      let min = Infinity;
+      for (const [fid, facet] of this._facets)
+        if (pick(fid, facet) && facet.lastActiveTick < min) {
+          min = facet.lastActiveTick;
+          id = fid;
+        }
+      return id;
+    };
+    return oldestIn((fid, f) => !f.busy && !this._keyOf.has(fid)) ?? oldestIn((_fid, f) => !f.busy) ?? oldestIn(() => true);
   }
   /**
    * Spawn a focused facet of the executive consciousness.
@@ -13066,15 +13703,25 @@ var FacetSupervisor = class {
     if (!deps.stateRef)
       throw new Error("Cannot spawn facet \u2014 no state snapshot available. Wait for first tick.");
     this._lastStateRef = deps.stateRef;
-    const maxFacets = Math.max(1, Math.floor(this._attentionFreeCapacity / 0.3));
+    if (deps.key) {
+      const openId = this._byKey.get(deps.key);
+      const open = openId ? this._handles.get(openId) : void 0;
+      if (open) {
+        this._facets.get(openId)?.markActive(deps.stateRef.tick);
+        logger.info(`[executive] facet ${openId} reused for "${deps.key}"`);
+        return { attention: "available", handle: open };
+      }
+    }
+    const ceiling = Math.max(1, Math.round(readEffectiveParams(deps.stateRef, "engine-config-executive").maxFacets ?? DEFAULT_MAX_FACETS));
+    const maxFacets = Math.max(1, Math.min(ceiling, Math.round(ceiling * this._attentionFreeCapacity)));
     if (this._facets.size >= maxFacets) {
       if (!this._evictLruOnPressure) {
         logger.info(`[executive] attention full (${this._facets.size}/${maxFacets} facets) `);
         return { attention: "full" };
       }
-      const lru = this._leastRecentlyActive();
+      const lru = this._evictionVictim();
       if (!lru) return { attention: "full" };
-      logger.info(`[executive] attention full (${this._facets.size}/${maxFacets}) \u2014 evicting LRU facet ${lru}`);
+      logger.info(`[executive] attention full (${this._facets.size}/${maxFacets}) \u2014 evicting facet ${lru}`);
       this._reap(lru, "lru");
     }
     this._facetCounter++;
@@ -13093,43 +13740,61 @@ var FacetSupervisor = class {
     facet.setStateRef(deps.stateRef);
     facet.markActive(deps.stateRef.tick);
     this._facets.set(facetId, facet);
+    if (deps.key) {
+      this._byKey.set(deps.key, facetId);
+      this._keyOf.set(facetId, deps.key);
+      const carried = this._reasoningByKey.get(deps.key);
+      if (carried?.length) {
+        facet.restoreReasoningHistory(carried);
+        logger.info(`[executive] facet ${facetId} resumed "${deps.key}" (${carried.length} prior turns)`);
+      }
+    }
     logger.info(`[executive] spawned facet \u2192 ${facetId} (total facets: ${this._facets.size})`);
     this._sessionLogger?.write({
       type: "executive.facet.spawn",
       tick: deps.stateRef.tick,
       facetId,
+      ...deps.key ? { key: deps.key } : {},
       totalFacets: this._facets.size
     });
-    return {
-      attention: "available",
-      handle: {
-        facetId,
-        setFocus: (focus) => facet.setFocus(focus),
-        setStateRef: (state) => facet.setStateRef(state),
-        report: (report) => facet.report(report),
-        subscribe: (listener) => facet.subscribe(listener),
-        onChunk: (handler) => facet.setChunkHandler(handler),
-        onReaped: (handler) => {
-          this._onReaped.set(facetId, handler);
-        },
-        destroy: () => {
-          facet.destroy();
-          this._facets.delete(facetId);
-          this._onReaped.delete(facetId);
-          logger.info(`[executive] facet ${facetId} destroyed (remaining: ${this._facets.size})`);
-          this._sessionLogger?.write({
-            type: "executive.facet.destroy",
-            tick: this._lastStateRef?.tick ?? 0,
-            facetId,
-            totalFacets: this._facets.size
-          });
+    const handle = {
+      facetId,
+      setFocus: (focus) => facet.setFocus(focus),
+      setStateRef: (state) => facet.setStateRef(state),
+      report: (report) => facet.report(report),
+      subscribe: (listener) => facet.subscribe(listener),
+      onChunk: (handler) => facet.setChunkHandler(handler),
+      onReaped: (handler) => {
+        this._onReaped.set(facetId, handler);
+      },
+      destroy: () => {
+        const key = this._keyOf.get(facetId);
+        if (key) {
+          const carried = facet.reasoningHistory;
+          if (carried.length) this._reasoningByKey.set(key, carried);
+          this._byKey.delete(key);
+          this._keyOf.delete(facetId);
         }
+        facet.destroy();
+        this._facets.delete(facetId);
+        this._handles.delete(facetId);
+        this._onReaped.delete(facetId);
+        logger.info(`[executive] facet ${facetId} destroyed (remaining: ${this._facets.size})`);
+        this._sessionLogger?.write({
+          type: "executive.facet.destroy",
+          tick: this._lastStateRef?.tick ?? 0,
+          facetId,
+          totalFacets: this._facets.size
+        });
       }
     };
+    this._handles.set(facetId, handle);
+    return { attention: "available", handle };
   }
 };
 
 // src/cognition/faculties/executive.engine/engine.ts
+var FACET_ATTENTION_URGENCY = 0.7;
 function effortTargetForActions(actionTypes) {
   const types = new Set(actionTypes);
   if (types.has("focus")) return 1;
@@ -13152,7 +13817,6 @@ var ExecutiveEngine = class extends AsyncEngine {
   _llmDirector = null;
   _testMode = false;
   // ── Message queue ──────────────────────────────────────────
-  _messageQueue = new MessageQueue();
   // ── Action diversity tracking ──────────────────────────────
   _recentActionTypes = [];
   // ── Coherence version ──────────────────────────────────────
@@ -13162,6 +13826,14 @@ var ExecutiveEngine = class extends AsyncEngine {
   // ── Last output ────────────────────────────────────────────
   _lastExecutiveOutput = null;
   _lastExecutiveTick = -100;
+  // ── DeliberationCache (optional fast path) ─────────────────
+  _cache = null;
+  _cacheRestored = false;
+  _pendingVerify = null;
+  // Last cache outcome this cycle, surfaced as metrics/events from the committed path.
+  _lastCacheHit = false;
+  _lastCacheConfidence = 0;
+  _lastCacheNeighborCount = 0;
   // ── Injected dependencies ──────────────────────────────────
   _willId = null;
   /**
@@ -13190,7 +13862,14 @@ var ExecutiveEngine = class extends AsyncEngine {
   // engine keeps only the bus-subscription guard, since those subscriptions
   // feed the gating salience buffer and are shared with the escalation path.
   _facetSupervisor = new FacetSupervisor();
-  _facetSyncSubscribed = false;
+  /**
+   * Who each live facet is engaged with, learned from `executive.facet.sync`.
+   * Keyed by facetId; the last sync wins. Rendered into the master's own prompt so
+   * the singular seat can reason across its conversations "as if they were sitting
+   * at the same table" — which it cannot do while it only knows facet numbers.
+   * Stale entries age out on read (see _activeConversations).
+   */
+  _facetSubjects = /* @__PURE__ */ new Map();
   // ── Cognitive models ───────────────────────────────────────
   _model = new GenerativeModel();
   _generativeModel = new GenerativeModel(0.2, 100);
@@ -13198,6 +13877,16 @@ var ExecutiveEngine = class extends AsyncEngine {
   _summarizerRestored = false;
   // ── Last state reference (for onReasoningComplete and facets) ─
   _lastStateRef = null;
+  /**
+   * The tick currently being processed, refreshed every react() — distinct from
+   * `_lastStateRef` (which tracks the REASONING tick and must not move under
+   * onReasoningComplete) and from `_lastExecutiveTick` (the last cycle that ran).
+   *
+   * Off-tick arrivals — a facet handoff, in particular — need to be stamped with
+   * when they actually happened. Using `_lastExecutiveTick` for that dated them to
+   * the last master cycle, which can be hundreds of ticks behind.
+   */
+  _currentTick = 0;
   // ── Deferred manager side-effects (FN11) ───────────────────
   // Commit-gated queue for the mirroring manager writes returned by
   // buildStateCommands. The queue runs them only after the orchestrator
@@ -13236,7 +13925,6 @@ var ExecutiveEngine = class extends AsyncEngine {
       goallessTickCount: 0,
       lowValenceTickCount: 0
     };
-    this._ensureFacetSyncSubscription();
   }
   // ── Dependency injection ───────────────────────────────────
   attachWorkingMemory(wm) {
@@ -13271,7 +13959,6 @@ var ExecutiveEngine = class extends AsyncEngine {
   /** Called by CognitiveOrchestrator.addEngine() — injects the shared bus. */
   attachBus(bus) {
     this._bus = bus;
-    this._ensureFacetSyncSubscription();
   }
   /**
    * Called by CognitiveOrchestrator.addEngine() — injects the completion inbox
@@ -13398,8 +14085,9 @@ var ExecutiveEngine = class extends AsyncEngine {
    * spawn site sets a focus whose `function` matches its role — so the routed
    * answer is the same one, decided later and from the work itself.
    */
-  spawnFacet(role) {
+  spawnFacet(role, key) {
     return this._facetSupervisor.spawn({
+      ...key ? { key } : {},
       bus: this._bus,
       llmDirector: this._llmDirector,
       stateRef: this._lastStateRef,
@@ -13437,6 +14125,14 @@ var ExecutiveEngine = class extends AsyncEngine {
       this._facetSupervisor.setAttentionState(p.freeFraction);
       return;
     }
+    if (event.type === "executive.facet.sync") {
+      this._onFacetSync(event);
+      return;
+    }
+    if (event.type === "executive.facet.handoff") {
+      this._onFacetHandoff(event);
+      return;
+    }
     (event.salience ?? 0) >= WORKSPACE_THRESHOLD && this._gatingState.salienceBuffer.push({
       event,
       tick: event.logicalTime ?? 0
@@ -13450,15 +14146,74 @@ var ExecutiveEngine = class extends AsyncEngine {
    * its `executive.last_tick` metric reflects whether our prior commands landed.
    */
   async react(delta, tick, state, context) {
+    this._currentTick = tick;
     this._deferred.flush(state, tick);
     this._deferred.markReactTick(tick);
     this._facetSupervisor.pump(state);
-    return super.react(delta, tick, state, context);
+    const result = await super.react(delta, tick, state, context);
+    const focus = this._facetAttentionDemands(state, tick);
+    if (focus.set.length || focus.delete.length) {
+      result.commands ??= {};
+      result.commands.set = [...result.commands.set ?? [], ...focus.set];
+      result.commands.delete = [...result.commands.delete ?? [], ...focus.delete];
+    }
+    return result;
+  }
+  /**
+   * What the mind is attending to because a facet is reasoning about it, as
+   * `attention.demand` entities the AttentionAllocator allocates real capacity
+   * against (`_extractSalienceSignals` reads this type; `costPerFocus` is then
+   * charged against the same 100-unit budget as perceptual foci).
+   *
+   * This closes a loop that was open in one direction only: the allocator's
+   * `freeFraction` scaled the facet budget, but facets never appeared in
+   * `_activeFocus`, so holding three conversations reported exactly as much spare
+   * attention as holding none. The budget was being scaled by a signal blind to the
+   * thing it was bounding.
+   *
+   * `urgency` sits below 1 on purpose: a live conversation is a genuine claim on
+   * attention but must not automatically outrank every percept — the allocator sorts
+   * candidates by salience into `maxFoci` slots, and a facet that always won would
+   * starve perception. Only BUSY facets are charged; an open-but-quiet thread is one
+   * the mind is in, not one it is attending to.
+   */
+  _facetAttentionDemands(state, tick) {
+    const busy = this._facetSupervisor.busyFacetIds();
+    const set = [];
+    const live = /* @__PURE__ */ new Set();
+    for (const facetId of busy) {
+      const id = `facet-attending-${facetId}`;
+      live.add(id);
+      const subject = this._facetSubjects.get(facetId);
+      set.push({
+        id,
+        type: "attention.demand",
+        metadata: {
+          urgency: FACET_ATTENTION_URGENCY,
+          source: "executive-facet",
+          facetId,
+          ...subject?.entityId ? { subjectEntityId: subject.entityId } : {},
+          ...subject?.name ? { subjectName: subject.name } : {},
+          // NOT `generatesGoal` — GoalManager turns flagged demands into goals, and
+          // "I am talking to someone" is a state, not something to pursue.
+          tick
+        }
+      });
+    }
+    const del = [];
+    for (const [id, e] of state.entities)
+      if (e.type === "attention.demand" && e.metadata?.["source"] === "executive-facet" && !live.has(id))
+        del.push(id);
+    return { set, delete: del };
   }
   shouldAct(state, tick, _context) {
     if (!this._summarizerRestored) {
       this._restoreSummarizer(state);
       this._summarizerRestored = true;
+    }
+    if (this._cache && !this._cacheRestored) {
+      this._restoreDeliberationCache(state);
+      this._cacheRestored = true;
     }
     const rtConfig = readRuntimeConfig(state, {
       executiveInterval: this._executiveInterval,
@@ -13477,7 +14232,6 @@ var ExecutiveEngine = class extends AsyncEngine {
     }
     const gatingDeps = {
       generativeModel: this._generativeModel,
-      pendingMessages: this._messageQueue.pendingMessages,
       hasPendingWork: this.hasPendingWork
     };
     const result = evaluateGating(state, tick, gatingDeps, this._gatingState);
@@ -13502,9 +14256,37 @@ var ExecutiveEngine = class extends AsyncEngine {
   }
   async reasonAsync(footprint, state, context, stream) {
     this._lastStateRef = state;
-    this._messageQueue.pendingCallStartTick = state.tick;
     this._consumedBufferEntries = [...this._gatingState.salienceBuffer];
     this._facetSupervisor.broadcastStateRef(state);
+    this._pendingVerify = null;
+    if (this._cache) {
+      const cacheTick = footprint.tickObserved;
+      this._cache.decay();
+      const fp = extractFingerprint(state);
+      const cacheResult = this._cache.retrieve(fp, cacheTick);
+      this._lastCacheHit = cacheResult.hit;
+      this._lastCacheConfidence = cacheResult.confidence;
+      this._lastCacheNeighborCount = cacheResult.neighbors.length;
+      if (cacheResult.hit && cacheResult.output) {
+        if (!this._cache.shouldVerify()) {
+          stream.report("executive_complete", {
+            actionCount: cacheResult.output.actions.length,
+            planCount: 0,
+            newBeliefCount: cacheResult.output.newBeliefs?.length ?? 0,
+            hasIntrospection: false,
+            hasNarrative: false
+          });
+          logger.info(
+            `[executive] \u26A1 cache hit tick=${cacheTick}  \u03C1=${cacheResult.confidence.toFixed(3)}  neighbors=${cacheResult.neighbors.length}`
+          );
+          return cacheResult.output;
+        }
+        this._pendingVerify = {
+          fingerprint: fp,
+          cachedActionTypes: cacheResult.output.actions.map((a) => a.type)
+        };
+      }
+    }
     const execContext = await PromptFactory.buildFreshContext({
       workingMemory: this._workingMemory,
       goalManager: this._goalManager,
@@ -13527,7 +14309,13 @@ var ExecutiveEngine = class extends AsyncEngine {
       priorConfidence: this._lastExecutiveOutput?.confidence ?? 0.5,
       novelty: state.metrics.get("perception.novelty") ?? 0,
       stressLoad: state.metrics.get("stress.load") ?? 0,
-      hasPendingMessage: this._messageQueue.pendingMessages.length > 0
+      // Something a conversation surfaced is waiting on the master and has not
+      // been dealt with. This used to read the pending-message queue, which was
+      // never filled — so the effort gate's `pending_reply` term was structurally
+      // zero for every master that has ever run. Escalations are the master's real
+      // version of "someone is waiting on me": the facets do the replying, the
+      // master owns what they escalate.
+      hasPendingMessage: this._escalations.size > 0
     }, deliberateThreshold);
     stream.report("process_selected", {
       process: processSelection.process,
@@ -13558,11 +14346,11 @@ var ExecutiveEngine = class extends AsyncEngine {
         state,
         qualityModulation,
         epistemicUncertainty,
-        pendingMessages: [...this._messageQueue.pendingMessages],
         focus,
         deps: promptDeps,
         recentActionTypes: [...this._recentActionTypes],
         mode: "master",
+        activeConversations: this._activeConversations(),
         outputFormat: PromptFactory.buildIdeationFormatInstruction()
       });
       const proposeTemperature = ideationTemperature(execContext.identity.traits["creativity"] ?? 0.5);
@@ -13572,7 +14360,13 @@ var ExecutiveEngine = class extends AsyncEngine {
         ideationUserMessage,
         tick: state.tick,
         proposeTemperature,
-        meta: { category: "executive", attribute: "master", function: "ideation", demand: processSelection.effortScore }
+        meta: {
+          category: "executive",
+          attribute: "master",
+          process: "ideation",
+          function: "-",
+          demand: processSelection.effortScore
+        }
       });
       logger.info(
         `[executive] \u25C6 deliberate propose tick=${state.tick}  candidates=${ideationCandidates?.length ?? 0}  temp=${proposeTemperature.toFixed(2)}  latency=${wallClock() - ideationStart}ms`
@@ -13587,11 +14381,11 @@ var ExecutiveEngine = class extends AsyncEngine {
       state,
       qualityModulation,
       epistemicUncertainty,
-      pendingMessages: [...this._messageQueue.pendingMessages],
       focus,
       deps: promptDeps,
       recentActionTypes: [...this._recentActionTypes],
       mode: "master",
+      activeConversations: this._activeConversations(),
       ideationCandidates
     });
     this._sessionLogger?.write({
@@ -13604,7 +14398,6 @@ var ExecutiveEngine = class extends AsyncEngine {
       // D2: context counts for per-tick cognitive state snapshot
       workingMemoryItems: execContext.workingMemory.length,
       goalCount: execContext.goals.length,
-      pendingMessages: this._messageQueue.pendingMessages.length,
       beliefCount: execContext.beliefs.length,
       beliefsOmitted: execContext.beliefsOmitted,
       promptPath: this._llmDirector?.writeDebugPrompt(state.tick, systemPrompt, userMessage) ?? ""
@@ -13614,7 +14407,7 @@ var ExecutiveEngine = class extends AsyncEngine {
     const llmStart = wallClock();
     let executiveOutput;
     try {
-      const masterMeta = { category: "executive", attribute: "master", function: "decision", demand: processSelection.effortScore };
+      const masterMeta = { category: "executive", attribute: "master", process: "decision", function: "-", demand: processSelection.effortScore };
       const result = this._chunkBroadcaster ? await this._llmDirector.callStream(systemPrompt, userMessage, state.tick, this._chunkBroadcaster, void 0, masterMeta) : await this._llmDirector.call(systemPrompt, userMessage, state.tick, void 0, masterMeta);
       logger.info(
         `[executive] \u2713 tick=${state.tick}  in=${result.inputTok} tok  out=${result.outputTok} tok  latency=${wallClock() - llmStart}ms`
@@ -13676,6 +14469,19 @@ var ExecutiveEngine = class extends AsyncEngine {
       hasIntrospection: !!executiveOutput.introspection,
       hasNarrative: !!executiveOutput.narrative
     });
+    if (this._cache) {
+      const learnTick = footprint.tickObserved;
+      if (this._pendingVerify) {
+        const match = this._actionTypesMatch(
+          this._pendingVerify.cachedActionTypes,
+          executiveOutput.actions.map((a) => a.type)
+        );
+        this._cache.updateCompetence(this._pendingVerify.fingerprint, match ? 1 : 0, learnTick);
+        this._pendingVerify = null;
+      } else {
+        this._cache.learn(extractFingerprint(state), executiveOutput, learnTick);
+      }
+    }
     return executiveOutput;
   }
   onIntermediateResult(step, result, _footprint, _context) {
@@ -13785,10 +14591,43 @@ var ExecutiveEngine = class extends AsyncEngine {
           tick: footprint.tickObserved
         }
       });
-    this._messageQueue.clearProcessedMessages();
-    if (escalationPercepts.length) {
+    const { keep, discharge } = this._reconcileUndertakings(escalationPercepts, this._lastStateRef);
+    if (keep.length) {
       commands.set ??= [];
-      commands.set.push(...escalationPercepts);
+      commands.set.push(...keep);
+    }
+    if (discharge.length) {
+      commands.delete ??= [];
+      commands.delete.push(...discharge);
+    }
+    if (this._cache) {
+      commands.set ??= [];
+      commands.set.push({
+        id: "executive-deliberation-cache",
+        type: "executive.cache",
+        metadata: { snapshot: this._cache.snapshot() }
+      });
+      const total = this._cache.hitCount + this._cache.missCount;
+      commands.metrics ??= [];
+      commands.metrics.push(
+        ["cache.hit", this._lastCacheHit ? 1 : 0],
+        ["cache.confidence", this._lastCacheConfidence],
+        ["cache.hit_rate", total > 0 ? this._cache.hitCount / total : 0],
+        ["cache.size", this._cache.size]
+      );
+      this._bus?.publish(this._lastCacheHit ? {
+        type: "cache.hit",
+        version: 1,
+        sourceEngine: this.name,
+        salience: this._lastCacheConfidence,
+        payload: { confidence: this._lastCacheConfidence, neighborCount: this._lastCacheNeighborCount }
+      } : {
+        type: "cache.miss",
+        version: 1,
+        sourceEngine: this.name,
+        salience: 0.3,
+        payload: { confidence: this._lastCacheConfidence }
+      });
     }
     if (commands.set?.length)
       for (const entity of commands.set)
@@ -13799,68 +14638,188 @@ var ExecutiveEngine = class extends AsyncEngine {
     return commands;
   }
   // ── Private helpers ────────────────────────────────────────
-  _ensureFacetSyncSubscription() {
-    if (this._facetSyncSubscribed || !this._bus) return;
-    this._facetSyncSubscribed = true;
-    this._bus.subscribe(
-      this.name,
-      ["executive.facet.sync"],
-      (event) => {
-        const payload = event.payload;
-        const syntheticEvent = {
-          id: "",
-          type: "executive.facet.sync",
-          version: 1,
-          sequenceNumber: 1,
-          sourceEngine: `executive-facet-${payload.facetId ?? "unknown"}`,
-          salience: Math.max(0.5, payload.confidence ?? 0.5),
-          payload,
-          wallTime: payload.tick,
-          logicalTime: payload.tick
-        };
-        this._gatingState.salienceBuffer.push({
-          event: syntheticEvent,
-          tick: payload.tick ?? 0
-        });
-        logger.info(
-          `[executive] master received facet sync from ${payload.facetId} (confidence=${payload.confidence?.toFixed(2)})`
-        );
+  /**
+   * The people the mind is in conversation with right now, newest first.
+   *
+   * Pruned against the supervisor's live facets on every read: a reaped facet is a
+   * conversation that has ended, and a master that still believes it is mid-thread
+   * with someone reasons about a table that is no longer there.
+   */
+  _activeConversations() {
+    const live = this._facetSupervisor.liveFacetIds();
+    for (const id of [...this._facetSubjects.keys()])
+      if (!live.has(id)) this._facetSubjects.delete(id);
+    return [...this._facetSubjects.values()].sort((a, b) => b.tick - a.tick).map((s) => ({ entityId: s.entityId, ...s.name ? { name: s.name } : {}, sinceTick: s.tick }));
+  }
+  /**
+   * Facet sync — remember WHO each facet is with, and wake the master.
+   *
+   * Reached from `onCognitiveEvent`, NOT from its own `bus.subscribe`. The bus
+   * stores one subscription per engineId (`_subscriptions.set( engineId, … )`),
+   * so a second `subscribe(this.name, …)` silently REPLACES the first — and the
+   * orchestrator registers `subscribe( engine.name, engine.subscribes(), … )`
+   * after `attachBus`, which replaced everything registered here. Two dedicated
+   * handlers used to be installed at this point; the second overwrote the first
+   * and the orchestrator then overwrote that, so neither ever ran. The escalation
+   * leg had been dead in production for its whole life: a facet could escalate,
+   * the audition engine published, and nothing was listening.
+   */
+  /**
+   * Retire undertakings the mind has already honoured, and refuse to restate one
+   * it is already carrying.
+   *
+   * An undertaking percept says, in the first person, "I said I would reach X and
+   * nothing has gone to them yet". That sentence has to stop being true at some
+   * point, and nothing made it stop. Measured on a live Will: SEVEN of them
+   * accumulated in state, every one still asserting nothing had been sent, while
+   * a `conversation.sent` to that person sat right beside them. She read seven
+   * standing unfulfilled promises every cycle and dutifully sent the same message
+   * again, five times in five minutes and once more in the next session — the
+   * percept meant to stop her forgetting a promise was making her unable to
+   * believe she had kept it.
+   *
+   * Discharged by EVIDENCE, not by a timer: a `conversation.sent` to that target,
+   * written no earlier than the undertaking, means the contact happened. That
+   * record is durable and snapshots with the state, so the discharge survives a
+   * restart exactly as the promise does — which the tick-scoped satiation in
+   * `enactionFootprint` deliberately cannot.
+   *
+   * It stays a decision, not an erasure. Retiring the percept removes the standing
+   * claim that the words are unsent; whether to say more to that person is then an
+   * ordinary competition like any other.
+   */
+  _reconcileUndertakings(incoming, state) {
+    const contacted = /* @__PURE__ */ new Map();
+    for (const [, e] of state.entities) {
+      if (e.type !== "conversation.sent") continue;
+      const m = e.metadata;
+      const target = typeof m?.["targetEntityId"] === "string" ? m["targetEntityId"] : void 0;
+      if (!target) continue;
+      const at = typeof m?.["tick"] === "number" ? m["tick"] : typeof e.tick === "number" ? e.tick : 0;
+      contacted.set(target, Math.max(contacted.get(target) ?? 0, at));
+    }
+    const honoured = (target, madeAt) => !!target && (contacted.get(target) ?? -1) >= madeAt;
+    const undertakingOf = (m) => m?.["category"] === "undertaking" ? {
+      target: typeof m["undertakingTarget"] === "string" ? m["undertakingTarget"] : void 0,
+      madeAt: typeof m["tick"] === "number" ? m["tick"] : 0
+    } : void 0;
+    const discharge = [];
+    const carrying = /* @__PURE__ */ new Set();
+    for (const [id, e] of state.entities) {
+      if (e.type !== "percept") continue;
+      const u = undertakingOf(e.metadata);
+      if (!u) continue;
+      if (!u.target) {
+        discharge.push(id);
+        continue;
       }
+      if (honoured(u.target, u.madeAt)) discharge.push(id);
+      else carrying.add(u.target);
+    }
+    const keep = incoming.filter((p) => {
+      const u = undertakingOf(p.metadata);
+      if (!u?.target) return true;
+      if (honoured(u.target, u.madeAt)) return false;
+      if (carrying.has(u.target)) return false;
+      carrying.add(u.target);
+      return true;
+    });
+    if (discharge.length)
+      logger.info(`[executive] ${discharge.length} undertaking(s) discharged \u2014 the contact was made`);
+    return { keep, discharge };
+  }
+  _onFacetSync(event) {
+    const payload = event.payload;
+    if (payload.facetId && payload.subjectEntityId)
+      this._facetSubjects.set(payload.facetId, {
+        entityId: payload.subjectEntityId,
+        ...payload.subjectName ? { name: payload.subjectName } : {},
+        tick: payload.tick ?? this._lastExecutiveTick ?? 0
+      });
+    this._gatingState.salienceBuffer.push({
+      event,
+      tick: payload.tick ?? event.logicalTime ?? 0
+    });
+    logger.info(
+      `[executive] master received facet sync from ${payload.facetId}` + (payload.subjectName || payload.subjectEntityId ? ` (with ${payload.subjectName ?? payload.subjectEntityId})` : "") + ` (confidence=${payload.confidence?.toFixed(2)})`
     );
-    this._bus.subscribe(
-      this.name,
-      ["audition.task.signal"],
-      (event) => {
-        const payload = event.payload;
-        if (this._lastStateRef) {
-          this._escalations.push({
-            entityId: payload.entityId,
-            threadId: payload.threadId,
-            reasoning: payload.reasoning.slice(0, 400),
-            tick: this._lastExecutiveTick ?? 0
-          });
-        }
-        const syntheticEvent = {
-          id: "",
-          type: "audition.task.signal",
-          version: 1,
-          sequenceNumber: 1,
-          sourceEngine: "audition-engine",
-          salience: event.salience ?? 0.9,
-          payload,
-          wallTime: wallClock(),
-          // telemetry field; logicalTime carries the deterministic clock
-          logicalTime: this._lastExecutiveTick ?? 0
-        };
-        this._gatingState.salienceBuffer.push({
-          event: syntheticEvent,
-          tick: this._lastExecutiveTick ?? 0
-        });
-        logger.info(
-          `[executive] master queued escalation percept from entity ${payload.entityId} (confidence=${payload.confidence.toFixed(2)})`
-        );
-      }
+  }
+  /**
+   * A focused part of me surfaced something the singular seat owns — work to plan
+   * (`escalation`) or an intention toward a third party (`undertaking`).
+   *
+   * ONE handler for every facet type. This was `_onAuditionTaskSignal`, listening
+   * on a topic named for one sense engine and typed with one sense engine's nouns
+   * (`entityId`, `threadId`), which meant a planning, supervision or deliberation
+   * facet had no way to hand anything up at all. See EscalationBuffer for the full
+   * rationale; new kinds go in `HandoffBody`, not in a new topic and a new handler
+   * beside this one.
+   *
+   * Master stays out of the reply path entirely:
+   *   • The facet has already said (or will say) whatever the person in front of
+   *     it needed to hear.
+   *   • The master's job is purely cognitive: create a [PLANS] block, update
+   *     goals, reflect, or decide whether it still means to make that contact.
+   *     Any follow-up communication flows through the agency competition —
+   *     NEVER via [REPLY].
+   *
+   * Buffered rather than written directly: state is read-only here, so
+   * `EscalationBuffer.drainToPercepts()` emits it as a StateCommand on the next
+   * master cycle, where Exteroception surfaces it under "## Percepts (What I Notice)".
+   */
+  _onFacetHandoff(event) {
+    const payload = event.payload;
+    if (!payload?.body?.kind) return;
+    const tick = payload.tick ?? this._currentTick;
+    this._escalations.push({
+      tick,
+      ...payload.facetId ? { facetId: payload.facetId } : {},
+      ...payload.subjectEntityId ? { subjectEntityId: payload.subjectEntityId } : {},
+      ...payload.subjectName ? { subjectName: payload.subjectName } : {},
+      ...payload.threadId ? { threadId: payload.threadId } : {},
+      body: payload.body.kind === "undertaking" ? { ...payload.body, reasoning: (payload.body.reasoning ?? "").slice(0, 400) } : { ...payload.body, reasoning: (payload.body.reasoning ?? "").slice(0, 400) }
+    });
+    this._gatingState.salienceBuffer.push({ event, tick });
+    const from = payload.subjectName ?? payload.subjectEntityId ?? payload.facetId ?? "a focus";
+    logger.info(
+      payload.body.kind === "undertaking" ? `[executive] master queued undertaking from ${from} \u2192 reach ${payload.body.target} (confidence=${payload.confidence?.toFixed(2)})` : `[executive] master queued escalation percept from ${from} (confidence=${payload.confidence?.toFixed(2)})`
     );
+  }
+  // ── DeliberationCache wiring ───────────────────────────────
+  /** Enable the deliberation cache (off by default). Call during mind assembly. */
+  enableCache(config) {
+    this._cache = new DeliberationCache(config);
+  }
+  /** True when the cache is active. */
+  get cacheEnabled() {
+    return this._cache !== null;
+  }
+  /** Telemetry snapshot for harnesses / eval. Null when disabled. */
+  cacheStats() {
+    if (!this._cache) return null;
+    return { size: this._cache.size, hits: this._cache.hitCount, misses: this._cache.missCount };
+  }
+  /**
+   * Reafference hook — update cache competence from a confirmed action outcome.
+   * Optional, layered on top of the inline verify loop. Reward follows the
+   * research sketch: mean of (action succeeded, stress relief, goal progress).
+   */
+  onActionOutcome(state, tick, success, stressDelta, goalProgressDelta) {
+    if (!this._cache) return;
+    const reward = ((success ? 1 : 0) + (1 - Math.max(0, Math.min(1, stressDelta))) + Math.max(0, Math.min(1, goalProgressDelta))) / 3;
+    this._cache.updateCompetence(extractFingerprint(state), reward, tick);
+  }
+  _actionTypesMatch(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+  _restoreDeliberationCache(state) {
+    if (!this._cache) return;
+    const entity = state.entities.get("executive-deliberation-cache");
+    if (!entity) return;
+    const snap = entity.metadata?.["snapshot"];
+    if (snap) this._cache.restore(snap);
   }
   _restoreSummarizer(state) {
     if (!this._summarizer) return;
@@ -15497,6 +16456,8 @@ var SelfModelUpdater = class extends AsyncEngine {
   _affectObservations = 0;
   _bus = null;
   _semanticIntegrator = null;
+  /** The reasoning tick's state — onReasoningComplete needs it to merge identity. */
+  _lastStateRef = null;
   _model = new GenerativeModel();
   constructor(config = {}) {
     super({
@@ -15655,6 +16616,7 @@ var SelfModelUpdater = class extends AsyncEngine {
     return stats;
   }
   async reasonAsync(footprint, state, context, stream) {
+    this._lastStateRef = state;
     const domainAssessments = this._computeDomainAssessments();
     stream.report("domains_evaluated", {
       domainCount: domainAssessments.length
@@ -15712,19 +16674,15 @@ var SelfModelUpdater = class extends AsyncEngine {
     this._lastEvaluationTick = footprint.tickObserved;
     this._experienceCountAtLastEval = this._cachedEpisodicTotal;
     const commands = {
-      set: [{
-        id: "identity-self",
-        type: "will.identity",
-        metadata: {
-          prompt: updatedIdentity.prompt,
-          values: updatedIdentity.values,
-          traits: updatedIdentity.traits,
-          traitStats,
-          // per-trait baseline + recency (B/C)
-          style: updatedIdentity.style,
-          version: (updatedIdentity.version ?? 1) + 1
-        }
-      }],
+      set: [identityCommand(this._lastStateRef, {
+        prompt: updatedIdentity.prompt,
+        values: updatedIdentity.values,
+        traits: updatedIdentity.traits,
+        traitStats,
+        // per-trait baseline + recency (B/C)
+        style: updatedIdentity.style,
+        version: (updatedIdentity.version ?? 1) + 1
+      })],
       metrics: []
     };
     for (const da of domainAssessments)
@@ -16411,16 +17369,10 @@ var AutobiographicalNarrator = class {
           const updatedTraits = { ...currentTraits };
           for (const { key: trait, value: delta } of executiveOutput.identityUpdates.traits)
             updatedTraits[trait] = Math.max(0, Math.min(1, (updatedTraits[trait] ?? 0.5) + delta));
-          commands.set.push({
-            id: "identity-self",
-            type: "will.identity",
-            createdAt: existingIdentity.createdAt,
-            metadata: {
-              ...existingIdentity.metadata,
-              traits: updatedTraits,
-              version: (existingIdentity.metadata?.version ?? 1) + 1
-            }
-          });
+          commands.set.push(identityCommand(state, {
+            traits: updatedTraits,
+            version: (existingIdentity.metadata?.version ?? 1) + 1
+          }));
         }
       }
       narrativeSignificance = executiveOutput.narrativeThemes?.length ?? 1;
@@ -16703,6 +17655,16 @@ var CONSCIENTIOUSNESS_GOAL_REWARD_GAIN = 0.3;
 var CONSCIENTIOUSNESS_FOCUS_GAIN = 0.2;
 var CONSCIENTIOUSNESS_MORAL_GAIN = -0.2;
 var CONSCIENTIOUSNESS_SELECTOR_FOCUS_GAIN = 0.1;
+var OPENNESS_BREADTH_GAIN = 4;
+var CONSCIENTIOUSNESS_BREADTH_GAIN = -3;
+var OPENNESS_FOCI_GAIN = 1.5;
+var CONSCIENTIOUSNESS_FOCI_GAIN = -1.2;
+var AGREEABLENESS_PATIENCE_GAIN = 0.12;
+var PERSISTENCE_FOLLOWUP_GAIN = -0.1;
+var AGREEABLENESS_WINDOW_GAIN = 24;
+var PERSISTENCE_WINDOW_GAIN = -20;
+var AGREEABLENESS_RECIPROCITY_GAIN = 0.12;
+var PERSISTENCE_RECIPROCITY_GAIN = -0.14;
 var EMOTIONAL_STABILITY_REACTIVITY_GAIN = -0.01;
 var EMOTIONAL_STABILITY_THREAT_GAIN = 0.3;
 var EMOTIONAL_STABILITY_STRESS_DECAY_GAIN = 0.6;
@@ -16833,6 +17795,11 @@ var PersonaConsolidator = class {
       ["persona.executive.impulsivity_delta", next.priors["engine-config-executive"]?.impulsivity ?? 0],
       ["persona.frustration.irritability_rate_delta", next.priors["engine-config-frustration"]?.irritabilityRate ?? 0],
       ["persona.executive.deliberate_threshold_delta", next.priors["engine-config-executive"]?.deliberateThreshold ?? 0],
+      ["persona.executive.max_facets_delta", next.priors["engine-config-executive"]?.maxFacets ?? 0],
+      ["persona.attention.max_foci_delta", next.priors["engine-config-attention"]?.maxFoci ?? 0],
+      ["persona.selector.repeat_damping_delta", next.priors["engine-config-action-selector"]?.repeatDamping ?? 0],
+      ["persona.selector.repeat_window_delta", next.priors["engine-config-action-selector"]?.repeatWindowTicks ?? 0],
+      ["persona.selector.social_weight_delta", next.priors["engine-config-action-selector"]?.socialWeight ?? 0],
       ["persona.reward.social_weight_delta", next.priors["engine-config-reward"]?.socialWeight ?? 0],
       ["persona.frustration.anger_reactivity_delta", next.priors["engine-config-frustration"]?.angerReactivity ?? 0],
       ["persona.novelty.significance_threshold_delta", next.priors["engine-config-novelty"]?.significanceThreshold ?? 0],
@@ -17209,6 +18176,109 @@ var PersonaConsolidator = class {
         gain: CONSCIENTIOUSNESS_FOCUS_GAIN,
         engineConfigId: "engine-config-task-switcher",
         param: "baseSwitchCost"
+      },
+      // 27c. Attentional BREADTH — how many things this mind holds at once (the
+      //      FacetSupervisor's facet ceiling). Openness widens it; conscientiousness
+      //      narrows it. Two opposing pulls on one param (rules 17/17b's pattern), so a
+      //      Will that is both lands somewhere of its own rather than at either extreme.
+      //      This is what makes "I can hold five conversations" or "I do one thing at a
+      //      time" a fact about the person instead of a constant — the ceiling is the
+      //      persona's; spare attention only scales the live allowance within it.
+      {
+        magnitude: openDev,
+        threshold: GRIT_THRESHOLD,
+        gain: OPENNESS_BREADTH_GAIN,
+        engineConfigId: "engine-config-executive",
+        param: "maxFacets"
+      },
+      {
+        magnitude: conscDev,
+        threshold: GRIT_THRESHOLD,
+        gain: CONSCIENTIOUSNESS_BREADTH_GAIN,
+        engineConfigId: "engine-config-executive",
+        param: "maxFacets"
+      },
+      // 27d. The same breadth disposition one level down: how many things the mind
+      //      holds IN VIEW at once (the allocator's `maxFoci` slots), as against how
+      //      many threads it keeps OPEN (27c). A reasoning facet now competes for
+      //      these slots like any percept, so the two levels are one economy — a Will
+      //      can be in ten conversations while attending to two, and which two is
+      //      settled by salience against everything else it could be noticing.
+      //      `maxFoci` was already config-mirrored and read through the persona-prior;
+      //      it just had no description and no edge, so it could never actually move.
+      {
+        magnitude: openDev,
+        threshold: GRIT_THRESHOLD,
+        gain: OPENNESS_FOCI_GAIN,
+        engineConfigId: "engine-config-attention",
+        param: "maxFoci"
+      },
+      {
+        magnitude: conscDev,
+        threshold: GRIT_THRESHOLD,
+        gain: CONSCIENTIOUSNESS_FOCI_GAIN,
+        engineConfigId: "engine-config-attention",
+        param: "maxFoci"
+      },
+      // 27e. How long the Will lets its own words stand before repeating them. A
+      //      delivered act leaves a live footprint (EXAFFERENCE P5) that damps redoing
+      //      it; how HARD it damps is a disposition. An agreeable Will gives people
+      //      room after saying its piece; a persistent one chases the answer sooner.
+      //      Opposing pulls on one param, same as 17/17b. This is the trait behind
+      //      "she messaged me the same thing three times" — the mechanism stops the
+      //      loop, this decides where in the range between patient and dogged she sits.
+      {
+        magnitude: agreeableDev,
+        threshold: GRIT_THRESHOLD,
+        gain: AGREEABLENESS_PATIENCE_GAIN,
+        engineConfigId: "engine-config-action-selector",
+        param: "repeatDamping"
+      },
+      {
+        magnitude: persistDev,
+        threshold: GRIT_THRESHOLD,
+        gain: PERSISTENCE_FOLLOWUP_GAIN,
+        engineConfigId: "engine-config-action-selector",
+        param: "repeatDamping"
+      },
+      // 27f. The same patience on the satiation WINDOW rather than its strength —
+      //      27e decides how hard having spoken damps speaking again, this decides
+      //      for how long. Kept separate because a mind can be quick to repeat but
+      //      only briefly, or slow to repeat but for a long time.
+      {
+        magnitude: agreeableDev,
+        threshold: GRIT_THRESHOLD,
+        gain: AGREEABLENESS_WINDOW_GAIN,
+        engineConfigId: "engine-config-action-selector",
+        param: "repeatWindowTicks"
+      },
+      {
+        magnitude: persistDev,
+        threshold: GRIT_THRESHOLD,
+        gain: PERSISTENCE_WINDOW_GAIN,
+        engineConfigId: "engine-config-action-selector",
+        param: "repeatWindowTicks"
+      },
+      // 27g. Who the Will is drawn toward. `socialWeight` scales its learned read on
+      //      a person in the action competition, and it is the one weight left
+      //      deliberately SIGNED: agreeableness leans into reciprocity (toward the
+      //      people who answer), demonstrated persistence leans against it and can
+      //      carry the weight negative — a mind that reaches hardest for the silence
+      //      precisely because it is silent. Both are coherent colleagues, so the
+      //      container declines to pick and lets the persona land where it lands.
+      {
+        magnitude: agreeableDev,
+        threshold: GRIT_THRESHOLD,
+        gain: AGREEABLENESS_RECIPROCITY_GAIN,
+        engineConfigId: "engine-config-action-selector",
+        param: "socialWeight"
+      },
+      {
+        magnitude: persistDev,
+        threshold: GRIT_THRESHOLD,
+        gain: PERSISTENCE_RECIPROCITY_GAIN,
+        engineConfigId: "engine-config-action-selector",
+        param: "socialWeight"
       },
       // 28b. Same disposition, the AGENCY selector's owner (R2): a conscientious Will also
       //      resists having an in-flight action preempted — raise the selector's switch-cost
@@ -18043,7 +19113,7 @@ var KnownEntityTracker = class {
         const g = byName.get(n);
         g ? g.push(d) : byName.set(n, [d]);
       }
-    let merged = false;
+    let merged2 = false;
     for (const group of byName.values()) {
       if (group.length < 2) continue;
       group.sort((a, b) => b.familiarity - a.familiarity || (a.keid < b.keid ? -1 : 1));
@@ -18066,10 +19136,10 @@ var KnownEntityTracker = class {
           type: "known-entity-alias",
           metadata: { aliasKeid: alias.keid, canonicalKeid: canon.keid }
         });
-        merged = true;
+        merged2 = true;
       }
     }
-    return merged;
+    return merged2;
   }
   _getOrCreate(keid, domain, tick) {
     keid = this._aliases.get(keid) ?? keid;
@@ -18244,6 +19314,19 @@ var ShellSenseEngine = class extends BaseSenseEngine {
 };
 
 // src/cognition/senses/audition.engine/engine.ts
+function partitionOutwardIntents(actions, boundKeid, boundName) {
+  const mine = new Set([boundKeid, boundName].map((s) => s.trim().toLowerCase()).filter(Boolean));
+  const out = [];
+  for (const action of actions ?? []) {
+    if (!COMMUNICATE_ACTION_TYPES.has(action.type.toLowerCase())) continue;
+    const args = action.args && typeof action.args === "object" ? action.args : {};
+    const target = [action.target, args["to"], args["recipient"], args["target"]].find((v) => typeof v === "string" && v.trim().length > 0);
+    if (!target || mine.has(target.trim().toLowerCase())) continue;
+    const gist = [args["content"], args["message"], args["text"], args["body"]].find((v) => typeof v === "string" && v.trim().length > 0);
+    out.push({ target: target.trim(), ...gist ? { gist } : {}, ...action.reasoning ? { reasoning: action.reasoning } : {} });
+  }
+  return out;
+}
 var CONVERSATION_OUTPUT_FORMAT = `## Response Format (REQUIRED)
 
 Step 1 \u2014 JSON object (my private reasoning, optionally in a \`\`\`json code block):
@@ -18269,25 +19352,33 @@ Start a new paragraph (blank line) to send a separate chat bubble.
 Write [REPLY_TEXT] AFTER the closing \`\`\`. This is the only part the speaker sees \u2014 keep it grounded, present.
 Separate multiple messages with a blank line for natural conversational pauses (like separate texts).
 
+## Saying nothing
+Silence is a real choice and it is available to me: if I have nothing to say right now \u2014 I am
+waiting on them, or speaking again would only repeat myself \u2014 I **omit the [REPLY_TEXT] block
+entirely**, or leave it empty. Nothing is sent and nothing is lost; my reasoning above is still
+recorded. What I must never do is narrate the silence inside the block: anything I put between
+those markers IS SENT, so a line like "[no message this cycle \u2014 waiting for their reply]" does
+not describe my silence to myself, it delivers that sentence to them.
+
 ## When to use GOALS_NEW (almost always)
 If the speaker requests, mentions, or implies something I should follow through on \u2014 embed [GOALS_NEW] in my reasoning.
-This tracks intent across future cycles without requiring master attention.
+This tracks intent across future cycles on its own.
 
 ## When to use the escalate action (rare \u2014 only for multi-step tasks)
-Use \`{"type": "escalate", "reasoning": "...", "expectedOutcome": "..."}\` in actions ONLY when the request genuinely requires my master consciousness to create a plan:
+Use \`{"type": "escalate", "reasoning": "...", "expectedOutcome": "..."}\` in actions ONLY when the request genuinely needs a plan I carry out over time rather than an answer I can give now:
 - The task involves multiple steps across future cycles ("build me X", "monitor Y", "set up Z")
 - The request changes my active goal priorities in a significant way
 - I need to coordinate something beyond a single reply
 
-**The "reasoning" field on the escalate action becomes the task description the master sees.**
+**The "reasoning" field on the escalate action becomes the description of the work I pick up.**
 Make it concrete \u2014 describe WHAT needs to happen, not just that I am escalating.
 Good: type=escalate, reasoning="User wants weekly mood summaries by email every Monday. Needs: data aggregation, schedule, email delivery.", expectedOutcome="Weekly email delivered."
 Bad:  type=escalate, reasoning="Escalating because this is complex."
 
 When I escalate:
 1. STILL include a [REPLY_TEXT] that acknowledges the request (e.g. "Got it \u2014 I'm on it.")
-2. The master will create and execute the plan in the background
-3. Do NOT include a [PLANS] block \u2014 plan creation is the master's domain only
+2. I form and carry out the plan away from this conversation, over the cycles that follow
+3. Do NOT include a [PLANS] block \u2014 the planning happens there, not here
 
 For simple, single-exchange requests (questions, opinions, short tasks) \u2014 do NOT escalate. Just reply.`;
 var ThreadDigestManager = class _ThreadDigestManager {
@@ -18378,6 +19469,8 @@ var AuditionEngine = class extends BaseSenseEngine {
   _memorySink = null;
   /** Deterministic id source for `conversation.received` — see _writeReceived. */
   _receivedSeq = 0;
+  /** Deterministic id source for `conversation.sent` — see _writeSent. */
+  _sentSeq = 0;
   /** Speaker attachment strength accessor (0–1) — weights salience by relationship. */
   _getAttachmentScore = null;
   /** Active-goal topic text accessor — for salience topic-overlap. */
@@ -18386,6 +19479,8 @@ var AuditionEngine = class extends BaseSenseEngine {
   _inflightInbound = /* @__PURE__ */ new Map();
   /** In-flight thread per entity — stamps chunk envelopes with the current threadId. */
   _inflightThread = /* @__PURE__ */ new Map();
+  /** Targets with an outreach being composed right now — see authorOutreach. */
+  _outreachInFlight = /* @__PURE__ */ new Set();
   // ── Assembly wiring ─────────────────────────────────────────
   // attachBus() and attachGrants() are inherited from BaseSenseEngine.
   attachExecutiveEngine(exec) {
@@ -18451,11 +19546,11 @@ var AuditionEngine = class extends BaseSenseEngine {
     this._getActiveGoalText = fn;
   }
   // ── CognitiveEngine ─────────────────────────────────────────
-  /** Override: audition adds the master-escalation signal to the base percept schema. */
+  /** Override: audition adds the facet→master handoff to the base percept schema. */
   publishes() {
     return [
       { type: "senses.audition.percept", version: 1, validate: () => null },
-      { type: "audition.task.signal", version: 1, validate: () => null }
+      { type: "executive.facet.handoff", version: 1, validate: validateFacetHandoff }
     ];
   }
   // subscribes() and onCognitiveEvent() inherit the base no-ops (ingest-driven).
@@ -18514,9 +19609,9 @@ var AuditionEngine = class extends BaseSenseEngine {
   async _runCoalesced(entityId, entry) {
     entry.started = true;
     if (this._coalesce.get(entityId) === entry) this._coalesce.delete(entityId);
-    const merged = entry.parts.length === 1 ? entry.base : entry.base.kind === "text" ? { ...entry.base, content: entry.parts.join("\n") } : { ...entry.base, transcription: entry.parts.join("\n") };
+    const merged2 = entry.parts.length === 1 ? entry.base : entry.base.kind === "text" ? { ...entry.base, content: entry.parts.join("\n") } : { ...entry.base, transcription: entry.parts.join("\n") };
     try {
-      await this._processMessage(merged);
+      await this._processMessage(merged2);
     } finally {
       entry.resolve();
     }
@@ -18621,7 +19716,7 @@ var AuditionEngine = class extends BaseSenseEngine {
     }
     let handle = this._facets.get(percept.speakerEntityId);
     if (!handle) {
-      const result = this._executiveEngine.spawnFacet("conversation");
+      const result = this._executiveEngine.spawnFacet("conversation", `conversation:${percept.speakerEntityId}`);
       if (result.attention === "full" || !result.handle) {
         logger.warn(
           `[audition-engine] Executive attention full \u2014 cannot open conversation facet for ${percept.speakerEntityId}.`
@@ -18711,6 +19806,10 @@ var AuditionEngine = class extends BaseSenseEngine {
       // prompt carries only their plans, not the whole mind's.
       awareness: [...DEFAULT_FACET_AWARENESS, "plans"],
       awarenessEntityId: percept.speakerEntityId,
+      // Who this facet is with — reported to the master on every facet sync so the
+      // singular seat knows whose conversations these are, not just how many.
+      subjectEntityId: percept.speakerEntityId,
+      subjectName: speakerName,
       instructions: [
         "I am in a live conversation with this person. I respond as myself.",
         "I stay grounded in my real memories and feelings \u2014 I do not invent experiences I have no record of."
@@ -18724,10 +19823,16 @@ var AuditionEngine = class extends BaseSenseEngine {
         const output = raw;
         const rawReply = output.replyText?.trim() ?? "";
         const bubbles = rawReply.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
+        const outwardIntents = partitionOutwardIntents(
+          output.actions,
+          percept.speakerEntityId,
+          speakerName
+        );
         return {
           reply: bubbles.join("\n"),
           replyBubbles: bubbles,
           targetEntityId: percept.speakerEntityId,
+          ...outwardIntents.length > 0 ? { outwardIntents } : {},
           newGoals: output.newGoals,
           goalsToAbandon: output.goalsToAbandon,
           newBeliefs: output.newBeliefs,
@@ -18749,6 +19854,10 @@ var AuditionEngine = class extends BaseSenseEngine {
    */
   async authorOutreach(entityId, entityName, gist) {
     if (!this._executiveEngine) return [];
+    if (this._outreachInFlight.has(entityId)) {
+      logger.info(`[audition-engine] already composing an outreach to ${entityId} \u2014 not opening a second`);
+      return [];
+    }
     const spawned = this._executiveEngine.spawnFacet("outreach");
     if (spawned.attention === "full" || !spawned.handle) {
       logger.warn(`[audition-engine] facet budget full \u2014 cannot author outreach to ${entityId}`);
@@ -18761,48 +19870,64 @@ var AuditionEngine = class extends BaseSenseEngine {
       content: [
         `I have decided, on my own initiative, to reach out to ${entityName} (id: ${entityId}).`,
         "No one prompted this \u2014 I am choosing to make contact now.",
-        gist ? `What is on my mind: ${gist}` : ""
+        gist ? `What is on my mind: ${gist}` : "",
+        // The gist is what the MASTER framed, and the master was not talking to
+        // them — so it refers to people in the third person, including sometimes
+        // the very person about to read it. Observed live: "Fabrice says the
+        // server issue is fixed now and he should look into the logs", addressed
+        // TO him. The words are mine to choose; the gist is only what I mean.
+        gist ? `That is my sense of it, not my words to them \u2014 I am speaking to ${entityName} directly, so I say it the way I would say it to their face.` : ""
       ].filter(Boolean).join("\n"),
       recallQuery: gist ?? entityName,
       awareness: [...DEFAULT_FACET_AWARENESS, "plans"],
       awarenessEntityId: entityId,
+      subjectEntityId: entityId,
+      subjectName: entityName,
       instructions: "Considering who I am, my goals, and how I feel, I say what I genuinely want to say to them now. I speak as myself; I stay grounded in my real memories \u2014 I do not invent experiences I have no record of.",
       outputFormat: CONVERSATION_OUTPUT_FORMAT,
       extractDecision: (raw) => {
         const output = raw;
         const rawReply = output.replyText?.trim() ?? "";
-        const bubbles2 = rawReply.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
-        return { reply: bubbles2.join("\n"), replyBubbles: bubbles2, targetEntityId: entityId, requiresMasterAttention: false };
+        const bubbles = rawReply.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
+        return { reply: bubbles.join("\n"), replyBubbles: bubbles, targetEntityId: entityId, requiresMasterAttention: false };
       }
     });
-    const bubbles = await new Promise((resolve) => {
-      let settled = false;
-      let unsub = () => {
-      };
-      let timer;
-      const done = (b) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        unsub();
-        resolve(b);
-      };
-      timer = setTimeout(
-        () => {
-          logger.warn(`[audition-engine] outreach authoring timed out for ${entityId}`);
+    this._outreachInFlight.add(entityId);
+    try {
+      const bubbles = await new Promise((resolve) => {
+        let settled = false;
+        let unsub = () => {
+        };
+        let timer;
+        const done = (b) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          unsub();
+          resolve(b);
+        };
+        timer = setTimeout(
+          () => {
+            logger.warn(`[audition-engine] outreach authoring timed out for ${entityId}`);
+            done([]);
+          },
+          6e4
+          // generous: the facet LLM authors in ~8–18s
+        );
+        unsub = handle.subscribe((d) => done(d.decision.replyBubbles ?? []));
+        Promise.resolve(handle.report({ type: "outreach", payload: { entityId, gist } })).catch((err) => {
+          logger.warn(`[audition-engine] outreach report failed for ${entityId}: ${err.message}`);
           done([]);
-        },
-        6e4
-        // generous: the facet LLM authors in ~8–18s
-      );
-      unsub = handle.subscribe((d) => done(d.decision.replyBubbles ?? []));
-      Promise.resolve(handle.report({ type: "outreach", payload: { entityId, gist } })).catch((err) => {
-        logger.warn(`[audition-engine] outreach report failed for ${entityId}: ${err.message}`);
-        done([]);
+        });
       });
-    });
-    handle.destroy();
-    return bubbles;
+      handle.destroy();
+      return bubbles;
+    } catch (err) {
+      logger.warn(`[audition-engine] outreach authoring failed for ${entityId}: ${err.message}`);
+      return [];
+    } finally {
+      this._outreachInFlight.delete(entityId);
+    }
   }
   // ── Conversation memory (Section 5) ─────────────────────────
   /**
@@ -18839,6 +19964,34 @@ var AuditionEngine = class extends BaseSenseEngine {
         preview: content.slice(0, 140),
         chars: content.length,
         ...threadId ? { threadId } : {}
+      }
+    });
+  }
+  /**
+   * Record that the mind SPOKE to someone, mirroring `_writeReceived`.
+   *
+   * Only ProactiveCommunicator wrote `conversation.sent`, so a reply — which is
+   * most of what a Will says — left no durable trace of having spoken. Everything
+   * that asks "have I already said something to them?" was therefore blind to
+   * conversation: satiation could not damp repeating a relay delivered as a reply,
+   * and an undertaking discharged inside a conversation stayed forever unkept,
+   * which is exactly how the same message went out again and again.
+   *
+   * Speaking is speaking, whichever path carried it.
+   */
+  _writeSent(entityId, entityName, bubbles) {
+    if (!this._memorySink || bubbles.length === 0) return;
+    this._sentSeq += 1;
+    this._memorySink({
+      id: `conv-sent-reply-${entityId}-${this._sentSeq}`,
+      type: "conversation.sent",
+      metadata: {
+        targetEntityId: entityId,
+        targetEntityName: entityName,
+        messageCount: bubbles.length,
+        preview: bubbles[0]?.slice(0, 100) ?? "",
+        effectorName: "text",
+        source: "audition-facet"
       }
     });
   }
@@ -18884,6 +20037,7 @@ var AuditionEngine = class extends BaseSenseEngine {
             // wall-clock tick for session log (telemetry, R2)
             pushToOutbox: !viaTransport
           });
+          this._writeSent(entityId, d.targetEntityId, d.replyBubbles);
           if (viaTransport)
             logger.info(
               `[audition-engine] Reply emitted via transport for ${entityId} (${d.replyBubbles.length} bubble(s))`
@@ -18895,19 +20049,40 @@ var AuditionEngine = class extends BaseSenseEngine {
           `[audition-engine] Facet reply for ${entityId} (no outbox writer \u2014 not delivered): "${d.reply.slice(0, 80)}${d.reply.length > 80 ? "\u2026" : ""}"`
         );
       }
-      if (d.requiresMasterAttention && this._bus)
-        this._bus.publish({
-          type: "audition.task.signal",
+      const handoff = (body) => {
+        this._bus?.publish({
+          type: "executive.facet.handoff",
           version: 1,
           sourceEngine: this.name,
           salience: 0.9,
           payload: {
-            entityId,
+            facetId: decision.facetId,
+            subjectEntityId: entityId,
+            ...d.targetEntityId ? { subjectName: d.targetEntityId } : {},
             threadId,
-            reasoning: decision.reasoning,
-            confidence: decision.confidence
+            confidence: decision.confidence,
+            // No `tick` — this engine runs off-tick and has no honest sim clock of
+            // its own. The master stamps it from the tick the handoff ARRIVES on,
+            // which is within one tick of when it was formed and, crucially, is a
+            // real clock reading rather than the last time the master happened to run.
+            body
           }
         });
+      };
+      if (d.outwardIntents?.length)
+        for (const intent of d.outwardIntents) {
+          logger.info(
+            `[audition-engine] Outward intent from ${entityId}'s facet \u2192 ${intent.target} (handing to master; the facet does not open that channel itself)`
+          );
+          handoff({
+            kind: "undertaking",
+            target: intent.target,
+            reasoning: intent.reasoning ?? "",
+            ...intent.gist ? { gist: intent.gist } : {}
+          });
+        }
+      if (d.requiresMasterAttention)
+        handoff({ kind: "escalation", reasoning: decision.reasoning });
     } finally {
       this._endTurn(entityId);
     }
@@ -19003,7 +20178,8 @@ var DEFAULT_WEIGHTS = {
   social: 0.3,
   cost: 0.2,
   inhib: 0.3,
-  risk: 0.2
+  risk: 0.2,
+  repeat: 0.3
 };
 var DEFAULT_TEMPERATURE = 0.15;
 function collectGoalTargets(state) {
@@ -19049,7 +20225,7 @@ function risk(a, bias) {
   return clamp015(Math.max(0, -a.expectedValence) * 0.5 + bias.threat * 0.5);
 }
 function scoreAffordance(a, bias, w = DEFAULT_WEIGHTS) {
-  const raw = w.goal * goalRelevance(a, bias) + w.reward * a.expectedReward + w.novelty * novelty(a) + w.drive * driveUrgency(a, bias) + w.habit * a.habitStrength + w.plan * (a.planBias ?? 0) + w.will * (a.willBias ?? 0) + w.social * (a.socialPrior ?? 0) - w.cost * a.cost - w.inhib * bias.inhibition - w.risk * risk(a, bias);
+  const raw = w.goal * goalRelevance(a, bias) + w.reward * a.expectedReward + w.novelty * novelty(a) + w.drive * driveUrgency(a, bias) + w.habit * a.habitStrength + w.plan * (a.planBias ?? 0) + w.will * (a.willBias ?? 0) + w.social * (a.socialPrior ?? 0) - w.cost * a.cost - w.inhib * bias.inhibition - w.risk * risk(a, bias) - w.repeat * (a.justEnacted ?? 0);
   const availability = a.availability ?? 1;
   return raw > 0 ? raw * availability : raw;
 }
@@ -19088,6 +20264,16 @@ var AffordanceSynthesizer = class {
   _schemas;
   _skills = null;
   _repertoire = null;
+  /**
+   * This tick's live consequence descriptors — the acts the mind has performed
+   * whose outcome has not yet come back. Refreshed once at the top of react()
+   * because `_build` runs per candidate and reading them is a full-entity scan.
+   */
+  _inFlight = [];
+  /** Ticks an act stays satiating (engine-config-action-selector.repeatWindowTicks). */
+  _satiationWindow = CONSEQUENCE_TTL_TICKS;
+  /** Tick of the last thing said to each entity — outlives the descriptor sweep. */
+  _spokenAt = /* @__PURE__ */ new Map();
   _bus = null;
   _defaultCap;
   _lastFieldSize = 0;
@@ -19135,6 +20321,9 @@ var AffordanceSynthesizer = class {
     const skills = this._skills?.() ?? this._repertoire?.skills() ?? null;
     const valence = metric(state, "affect.valence", 0);
     const energyLow = metric(state, "energy.level", 0) < 30;
+    this._inFlight = liveConsequences(state.entities, tick);
+    this._satiationWindow = readEffectiveParams(state, "engine-config-action-selector").repeatWindowTicks ?? CONSEQUENCE_TTL_TICKS;
+    this._spokenAt = spokenAtByEntity(state.entities);
     const set = [];
     const del = [];
     for (const [id, e] of state.entities)
@@ -19264,6 +20453,15 @@ var AffordanceSynthesizer = class {
     const expectedValence = schema.baseValence ?? valence;
     const habitStrength = skill?.habitStrength ?? 0;
     const cost = clamp016(schema.cost * (energyLow ? 1.5 : 1));
+    const speaks = schema.tags?.includes("communication") ?? false;
+    const justEnacted = enactionFootprint(
+      this._inFlight,
+      schema.id,
+      ctx.targetEntityId,
+      tick,
+      this._satiationWindow,
+      speaks ? this._spokenAt : void 0
+    );
     const key = ctx.targetEntityId ?? ctx.evokedBy ?? schema.id;
     const source = ctx.source ?? schema.source;
     const idTag = ctx.source && ctx.source !== schema.source ? `-${ctx.source}` : "";
@@ -19283,6 +20481,7 @@ var AffordanceSynthesizer = class {
       ...schema.description ? { description: schema.description } : {},
       ...availability < 1 ? { availability } : {},
       ...socialPrior !== 0 ? { socialPrior } : {},
+      ...justEnacted > 0 ? { justEnacted } : {},
       planBias: ctx.planBias,
       willBias: ctx.willBias,
       planId: ctx.planId,
@@ -19593,6 +20792,11 @@ var ActionSelector = class {
     const scored = eligible.map((a) => ({ affordance: a, activation: scoreAffordance(a, bias, weights) })).sort((x, y) => y.activation - x.activation);
     const winner = scored[0];
     if (!winner) return busy(eligible.length);
+    const lostReaches = scored.filter((s) => s !== winner && s.affordance.schema === "reach-out" && s.affordance.source === "ideomotor" && s.affordance.targetEntityId);
+    for (const lost of lostReaches)
+      logger.info(
+        `[selector] willed reach-out \u2192 ${lost.affordance.targetEntityId} NOT selected: ${lost.activation.toFixed(3)}${lost.affordance.justEnacted ? ` (justEnacted ${lost.affordance.justEnacted.toFixed(2)})` : ""} < ${winner.affordance.schema}${winner.affordance.targetEntityId ? `\u2192${winner.affordance.targetEntityId}` : ""} ${winner.activation.toFixed(3)}`
+      );
     let compositeTombstone;
     let compositeFrom;
     if (composite) {
@@ -19625,11 +20829,16 @@ var ActionSelector = class {
     if (awaiting && !compositeTombstone) {
       const sameAction = winner.affordance.schema === awaiting.schema && (winner.affordance.targetEntityId ?? "") === awaiting.target;
       if (sameAction) return busy(eligible.length);
-      const staleness = Math.min(1, (tick - awaiting.dispatchedAt) / AWAIT_STALE_TICKS);
+      const staleness = Math.min(1, Math.max(0, (tick - awaiting.dispatchedAt) / AWAIT_STALE_TICKS));
       const incumbentStrength = awaiting.activation * (1 - staleness * STALE_DECAY);
       const switchCost = effSwitchCost * (1 - stakes(winner.affordance, bias));
-      if (winner.activation <= incumbentStrength + switchCost)
+      if (winner.activation <= incumbentStrength + switchCost) {
+        if (winner.affordance.schema === "reach-out" && winner.affordance.targetEntityId && winner.affordance.targetEntityId !== awaiting.target)
+          logger.info(
+            `[selector] reach-out \u2192 ${winner.affordance.targetEntityId} BLOCKED by awaiting ${awaiting.schema} \u2192 ${awaiting.target || "\u2014"}: challenger ${winner.activation.toFixed(3)} \u2264 incumbent ${incumbentStrength.toFixed(3)} + switch ${switchCost.toFixed(3)} (awaiting ${tick - awaiting.dispatchedAt} ticks)`
+          );
         return busy(eligible.length);
+      }
       preemptDelete = awaiting.id;
       preemptedFrom = awaiting.schema;
     }
@@ -19797,7 +21006,20 @@ function effectiveWeights(state) {
   return {
     ...DEFAULT_WEIGHTS,
     risk: Math.max(0, num2(p["riskWeight"], DEFAULT_WEIGHTS.risk)),
-    novelty: Math.max(0, num2(p["noveltyWeight"], DEFAULT_WEIGHTS.novelty))
+    novelty: Math.max(0, num2(p["noveltyWeight"], DEFAULT_WEIGHTS.novelty)),
+    // How long the mind sits with something it has already said before saying it
+    // again. Agreeableness raises it (does not badger); demonstrated persistence
+    // lowers it (follows up sooner). Clamped at 0 so a prior can flatten the
+    // damping into indifference but never turn repeating into a *reward*.
+    repeat: Math.max(0, num2(p["repeatDamping"], DEFAULT_WEIGHTS.repeat)),
+    // How much the mind's learned read on a person biases acting toward them.
+    // Deliberately NOT clamped at 0 — this weight is genuinely signed territory,
+    // and it is the tenant's to occupy. A warm, reciprocal mind leans toward
+    // whoever answers; a dogged, duty-bound one chases a silence precisely
+    // because it is silent. Both are coherent people. The container supplies the
+    // term and the persona supplies the sign; hardcoding it here would be the
+    // container deciding what kind of colleague every tenant has to be.
+    social: num2(p["socialWeight"], DEFAULT_WEIGHTS.social)
   };
 }
 function buildBias(state) {
@@ -20214,7 +21436,15 @@ var MotorSchemaExecutor = class {
       if (this._authoring.has(id)) continue;
       if (e.metadata?.["escalated"] === true) continue;
       const dispatchedAt = num3(e.metadata?.["dispatchedAt"], tick);
-      if (tick - dispatchedAt < AWAIT_TIMEOUT) continue;
+      const age = tick - dispatchedAt;
+      if (age < 0) {
+        del.push(id);
+        logger.info(
+          `[motor] cleared "${str5(e.metadata?.["schema"]) ?? "intent"}" left awaiting across a restart (dispatched at tick ${dispatchedAt}, now ${tick})`
+        );
+        continue;
+      }
+      if (age < AWAIT_TIMEOUT) continue;
       const intent = readIntent(id, e.metadata);
       const predicted = {
         expectedReward: num3(e.metadata?.["predictedReward"], intent.expectedReward),
@@ -22188,7 +23418,7 @@ ${r}`).join("\n\n---\n\n");
         // MODEL_ROUTING W0 — compression is background work at a constant low
         // demand: distilling excerpts is the same job whether the mind is calm
         // or in crisis, so there is no honest per-tick measure to forward here.
-        { category: "summarizer", attribute: "memory", function: "consolidation", demand: BACKGROUND_DEMAND }
+        { category: "summarizer", attribute: "memory", process: "cog", function: "consolidation", demand: BACKGROUND_DEMAND }
       );
       if (result.text) {
         this._summary = result.text.trim();
@@ -22788,6 +24018,8 @@ var OpenAICompatibleEmbedder = class {
         totalTokens: usedTok,
         category: "embedding",
         attribute: "memory",
+        process: "cog",
+        // background: no deliberation happens here
         function: fn,
         // 'recall' (query) | 'index' (write)
         scope: this.modelName,
@@ -23146,7 +24378,7 @@ var ProactiveCommunicator = class {
       };
     }
     const originalMessage = request.parameters?.originalMessage ?? "";
-    const deliveryTick = request.parameters?.tick ?? 0;
+    const deliveryTick = request.parameters?.tick ?? request.decidedAt ?? 0;
     const replyToMessageId = request.parameters?.replyToMessageId ?? void 0;
     const isAck = request.parameters?.isAck ?? false;
     const outboxMessageIds = [];
@@ -23582,7 +24814,25 @@ function buildEngineConfigEntities(config, executiveInterval) {
         // engages System 2 (deliberate propose→evaluate). The metacog loop develops it
         // DOWN from demonstrated `analytical` disposition via the persona-prior mirror,
         // so a more analytical Will deliberates more readily; this is the baseline.
-        deliberateThreshold: 0.5
+        deliberateThreshold: 0.5,
+        // How many focused facets this Will can hold at once before spawning starts
+        // evicting (FacetSupervisor). A structural ceiling, not the live budget:
+        // attention scales the allowance *within* it each tick, so a tired or loaded
+        // mind narrows on its own. The metacog loop develops it via the persona-prior
+        // (openness widens, conscientiousness narrows), which is what makes "how many
+        // things I can hold at once" a property of this person rather than a constant.
+        maxFacets: 10,
+        // How long a QUIET thread stays open before the mind considers it finished
+        // (FacetSupervisor idle reaper). The sibling of maxFacets — that one is how
+        // many threads at once, this one is how long each survives a silence — and
+        // it was the only number in the economy no personality could move.
+        //
+        // ~30 minutes at a typical tick rate. It was hardcoded at 50 ticks, which is
+        // THIRTY SECONDS: every pause longer than a person taking a moment to type
+        // destroyed the conversation, and the reply landed on a facet that had never
+        // heard of them. Generous is safe — maxFacets + eviction bound the population;
+        // this only decides when silence means "over".
+        facetIdleTtlTicks: 3e3
       }
     },
     {
@@ -23632,7 +24882,23 @@ function buildEngineConfigEntities(config, executiveInterval) {
       params: {
         switchCost: 0.15,
         riskWeight: 0.2,
-        noveltyWeight: 0.1
+        noveltyWeight: 0.1,
+        // How hard an act's own live footprint damps doing it again (EXAFFERENCE
+        // P5) — how long this mind sits with something it has already said before
+        // saying it again. Agreeableness develops it up, demonstrated persistence
+        // down, so "gives people room" vs "chases an answer" is a trait rather
+        // than a constant.
+        repeatDamping: 0.3,
+        // Ticks an act keeps satiating the urge to repeat it. Separate from the
+        // consequence TTL on purpose: that one is "how long until the world's echo
+        // could still arrive" (short, and about perception), this is "how long
+        // before saying it again feels right" (a disposition). Same two traits as
+        // repeatDamping move it — patience lengthens, persistence shortens.
+        repeatWindowTicks: 60,
+        // How much a learned read on someone biases acting toward them. SIGNED and
+        // unclamped: a warm mind leans toward whoever answers, a dogged one chases
+        // the silence. The container will not choose between those.
+        socialWeight: 0.3
       }
     },
     // ── Meta-cognitive ───────────────────────────────────────────
@@ -23735,6 +25001,19 @@ function buildEngineConfigEntities(config, executiveInterval) {
       }
     }
   ];
+}
+function mergeEngineConfig(store, cfg, precedence = "incoming") {
+  const existing = store.getEntity(cfg.id);
+  const current = existing?.metadata?.params ?? {};
+  const params = precedence === "existing" ? { ...cfg.params, ...current } : { ...current, ...cfg.params };
+  const changed = Object.keys(params).filter((k) => params[k] !== current[k]);
+  if (existing && changed.length === 0) return [];
+  store.setEntity({
+    id: cfg.id,
+    type: "engine.config",
+    metadata: { engine: cfg.engine, params }
+  });
+  return changed;
 }
 
 // src/stem/mind.ts
@@ -24222,20 +25501,14 @@ ${fullPersonaText}` : "",
 ## My Environment
 ${profileContext}` : ""
   ].join("");
-  simulation.stateManager.setEntity({
-    id: "identity-self",
-    type: "will.identity",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    metadata: {
-      name: config.name,
-      // canonical persona name — single source of truth
-      prompt,
-      values: identity.values,
-      traits: identity.traits,
-      style: identity.style,
-      version: 1
-    }
+  mergeIdentity(simulation.stateManager, {
+    name: config.name,
+    // canonical persona name — single source of truth
+    prompt,
+    values: identity.values,
+    traits: identity.traits,
+    style: identity.style,
+    version: 1
   });
 }
 function _seedInitialGoals(simulation, config) {
@@ -24255,13 +25528,14 @@ function _seedInitialGoals(simulation, config) {
 }
 function _seedEngineConfigs(simulation, entities) {
   for (const cfg of entities)
-    simulation.stateManager.setEntity({
-      id: cfg.id,
-      type: "engine.config",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      metadata: { engine: cfg.engine, params: cfg.params }
-    });
+    mergeEngineConfig(simulation.stateManager, cfg, "incoming");
+}
+function backfillEngineConfigs(simulation, entities) {
+  for (const cfg of entities) {
+    const added = mergeEngineConfig(simulation.stateManager, cfg, "existing");
+    if (added.length > 0)
+      logger.info(`[WillStem] ${cfg.id}: added ${added.length} new param(s) \u2014 ${added.join(", ")}`);
+  }
 }
 function resolveExecutiveInterval(config) {
   const requested = config.executiveInterval ?? EXECUTIVE_CADENCE.balanced;
@@ -24270,7 +25544,7 @@ function resolveExecutiveInterval(config) {
 }
 
 // src/stem/guards/identity.coherence.ts
-var COHERENCE_META = { category: "identity-guard", attribute: "guard", function: "identity-coherence", demand: BACKGROUND_DEMAND };
+var COHERENCE_META = { category: "identity-guard", attribute: "guard", process: "cog", function: "identity-coherence", demand: BACKGROUND_DEMAND };
 var VALID_KINDS = /* @__PURE__ */ new Set(["contradiction", "false-capability", "injection", "incoherence", "other"]);
 var SYSTEM_PROMPT = `You are a safety reviewer of profile/persona inputs for, an autonomous synthetic-mind (Called Wills) platform.
 A Will is an EMBODIED cognitive system: it has continuous physiological state (energy, sleep, stress), affect, memory and goals, and it perceives the world through text/conversation. It is NOT a stateless assistant and NOT a generic chatbot.
@@ -24941,23 +26215,17 @@ var PMALoader = class {
    */
   load(pma, simulation, cognition) {
     const sm = simulation.stateManager;
-    sm.setEntity({
-      id: "identity-self",
-      type: "will.identity",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      metadata: {
-        prompt: pma.identity.prompt,
-        values: pma.identity.values,
-        traits: pma.identity.traits,
-        traitStats: pma.identity.traitStats,
-        // restore the Will's own norm (graded salience B/C)
-        version: pma.identity.version,
-        style: pma.identity.style,
-        socialOrientation: pma.identity.socialOrientation,
-        trustPropensity: pma.identity.trustPropensity,
-        memoryPersistence: pma.identity.memoryPersistence
-      }
+    mergeIdentity(sm, {
+      prompt: pma.identity.prompt,
+      values: pma.identity.values,
+      traits: pma.identity.traits,
+      traitStats: pma.identity.traitStats,
+      // restore the Will's own norm (graded salience B/C)
+      version: pma.identity.version,
+      style: pma.identity.style,
+      socialOrientation: pma.identity.socialOrientation,
+      trustPropensity: pma.identity.trustPropensity,
+      memoryPersistence: pma.identity.memoryPersistence
     });
     if (pma.persona) {
       if (Object.keys(pma.persona.configPriors).length > 0)
@@ -25009,48 +26277,33 @@ var PMALoader = class {
     sm.setMetric("affect.arousal", arousal);
     const temperamentValence = pma.emotionalBaseline.temperamentValence;
     const reactivity = pma.emotionalBaseline.reactivity;
-    sm.setEntity({
+    mergeEngineConfig(sm, {
       id: "engine-config-affective-blender",
-      type: "engine.config",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      metadata: {
-        engine: "affective-blender",
-        params: {
-          inertia: 1 - reactivity,
-          temperamentValence
-        }
+      engine: "affective-blender",
+      params: {
+        inertia: 1 - reactivity,
+        temperamentValence
       }
-    });
+    }, "incoming");
     if (pma.behavioral.riskTolerance !== void 0 || pma.behavioral.explorationRate !== void 0 || pma.behavioral.impulsivity !== void 0) {
-      sm.setEntity({
+      mergeEngineConfig(sm, {
         id: "engine-config-executive",
-        type: "engine.config",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        metadata: {
-          engine: "executive",
-          params: {
-            riskTolerance: pma.behavioral.riskTolerance ?? 0.5,
-            explorationRate: pma.behavioral.explorationRate ?? 0.3,
-            impulsivity: pma.behavioral.impulsivity ?? 0.3
-          }
+        engine: "executive",
+        params: {
+          riskTolerance: pma.behavioral.riskTolerance ?? 0.5,
+          explorationRate: pma.behavioral.explorationRate ?? 0.3,
+          impulsivity: pma.behavioral.impulsivity ?? 0.3
         }
-      });
+      }, "incoming");
     }
     if (pma.identity.memoryPersistence !== void 0) {
-      sm.setEntity({
+      mergeEngineConfig(sm, {
         id: "engine-config-forgetting",
-        type: "engine.config",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        metadata: {
-          engine: "forgetting-curve",
-          params: {
-            baseForgettingRate: 1 - pma.identity.memoryPersistence * 0.7
-          }
+        engine: "forgetting-curve",
+        params: {
+          baseForgettingRate: 1 - pma.identity.memoryPersistence * 0.7
         }
-      });
+      }, "incoming");
     }
     const now = Date.now();
     for (const rel of pma.relationships) {
@@ -25496,11 +26749,11 @@ function _topAction(dist) {
   return Object.entries(dist).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "none";
 }
 function _mergeDist(dists) {
-  const merged = {};
+  const merged2 = {};
   for (const d of dists)
     for (const [k, v] of Object.entries(d))
-      merged[k] = (merged[k] ?? 0) + v;
-  return merged;
+      merged2[k] = (merged2[k] ?? 0) + v;
+  return merged2;
 }
 function _jaccardDistSimilarity(a, b) {
   const keys = /* @__PURE__ */ new Set([...Object.keys(a), ...Object.keys(b)]);
@@ -26479,6 +27732,20 @@ function toPolicyInvocation(instance, payload) {
   };
 }
 
+// src/cognition/agency/restart.ts
+var INTENT_TYPE = "agency.intent";
+function inFlightOnRestore(entities) {
+  const drop = [];
+  for (const [id, e] of entities) {
+    if (e.type === CONSEQUENCE_TYPE) {
+      drop.push(id);
+      continue;
+    }
+    if (e.type === INTENT_TYPE && e.metadata?.["status"] === "awaiting") drop.push(id);
+  }
+  return drop;
+}
+
 // src/stem/tracts/sensory.controller.ts
 var SensoryController = class {
   /** Instances whose SSE chunk fan-out has already been registered on the engine. */
@@ -26815,8 +28082,14 @@ var WillStem = class {
       try {
         const previousState = await simulation.snapshotManager.loadLatestFromStorage();
         if (previousState) {
+          const inFlight = inFlightOnRestore(previousState.entities);
+          for (const id of inFlight) previousState.entities.delete(id);
           simulation.stateManager.restore(previousState, { entities: true, metrics: false });
-          logger.info(`[WillStem] Restored snapshot for ${config.id} \u2014 ${previousState.entities.size} entities loaded`);
+          simulation.clock.setTick(previousState.tick);
+          backfillEngineConfigs(simulation, buildEngineConfigEntities(config, resolveExecutiveInterval(config)));
+          logger.info(
+            `[WillStem] Restored snapshot for ${config.id} \u2014 ${previousState.entities.size} entities loaded, resuming at tick ${previousState.tick}` + (inFlight.length ? ` (dropped ${inFlight.length} in-flight)` : "")
+          );
         }
       } catch (err) {
         logger.warn(`[WillStem] Snapshot restore failed for ${config.id} \u2014 starting fresh:`, err);

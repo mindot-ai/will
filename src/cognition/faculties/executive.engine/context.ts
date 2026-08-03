@@ -9,6 +9,7 @@ import type { ExecutiveContext } from '#faculties/executive.engine/types'
 import type { EpisodicConsolidator } from '#faculties/episodic.consolidator'
 import type { SemanticIntegrator } from '#faculties/semantic.engine/integrator'
 import { readEffectiveParams, summarizePersonaPrior } from '#cognition/persona.prior'
+import { readIdentityName } from '#cognition/identity.entity'
 
 export interface ContextDependencies {
   workingMemory: WorkingMemory | null
@@ -32,8 +33,10 @@ export async function buildExecutiveContext(
   // Identity — read directly from the identity-self entity.
   const identityEntity  = state.entities.get('identity-self')
   // name is the canonical persona name from WillConfig.name (e.g. "Aria", "Guard-1").
-  // Falls back to 'Will' for snapshots created before this field was added.
-  const identityName   = (identityEntity?.metadata?.name   as string)                    ?? 'Will'
+  // '' when unknown — NEVER a default. This read used to end in `?? 'Will'`, which
+  // is how the container's name reached a tenant's own prompt. See
+  // cognition/identity.entity for what that cost.
+  const identityName   = readIdentityName( state )
   const identityPrompt = (identityEntity?.metadata?.prompt as string)                    ?? 'I am a self-aware mind.'
   const identityValues = (identityEntity?.metadata?.values as string[])                  ?? []
   const identityTraits = (identityEntity?.metadata?.traits as Record<string, number>)    ?? {}

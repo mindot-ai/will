@@ -26,7 +26,7 @@ import {
 } from '#core/completion.recorder'
 
 const meta = ( over: Partial<LLMCallMeta> = {} ): LLMCallMeta => ( {
-  category: 'executive', attribute: 'master', function: 'decision', ...over,
+  category: 'executive', attribute: 'master', process: 'decision', function: '-', ...over,
 } )
 
 // ── TableRouter matching ──────────────────────────────────────
@@ -52,10 +52,10 @@ describe('TableRouter', () => {
 
   it('treats every present condition as AND', () => {
     const r = new TableRouter( [
-      { category: 'executive', attribute: 'master', function: 'ideation', route: cheap },
+      { category: 'executive', attribute: 'master', process: 'ideation', function: '-', route: cheap },
     ] )
-    expect( r.route( meta({ function: 'ideation' }) ) ).toEqual( cheap )
-    expect( r.route( meta({ function: 'decision' }) ) ).toBeNull()
+    expect( r.route( meta({ process: 'ideation' }) ) ).toEqual( cheap )
+    expect( r.route( meta({ process: 'decision' }) ) ).toBeNull()
   })
 
   describe('demand bounds', () => {
@@ -310,7 +310,7 @@ describe('compileRoleRouter', () => {
     const r = compileRoleRouter( {
       executive: 'big', summarizer: 'small', deliberation: 'big', conversation: 'big',
     } )!
-    expect( r.route( { category: 'summarizer', attribute: 'memory', function: 'consolidation' } )?.model ).toBe('small')
+    expect( r.route( { category: 'summarizer', attribute: 'memory', process: 'cog', function: 'consolidation' } )?.model ).toBe('small')
     expect( r.route( meta() ) ).toBeNull()     // master keeps the default
   })
 
@@ -321,7 +321,7 @@ describe('compileRoleRouter', () => {
     expect( r.route( meta({ attribute: 'facet', function: 'deliberation' }) )?.model ).toBe('thinky')
     // The master's own deliberate pass is tagged 'ideation', not 'deliberation',
     // so it stays on the executive model — as it did with per-role directors.
-    expect( r.route( meta({ function: 'ideation' }) ) ).toBeNull()
+    expect( r.route( meta({ process: 'ideation' }) ) ).toBeNull()
   })
 
   it('gives outreach the conversation voice', () => {
@@ -336,6 +336,6 @@ describe('compileRoleRouter', () => {
     const r = compileRoleRouter( {
       executive: 'big', summarizer: 'small', deliberation: 'big', conversation: 'big',
     } )!
-    expect( r.route( { category: 'summarizer', attribute: 'memory', function: 'consolidation' } )?.provider ).toBeUndefined()
+    expect( r.route( { category: 'summarizer', attribute: 'memory', process: 'cog', function: 'consolidation' } )?.provider ).toBeUndefined()
   })
 })

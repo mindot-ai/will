@@ -46,6 +46,7 @@ import {
   loadCompetence,
   type CompetenceSnapshot,
 } from '#agency/competence.codec'
+import { mergeIdentity } from '#cognition/identity.entity'
 
 // ── Schema version ─────────────────────────────────────────────
 // Bump this when any field is removed or semantically changed.
@@ -793,22 +794,21 @@ export class PMALoader {
     const sm = simulation.stateManager
 
     // ── 1. Identity (with enhanced fields) ────────────────────
-    sm.setEntity({
-      id:        'identity-self',
-      type:      'will.identity',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      metadata: {
-        prompt:  pma.identity.prompt,
-        values:  pma.identity.values,
-        traits:  pma.identity.traits,
-        traitStats: pma.identity.traitStats,   // restore the Will's own norm (graded salience B/C)
-        version: pma.identity.version,
-        style:   pma.identity.style,
-        socialOrientation: pma.identity.socialOrientation,
-        trustPropensity:   pma.identity.trustPropensity,
-        memoryPersistence: pma.identity.memoryPersistence,
-      },
+    // MERGING (see cognition/identity.entity). An artifact carries what the mind
+    // LEARNED about itself; it does not carry the mind's name, because the name is
+    // supplied at boot by whoever is renting the container. This used to replace
+    // the entity outright, so `_seedIdentity`'s `name` — written moments earlier
+    // in the same wake — was erased before the first tick, every single wake.
+    mergeIdentity( sm, {
+      prompt:  pma.identity.prompt,
+      values:  pma.identity.values,
+      traits:  pma.identity.traits,
+      traitStats: pma.identity.traitStats,   // restore the Will's own norm (graded salience B/C)
+      version: pma.identity.version,
+      style:   pma.identity.style,
+      socialOrientation: pma.identity.socialOrientation,
+      trustPropensity:   pma.identity.trustPropensity,
+      memoryPersistence: pma.identity.memoryPersistence,
     })
 
     // ── 1b. Persona (learned self-tuning from the metacognition cycle) ──

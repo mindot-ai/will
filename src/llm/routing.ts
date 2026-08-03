@@ -99,6 +99,8 @@ export interface RoutingRule {
   category?: LLMCallMeta['category']
   /** Match `LLMCallMeta.attribute` exactly (e.g. 'master', 'facet', 'guard'). */
   attribute?: LLMCallMeta['attribute']
+  /** Match `LLMCallMeta.process` exactly (e.g. 'decision', 'ideation'). */
+  process?: LLMCallMeta['process']
   /** Match `LLMCallMeta.function` exactly (e.g. 'decision', 'consolidation'). */
   function?: LLMCallMeta['function']
   /**
@@ -182,6 +184,10 @@ export function chainRouters( ...routers: ( ModelRouter | null | undefined )[] )
 function matches( rule: RoutingRule, meta: LLMCallMeta ): boolean {
   if( rule.category  !== undefined && rule.category  !== meta.category  ) return false
   if( rule.attribute !== undefined && rule.attribute !== meta.attribute ) return false
+  // `process` split out of `function` (ideation vs decision). It was declarable on a
+  // rule from the moment the axis existed but never tested here, so a rule that named
+  // it matched every process — the opposite of the AND semantics every other axis has.
+  if( rule.process   !== undefined && rule.process   !== meta.process   ) return false
   if( rule.function  !== undefined && rule.function  !== meta.function  ) return false
 
   // Absent demand is UNKNOWN, not zero: a demand-bounded rule cannot claim a

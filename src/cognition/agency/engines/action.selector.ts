@@ -539,6 +539,11 @@ export class ActionSelector implements CognitiveEngine {
         targetEntityId:  winner.affordance.targetEntityId,
         parameters:      winner.affordance.parameters,
         source:          winner.affordance.source,
+        // What evoked this — for an ideomotor winner, the `ideomotor.intent` entity
+        // the executive wrote. Carried so the executor can DISCHARGE it once the act
+        // happens: an intention that has been acted on is no longer an intention, and
+        // nothing was deleting these. See MotorSchemaExecutor._dischargeWill.
+        ...( winner.affordance.evokedBy ? { evokedBy: winner.affordance.evokedBy } : {} ),
         // Plan provenance (when a plan's frontier-step prior won the competition) —
         // flows through the executor's action.outcome so the PlanningEngine advances.
         ...( winner.affordance.planId ? { planId: winner.affordance.planId } : {} ),

@@ -21179,6 +21179,11 @@ var ActionSelector = class {
         targetEntityId: winner.affordance.targetEntityId,
         parameters: winner.affordance.parameters,
         source: winner.affordance.source,
+        // What evoked this — for an ideomotor winner, the `ideomotor.intent` entity
+        // the executive wrote. Carried so the executor can DISCHARGE it once the act
+        // happens: an intention that has been acted on is no longer an intention, and
+        // nothing was deleting these. See MotorSchemaExecutor._dischargeWill.
+        ...winner.affordance.evokedBy ? { evokedBy: winner.affordance.evokedBy } : {},
         // Plan provenance (when a plan's frontier-step prior won the competition) —
         // flows through the executor's action.outcome so the PlanningEngine advances.
         ...winner.affordance.planId ? { planId: winner.affordance.planId } : {},
@@ -22013,6 +22018,7 @@ var MotorSchemaExecutor = class {
         expiresAt: tick + CONSEQUENCE_TTL_TICKS,
         tick
       }));
+    if (result.success) this._dischargeWill(intent, del);
     this._emitEnacted(intent, out, predicted, tick);
     this._emitActionOutcome(
       intent,
@@ -22066,6 +22072,37 @@ var MotorSchemaExecutor = class {
    * RewardEvaluator reads it as a reward signal. `confidence` carries the agency's
    * own forward-model prior so calibration has a real prediction to score.
    */
+  /**
+   * Retire the `ideomotor.intent` that produced this act.
+   *
+   * Nothing deleted these. They were cleared only when the executive next ran and
+   * declined to name the same action again — and the executive runs on an interval,
+   * so between cycles a willed reach-out STOOD in state, was rebuilt into an
+   * affordance every single tick, and competed every single tick. Observed as
+   * dozens of identical lines:
+   *
+   *   [selector] willed reach-out → … NOT selected: 0.297 < inspect… 0.340
+   *
+   * losing by four thousandths, over and over, until it won — twice. Fabrice got
+   * the same message byte-for-byte 25 ticks apart, two outbox ids.
+   *
+   * `justEnacted` was built to hold this line and cannot: it is a DECAYING
+   * quantity, capped at `repeatDamping` (0.30), and a standing intent outlasts it
+   * by construction. Damping a permanent pull only ever delays it. So the intention
+   * is discharged by being acted on, which is what an intention is — you meant to
+   * tell someone something, you told them, and it is finished. If the mind still
+   * wants to say more, the next executive cycle forms a new one, now seeing "I said
+   * this 25 ticks ago and have had no answer" in front of it.
+   *
+   * Satiation stays exactly as it was, and still earns its keep: it damps saying
+   * the same thing again for reasons that did NOT come from a standing will.
+   */
+  _dischargeWill(intent, del) {
+    const willId = intent.evokedBy;
+    if (!willId || !willId.startsWith("ideomotor-")) return;
+    del.push(willId);
+    logger.info(`[motor] discharged the will behind "${intent.schema}" (${willId})`);
+  }
   _emitActionOutcome(intent, success, outcomeQuality, surprise, tick) {
     if (!this._bus) return;
     try {
@@ -22149,7 +22186,8 @@ function readIntent(id, m) {
     parentIntentId: str6(meta2["parentIntentId"]),
     stepIndex: typeof meta2["stepIndex"] === "number" ? meta2["stepIndex"] : void 0,
     planId: str6(meta2["planId"]),
-    planStepId: str6(meta2["stepId"])
+    planStepId: str6(meta2["stepId"]),
+    evokedBy: str6(meta2["evokedBy"])
   };
 }
 function str6(v) {

@@ -71,6 +71,11 @@ interface Intent {
    */
   planId?:         string
   planStepId?:     string
+  /**
+   * The entity that evoked this — for an ideomotor winner, the `ideomotor.intent`
+   * the executive wrote. Read so enaction can retire it (see _dischargeWill).
+   */
+  evokedBy?:       string
 }
 
 /** Authors the words for a self-initiated communicate the agency selected (no inbound triggered it). */
@@ -550,6 +555,16 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         text:     bubbles.join('\n'),
         expiresAt: tick + CONSEQUENCE_TTL_TICKS, tick,
       }) )
+    // The words are out. Whatever willed them is DONE being an intention.
+    //
+    // Discharged here rather than at dispatch on purpose: `_deliver` holds the
+    // intent 'awaiting' while a facet authors, and that authoring can time out or
+    // return nothing. Clearing the will at dispatch would lose the intention
+    // silently — the mind would have decided to say something and simply never
+    // have, which is the failure `commands.ts` calls "the whole intention
+    // evaporated without a trace". Enaction is the discharge; a request is not.
+    if( result.success ) this._dischargeWill( intent, del )
+
     this._emitEnacted( intent, out, predicted, tick )
     this._emitActionOutcome( intent, result.success, result.feedback.outcomeQuality,
       clamp01( Math.abs( predicted.expectedReward - result.feedback.outcomeQuality ) ), tick )
@@ -600,6 +615,38 @@ export class MotorSchemaExecutor implements CognitiveEngine {
    * RewardEvaluator reads it as a reward signal. `confidence` carries the agency's
    * own forward-model prior so calibration has a real prediction to score.
    */
+  /**
+   * Retire the `ideomotor.intent` that produced this act.
+   *
+   * Nothing deleted these. They were cleared only when the executive next ran and
+   * declined to name the same action again — and the executive runs on an interval,
+   * so between cycles a willed reach-out STOOD in state, was rebuilt into an
+   * affordance every single tick, and competed every single tick. Observed as
+   * dozens of identical lines:
+   *
+   *   [selector] willed reach-out → … NOT selected: 0.297 < inspect… 0.340
+   *
+   * losing by four thousandths, over and over, until it won — twice. Fabrice got
+   * the same message byte-for-byte 25 ticks apart, two outbox ids.
+   *
+   * `justEnacted` was built to hold this line and cannot: it is a DECAYING
+   * quantity, capped at `repeatDamping` (0.30), and a standing intent outlasts it
+   * by construction. Damping a permanent pull only ever delays it. So the intention
+   * is discharged by being acted on, which is what an intention is — you meant to
+   * tell someone something, you told them, and it is finished. If the mind still
+   * wants to say more, the next executive cycle forms a new one, now seeing "I said
+   * this 25 ticks ago and have had no answer" in front of it.
+   *
+   * Satiation stays exactly as it was, and still earns its keep: it damps saying
+   * the same thing again for reasons that did NOT come from a standing will.
+   */
+  private _dischargeWill( intent: Intent, del: string[] ): void {
+    const willId = intent.evokedBy
+    if( !willId || !willId.startsWith('ideomotor-') ) return
+    del.push( willId )
+    logger.info(`[motor] discharged the will behind "${ intent.schema }" (${ willId })`)
+  }
+
   private _emitActionOutcome(
     intent: Intent, success: boolean, outcomeQuality: number, surprise: number, tick: Tick,
   ): void {
@@ -682,6 +729,7 @@ function readIntent( id: string, m: ReadonlyMap<string, unknown> | Record<string
     stepIndex:       typeof meta['stepIndex'] === 'number' ? ( meta['stepIndex'] as number ) : undefined,
     planId:          str( meta['planId'] ),
     planStepId:      str( meta['stepId'] ),
+    evokedBy:        str( meta['evokedBy'] ),
   }
 }
 

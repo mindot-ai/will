@@ -430,3 +430,57 @@ describe('the mind can see that it already said this', () => {
     expect( factory ).toContain('It does not tell me why')
   } )
 } )
+
+// ── an intention that has been acted on is no longer an intention ──
+
+describe('the will behind an act is discharged by the act', () => {
+  const src = ( p: string ): string => readFileSync( join( SRC, p ), 'utf8')
+
+  it('the selector carries what evoked the intent through to the executor', () => {
+    // Without this the executor cannot name the `ideomotor.intent` to retire, and
+    // nothing else ever did: they were cleared only when the executive next ran and
+    // declined to name the same action again.
+    const sel = src('cognition/agency/engines/action.selector.ts')
+    expect( sel ).toMatch( /evokedBy: winner\.affordance\.evokedBy/ )
+    const exec = src('cognition/agency/engines/motor.schema.executor.ts')
+    expect( exec ).toMatch( /evokedBy:\s+str\( meta\['evokedBy'\] \)/ )
+  } )
+
+  it('retires it once the words are actually out', () => {
+    const exec = src('cognition/agency/engines/motor.schema.executor.ts')
+    expect( exec ).toContain('_dischargeWill')
+    // Guarded on delivery success, not on dispatch — see below.
+    expect( exec ).toMatch( /if\( result\.success \) this\._dischargeWill/ )
+  } )
+
+  it('does NOT retire it on a mere request to author', () => {
+    // `_deliver` holds the intent 'awaiting' while a facet writes the words, and
+    // that authoring can time out or come back empty. Clearing the will there would
+    // lose the intention silently — the mind would have decided to say something
+    // and simply never have, which commands.ts calls "the whole intention
+    // evaporated without a trace".
+    const exec = src('cognition/agency/engines/motor.schema.executor.ts')
+    const dispatchToDischarge = exec.slice(
+      exec.indexOf('request authoring'), exec.indexOf('_dischargeWill( intent, del )') )
+    expect( dispatchToDischarge ).not.toContain('_dischargeWill(')
+  } )
+
+  it('touches only an ideomotor will, never a plan prior or a percept', () => {
+    // A plan's frontier prior is re-derived from the plan every tick and must not be
+    // deleted out from under it; the same is true of an affordance evoked by a percept.
+    const exec = src('cognition/agency/engines/motor.schema.executor.ts')
+    const body = exec.slice( exec.indexOf('private _dischargeWill'), exec.indexOf('private _emitActionOutcome') )
+    expect( body ).toMatch( /startsWith\('ideomotor-'\)/ )
+  } )
+
+  it('leaves satiation exactly as it was', () => {
+    // Damping still earns its keep — it damps repeating for reasons that did NOT
+    // come from a standing will. What it could never do is hold a PERMANENT pull:
+    // `justEnacted` is capped at repeatDamping (0.30) and decays, so a standing
+    // intent outlasts it by construction. Observed as dozens of
+    // "NOT selected: 0.297 < 0.340" lines, losing by four thousandths, until it won
+    // twice and one person got the same message byte-for-byte 25 ticks apart.
+    expect( src('cognition/agency/selection.scoring.ts') ).toMatch( /w\.repeat\s+\*\s+\(\s*a\.justEnacted/ )
+    expect( src('cognition/agency/engines/affordance.synthesizer.ts') ).toContain('enactionFootprint(')
+  } )
+} )

@@ -7404,6 +7404,32 @@ declare class MotorSchemaExecutor implements CognitiveEngine {
      * RewardEvaluator reads it as a reward signal. `confidence` carries the agency's
      * own forward-model prior so calibration has a real prediction to score.
      */
+    /**
+     * Retire the `ideomotor.intent` that produced this act.
+     *
+     * Nothing deleted these. They were cleared only when the executive next ran and
+     * declined to name the same action again — and the executive runs on an interval,
+     * so between cycles a willed reach-out STOOD in state, was rebuilt into an
+     * affordance every single tick, and competed every single tick. Observed as
+     * dozens of identical lines:
+     *
+     *   [selector] willed reach-out → … NOT selected: 0.297 < inspect… 0.340
+     *
+     * losing by four thousandths, over and over, until it won — twice. Fabrice got
+     * the same message byte-for-byte 25 ticks apart, two outbox ids.
+     *
+     * `justEnacted` was built to hold this line and cannot: it is a DECAYING
+     * quantity, capped at `repeatDamping` (0.30), and a standing intent outlasts it
+     * by construction. Damping a permanent pull only ever delays it. So the intention
+     * is discharged by being acted on, which is what an intention is — you meant to
+     * tell someone something, you told them, and it is finished. If the mind still
+     * wants to say more, the next executive cycle forms a new one, now seeing "I said
+     * this 25 ticks ago and have had no answer" in front of it.
+     *
+     * Satiation stays exactly as it was, and still earns its keep: it damps saying
+     * the same thing again for reasons that did NOT come from a standing will.
+     */
+    private _dischargeWill;
     private _emitActionOutcome;
     private _emitDispatch;
 }

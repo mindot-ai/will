@@ -3656,8 +3656,8 @@ var ACP_SELF_PRECISION = 0.35;
 var PERSONA_PRIOR_ID = "persona-prior";
 var PERSONA_PRIOR_TYPE = "persona.prior";
 function readPersonaPrior(state, engineConfigId) {
-  const meta2 = state.entities.get(PERSONA_PRIOR_ID)?.metadata;
-  return meta2?.priors?.[engineConfigId] ?? {};
+  const meta3 = state.entities.get(PERSONA_PRIOR_ID)?.metadata;
+  return meta3?.priors?.[engineConfigId] ?? {};
 }
 function readEffectiveParams(state, engineConfigId) {
   const base = state.entities.get(engineConfigId)?.metadata?.params ?? {};
@@ -3723,10 +3723,10 @@ var PRIOR_DESCRIPTIONS = {
   "engine-config-known-entity.reliabilityRate": { lower: "being slower to revise whether I can rely on something", raise: "quickly updating whether I can rely on something" }
 };
 function summarizePersonaPrior(state) {
-  const meta2 = readPersonaPriorMeta(state);
-  if (!meta2?.priors) return [];
+  const meta3 = readPersonaPriorMeta(state);
+  if (!meta3?.priors) return [];
   const out = [];
-  for (const [engineConfigId, params] of Object.entries(meta2.priors))
+  for (const [engineConfigId, params] of Object.entries(meta3.priors))
     for (const [param, delta] of Object.entries(params)) {
       if (!delta) continue;
       const key = `${engineConfigId}.${param}`;
@@ -4461,22 +4461,22 @@ function consequenceEntity(d) {
   };
 }
 function readConsequence(m) {
-  const meta2 = m ?? {};
-  const intentId = typeof meta2["intentId"] === "string" ? meta2["intentId"] : void 0;
-  const schema = typeof meta2["schema"] === "string" ? meta2["schema"] : void 0;
-  const mode = meta2["mode"] === "communicate" || meta2["mode"] === "external" ? meta2["mode"] : void 0;
+  const meta3 = m ?? {};
+  const intentId = typeof meta3["intentId"] === "string" ? meta3["intentId"] : void 0;
+  const schema = typeof meta3["schema"] === "string" ? meta3["schema"] : void 0;
+  const mode = meta3["mode"] === "communicate" || meta3["mode"] === "external" ? meta3["mode"] : void 0;
   if (!intentId || !schema || !mode) return null;
   return {
     intentId,
     schema,
     mode,
-    effector: typeof meta2["effector"] === "string" ? meta2["effector"] : void 0,
-    targetEntityId: typeof meta2["targetEntityId"] === "string" ? meta2["targetEntityId"] : void 0,
-    textHash: typeof meta2["textHash"] === "number" ? meta2["textHash"] : void 0,
-    text: typeof meta2["text"] === "string" ? meta2["text"] : void 0,
-    paramsHash: typeof meta2["paramsHash"] === "number" ? meta2["paramsHash"] : void 0,
-    expiresAt: typeof meta2["expiresAt"] === "number" ? meta2["expiresAt"] : 0,
-    tick: typeof meta2["tick"] === "number" ? meta2["tick"] : 0
+    effector: typeof meta3["effector"] === "string" ? meta3["effector"] : void 0,
+    targetEntityId: typeof meta3["targetEntityId"] === "string" ? meta3["targetEntityId"] : void 0,
+    textHash: typeof meta3["textHash"] === "number" ? meta3["textHash"] : void 0,
+    text: typeof meta3["text"] === "string" ? meta3["text"] : void 0,
+    paramsHash: typeof meta3["paramsHash"] === "number" ? meta3["paramsHash"] : void 0,
+    expiresAt: typeof meta3["expiresAt"] === "number" ? meta3["expiresAt"] : 0,
+    tick: typeof meta3["tick"] === "number" ? meta3["tick"] : 0
   };
 }
 function liveConsequences(entities, tick) {
@@ -8057,6 +8057,100 @@ var INNATE_SCHEMAS = [
 ];
 var INNATE_SCHEMA_BY_ID = new Map(INNATE_SCHEMAS.map((s) => [s.id, s]));
 
+// src/cognition/social.identity.ts
+var REFERENT_PREFIX = "ke:";
+var ALIAS_TYPE = "known-entity-alias";
+var DOSSIER_TYPE = "known-entity";
+function isReferentId(id) {
+  return id.startsWith(REFERENT_PREFIX);
+}
+function mintReferentId(seedKeid) {
+  return `${REFERENT_PREFIX}${fnv1a(seedKeid).toString(36)}`;
+}
+function meta(e) {
+  const m = e.metadata;
+  if (!m) return {};
+  return m instanceof Map ? Object.fromEntries(m) : m;
+}
+function str(v) {
+  return typeof v === "string" && v.length > 0 ? v : void 0;
+}
+function readAliases(entities) {
+  const out = /* @__PURE__ */ new Map();
+  for (const [, e] of entities) {
+    if (e.type !== ALIAS_TYPE) continue;
+    const m = meta(e);
+    const a = str(m["aliasKeid"]);
+    const c = str(m["canonicalKeid"]);
+    if (a && c) out.set(a, c);
+  }
+  return out;
+}
+function canonicalOf(aliases, keid) {
+  const seen = /* @__PURE__ */ new Set();
+  let id = keid;
+  while (true) {
+    const next = aliases.get(id);
+    if (!next || next === id || seen.has(next)) return id;
+    seen.add(id);
+    id = next;
+  }
+}
+function resolveKeid(entities, ref) {
+  const needle = ref.trim().toLowerCase();
+  if (!needle) return void 0;
+  const aliases = readAliases(entities);
+  const direct = canonicalOf(aliases, ref.trim());
+  for (const [, e] of entities)
+    if (e.type === DOSSIER_TYPE && str(meta(e)["keid"]) === direct) return direct;
+  for (const [, e] of entities) {
+    if (e.type !== DOSSIER_TYPE) continue;
+    const m = meta(e);
+    const keid = str(m["keid"]);
+    if (!keid) continue;
+    if (keid.toLowerCase() === needle) return canonicalOf(aliases, keid);
+    if (str(m["name"])?.toLowerCase() === needle) return canonicalOf(aliases, keid);
+  }
+  for (const [alias, canon] of aliases)
+    if (alias.toLowerCase() === needle) return canon;
+  return void 0;
+}
+function nameOf(entities, referentId) {
+  for (const [, e] of entities) {
+    if (e.type !== DOSSIER_TYPE || str(meta(e)["keid"]) !== referentId) continue;
+    return str(meta(e)["name"])?.trim() || void 0;
+  }
+  return void 0;
+}
+function handlesOf(entities, referentId) {
+  for (const [, e] of entities) {
+    if (e.type !== DOSSIER_TYPE || str(meta(e)["keid"]) !== referentId) continue;
+    const raw = meta(e)["handles"];
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((h) => h && typeof h.keid === "string").sort((a, b) => (b.lastAnsweredTick ?? -1) - (a.lastAnsweredTick ?? -1) || (b.lastUsedTick ?? -1) - (a.lastUsedTick ?? -1) || (a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0));
+  }
+  return [];
+}
+function defaultHandle(handles) {
+  if (handles.length === 0) return void 0;
+  const answered = handles.filter((h) => h.lastAnsweredTick !== void 0);
+  const pool = answered.length > 0 ? answered : handles;
+  return pool.find((h) => h.kind === "dm") ?? pool[0];
+}
+function withHandle(handles, next) {
+  const out = handles.filter((h) => h.keid !== next.keid);
+  const old = handles.find((h) => h.keid === next.keid);
+  out.push(old ? {
+    ...old,
+    ...next,
+    // Never let a fresh sighting erase evidence the old record already held.
+    lastUsedTick: next.lastUsedTick ?? old.lastUsedTick,
+    lastAnsweredTick: next.lastAnsweredTick ?? old.lastAnsweredTick,
+    tags: [.../* @__PURE__ */ new Set([...old.tags ?? [], ...next.tags ?? []])]
+  } : next);
+  return out.sort((a, b) => a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0);
+}
+
 // src/cognition/faculties/executive.engine/commands.ts
 var EVIDENCE_TO_COUNT = {
   single_observation: 1,
@@ -8322,16 +8416,7 @@ var COMMUNICATE_ACTION_TYPES = /* @__PURE__ */ new Set([
 var WORDS_ARG_KEYS = /* @__PURE__ */ new Set(["content", "message", "text", "body"]);
 var ADDRESS_ARG_KEYS = /* @__PURE__ */ new Set(["to", "recipient", "target", "targetEntityId", "entityId"]);
 function resolveKnownEntity(target, state) {
-  const t = target.trim().toLowerCase();
-  for (const e of state.entities.values()) {
-    if (e.type !== "known-entity") continue;
-    const m = e.metadata;
-    const keid = typeof m?.["keid"] === "string" ? m["keid"] : void 0;
-    const name = typeof m?.["name"] === "string" ? m["name"] : void 0;
-    if (keid && keid.toLowerCase() === t) return keid;
-    if (name && name.toLowerCase() === t) return keid;
-  }
-  return void 0;
+  return resolveKeid(state.entities, target);
 }
 function knownEntityName(keid, state) {
   for (const e of state.entities.values()) {
@@ -10067,29 +10152,29 @@ var GoalManager = class {
     for (const entity of state.entities.values()) {
       if (entity.type !== "goal") continue;
       if (this._goals.has(entity.id)) continue;
-      const meta2 = entity.metadata ?? {};
-      const status = meta2.status ?? "active";
+      const meta3 = entity.metadata ?? {};
+      const status = meta3.status ?? "active";
       if (status === "completed" || status === "abandoned") continue;
       this._goals.set(entity.id, {
         id: entity.id,
-        description: meta2.description ?? entity.id,
-        priority: meta2.priority ?? 0.5,
-        basePriority: meta2.basePriority ?? meta2.priority ?? 0.5,
-        progress: meta2.progress ?? 0,
+        description: meta3.description ?? entity.id,
+        priority: meta3.priority ?? 0.5,
+        basePriority: meta3.basePriority ?? meta3.priority ?? 0.5,
+        progress: meta3.progress ?? 0,
         status,
-        parentGoalId: meta2.parentGoalId,
+        parentGoalId: meta3.parentGoalId,
         // COPY, never adopt. `meta` belongs to a state entity, and the state
         // manager deep-freezes those — adopting the array by reference gives the
         // goal a frozen `tags`/`subGoals`, and the next push (abandonGoal, or
         // addGoal appending to a parent) throws TypeError mid-tick.
-        subGoals: [...meta2.subGoals ?? []],
-        activatedAt: meta2.activatedAt ?? tick,
-        deadline: meta2.deadline,
-        tags: [...meta2.tags ?? []],
-        beliefsAtActivation: meta2.beliefsAtActivation ?? this._currentBeliefCount,
-        completionType: meta2.completionType ?? "epistemic",
-        completionCondition: meta2.completionCondition,
-        abandonedReason: meta2.abandonedReason
+        subGoals: [...meta3.subGoals ?? []],
+        activatedAt: meta3.activatedAt ?? tick,
+        deadline: meta3.deadline,
+        tags: [...meta3.tags ?? []],
+        beliefsAtActivation: meta3.beliefsAtActivation ?? this._currentBeliefCount,
+        completionType: meta3.completionType ?? "epistemic",
+        completionCondition: meta3.completionCondition,
+        abandonedReason: meta3.abandonedReason
       });
     }
   }
@@ -10447,35 +10532,36 @@ function readPersona(metadata) {
 var SENT_TYPE = "conversation.sent";
 var RECEIVED_TYPE = "conversation.received";
 var DEFAULT_REPLY_WINDOW_TICKS = 240;
-function tickOf(e, meta2) {
-  return num(meta2["tick"]) ?? num(e.updatedAtTick) ?? num(e.tick) ?? 0;
+function tickOf(e, meta3) {
+  return num(meta3["tick"]) ?? num(e.updatedAtTick) ?? num(e.tick) ?? 0;
 }
-function meta(e) {
+function meta2(e) {
   const m = e.metadata;
   if (!m) return {};
   return m instanceof Map ? Object.fromEntries(m) : m;
 }
-function str(v) {
+function str2(v) {
   return typeof v === "string" ? v : void 0;
 }
 function num(v) {
   return typeof v === "number" && Number.isFinite(v) ? v : void 0;
 }
 function readSpokenTurns(entities) {
+  const aliases = readAliases(entities);
   const out = [];
   for (const [id, e] of entities) {
     if (e.type !== SENT_TYPE) continue;
-    const m = meta(e);
-    const target = str(m["targetEntityId"]);
+    const m = meta2(e);
+    const target = str2(m["targetEntityId"]);
     if (!target) continue;
     out.push({
       entityId: id,
-      targetEntityId: target,
-      targetEntityName: str(m["targetEntityName"]),
-      preview: str(m["preview"]) ?? "",
+      targetEntityId: canonicalOf(aliases, target),
+      targetEntityName: str2(m["targetEntityName"]),
+      preview: str2(m["preview"]) ?? "",
       tick: tickOf(e, m),
       answeredAt: num(m["answeredAt"]),
-      answeredWith: str(m["answeredWith"]),
+      answeredWith: str2(m["answeredWith"]),
       unansweredAt: num(m["unansweredAt"]),
       isAck: m["isAck"] === true
     });
@@ -10483,15 +10569,17 @@ function readSpokenTurns(entities) {
   return out.sort((a, b) => a.tick - b.tick || (a.entityId < b.entityId ? -1 : a.entityId > b.entityId ? 1 : 0));
 }
 function lastHeardByEntity(entities) {
+  const aliases = readAliases(entities);
   const out = /* @__PURE__ */ new Map();
   for (const [, e] of entities) {
     if (e.type !== RECEIVED_TYPE) continue;
-    const m = meta(e);
-    const source = str(m["sourceKeid"]);
-    if (!source) continue;
+    const m = meta2(e);
+    const raw = str2(m["sourceKeid"]);
+    if (!raw) continue;
+    const source = canonicalOf(aliases, raw);
     const at = tickOf(e, m);
     if (at > (out.get(source)?.tick ?? -Infinity))
-      out.set(source, { tick: at, preview: str(m["preview"]) ?? "" });
+      out.set(source, { tick: at, preview: str2(m["preview"]) ?? "" });
   }
   return out;
 }
@@ -10511,75 +10599,6 @@ function resolveReplyExpectations(entities, tick, windowTicks = DEFAULT_REPLY_WI
     if (windowTicks > 0 && tick - t.tick >= windowTicks) unanswered.push(t);
   }
   return { answered, unanswered };
-}
-
-// src/cognition/social.identity.ts
-var REFERENT_PREFIX = "ke:";
-var ALIAS_TYPE = "known-entity-alias";
-var DOSSIER_TYPE = "known-entity";
-function isReferentId(id) {
-  return id.startsWith(REFERENT_PREFIX);
-}
-function mintReferentId(seedKeid) {
-  return `${REFERENT_PREFIX}${fnv1a(seedKeid).toString(36)}`;
-}
-function str2(v) {
-  return typeof v === "string" && v.length > 0 ? v : void 0;
-}
-function readAliases(entities) {
-  const out = /* @__PURE__ */ new Map();
-  for (const [, e] of entities) {
-    if (e.type !== ALIAS_TYPE) continue;
-    const a = str2(e.metadata?.["aliasKeid"]);
-    const c = str2(e.metadata?.["canonicalKeid"]);
-    if (a && c) out.set(a, c);
-  }
-  return out;
-}
-function canonicalOf(aliases, keid) {
-  const seen = /* @__PURE__ */ new Set();
-  let id = keid;
-  while (true) {
-    const next = aliases.get(id);
-    if (!next || next === id || seen.has(next)) return id;
-    seen.add(id);
-    id = next;
-  }
-}
-function nameOf(entities, referentId) {
-  for (const [, e] of entities) {
-    if (e.type !== DOSSIER_TYPE || str2(e.metadata?.["keid"]) !== referentId) continue;
-    return str2(e.metadata?.["name"])?.trim() || void 0;
-  }
-  return void 0;
-}
-function handlesOf(entities, referentId) {
-  for (const [, e] of entities) {
-    if (e.type !== DOSSIER_TYPE || str2(e.metadata?.["keid"]) !== referentId) continue;
-    const raw = e.metadata?.["handles"];
-    if (!Array.isArray(raw)) return [];
-    return raw.filter((h) => h && typeof h.keid === "string").sort((a, b) => (b.lastAnsweredTick ?? -1) - (a.lastAnsweredTick ?? -1) || (b.lastUsedTick ?? -1) - (a.lastUsedTick ?? -1) || (a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0));
-  }
-  return [];
-}
-function defaultHandle(handles) {
-  if (handles.length === 0) return void 0;
-  const answered = handles.filter((h) => h.lastAnsweredTick !== void 0);
-  const pool = answered.length > 0 ? answered : handles;
-  return pool.find((h) => h.kind === "dm") ?? pool[0];
-}
-function withHandle(handles, next) {
-  const out = handles.filter((h) => h.keid !== next.keid);
-  const old = handles.find((h) => h.keid === next.keid);
-  out.push(old ? {
-    ...old,
-    ...next,
-    // Never let a fresh sighting erase evidence the old record already held.
-    lastUsedTick: next.lastUsedTick ?? old.lastUsedTick,
-    lastAnsweredTick: next.lastAnsweredTick ?? old.lastAnsweredTick,
-    tags: [.../* @__PURE__ */ new Set([...old.tags ?? [], ...next.tags ?? []])]
-  } : next);
-  return out.sort((a, b) => a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0);
 }
 
 // src/cognition/faculties/executive.engine/context.ts
@@ -12919,9 +12938,9 @@ var TableRouter = class {
     this._rules = [...rules];
     this.name = name;
   }
-  route(meta2) {
+  route(meta3) {
     for (const rule of this._rules) {
-      if (matches(rule, meta2)) return rule.route;
+      if (matches(rule, meta3)) return rule.route;
     }
     return null;
   }
@@ -12933,10 +12952,10 @@ function chainRouters(...routers) {
   const warned = /* @__PURE__ */ new Set();
   return {
     name: chain.map((r) => r.name).join(">"),
-    route(meta2) {
+    route(meta3) {
       for (const router of chain) {
         try {
-          const hit = router.route(meta2);
+          const hit = router.route(meta3);
           if (hit) return hit;
         } catch (err) {
           if (!warned.has(router.name)) {
@@ -12949,14 +12968,14 @@ function chainRouters(...routers) {
     }
   };
 }
-function matches(rule, meta2) {
-  if (rule.category !== void 0 && rule.category !== meta2.category) return false;
-  if (rule.attribute !== void 0 && rule.attribute !== meta2.attribute) return false;
-  if (rule.process !== void 0 && rule.process !== meta2.process) return false;
-  if (rule.function !== void 0 && rule.function !== meta2.function) return false;
+function matches(rule, meta3) {
+  if (rule.category !== void 0 && rule.category !== meta3.category) return false;
+  if (rule.attribute !== void 0 && rule.attribute !== meta3.attribute) return false;
+  if (rule.process !== void 0 && rule.process !== meta3.process) return false;
+  if (rule.function !== void 0 && rule.function !== meta3.function) return false;
   const bounded = rule.minDemand !== void 0 || rule.maxDemand !== void 0;
   if (bounded) {
-    const d = meta2.demand;
+    const d = meta3.demand;
     if (typeof d !== "number" || Number.isNaN(d)) return false;
     if (rule.minDemand !== void 0 && d < rule.minDemand) return false;
     if (rule.maxDemand !== void 0 && d >= rule.maxDemand) return false;
@@ -13164,11 +13183,11 @@ var LLMDirector = class {
    * whenever the router has no opinion, throws, or names a provider we hold no
    * credential for — degrade, never crash.
    */
-  _resolveEndpoint(meta2) {
+  _resolveEndpoint(meta3) {
     if (isNullRouter(this._router)) return this._defaultEndpoint;
     let route;
     try {
-      route = this._router.route(meta2);
+      route = this._router.route(meta3);
     } catch (err) {
       this._warnRouteOnce(
         `throw:${this._router.name}`,
@@ -13276,14 +13295,14 @@ var LLMDirector = class {
    * arrives, then returns the full result once the stream is done.
    * Currently Anthropic only — other providers fall back to a single-chunk call.
    */
-  async callStream(systemPrompt, userMessage, tick, onChunk, temperature, meta2 = DEFAULT_CALL_META) {
+  async callStream(systemPrompt, userMessage, tick, onChunk, temperature, meta3 = DEFAULT_CALL_META) {
     const start = Date.now();
     const replay = this._replayCompletion(systemPrompt, userMessage, tick);
     if (replay) {
       if (!replay.mock) onChunk(replay.text);
       return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok };
     }
-    const ep = this._resolveEndpoint(meta2);
+    const ep = this._resolveEndpoint(meta3);
     if (this._mock) {
       const result2 = this._mockResponse(tick, userMessage);
       this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - start, true, ep);
@@ -13294,7 +13313,7 @@ var LLMDirector = class {
       onChunk(r.text);
       return r;
     })();
-    this._track(result, meta2, tick, Date.now() - start, this._estPromptTokens(systemPrompt, userMessage), ep);
+    this._track(result, meta3, tick, Date.now() - start, this._estPromptTokens(systemPrompt, userMessage), ep);
     this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - start, false, ep);
     return result;
   }
@@ -13304,7 +13323,7 @@ var LLMDirector = class {
    * mock/replay directors, so the call is simply skipped. Cache read/write tokens
    * are forwarded so the tracker prices them at 0.1× / 1.25× input.
    */
-  _track(result, meta2, tick, latencyMs, estPromptTokens, ep = this._defaultEndpoint) {
+  _track(result, meta3, tick, latencyMs, estPromptTokens, ep = this._defaultEndpoint) {
     this._tokenTracker?.recordUsage({
       // The endpoint that actually served this call — routed or default.
       // Pricing must follow the real model, or routed spend is attributed
@@ -13314,18 +13333,18 @@ var LLMDirector = class {
       provider: ep.provider,
       // The router's own input, kept alongside its output. Without this the
       // ledger records WHERE a call went and never WHY.
-      demand: meta2.demand,
+      demand: meta3.demand,
       promptTokens: result.inputTok,
       completionTokens: result.outputTok,
       totalTokens: result.inputTok + result.outputTok,
       cacheReadTokens: result.cacheReadTok,
       cacheWriteTokens: result.cacheWriteTok,
-      category: meta2.category,
-      attribute: meta2.attribute,
-      process: meta2.process,
-      function: meta2.function,
-      scope: meta2.scope,
-      label: meta2.label,
+      category: meta3.category,
+      attribute: meta3.attribute,
+      process: meta3.process,
+      function: meta3.function,
+      scope: meta3.scope,
+      label: meta3.label,
       estPromptTokens,
       tick,
       latencyMs
@@ -13444,12 +13463,12 @@ var LLMDirector = class {
    * Call the LLM directly via fetch — no SDK, no middleware.
    * Routes through withGate for concurrency limiting and 429 retry.
    */
-  async call(systemPrompt, userMessage, tick, temperature, meta2 = DEFAULT_CALL_META) {
+  async call(systemPrompt, userMessage, tick, temperature, meta3 = DEFAULT_CALL_META) {
     const llmStart = Date.now();
     const replay = this._replayCompletion(systemPrompt, userMessage, tick);
     if (replay)
       return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok };
-    const ep = this._resolveEndpoint(meta2);
+    const ep = this._resolveEndpoint(meta3);
     if (this._mock) {
       const result2 = this._mockResponse(tick, userMessage);
       this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - llmStart, true, ep);
@@ -13460,7 +13479,7 @@ var LLMDirector = class {
       }, temperature) : this._callProvider(ep, systemPrompt, userMessage, temperature),
       "executive/direct"
     );
-    this._track(result, meta2, tick, Date.now() - llmStart, this._estPromptTokens(systemPrompt, userMessage), ep);
+    this._track(result, meta3, tick, Date.now() - llmStart, this._estPromptTokens(systemPrompt, userMessage), ep);
     this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - llmStart, false, ep);
     return result;
   }
@@ -21564,26 +21583,26 @@ function buildBias(state) {
   };
 }
 function readAffordance(id, m) {
-  const meta2 = m ?? {};
+  const meta3 = m ?? {};
   return {
     id,
-    schema: str4(meta2["schema"]) ?? "",
-    source: str4(meta2["source"]) ?? "innate",
-    parameters: meta2["parameters"] ?? {},
-    targetEntityId: str4(meta2["targetEntityId"]),
-    evokedBy: str4(meta2["evokedBy"]),
-    expectedValence: num3(meta2["expectedValence"], 0),
-    expectedReward: num3(meta2["expectedReward"], 0),
-    cost: num3(meta2["cost"], 0),
-    habitStrength: num3(meta2["habitStrength"], 0),
-    available: meta2["available"] === true,
-    tags: Array.isArray(meta2["tags"]) ? meta2["tags"].filter((t) => typeof t === "string") : [],
-    planBias: typeof meta2["planBias"] === "number" ? meta2["planBias"] : void 0,
-    willBias: typeof meta2["willBias"] === "number" ? meta2["willBias"] : void 0,
-    socialPrior: typeof meta2["socialPrior"] === "number" ? meta2["socialPrior"] : void 0,
-    planId: str4(meta2["planId"]),
-    stepId: str4(meta2["stepId"]),
-    tick: num3(meta2["tick"], 0)
+    schema: str4(meta3["schema"]) ?? "",
+    source: str4(meta3["source"]) ?? "innate",
+    parameters: meta3["parameters"] ?? {},
+    targetEntityId: str4(meta3["targetEntityId"]),
+    evokedBy: str4(meta3["evokedBy"]),
+    expectedValence: num3(meta3["expectedValence"], 0),
+    expectedReward: num3(meta3["expectedReward"], 0),
+    cost: num3(meta3["cost"], 0),
+    habitStrength: num3(meta3["habitStrength"], 0),
+    available: meta3["available"] === true,
+    tags: Array.isArray(meta3["tags"]) ? meta3["tags"].filter((t) => typeof t === "string") : [],
+    planBias: typeof meta3["planBias"] === "number" ? meta3["planBias"] : void 0,
+    willBias: typeof meta3["willBias"] === "number" ? meta3["willBias"] : void 0,
+    socialPrior: typeof meta3["socialPrior"] === "number" ? meta3["socialPrior"] : void 0,
+    planId: str4(meta3["planId"]),
+    stepId: str4(meta3["stepId"]),
+    tick: num3(meta3["tick"], 0)
   };
 }
 function metric2(state, key, fallback) {
@@ -21643,19 +21662,19 @@ var DeliberationEngine = class {
         del.push(id2, revocationId(id2));
         continue;
       }
-      const meta3 = e.metadata ?? {};
-      if (!target || id2 < target.id) target = { id: id2, meta: meta3 };
+      const meta4 = e.metadata ?? {};
+      if (!target || id2 < target.id) target = { id: id2, meta: meta4 };
     }
     if (!target) return del.length > 0 ? { commands: { delete: del } } : { commands: {} };
-    const { id, meta: meta2 } = target;
-    const provisional = str5(meta2["schema"]) ?? "wait";
-    const candidates = Array.isArray(meta2["candidates"]) ? meta2["candidates"] : [];
+    const { id, meta: meta3 } = target;
+    const provisional = str5(meta3["schema"]) ?? "wait";
+    const candidates = Array.isArray(meta3["candidates"]) ? meta3["candidates"] : [];
     if (!this._provider)
       return { commands: {
-        set: [this._commit(id, meta2, provisional, candidates, "no-executive")],
+        set: [this._commit(id, meta3, provisional, candidates, "no-executive")],
         ...del.length > 0 ? { delete: del } : {}
       } };
-    const chosen = await this._deliberate(state, candidates, provisional, meta2);
+    const chosen = await this._deliberate(state, candidates, provisional, meta3);
     this._deliberations++;
     if (this._bus) {
       try {
@@ -21671,7 +21690,7 @@ var DeliberationEngine = class {
     }
     return {
       commands: {
-        set: [this._commit(id, meta2, chosen, candidates, "facet")],
+        set: [this._commit(id, meta3, chosen, candidates, "facet")],
         ...del.length > 0 ? { delete: del } : {},
         metrics: [["agency.deliberation.count", 1]]
       }
@@ -21679,7 +21698,7 @@ var DeliberationEngine = class {
   }
   // ── internals ─────────────────────────────────────────────────
   /** Run one unified-inference deliberation. Returns the chosen schema (or the provisional winner on any failure). */
-  async _deliberate(state, candidates, provisional, meta2) {
+  async _deliberate(state, candidates, provisional, meta3) {
     try {
       if (!this._handle) {
         const spawned = this._provider.spawnFacet("deliberation");
@@ -21696,7 +21715,7 @@ var DeliberationEngine = class {
       this._handle.setFocus({
         title: "Deliberation",
         function: "deliberation",
-        content: this._buildFocusContent(state, candidates, meta2),
+        content: this._buildFocusContent(state, candidates, meta3),
         instructions: DELIBERATION_INSTRUCTIONS
       });
       await this._handle.report({ type: "deliberation", payload: { candidateSchemas: candidates.map((c) => c.schema) } });
@@ -21710,16 +21729,16 @@ var DeliberationEngine = class {
     }
   }
   /** Write the deliberating intent back as 'selected' with the chosen action. */
-  _commit(id, meta2, chosen, candidates, via) {
+  _commit(id, meta3, chosen, candidates, via) {
     const cand = candidates.find((c) => c.schema === chosen);
     return {
       id,
       type: "agency.intent",
       metadata: {
-        ...meta2,
+        ...meta3,
         schema: chosen,
-        targetEntityId: cand?.targetEntityId ?? meta2["targetEntityId"],
-        parameters: { ...meta2["parameters"] ?? {}, ...cand?.parameters ?? {} },
+        targetEntityId: cand?.targetEntityId ?? meta3["targetEntityId"],
+        parameters: { ...meta3["parameters"] ?? {}, ...cand?.parameters ?? {} },
         status: "selected",
         deliberated: true,
         deliberatedVia: via
@@ -21727,10 +21746,10 @@ var DeliberationEngine = class {
     };
   }
   /** The deliberation focus body — the candidate actions the substrate surfaced. */
-  _buildFocusContent(state, candidates, meta2) {
+  _buildFocusContent(state, candidates, meta3) {
     const lines = [];
-    const preemptedFrom = str5(meta2["preemptedFrom"]);
-    const revokedBy = str5(meta2["revokedBy"]);
+    const preemptedFrom = str5(meta3["preemptedFrom"]);
+    const revokedBy = str5(meta3["revokedBy"]);
     if (revokedBy)
       lines.push(`Something in my situation just shifted and I let go of what I was weighing ("${revokedBy}"). Decide afresh what to do now:`);
     else if (preemptedFrom)
@@ -22058,11 +22077,11 @@ var MotorSchemaExecutor = class {
   }
   // ── composite machinery ──────────────────────────────────────
   _expand(parentId, parentMeta, steps, intent, tick, set) {
-    const meta2 = parentMeta ?? {};
+    const meta3 = parentMeta ?? {};
     set.push({
       id: parentId,
       type: "agency.intent",
-      metadata: { ...meta2, status: "expanding", steps, cursor: 0, accumQuality: 0, accumValence: 0, completed: 0 }
+      metadata: { ...meta3, status: "expanding", steps, cursor: 0, accumQuality: 0, accumValence: 0, completed: 0 }
     });
     set.push(this._subIntent(parentId, intent.targetEntityId, intent.parameters, steps[0], 0, tick));
     logger.info(`[motor] composite "${intent.schema}" \u2192 ${steps.length} steps`);
@@ -22378,20 +22397,20 @@ function outcomeEntity(tick, intent, enaction, predicted) {
   };
 }
 function readIntent(id, m) {
-  const meta2 = m ?? {};
+  const meta3 = m ?? {};
   return {
     id,
-    schema: str7(meta2["schema"]) ?? "",
-    affordanceId: str7(meta2["affordanceId"]),
-    targetEntityId: str7(meta2["targetEntityId"]),
-    parameters: meta2["parameters"] ?? {},
-    expectedReward: num4(meta2["expectedReward"], 0.5),
-    expectedValence: num4(meta2["expectedValence"], 0),
-    parentIntentId: str7(meta2["parentIntentId"]),
-    stepIndex: typeof meta2["stepIndex"] === "number" ? meta2["stepIndex"] : void 0,
-    planId: str7(meta2["planId"]),
-    planStepId: str7(meta2["stepId"]),
-    evokedBy: str7(meta2["evokedBy"])
+    schema: str7(meta3["schema"]) ?? "",
+    affordanceId: str7(meta3["affordanceId"]),
+    targetEntityId: str7(meta3["targetEntityId"]),
+    parameters: meta3["parameters"] ?? {},
+    expectedReward: num4(meta3["expectedReward"], 0.5),
+    expectedValence: num4(meta3["expectedValence"], 0),
+    parentIntentId: str7(meta3["parentIntentId"]),
+    stepIndex: typeof meta3["stepIndex"] === "number" ? meta3["stepIndex"] : void 0,
+    planId: str7(meta3["planId"]),
+    planStepId: str7(meta3["stepId"]),
+    evokedBy: str7(meta3["evokedBy"])
   };
 }
 function str7(v) {
@@ -22672,21 +22691,21 @@ function schemaEntity(s) {
   };
 }
 function readSchema(m) {
-  const meta2 = m ?? {};
-  const id = typeof meta2["id"] === "string" ? meta2["id"] : void 0;
-  const kind = meta2["kind"];
+  const meta3 = m ?? {};
+  const id = typeof meta3["id"] === "string" ? meta3["id"] : void 0;
+  const kind = meta3["kind"];
   if (!id || kind !== "composite" && kind !== "primitive") return void 0;
   return {
     id,
     kind,
-    source: meta2["source"] ?? "repertoire",
-    cost: typeof meta2["cost"] === "number" ? meta2["cost"] : 0,
-    binds: meta2["binds"] ?? "none",
-    preconditions: meta2["preconditions"],
-    composedOf: Array.isArray(meta2["composedOf"]) ? meta2["composedOf"] : void 0,
-    baseValence: typeof meta2["baseValence"] === "number" ? meta2["baseValence"] : void 0,
-    description: typeof meta2["description"] === "string" ? meta2["description"] : void 0,
-    tags: Array.isArray(meta2["tags"]) ? meta2["tags"] : void 0
+    source: meta3["source"] ?? "repertoire",
+    cost: typeof meta3["cost"] === "number" ? meta3["cost"] : 0,
+    binds: meta3["binds"] ?? "none",
+    preconditions: meta3["preconditions"],
+    composedOf: Array.isArray(meta3["composedOf"]) ? meta3["composedOf"] : void 0,
+    baseValence: typeof meta3["baseValence"] === "number" ? meta3["baseValence"] : void 0,
+    description: typeof meta3["description"] === "string" ? meta3["description"] : void 0,
+    tags: Array.isArray(meta3["tags"]) ? meta3["tags"] : void 0
   };
 }
 
@@ -24535,10 +24554,10 @@ var DefaultVectorMemoryAdapter = class {
       if (!exists) return;
       if (await this._storage.exists(this._metaPath)) {
         try {
-          const meta2 = JSON.parse(await this._storage.read(this._metaPath));
-          if (meta2.model !== this._embedder.modelName || meta2.dimensions !== this._embedder.dimensions) {
+          const meta3 = JSON.parse(await this._storage.read(this._metaPath));
+          if (meta3.model !== this._embedder.modelName || meta3.dimensions !== this._embedder.dimensions) {
             logger.warn(
-              `[VectorMemoryAdapter] Persisted index was built with ${meta2.model}/${meta2.dimensions}d but current embedder is ${this._embedder.modelName}/${this._embedder.dimensions}d \u2014 discarding stale index (will rebuild from store).`
+              `[VectorMemoryAdapter] Persisted index was built with ${meta3.model}/${meta3.dimensions}d but current embedder is ${this._embedder.modelName}/${this._embedder.dimensions}d \u2014 discarding stale index (will rebuild from store).`
             );
             return;
           }
@@ -25148,18 +25167,18 @@ function externalSchemas(effectors) {
     if (INNATE_SCHEMA_BY_ID.has(name)) continue;
     if (seen.has(name)) continue;
     seen.add(name);
-    const meta2 = typeof decl === "string" ? null : decl;
-    const binds = meta2?.binds === "entity" ? "entity" : meta2?.binds === "object" ? "object" : "none";
-    const tags = [.../* @__PURE__ */ new Set([...meta2?.tags ?? [], "external", "host"])];
+    const meta3 = typeof decl === "string" ? null : decl;
+    const binds = meta3?.binds === "entity" ? "entity" : meta3?.binds === "object" ? "object" : "none";
+    const tags = [.../* @__PURE__ */ new Set([...meta3?.tags ?? [], "external", "host"])];
     out.push({
       id: name,
       kind: "primitive",
       source: "external",
-      cost: typeof meta2?.cost === "number" ? clamp(meta2.cost, 0, 1) : DEFAULT_EXTERNAL_COST,
+      cost: typeof meta3?.cost === "number" ? clamp(meta3.cost, 0, 1) : DEFAULT_EXTERNAL_COST,
       binds,
-      baseValence: typeof meta2?.valence === "number" ? clamp(meta2.valence, -1, 1) : 0,
-      ...meta2?.preconditions ? { preconditions: meta2.preconditions } : {},
-      ...meta2?.description ? { description: meta2.description } : {},
+      baseValence: typeof meta3?.valence === "number" ? clamp(meta3.valence, -1, 1) : 0,
+      ...meta3?.preconditions ? { preconditions: meta3.preconditions } : {},
+      ...meta3?.description ? { description: meta3.description } : {},
       tags
     });
   }
@@ -26411,11 +26430,11 @@ var ReplayController = class {
     mkdirSync(dir, { recursive: true });
     const path = join(dir, `${active.runId}.json`);
     await active.recorder.save(path);
-    const meta2 = active.recorder.getMetadata();
+    const meta3 = active.recorder.getMetadata();
     const key = `${id}:${active.runId}`;
-    this._completedReplays.set(key, meta2);
+    this._completedReplays.set(key, meta3);
     this._replayPaths.set(key, path);
-    return meta2;
+    return meta3;
   }
   getMeta(id, runId) {
     const active = this._activeRecorders.get(id);
@@ -26427,10 +26446,10 @@ var ReplayController = class {
     const path = join(dataDir, "wills", id, "replays", `${runId}.json`);
     if (!existsSync(path)) return null;
     try {
-      const meta2 = JSON.parse(readFileSync(path, "utf8")).metadata;
-      this._completedReplays.set(key, meta2);
+      const meta3 = JSON.parse(readFileSync(path, "utf8")).metadata;
+      this._completedReplays.set(key, meta3);
       this._replayPaths.set(key, path);
-      return meta2;
+      return meta3;
     } catch {
       return null;
     }
@@ -26440,8 +26459,8 @@ var ReplayController = class {
     const prefix = `${id}:`;
     const active = this._activeRecorders.get(id);
     if (active) results.push(active.recorder.getMetadata());
-    for (const [key, meta2] of this._completedReplays)
-      if (key.startsWith(prefix)) results.push(meta2);
+    for (const [key, meta3] of this._completedReplays)
+      if (key.startsWith(prefix)) results.push(meta3);
     const dataDir = process.env["WILL_DATA_DIR"] ?? "./data";
     const dir = join(dataDir, "wills", id, "replays");
     if (existsSync(dir)) {
@@ -26455,11 +26474,11 @@ var ReplayController = class {
         if (inMem.has(runId)) continue;
         try {
           const path = join(dir, file);
-          const meta2 = JSON.parse(readFileSync(path, "utf8")).metadata;
+          const meta3 = JSON.parse(readFileSync(path, "utf8")).metadata;
           const key = `${id}:${runId}`;
-          this._completedReplays.set(key, meta2);
+          this._completedReplays.set(key, meta3);
           this._replayPaths.set(key, path);
-          results.push(meta2);
+          results.push(meta3);
         } catch {
         }
       }
@@ -28276,10 +28295,10 @@ var effectorController = class {
   _clearEscalated(instance, intentId) {
     const intent = instance.simulation.stateManager.snapshot().entities.get(intentId);
     if (!intent || intent.type !== "agency.intent") return;
-    const meta2 = { ...intent.metadata ?? {} };
-    delete meta2["escalated"];
-    delete meta2["escalationExpiresAt"];
-    instance.simulation.stateManager.setEntity({ id: intent.id, type: intent.type, metadata: meta2 });
+    const meta3 = { ...intent.metadata ?? {} };
+    delete meta3["escalated"];
+    delete meta3["escalationExpiresAt"];
+    instance.simulation.stateManager.setEntity({ id: intent.id, type: intent.type, metadata: meta3 });
   }
   /** Voice the escalation as a first-person broadcast ask — once, at raise time. */
   _voiceEscalation(instance, esc) {

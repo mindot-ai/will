@@ -376,3 +376,29 @@ describe('a room is something the mind can know', () => {
     expect( factory ).toContain('never answered me there')
   } )
 } )
+
+// ── one id space, or the loop cannot close ───────────────────
+
+describe('the two send paths name their target differently, and it must not matter', () => {
+  const read = ( p: string ): string => readFileSync( join( process.cwd(), 'src', p ), 'utf8')
+
+  it('the master resolves through THE resolver, not a private scan', () => {
+    // `resolveKnownEntity` matched an exact keid or an exact name and consulted no
+    // alias table. Once dossiers were keyed by an anchor, naming someone by the
+    // address they were met at matched nothing and the intention evaporated —
+    // the exact failure that function's own logging exists to make visible.
+    expect( read('cognition/faculties/executive.engine/commands.ts') )
+      .toMatch( /return resolveKeid\( state\.entities as never, target \)/ )
+  } )
+
+  it('an answer closes a turn whichever path sent it', () => {
+    // A REPLY is addressed to the transport id the percept arrived with; a
+    // PROACTIVE message to the anchor the executive resolved. Same someone, two
+    // id spaces — matched raw, an answer to one could never close the other, and
+    // every proactive message would age out as ignored while the person was
+    // actively replying.
+    const aim = read('cognition/agency/conversation.aim.ts')
+    expect( aim ).toMatch( /targetEntityId:\s+canonicalOf\( aliases, target \)/ )
+    expect( aim ).toMatch( /const source = canonicalOf\( aliases, raw \)/ )
+  } )
+} )

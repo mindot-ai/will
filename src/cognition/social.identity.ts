@@ -116,7 +116,15 @@ export interface Handle {
 
 interface EntityLike {
   type:      string
-  metadata?: Record<string, unknown>
+  /** A frozen state entity may hand metadata over as either shape. */
+  metadata?: ReadonlyMap<string, unknown> | Record<string, unknown>
+}
+
+/** Normalize whichever shape metadata arrived in. */
+function meta( e: EntityLike ): Record<string, unknown> {
+  const m = e.metadata
+  if( !m ) return {}
+  return m instanceof Map ? Object.fromEntries( m ) : m as Record<string, unknown>
 }
 
 function str( v: unknown ): string | undefined {
@@ -134,8 +142,9 @@ export function readAliases( entities: ReadonlyMap<string, EntityLike> ): Map<st
   const out = new Map<string, string>()
   for( const [ , e ] of entities ){
     if( e.type !== ALIAS_TYPE ) continue
-    const a = str( e.metadata?.['aliasKeid'] )
-    const c = str( e.metadata?.['canonicalKeid'] )
+    const m = meta( e )
+    const a = str( m['aliasKeid'] )
+    const c = str( m['canonicalKeid'] )
     if( a && c ) out.set( a, c )
   }
   return out
@@ -179,15 +188,16 @@ export function resolveKeid(
   // An anchor or an address named directly.
   const direct = canonicalOf( aliases, ref.trim() )
   for( const [ , e ] of entities )
-    if( e.type === DOSSIER_TYPE && str( e.metadata?.['keid'] ) === direct ) return direct
+    if( e.type === DOSSIER_TYPE && str( meta( e )['keid'] ) === direct ) return direct
 
   // Otherwise a keid or a name, case-insensitively, in stable entity order.
   for( const [ , e ] of entities ){
     if( e.type !== DOSSIER_TYPE ) continue
-    const keid = str( e.metadata?.['keid'] )
+    const m    = meta( e )
+    const keid = str( m['keid'] )
     if( !keid ) continue
     if( keid.toLowerCase() === needle ) return canonicalOf( aliases, keid )
-    if( str( e.metadata?.['name'] )?.toLowerCase() === needle ) return canonicalOf( aliases, keid )
+    if( str( m['name'] )?.toLowerCase() === needle ) return canonicalOf( aliases, keid )
   }
 
   // A known alias whose dossier was absorbed — still a real reference to someone.
@@ -200,8 +210,8 @@ export function resolveKeid(
 /** The name the mind has learned for this referent, or undefined — never a placeholder. */
 export function nameOf( entities: ReadonlyMap<string, EntityLike>, referentId: string ): string | undefined {
   for( const [ , e ] of entities ){
-    if( e.type !== DOSSIER_TYPE || str( e.metadata?.['keid'] ) !== referentId ) continue
-    return str( e.metadata?.['name'] )?.trim() || undefined
+    if( e.type !== DOSSIER_TYPE || str( meta( e )['keid'] ) !== referentId ) continue
+    return str( meta( e )['name'] )?.trim() || undefined
   }
   return undefined
 }
@@ -209,8 +219,8 @@ export function nameOf( entities: ReadonlyMap<string, EntityLike>, referentId: s
 /** Every route the mind holds for this referent, most recently answered first. */
 export function handlesOf( entities: ReadonlyMap<string, EntityLike>, referentId: string ): Handle[] {
   for( const [ , e ] of entities ){
-    if( e.type !== DOSSIER_TYPE || str( e.metadata?.['keid'] ) !== referentId ) continue
-    const raw = e.metadata?.['handles']
+    if( e.type !== DOSSIER_TYPE || str( meta( e )['keid'] ) !== referentId ) continue
+    const raw = meta( e )['handles']
     if( !Array.isArray( raw ) ) return []
     return ( raw as Handle[] )
       .filter( h => h && typeof h.keid === 'string' )

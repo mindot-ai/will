@@ -11,6 +11,7 @@ import type { GenerativeModel } from '#cognition/generative.model'
 import type { SemanticIntegrator } from '#faculties/semantic.engine/integrator'
 import { INNATE_SCHEMA_BY_ID } from '#agency/schemas/innate'
 import { logger } from '#core/logger'
+import { resolveKeid } from '#cognition/social.identity'
 
 /** Maps the LLM's evidence enum to a numeric supportingEpisodes value for the belief store. */
 export const EVIDENCE_TO_COUNT: Record<string, number> = {
@@ -420,16 +421,13 @@ const ADDRESS_ARG_KEYS = new Set([ 'to', 'recipient', 'target', 'targetEntityId'
 
 /** Resolve an executive action target (a display name OR a keid) to a known-entity keid. */
 function resolveKnownEntity( target: string, state: ReadonlySimulationState ): string | undefined {
-  const t = target.trim().toLowerCase()
-  for( const e of state.entities.values() ){
-    if( e.type !== 'known-entity') continue
-    const m    = e.metadata as Record<string, unknown> | undefined
-    const keid = typeof m?.['keid'] === 'string' ? m['keid'] as string : undefined
-    const name = typeof m?.['name'] === 'string' ? m['name'] as string : undefined
-    if( keid && keid.toLowerCase() === t ) return keid
-    if( name && name.toLowerCase() === t ) return keid
-  }
-  return undefined
+  // THE resolver, shared with everything else that has to turn a reference into a
+  // referent. This was a private scan matching an exact keid or an exact name and
+  // consulting no alias table — so once dossiers were keyed by an anchor, naming
+  // someone by the address they were met at (`discord:1019…`) matched nothing and
+  // the whole intention evaporated silently, which is the failure this function's
+  // own logging exists to make visible.
+  return resolveKeid( state.entities as never, target )
 }
 
 /**

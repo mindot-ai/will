@@ -27,6 +27,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { Tick } from '#core/types'
+import { readAliases, canonicalOf } from '#cognition/social.identity'
 
 export const SENT_TYPE     = 'conversation.sent'
 export const RECEIVED_TYPE = 'conversation.received'
@@ -128,6 +129,13 @@ function num( v: unknown ): number | undefined {
  * `spokenAtByEntity`, deliberately.
  */
 export function readSpokenTurns( entities: ReadonlyMap<string, EntityLike> ): SpokenTurn[] {
+  // Through the alias table, because the two writers name their target in
+  // different id spaces: a REPLY is addressed to the transport id the percept
+  // arrived with (`discord:1019…`), while a PROACTIVE message is addressed to the
+  // anchor the executive resolved (`ke:…`). Both are the same someone. Matched
+  // raw, an answer to one could never close the other — the same two-halves-in-
+  // two-id-spaces failure that made `answered` impossible the first time.
+  const aliases = readAliases( entities )
   const out: SpokenTurn[] = []
   for( const [ id, e ] of entities ){
     if( e.type !== SENT_TYPE ) continue
@@ -136,7 +144,7 @@ export function readSpokenTurns( entities: ReadonlyMap<string, EntityLike> ): Sp
     if( !target ) continue
     out.push({
       entityId:         id,
-      targetEntityId:   target,
+      targetEntityId:   canonicalOf( aliases, target ),
       targetEntityName: str( m['targetEntityName'] ),
       preview:          str( m['preview'] ) ?? '',
       tick:             tickOf( e, m ),
@@ -161,12 +169,14 @@ export function readSpokenTurns( entities: ReadonlyMap<string, EntityLike> ): Sp
  * teach the mind it is being ignored by someone who is talking to it.
  */
 export function lastHeardByEntity( entities: ReadonlyMap<string, EntityLike> ): Map<string, Heard> {
+  const aliases = readAliases( entities )
   const out = new Map<string, Heard>()
   for( const [ , e ] of entities ){
     if( e.type !== RECEIVED_TYPE ) continue
     const m      = meta( e )
-    const source = str( m['sourceKeid'] )
-    if( !source ) continue
+    const raw = str( m['sourceKeid'] )
+    if( !raw ) continue
+    const source = canonicalOf( aliases, raw )
     const at = tickOf( e, m )
     if( at > ( out.get( source )?.tick ?? -Infinity ) )
       out.set( source, { tick: at, preview: str( m['preview'] ) ?? '' } )

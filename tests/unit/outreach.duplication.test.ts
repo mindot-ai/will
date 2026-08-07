@@ -166,15 +166,59 @@ describe('the reply contract gives the mind a way to say nothing', () => {
     expect( format.toLowerCase() ).not.toContain('master')
   } )
 
-  it('says omitting or emptying the block sends nothing', () => {
-    expect( format ).toMatch( /omit the \[REPLY_TEXT\] block/i )
+  it('gives the decision its own block instead of only forbidding a behaviour', () => {
+    // The warning below was already here and was not enough. An outreach facet read
+    // that it had three unanswered messages outstanding, correctly decided there was
+    // nothing new to say, and wrote THAT into [REPLY_TEXT] — because a mind that
+    // decides not to speak still has something to say about the decision, and
+    // [REPLY_TEXT] was the only block it had. "— nothing new to say to FKEM. Three
+    // messages unanswered is enough." was delivered to FKEM, about FKEM.
+    //
+    // So the pressure gets somewhere to go. A rule with no mechanism is a wish.
+    expect( format ).toMatch( /\[NO_MESSAGE\]/ )
     expect( format ).toMatch( /Silence is a real choice/i )
+    expect( format ).toMatch( /recorded and NEVER sent/i )
   } )
 
-  it('warns that narrating the silence INSIDE the block delivers that sentence', () => {
+  it('warns that narrating the silence INSIDE the reply block delivers that sentence', () => {
     // This is the part that actually failed: the mind knew it should not speak and
     // said so in the one place that is transmitted.
-    expect( format ).toMatch( /anything I put between\s+those markers IS SENT/i )
+    expect( format ).toMatch( /Anything between the \[REPLY_TEXT\] markers IS SENT/i )
+  } )
+
+  it('resolves the contradiction if the mind writes both blocks', () => {
+    expect( format ).toMatch( /the silence wins/i )
+  } )
+} )
+
+// ── 2b. and the code honours it, on both paths ────────────────
+
+describe('a declared silence is enforced, not merely requested', () => {
+  const audition = readFileSync( join( process.cwd(), 'src/cognition/senses/audition.engine/engine.ts'), 'utf8')
+
+  it('suppresses the words on the outreach path', () => {
+    expect( audition ).toMatch( /chose not to reach out to/ )
+  } )
+
+  it('suppresses the words on the reply path', () => {
+    expect( audition ).toMatch( /chose silence toward/ )
+  } )
+
+  it('keeps what the mind LEARNED when it chooses not to answer', () => {
+    // Goals, beliefs and entity updates are things it worked out from what it
+    // heard; they are true whether or not it answers. Dropping them with the reply
+    // would make silence cost the mind its learning — a reason not to choose it.
+    const idx = audition.indexOf('chose silence toward')
+    expect( audition.slice( idx - 700, idx ) ).toMatch( /suppresses the words and NOTHING else/i )
+  } )
+
+  it('reads the MARKER, not the block content, as the decision', () => {
+    // `extractTextBlock` returns null for an absent tag AND for a present-but-empty
+    // one. The first cut tested it against `undefined`, which is true in every case
+    // — every reply on every path was suppressed. The integration suite caught it
+    // before it ever ran; live it would have shown up as a mind that went mute.
+    const parser = readFileSync( join( process.cwd(), 'src/cognition/faculties/executive.engine/parser.ts'), 'utf8')
+    expect( parser ).toMatch( /responseText\.includes\( NO_MESSAGE_OPEN \)/ )
   } )
 } )
 

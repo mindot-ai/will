@@ -2637,6 +2637,8 @@ async function withGate(fn, label, gate = llmGate) {
 var REPLY_TEXT_TAG = "REPLY_TEXT";
 var REPLY_TEXT_OPEN = `[${REPLY_TEXT_TAG}]`;
 var REPLY_TEXT_CLOSE = `[/${REPLY_TEXT_TAG}]`;
+var NO_MESSAGE_TAG = "NO_MESSAGE";
+var NO_MESSAGE_OPEN = `[${NO_MESSAGE_TAG}]`;
 function wrapReplyText(body) {
   return [REPLY_TEXT_OPEN, body, REPLY_TEXT_CLOSE].join("\n");
 }
@@ -13858,6 +13860,8 @@ function parseResponse(responseText, state, recentActionTypes) {
   const full = parseTaggedBlocks({ actions, reasoning: fullText, confidence });
   const replyText = extractTextBlock(responseText, REPLY_TEXT_TAG);
   if (replyText) full.replyText = replyText;
+  if (responseText.includes(NO_MESSAGE_OPEN))
+    full.noMessage = extractTextBlock(responseText, NO_MESSAGE_TAG) ?? "(no reason given)";
   return full;
 }
 function parseIdeation(responseText) {
@@ -21057,11 +21061,16 @@ Separate multiple messages with a blank line for natural conversational pauses (
 
 ## Saying nothing
 Silence is a real choice and it is available to me: if I have nothing to say right now \u2014 I am
-waiting on them, or speaking again would only repeat myself \u2014 I **omit the [REPLY_TEXT] block
-entirely**, or leave it empty. Nothing is sent and nothing is lost; my reasoning above is still
-recorded. What I must never do is narrate the silence inside the block: anything I put between
-those markers IS SENT, so a line like "[no message this cycle \u2014 waiting for their reply]" does
-not describe my silence to myself, it delivers that sentence to them.
+waiting on them, or speaking again would only repeat myself \u2014 I write a [NO_MESSAGE] block
+instead of a [REPLY_TEXT] one, and I put my reason inside it:
+
+[NO_MESSAGE]
+Nothing new to add \u2014 I am waiting on their answer to what I already asked.
+[/NO_MESSAGE]
+
+That is recorded and NEVER sent. Anything between the [REPLY_TEXT] markers IS SENT, so a line
+like "[no message this cycle \u2014 waiting for their reply]" does not describe my silence to
+myself, it delivers that sentence to them. If I write both blocks, the silence wins.
 
 ## When to use GOALS_NEW (almost always)
 If the speaker requests, mentions, or implies something I should follow through on \u2014 embed [GOALS_NEW] in my reasoning.
@@ -21526,7 +21535,10 @@ var AuditionEngine = class extends BaseSenseEngine {
       // paragraphs (double-newline separated) become separate reply bubbles.
       extractDecision: (raw) => {
         const output = raw;
-        const rawReply = output.replyText?.trim() ?? "";
+        const silent = output.noMessage !== void 0;
+        if (silent)
+          logger.info(`[audition-engine] chose silence toward ${speakerName ?? percept.speakerEntityId}: ${output.noMessage.slice(0, 120)}`);
+        const rawReply = silent ? "" : output.replyText?.trim() ?? "";
         const bubbles = rawReply.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
         const outwardIntents = partitionOutwardIntents(
           output.actions,
@@ -21600,6 +21612,10 @@ var AuditionEngine = class extends BaseSenseEngine {
       outputFormat: CONVERSATION_OUTPUT_FORMAT,
       extractDecision: (raw) => {
         const output = raw;
+        if (output.noMessage !== void 0) {
+          logger.info(`[audition-engine] chose not to reach out to ${entityName}: ${output.noMessage.slice(0, 120)}`);
+          return { reply: "", replyBubbles: [], targetEntityId: entityId, requiresMasterAttention: false };
+        }
         const rawReply = output.replyText?.trim() ?? "";
         const bubbles = rawReply.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
         return { reply: bubbles.join("\n"), replyBubbles: bubbles, targetEntityId: entityId, requiresMasterAttention: false };

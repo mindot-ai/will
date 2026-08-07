@@ -206,11 +206,16 @@ Separate multiple messages with a blank line for natural conversational pauses (
 
 ## Saying nothing
 Silence is a real choice and it is available to me: if I have nothing to say right now — I am
-waiting on them, or speaking again would only repeat myself — I **omit the [REPLY_TEXT] block
-entirely**, or leave it empty. Nothing is sent and nothing is lost; my reasoning above is still
-recorded. What I must never do is narrate the silence inside the block: anything I put between
-those markers IS SENT, so a line like "[no message this cycle — waiting for their reply]" does
-not describe my silence to myself, it delivers that sentence to them.
+waiting on them, or speaking again would only repeat myself — I write a [NO_MESSAGE] block
+instead of a [REPLY_TEXT] one, and I put my reason inside it:
+
+[NO_MESSAGE]
+Nothing new to add — I am waiting on their answer to what I already asked.
+[/NO_MESSAGE]
+
+That is recorded and NEVER sent. Anything between the [REPLY_TEXT] markers IS SENT, so a line
+like "[no message this cycle — waiting for their reply]" does not describe my silence to
+myself, it delivers that sentence to them. If I write both blocks, the silence wins.
 
 ## When to use GOALS_NEW (almost always)
 If the speaker requests, mentions, or implies something I should follow through on — embed [GOALS_NEW] in my reasoning.
@@ -797,7 +802,15 @@ export class AuditionEngine extends BaseSenseEngine {
       // paragraphs (double-newline separated) become separate reply bubbles.
       extractDecision: ( raw: unknown ): ConversationDecision => {
         const output = raw as ExecutiveOutputFull
-        const rawReply = output.replyText?.trim() ?? ''
+        // A declared silence suppresses the words and NOTHING else — the goals,
+        // beliefs and entity updates below are things the mind worked out from
+        // what it heard, and they are true whether or not it answers. Discarding
+        // them with the reply would make choosing silence cost the mind its
+        // learning, which is a reason not to choose it.
+        const silent   = output.noMessage !== undefined
+        if( silent )
+          logger.info(`[audition-engine] chose silence toward ${ speakerName ?? percept.speakerEntityId }: ${ output.noMessage!.slice( 0, 120 ) }`)
+        const rawReply = silent ? '' : ( output.replyText?.trim() ?? '')
         const bubbles  = rawReply.split( /\n{2,}/ )
                                   .map( b => b.trim() )
                                   .filter( Boolean )
@@ -915,7 +928,14 @@ export class AuditionEngine extends BaseSenseEngine {
         'I have no record of.',
       outputFormat: CONVERSATION_OUTPUT_FORMAT,
       extractDecision: ( raw: unknown ): ConversationDecision => {
-        const output   = raw as ExecutiveOutputFull
+        const output = raw as ExecutiveOutputFull
+        // A declared silence beats anything else in the response. Unprompted
+        // speech is the one case where saying nothing must be cheaper than
+        // saying something — nobody is waiting on this.
+        if( output.noMessage !== undefined ){
+          logger.info(`[audition-engine] chose not to reach out to ${ entityName }: ${ output.noMessage.slice( 0, 120 ) }`)
+          return { reply: '', replyBubbles: [], targetEntityId: entityId, requiresMasterAttention: false }
+        }
         const rawReply = output.replyText?.trim() ?? ''
         const bubbles  = rawReply.split( /\n{2,}/ ).map( b => b.trim() ).filter( Boolean )
         return { reply: bubbles.join('\n'), replyBubbles: bubbles, targetEntityId: entityId, requiresMasterAttention: false }

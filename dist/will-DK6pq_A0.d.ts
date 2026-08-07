@@ -4607,6 +4607,11 @@ interface ExecutiveOutputFull {
      */
     replyText?: string;
     /**
+     * Set when the facet declared it is NOT speaking this cycle, carrying why.
+     * Present ⇒ nothing is sent, whatever else the response contains.
+     */
+    noMessage?: string;
+    /**
      * @deprecated Legacy JSON reply format — no longer emitted by conversation facets.
      * Kept for backward compatibility with any tests/tooling that inspect parsed output.
      */

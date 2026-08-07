@@ -34,6 +34,25 @@ export const REPLY_TEXT_TAG = 'REPLY_TEXT'
 export const REPLY_TEXT_OPEN  = `[${REPLY_TEXT_TAG}]`
 export const REPLY_TEXT_CLOSE = `[/${REPLY_TEXT_TAG}]`
 
+/**
+ * The block a facet uses to say it has decided NOT to speak, and why.
+ *
+ * "Omit [REPLY_TEXT] to stay silent" was stated in the prompt and nowhere else —
+ * a rule with no mechanism behind it. Live, an outreach facet read that it had
+ * three unanswered messages outstanding, correctly concluded there was nothing new
+ * to say, and — having no other block to put that sentence in — wrote it into
+ * REPLY_TEXT. "— nothing new to say to FKEM. Three messages unanswered is enough."
+ * was delivered to FKEM, in the third person, about him.
+ *
+ * The prompt already warned against exactly that. Warning was not enough, because
+ * the pressure is structural: a mind that decides not to speak still has something
+ * to say about the decision, and REPLY_TEXT was the only place to say it. This is
+ * the place. Content here is recorded and never sent.
+ */
+export const NO_MESSAGE_TAG   = 'NO_MESSAGE'
+export const NO_MESSAGE_OPEN  = `[${NO_MESSAGE_TAG}]`
+export const NO_MESSAGE_CLOSE = `[/${NO_MESSAGE_TAG}]`
+
 /** Wrap a reply body in the block markers (the mock's emission shape). */
 export function wrapReplyText( body: string ): string {
   return [ REPLY_TEXT_OPEN, body, REPLY_TEXT_CLOSE ].join('\n')

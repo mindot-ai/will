@@ -19169,6 +19169,38 @@ var ReputationTracker = class {
   }
 };
 
+// src/cognition/social.identity.ts
+var REFERENT_PREFIX = "ke:";
+function isReferentId(id) {
+  return id.startsWith(REFERENT_PREFIX);
+}
+function mintReferentId(seedKeid) {
+  return `${REFERENT_PREFIX}${fnv1a(seedKeid).toString(36)}`;
+}
+function canonicalOf(aliases, keid) {
+  const seen = /* @__PURE__ */ new Set();
+  let id = keid;
+  while (true) {
+    const next = aliases.get(id);
+    if (!next || next === id || seen.has(next)) return id;
+    seen.add(id);
+    id = next;
+  }
+}
+function withHandle(handles, next) {
+  const out = handles.filter((h) => h.keid !== next.keid);
+  const old = handles.find((h) => h.keid === next.keid);
+  out.push(old ? {
+    ...old,
+    ...next,
+    // Never let a fresh sighting erase evidence the old record already held.
+    lastUsedTick: next.lastUsedTick ?? old.lastUsedTick,
+    lastAnsweredTick: next.lastAnsweredTick ?? old.lastAnsweredTick,
+    tags: [.../* @__PURE__ */ new Set([...old.tags ?? [], ...next.tags ?? []])]
+  } : next);
+  return out.sort((a, b) => a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0);
+}
+
 // src/cognition/faculties/known.entity.tracker.ts
 var SENTIENT_DOMAINS = /* @__PURE__ */ new Set(["audition"]);
 var CURIOUS_FAMILIARITY = 0.5;
@@ -19196,6 +19228,13 @@ var KnownEntityTracker = class {
   _pendingConscious = [];
   // Buffered from action.outcome — the reliability track-record signal (Phase 4).
   _pendingOutcomes = [];
+  /**
+   * Aliases minted this tick, awaiting persistence. `_getOrCreate` runs deep inside
+   * the drain loops with no access to the command list, and an alias that lives
+   * only in memory is one the mind forgets on restart — every transport address
+   * would mint a SECOND anchor next boot and the person would fork in two.
+   */
+  _mintedAliases = [];
   _bus = null;
   _model = new GenerativeModel();
   constructor(config = {}) {
@@ -19246,7 +19285,9 @@ var KnownEntityTracker = class {
     if (!keid || keid === "agent-self") return;
     const raw = p?.raw;
     const name = typeof raw?.speakerName === "string" ? raw.speakerName : void 0;
-    this._pendingEncounters.push({ keid, domain: p.domain, name });
+    const thread = typeof raw?.threadId === "string" ? raw.threadId : void 0;
+    const direct = typeof raw?.direct === "boolean" ? raw.direct : void 0;
+    this._pendingEncounters.push({ keid, domain: p.domain, name, thread, direct });
   }
   snapshot() {
     return { trackedEntities: this._dossiers.size };
@@ -19267,6 +19308,12 @@ var KnownEntityTracker = class {
       d.encounterCount += 1;
       d.familiarity = Math.min(1, d.familiarity + this._growthRate * (1 - d.familiarity));
       d.lastSeenTick = tick;
+      if (enc.thread)
+        d.handles = withHandle(d.handles, {
+          keid: enc.thread,
+          kind: enc.direct === true ? "dm" : enc.direct === false ? "room" : "unknown",
+          lastSeenTick: tick
+        });
       if (enc.name && !d.name) d.name = enc.name;
       d.resolutionConfidence = this._resolution(d);
       touched = true;
@@ -19280,7 +19327,7 @@ var KnownEntityTracker = class {
       touched = true;
     }
     for (const o of this._pendingOutcomes.splice(0)) {
-      const d = this._dossiers.get(o.keid);
+      const d = this._dossiers.get(canonicalOf(this._aliases, o.keid));
       if (!d) continue;
       d.reliability = Math.max(0, Math.min(1, d.reliability + this._reliabilityRate * (o.signal - d.reliability)));
       touched = true;
@@ -19292,6 +19339,12 @@ var KnownEntityTracker = class {
         this._dossiers.delete(d.keid);
         commands.delete.push(`ke-${d.keid}`);
       }
+    for (const { alias, canonical } of this._mintedAliases.splice(0))
+      commands.set.push({
+        id: `kea-${alias}`,
+        type: "known-entity-alias",
+        metadata: { aliasKeid: alias, canonicalKeid: canonical }
+      });
     for (const d of this._dossiers.values()) {
       if (d.encounterCount === 0 && !d.name) continue;
       commands.set.push({
@@ -19306,7 +19359,8 @@ var KnownEntityTracker = class {
           reliability: d.reliability,
           encounterCount: d.encounterCount,
           lastSeenTick: d.lastSeenTick,
-          resolutionConfidence: d.resolutionConfidence
+          resolutionConfidence: d.resolutionConfidence,
+          handles: d.handles
         }
       });
     }
@@ -19350,8 +19404,18 @@ var KnownEntityTracker = class {
   }
   // ── Public API ───────────────────────────────────────────
   /** The dossier for a referent, if the Will has one. */
+  /**
+   * The dossier for anything that names this referent — its anchor, or any address
+   * it has been met at.
+   *
+   * Alias-aware because a caller has no business knowing the anchor. This read
+   * `_dossiers.get(keid)` raw, so the moment addresses became aliases of a minted
+   * anchor, every caller holding a transport id got `undefined` — the mind would
+   * have looked up someone it knows perfectly well and found a stranger. The
+   * existing Phase-4 tests caught it, which is exactly what they are for.
+   */
   getDossier(keid) {
-    return this._dossiers.get(keid);
+    return this._dossiers.get(canonicalOf(this._aliases, keid));
   }
   // ── Internal ─────────────────────────────────────────────
   /** Resolution confidence: a learned name plus repeated encounters identify a referent. */
@@ -19385,6 +19449,7 @@ var KnownEntityTracker = class {
         canon.lastSeenTick = Math.max(canon.lastSeenTick, alias.lastSeenTick);
         canon.valence = (canon.valence + alias.valence) / 2;
         canon.reliability = (canon.reliability + alias.reliability) / 2;
+        for (const h of alias.handles) canon.handles = withHandle(canon.handles, h);
         this._dossiers.delete(alias.keid);
         this._aliases.set(alias.keid, canon.keid);
         commands.delete.push(`ke-${alias.keid}`);
@@ -19398,12 +19463,31 @@ var KnownEntityTracker = class {
     }
     return merged2;
   }
+  /**
+   * The dossier for a referent, minting its anchor the first time it is met.
+   *
+   * A transport address arriving here (`discord:1019…`) is not an identity, it is
+   * a way the world happened to name someone. So it becomes an ALIAS of a fresh
+   * `ke:` anchor, and the dossier lives under the anchor. Everything downstream —
+   * reputation, theory-of-mind, attachment, goals, the PMA — keeps working
+   * untouched: it still sees one opaque string per referent, which is simply no
+   * longer a route. The same human met later on another channel resolves to this
+   * same anchor instead of becoming a second person nobody could connect.
+   */
   _getOrCreate(keid, domain, tick) {
-    keid = this._aliases.get(keid) ?? keid;
+    keid = canonicalOf(this._aliases, keid);
     const existing = this._dossiers.get(keid);
     if (existing) return existing;
+    let anchor = keid;
+    if (!isReferentId(keid)) {
+      anchor = mintReferentId(keid);
+      this._aliases.set(keid, anchor);
+      this._mintedAliases.push({ alias: keid, canonical: anchor });
+      const already = this._dossiers.get(anchor);
+      if (already) return already;
+    }
     const d = {
-      keid,
+      keid: anchor,
       kind: SENTIENT_DOMAINS.has(domain) ? "sentient" : "thing",
       familiarity: 0,
       valence: 0,
@@ -19411,15 +19495,33 @@ var KnownEntityTracker = class {
       // unknown until acted on
       encounterCount: 0,
       lastSeenTick: tick,
-      resolutionConfidence: 0
+      resolutionConfidence: 0,
+      handles: []
     };
-    this._dossiers.set(keid, d);
+    this._dossiers.set(anchor, d);
     return d;
   }
   /** Keep the most-familiar dossiers; absence-faded acquaintances fall away (forgetting). */
+  /**
+   * Forget the least-held referents when over capacity.
+   *
+   * Ranked by more than exposure, deliberately. This sorted on `familiarity`
+   * alone, which is MERE EXPOSURE — and now that a referent need not be a person
+   * (a document, a repo, a room), things get far more exposure than people do. A
+   * mind that touched sixty files would have evicted a colleague it speaks to
+   * weekly in favour of a config file it opened a lot, silently, taking that
+   * person's reputation, theory-of-mind model and attachment bond with it.
+   *
+   * So a referent the mind has actually got to know is stickier than one it has
+   * merely seen often: knowing their NAME is the single strongest signal (it is
+   * what distinguishes a someone from a blip), then how resolved the referent is,
+   * then exposure. Nothing here is about being a person — a named, well-resolved
+   * document outranks a glimpsed stranger, which is correct.
+   */
   _prune() {
     if (this._dossiers.size <= this._maxTracked) return;
-    const sorted = [...this._dossiers.values()].sort((a, b) => b.familiarity - a.familiarity);
+    const hold = (d) => (d.name ? 1 : 0) + d.resolutionConfidence + d.familiarity;
+    const sorted = [...this._dossiers.values()].sort((a, b) => hold(b) - hold(a) || (a.keid < b.keid ? -1 : 1));
     for (const d of sorted.slice(this._maxTracked)) this._dossiers.delete(d.keid);
   }
   _restoreFromState(state) {
@@ -19441,6 +19543,7 @@ var KnownEntityTracker = class {
         familiarity: m["familiarity"] ?? 0,
         valence: m["valence"] ?? 0,
         reliability: m["reliability"] ?? 0.5,
+        handles: Array.isArray(m["handles"]) ? m["handles"] : [],
         encounterCount: m["encounterCount"] ?? 0,
         lastSeenTick: m["lastSeenTick"] ?? 0,
         resolutionConfidence: m["resolutionConfidence"] ?? 0

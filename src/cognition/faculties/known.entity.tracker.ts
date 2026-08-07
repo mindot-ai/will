@@ -37,6 +37,9 @@ import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import type { Percept } from '#senses/index'
 import { GenerativeModel } from '#cognition/generative.model'
+import {
+  isReferentId, mintReferentId, canonicalOf, withHandle, type Handle,
+} from '#cognition/social.identity'
 import { readEffectiveParams } from '#cognition/persona.prior'
 
 export interface KnownEntityTrackerConfig {
@@ -71,6 +74,16 @@ export interface KnownEntity {
   lastSeenTick:         Tick
   /** 0–1: how identified/coherent this referent is (a name + repeated encounters raise it). */
   resolutionConfidence: number
+  /**
+   * The ways this referent has been reachable, with the circumstances.
+   *
+   * Distinct from an ALIAS, and the distinction is load-bearing: an alias is
+   * another NAME for the same referent (a transport user id), a handle is a
+   * PLACE it can be reached (a thread, a room). One person has one identity and
+   * several rooms, and conflating them is what made "which room should I say
+   * this in?" unaskable.
+   */
+  handles:              Handle[]
 }
 
 /** Percept domains whose entities are minds. Everything else defaults to a thing. */
@@ -109,11 +122,23 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
   private _restored = false
 
   // Buffered from senses.*.percept events; drained each tick in react().
-  private _pendingEncounters: Array<{ keid: string; domain: string; name?: string }> = []
+  private _pendingEncounters: Array<{
+    keid: string; domain: string; name?: string
+    /** The room this encounter happened in, and whether it was a private one. */
+    thread?: string; direct?: boolean
+  }> = []
   // Buffered from known.entity.learned (the conscious / reasoning write-path, Phase 2.2).
   private _pendingConscious: Array<{ keid: string; name?: string; feeling?: number }> = []
   // Buffered from action.outcome — the reliability track-record signal (Phase 4).
   private _pendingOutcomes: Array<{ keid: string; signal: number }> = []
+
+  /**
+   * Aliases minted this tick, awaiting persistence. `_getOrCreate` runs deep inside
+   * the drain loops with no access to the command list, and an alias that lives
+   * only in memory is one the mind forgets on restart — every transport address
+   * would mint a SECOND anchor next boot and the person would fork in two.
+   */
+  private _mintedAliases: Array<{ alias: string; canonical: string }> = []
 
   private _bus: CognitiveBus | null = null
   private readonly _model = new GenerativeModel()
@@ -170,10 +195,16 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     if( !keid || keid === 'agent-self') return
 
     // A channel-supplied display name rides on the raw input (e.g. TextMessage.speakerName).
-    const raw  = p?.raw as { speakerName?: unknown } | undefined
+    // A channel supplies the display name AND the room, both on the raw input.
+    // `direct` is the one bit the Discord edge computed (`isDM`) and threw away
+    // before the mind could see it — the single fact that decides whether a room
+    // is the right place for a given utterance.
+    const raw  = p?.raw as { speakerName?: unknown; threadId?: unknown; direct?: unknown } | undefined
     const name = typeof raw?.speakerName === 'string' ? raw.speakerName : undefined
+    const thread = typeof raw?.threadId === 'string' ? raw.threadId : undefined
+    const direct = typeof raw?.direct === 'boolean' ? raw.direct : undefined
 
-    this._pendingEncounters.push({ keid, domain: p!.domain, name })
+    this._pendingEncounters.push({ keid, domain: p!.domain, name, thread, direct })
   }
 
   snapshot(): Record<string, unknown> {
@@ -210,6 +241,15 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
       d.encounterCount += 1
       d.familiarity     = Math.min( 1, d.familiarity + this._growthRate * ( 1 - d.familiarity ) )
       d.lastSeenTick    = tick
+      // Where this happened is part of what happened. Merged, not appended:
+      // meeting someone again in a room already known is news about that room,
+      // not a new way to reach them.
+      if( enc.thread )
+        d.handles = withHandle( d.handles, {
+          keid: enc.thread,
+          kind: enc.direct === true ? 'dm' : enc.direct === false ? 'room' : 'unknown',
+          lastSeenTick: tick,
+        } as Handle )
       if( enc.name && !d.name ) d.name = enc.name   // learn a name the channel offers
       d.resolutionConfidence = this._resolution( d )
       touched = true
@@ -230,7 +270,12 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     // performs when acted on (general: a tool, a place, or a person). Only updates an
     // already-known referent (acting on something you've never perceived doesn't conjure it).
     for( const o of this._pendingOutcomes.splice( 0 ) ){
-      const d = this._dossiers.get( o.keid )
+      // Through the alias table: an `action.outcome` names its target the way the
+      // ACTOR did — a transport address, or whatever the host called it — and the
+      // dossier lives under the anchor. Reading `_dossiers` raw here silently
+      // dropped every outcome once addresses became aliases, so a referent could
+      // never earn or lose reliability again.
+      const d = this._dossiers.get( canonicalOf( this._aliases, o.keid ) )
       if( !d ) continue
       d.reliability = Math.max( 0, Math.min( 1, d.reliability + this._reliabilityRate * ( o.signal - d.reliability ) ) )
       touched = true
@@ -255,6 +300,11 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
         commands.delete!.push(`ke-${d.keid}`)
       }
 
+    // Persist anchors minted this tick BEFORE the dossiers that depend on them.
+    for( const { alias, canonical } of this._mintedAliases.splice( 0 ) )
+      commands.set!.push({ id: `kea-${ alias }`, type: 'known-entity-alias',
+        metadata: { aliasKeid: alias, canonicalKeid: canonical } })
+
     // Persist dossiers (the perceptual layer of the known-entity node).
     for( const d of this._dossiers.values() ){
       if( d.encounterCount === 0 && !d.name ) continue   // keep a named-but-unseen someone
@@ -271,6 +321,7 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
           encounterCount:       d.encounterCount,
           lastSeenTick:         d.lastSeenTick,
           resolutionConfidence: d.resolutionConfidence,
+          handles:              d.handles,
         },
       })
     }
@@ -329,7 +380,19 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
   // ── Public API ───────────────────────────────────────────
 
   /** The dossier for a referent, if the Will has one. */
-  getDossier( keid: string ): KnownEntity | undefined { return this._dossiers.get( keid ) }
+  /**
+   * The dossier for anything that names this referent — its anchor, or any address
+   * it has been met at.
+   *
+   * Alias-aware because a caller has no business knowing the anchor. This read
+   * `_dossiers.get(keid)` raw, so the moment addresses became aliases of a minted
+   * anchor, every caller holding a transport id got `undefined` — the mind would
+   * have looked up someone it knows perfectly well and found a stranger. The
+   * existing Phase-4 tests caught it, which is exactly what they are for.
+   */
+  getDossier( keid: string ): KnownEntity | undefined {
+    return this._dossiers.get( canonicalOf( this._aliases, keid ) )
+  }
 
   // ── Internal ─────────────────────────────────────────────
 
@@ -370,6 +433,12 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
         canon.lastSeenTick          = Math.max( canon.lastSeenTick as unknown as number, alias.lastSeenTick as unknown as number ) as unknown as Tick
         canon.valence               = ( canon.valence + alias.valence ) / 2
         canon.reliability           = ( canon.reliability + alias.reliability ) / 2
+        // MOVE the routes, do not drop them. This used to absorb the alias and
+        // delete its dossier, keeping only a redirect — so the mind concluded
+        // "same person" and in the same breath threw away the second way to reach
+        // them. Choosing how to reach someone was impossible by construction,
+        // because after a merge there was only ever one route left.
+        for( const h of alias.handles ) canon.handles = withHandle( canon.handles, h )
 
         this._dossiers.delete( alias.keid )
         this._aliases.set( alias.keid, canon.keid )
@@ -382,13 +451,35 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     return merged
   }
 
+  /**
+   * The dossier for a referent, minting its anchor the first time it is met.
+   *
+   * A transport address arriving here (`discord:1019…`) is not an identity, it is
+   * a way the world happened to name someone. So it becomes an ALIAS of a fresh
+   * `ke:` anchor, and the dossier lives under the anchor. Everything downstream —
+   * reputation, theory-of-mind, attachment, goals, the PMA — keeps working
+   * untouched: it still sees one opaque string per referent, which is simply no
+   * longer a route. The same human met later on another channel resolves to this
+   * same anchor instead of becoming a second person nobody could connect.
+   */
   private _getOrCreate( keid: string, domain: string, tick: Tick ): KnownEntity {
-    keid = this._aliases.get( keid ) ?? keid   // a recognised alias lands on the canonical dossier
+    keid = canonicalOf( this._aliases, keid )   // an alias lands on the canonical dossier
     const existing = this._dossiers.get( keid )
     if( existing ) return existing
 
+    // Mint the anchor for a transport address seen for the first time. Deterministic
+    // from that address, so a replay of a recorded run mints the same id (R2).
+    let anchor = keid
+    if( !isReferentId( keid ) ){
+      anchor = mintReferentId( keid )
+      this._aliases.set( keid, anchor )
+      this._mintedAliases.push({ alias: keid, canonical: anchor })
+      const already = this._dossiers.get( anchor )
+      if( already ) return already
+    }
+
     const d: KnownEntity = {
-      keid,
+      keid:                 anchor,
       kind:                 SENTIENT_DOMAINS.has( domain ) ? 'sentient' : 'thing',
       familiarity:          0,
       valence:              0,
@@ -396,15 +487,35 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
       encounterCount:       0,
       lastSeenTick:         tick,
       resolutionConfidence: 0,
+      handles:              [],
     }
-    this._dossiers.set( keid, d )
+    this._dossiers.set( anchor, d )
     return d
   }
 
   /** Keep the most-familiar dossiers; absence-faded acquaintances fall away (forgetting). */
+  /**
+   * Forget the least-held referents when over capacity.
+   *
+   * Ranked by more than exposure, deliberately. This sorted on `familiarity`
+   * alone, which is MERE EXPOSURE — and now that a referent need not be a person
+   * (a document, a repo, a room), things get far more exposure than people do. A
+   * mind that touched sixty files would have evicted a colleague it speaks to
+   * weekly in favour of a config file it opened a lot, silently, taking that
+   * person's reputation, theory-of-mind model and attachment bond with it.
+   *
+   * So a referent the mind has actually got to know is stickier than one it has
+   * merely seen often: knowing their NAME is the single strongest signal (it is
+   * what distinguishes a someone from a blip), then how resolved the referent is,
+   * then exposure. Nothing here is about being a person — a named, well-resolved
+   * document outranks a glimpsed stranger, which is correct.
+   */
   private _prune(): void {
     if( this._dossiers.size <= this._maxTracked ) return
-    const sorted = [ ...this._dossiers.values() ].sort( ( a, b ) => b.familiarity - a.familiarity )
+    const hold = ( d: KnownEntity ): number =>
+      ( d.name ? 1 : 0 ) + d.resolutionConfidence + d.familiarity
+    const sorted = [ ...this._dossiers.values() ]
+      .sort( ( a, b ) => hold( b ) - hold( a ) || ( a.keid < b.keid ? -1 : 1 ) )
     for( const d of sorted.slice( this._maxTracked ) ) this._dossiers.delete( d.keid )
   }
 
@@ -430,6 +541,7 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
         familiarity:          ( m['familiarity']          as number ) ?? 0,
         valence:              ( m['valence']              as number ) ?? 0,
         reliability:          ( m['reliability']          as number ) ?? 0.5,
+        handles:              Array.isArray( m['handles'] ) ? ( m['handles'] as Handle[] ) : [],
         encounterCount:       ( m['encounterCount']       as number ) ?? 0,
         lastSeenTick:         ( m['lastSeenTick']         as Tick )   ?? ( 0 as unknown as Tick ),
         resolutionConfidence: ( m['resolutionConfidence'] as number ) ?? 0,

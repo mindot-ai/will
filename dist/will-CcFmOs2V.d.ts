@@ -6197,6 +6197,36 @@ declare class ReputationTracker implements SimulationEngine, CognitiveEngine {
 }
 
 /**
+ * A way this referent has been reachable, and what happened there.
+ *
+ * `kind` is the one fact that decides whether a room is the right place for a
+ * given utterance, and it was being computed at the Discord edge (`isDM`) and
+ * discarded before the mind could see it.
+ *
+ * `lastAnsweredTick` is evidence, not configuration — it arrives free from the
+ * `social.responsiveness` signal. It is what lets the mind prefer the DM because
+ * that is where this person actually answers, rather than because a constant in
+ * the code says DMs rank higher.
+ */
+interface Handle {
+    /** The transport address — what a channel bridge can actually deliver to. */
+    keid: string;
+    /**
+     * 'dm' — a private thread. 'room' — somewhere others are listening. Left open
+     * for a non-social referent, where the meaningful distinction is a different one.
+     */
+    kind: 'dm' | 'room' | 'unknown';
+    /** The place this handle lives in, once places are dossiers of their own. */
+    place?: string;
+    /** When the mind last SAID something here. */
+    lastUsedTick?: Tick;
+    /** When someone last answered it here — the only evidence that this route works. */
+    lastAnsweredTick?: Tick;
+    /** Free-form, so a host can mark what its own vocabulary cares about. */
+    tags?: string[];
+}
+
+/**
  * KnownEntityTracker — the cross-modal binder, and owner of the known-entity dossier.
  *
  * This is the faculty `base.sense.engine.ts` anticipates: it subscribes to every
@@ -6250,6 +6280,16 @@ interface KnownEntity {
     lastSeenTick: Tick;
     /** 0–1: how identified/coherent this referent is (a name + repeated encounters raise it). */
     resolutionConfidence: number;
+    /**
+     * The ways this referent has been reachable, with the circumstances.
+     *
+     * Distinct from an ALIAS, and the distinction is load-bearing: an alias is
+     * another NAME for the same referent (a transport user id), a handle is a
+     * PLACE it can be reached (a thread, a room). One person has one identity and
+     * several rooms, and conflating them is what made "which room should I say
+     * this in?" unaskable.
+     */
+    handles: Handle[];
 }
 declare class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     readonly name = "known-entity-tracker";
@@ -6265,6 +6305,13 @@ declare class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     private _pendingEncounters;
     private _pendingConscious;
     private _pendingOutcomes;
+    /**
+     * Aliases minted this tick, awaiting persistence. `_getOrCreate` runs deep inside
+     * the drain loops with no access to the command list, and an alias that lives
+     * only in memory is one the mind forgets on restart — every transport address
+     * would mint a SECOND anchor next boot and the person would fork in two.
+     */
+    private _mintedAliases;
     private _bus;
     private readonly _model;
     constructor(config?: KnownEntityTrackerConfig);
@@ -6281,6 +6328,16 @@ declare class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     snapshot(): Record<string, unknown>;
     react(_delta: Duration, tick: Tick, state: ReadonlySimulationState, _ctx: SimulationContext): Promise<EngineResult>;
     /** The dossier for a referent, if the Will has one. */
+    /**
+     * The dossier for anything that names this referent — its anchor, or any address
+     * it has been met at.
+     *
+     * Alias-aware because a caller has no business knowing the anchor. This read
+     * `_dossiers.get(keid)` raw, so the moment addresses became aliases of a minted
+     * anchor, every caller holding a transport id got `undefined` — the mind would
+     * have looked up someone it knows perfectly well and found a stranger. The
+     * existing Phase-4 tests caught it, which is exactly what they are for.
+     */
     getDossier(keid: string): KnownEntity | undefined;
     /** Resolution confidence: a learned name plus repeated encounters identify a referent. */
     private _resolution;
@@ -6289,8 +6346,35 @@ declare class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
      * true if any merge happened. Pure + deterministic.
      */
     private _recognise;
+    /**
+     * The dossier for a referent, minting its anchor the first time it is met.
+     *
+     * A transport address arriving here (`discord:1019…`) is not an identity, it is
+     * a way the world happened to name someone. So it becomes an ALIAS of a fresh
+     * `ke:` anchor, and the dossier lives under the anchor. Everything downstream —
+     * reputation, theory-of-mind, attachment, goals, the PMA — keeps working
+     * untouched: it still sees one opaque string per referent, which is simply no
+     * longer a route. The same human met later on another channel resolves to this
+     * same anchor instead of becoming a second person nobody could connect.
+     */
     private _getOrCreate;
     /** Keep the most-familiar dossiers; absence-faded acquaintances fall away (forgetting). */
+    /**
+     * Forget the least-held referents when over capacity.
+     *
+     * Ranked by more than exposure, deliberately. This sorted on `familiarity`
+     * alone, which is MERE EXPOSURE — and now that a referent need not be a person
+     * (a document, a repo, a room), things get far more exposure than people do. A
+     * mind that touched sixty files would have evicted a colleague it speaks to
+     * weekly in favour of a config file it opened a lot, silently, taking that
+     * person's reputation, theory-of-mind model and attachment bond with it.
+     *
+     * So a referent the mind has actually got to know is stickier than one it has
+     * merely seen often: knowing their NAME is the single strongest signal (it is
+     * what distinguishes a someone from a blip), then how resolved the referent is,
+     * then exposure. Nothing here is about being a person — a named, well-resolved
+     * document outranks a glimpsed stranger, which is correct.
+     */
     private _prune;
     private _restoreFromState;
 }

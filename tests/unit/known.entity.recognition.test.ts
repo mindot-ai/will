@@ -31,8 +31,14 @@ describe('KnownEntityTracker — recognition (referent merge)', () => {
     entities.set('ke-slack:U7', dossier('slack:U7', 'Mara', 0.6, 4, 95 ) )
     const r = await t.react( 1000 as any, 100 as any, { tick: 100, entities, metrics: new Map() } as any, {} as any )
 
-    expect( t.getDossier('web:42') ).toBeUndefined()                  // fused away
+    // Looking up the fused handle now yields the SOMEONE, not nothing. That is the
+    // point of an alias: a caller has no business knowing which of two handles the
+    // merge happened to pick as canonical. (This asserted `undefined` when a
+    // dossier lookup was raw — so a reference to the absorbed handle found a
+    // stranger, which is how willing a reach-out to a merged person resolved to
+    // nothing and the intention evaporated.)
     const canon = t.getDossier('slack:U7')!
+    expect( t.getDossier('web:42') ).toBe( canon )
     expect( canon ).toBeDefined()                                       // more familiar → canonical
     expect( canon.encounterCount ).toBe( 6 )                            // 4 + 2 combined
     expect( r.commands?.delete ?? [] ).toContain('ke-web:42')
@@ -71,7 +77,9 @@ describe('KnownEntityTracker — recognition (referent merge)', () => {
 
     t.onCognitiveEvent( percept('web:42') )                           // the aliased handle, seen again
     await t.react( 1000 as any, 101 as any, { tick: 101, entities: new Map(), metrics: new Map() } as any, {} as any )
-    expect( t.getDossier('web:42') ).toBeUndefined()                  // never re-forms
+    // Never re-forms as a SEPARATE someone: the aliased handle lands on the
+    // canonical dossier rather than minting a rival one beside it.
+    expect( t.getDossier('web:42') ).toBe( t.getDossier('slack:U7') )
     expect( t.getDossier('slack:U7')!.encounterCount ).toBe( 7 )      // the encounter landed on the canonical
   } )
 } )

@@ -88,6 +88,19 @@ export interface SpokenTurn {
   tick:             Tick
   /** Set once the target has spoken after this turn. */
   answeredAt?:      Tick
+  /**
+   * WHAT they said back.
+   *
+   * Recorded on the turn rather than looked up later, because a
+   * `conversation.received` lives exactly one tick — SocialPerception sweeps it as
+   * a one-shot event — so the text is unavailable by the next render. Without it
+   * the mind is told an answer ARRIVED and never shown it, which is worse than
+   * silence: it invites the mind to act as though it has the answer. Live, that
+   * put a wrong meeting time in front of a third party — she asked "same time,
+   * 3pm?", was told `they answered`, never saw the correction to 2pm, and relayed
+   * 3pm as confirmed.
+   */
+  answeredWith?:    string
   /** Set once the reply window closed on a silence — recorded so it is announced once, not every tick. */
   unansweredAt?:    Tick
   /** An acknowledgement closes a turn rather than opening one; it awaits nothing. */
@@ -128,6 +141,7 @@ export function readSpokenTurns( entities: ReadonlyMap<string, EntityLike> ): Sp
       preview:          str( m['preview'] ) ?? '',
       tick:             tickOf( e, m ),
       answeredAt:       num( m['answeredAt'] )   as Tick | undefined,
+      answeredWith:     str( m['answeredWith'] ),
       unansweredAt:     num( m['unansweredAt'] ) as Tick | undefined,
       isAck:            m['isAck'] === true,
     })
@@ -146,18 +160,22 @@ export function readSpokenTurns( entities: ReadonlyMap<string, EntityLike> ): Sp
  * guess dressed as a fact, and getting it wrong in the strict direction would
  * teach the mind it is being ignored by someone who is talking to it.
  */
-export function lastHeardByEntity( entities: ReadonlyMap<string, EntityLike> ): Map<string, Tick> {
-  const out = new Map<string, Tick>()
+export function lastHeardByEntity( entities: ReadonlyMap<string, EntityLike> ): Map<string, Heard> {
+  const out = new Map<string, Heard>()
   for( const [ , e ] of entities ){
     if( e.type !== RECEIVED_TYPE ) continue
     const m      = meta( e )
     const source = str( m['sourceKeid'] )
     if( !source ) continue
     const at = tickOf( e, m )
-    if( at > ( out.get( source ) ?? -Infinity ) ) out.set( source, at )
+    if( at > ( out.get( source )?.tick ?? -Infinity ) )
+      out.set( source, { tick: at, preview: str( m['preview'] ) ?? '' } )
   }
   return out
 }
+
+/** When someone last spoke to us, AND what they said. */
+export interface Heard { tick: Tick; preview: string }
 
 /** A turn still in the air: said, not acknowledged-only, and not yet answered. */
 export function isOpen( t: SpokenTurn ): boolean {
@@ -165,8 +183,8 @@ export function isOpen( t: SpokenTurn ): boolean {
 }
 
 export interface Resolution {
-  /** Turns the target has now answered — fold `answeredAt` into them. */
-  answered:   Array<{ turn: SpokenTurn; at: Tick }>
+  /** Turns the target has now answered — fold `answeredAt` + what they said into them. */
+  answered:   Array<{ turn: SpokenTurn; at: Tick; with: string }>
   /** Turns whose reply window closed in silence, newly, this tick. */
   unanswered: SpokenTurn[]
 }
@@ -199,8 +217,8 @@ export function resolveReplyExpectations(
     if( t.isAck || t.answeredAt !== undefined ) continue
 
     const heard = lastHeard.get( t.targetEntityId )
-    if( heard !== undefined && heard > t.tick ){
-      answered.push({ turn: t, at: heard })
+    if( heard !== undefined && heard.tick > t.tick ){
+      answered.push({ turn: t, at: heard.tick, with: heard.preview })
       continue
     }
 

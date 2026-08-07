@@ -123,7 +123,7 @@ describe('reading what the mind has said', () => {
     const s = freshState()
     s.entities.set('r', { id: 'r', type: 'conversation.received', createdAt: 0, updatedAt: 0,
       updatedAtTick: 77, metadata: { sourceKeid: 'discord:1' } } as unknown as SimulationEntity )
-    expect( lastHeardByEntity( s.entities ).get('discord:1') ).toBe( 77 )
+    expect( lastHeardByEntity( s.entities ).get('discord:1')?.tick ).toBe( 77 )
   } )
 
   it('an inbound with only a stamped tick still answers an open turn', () => {
@@ -154,8 +154,10 @@ describe('reading what the mind has said', () => {
     received( s, 'r2', 'discord:1', 30 )
     received( s, 'r3', 'discord:2', 5 )
     const heard = lastHeardByEntity( s.entities )
-    expect( heard.get('discord:1') ).toBe( 30 )
-    expect( heard.get('discord:2') ).toBe( 5 )
+    expect( heard.get('discord:1')?.tick ).toBe( 30 )
+    expect( heard.get('discord:2')?.tick ).toBe( 5 )
+    // Their words come with it — the fact of an answer is not the answer.
+    expect( heard.get('discord:1')?.preview ).toBe('sure, one sec')
   } )
 } )
 
@@ -384,6 +386,41 @@ describe('the mind can see that it already said this', () => {
     expect( rendered ).toContain('no answer yet')
     expect( rendered ).toContain('they answered')
     expect( rendered ).toContain('Quick question about Q3')
+  } )
+
+  it('shows WHAT they said back, not merely that they spoke', () => {
+    // The most expensive failure of the run. She asked FKEM "Monday works. I'll
+    // let Fabrice know — same time, 3pm UTC?", the turn was correctly marked
+    // `they answered`, and his correction to 2pm was never rendered anywhere. She
+    // had the FLAG without the CONTENT, fell back on her own last-known value, and
+    // twice told Fabrice "FKEM confirmed Monday 3pm UTC" — then, when he accepted,
+    // "Good — Monday 3pm UTC it is."
+    //
+    // A bare "they answered" is worse than silence: it invites the mind to act as
+    // though it has the answer. So the words travel with the flag, recorded on the
+    // turn at resolution time because `conversation.received` lives one tick.
+    const s = freshState()
+    sent( s, 's1', 'discord:1', 100 )
+    received( s, 'r1', 'discord:1', 120 )
+    s.entities.get('r1')!.metadata!['preview'] = 'actually can we make it 2pm'
+
+    const { answered } = resolveReplyExpectations( s.entities, 200, 240 )
+    expect( answered[0]!.with ).toBe('actually can we make it 2pm')
+  } )
+
+  it('says so plainly when it has the flag but not the words', () => {
+    // Restored turns from before this existed carry `answeredAt` and no text. The
+    // mind must be told the difference rather than left to assume.
+    const factory = code('cognition/faculties/executive.engine/prompt.factory.ts')
+    expect( factory ).toContain('they answered: "')
+    expect( factory ).toContain('I do not have their words here')
+  } )
+
+  it('names a person the way the roster names them, not the way an old record did', () => {
+    // One person rendered as both `**FKEM**` and `**discord:15255…**` in a single
+    // list, because a name is learned over time and records written before it was
+    // known kept the raw id. From the inside that reads as two people.
+    expect( code('cognition/faculties/executive.engine/context.ts') ).toContain('nameOf( t.targetEntityId )')
   } )
 
   it('admits it cannot tell WHY nobody answered', () => {

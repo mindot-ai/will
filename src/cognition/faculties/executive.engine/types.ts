@@ -312,6 +312,9 @@ export interface ExecutiveContext {
     age:     number
     /** Unset while still in the air; the mind is told which. */
     answered: boolean
+    /** What they said back, when they did. The fact of an answer without its
+     *  content is worse than silence — it invites acting as though it is known. */
+    answeredWith?: string
   }>
   /** Behavioral disposition loaded from PMA at session start — stable per session. */
   behavioralDisposition?: {

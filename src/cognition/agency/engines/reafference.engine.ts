@@ -373,8 +373,9 @@ export class ReafferenceEngine implements CognitiveEngine {
       })
     }
 
-    for( const { turn, at } of answered ){
-      merge( turn.entityId, { answeredAt: at } )
+    for( const { turn, at, with: said } of answered ){
+      // Their words, not merely the fact of them — see SpokenTurn.answeredWith.
+      merge( turn.entityId, { answeredAt: at, ...( said ? { answeredWith: said } : {} ) } )
       this._emitResponsiveness( turn.targetEntityId, true, at - turn.tick, tick )
     }
 

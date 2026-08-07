@@ -283,6 +283,18 @@ export async function buildExecutiveContext(
   recentActions.sort( ( a, b ) => b.tick - a.tick )
   const recentActionsCapped = recentActions.slice( 0, 5 )
 
+  // Current best name for a person, from the known-entity roster.
+  const nameOf = ( keid: string ): string | undefined => {
+    for( const e of state.entities.values() ){
+      if( e.type !== 'known-entity') continue
+      const m = e.metadata ?? {}
+      if( m['keid'] !== keid ) continue
+      const n = m['name']
+      return typeof n === 'string' && n.trim() ? n : undefined
+    }
+    return undefined
+  }
+
   // What the mind has said to people lately, and who answered. Newest first,
   // capped — this is a reminder, not a transcript; the conversation itself lives
   // in memory and in "## In Conversation Now".
@@ -291,10 +303,15 @@ export async function buildExecutiveContext(
     .reverse()
     .slice( 0, SPOKEN_TURNS_SHOWN )
     .map( t => ({
-      target:   t.targetEntityName ?? t.targetEntityId,
+      // Roster first, the record's stored name second. A name is learned over
+      // time, so records written before the mind knew it keep the raw id — and
+      // the same person rendered as both `FKEM` and `discord:15255…` in one list,
+      // which reads as two people. The roster holds the current best name.
+      target:   nameOf( t.targetEntityId ) ?? t.targetEntityName ?? t.targetEntityId,
       preview:  t.preview,
       age:      Math.max( 0, state.tick - t.tick ),
       answered: t.answeredAt !== undefined,
+      ...( t.answeredWith ? { answeredWith: t.answeredWith } : {} ),
     }) )
 
   // Active/known plans — read persisted `plan` entities so the executive has

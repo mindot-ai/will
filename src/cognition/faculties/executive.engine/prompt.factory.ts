@@ -1059,10 +1059,22 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
     // throw the whole prompt away.
     if( !spokenTurns?.length ) return ''
 
+    const clip = ( s: string, n: number ): string =>
+      s.length > n ? `${ s.slice( 0, n ) }…` : s
+
     const lines = spokenTurns.map( t => {
       const words = t.preview.trim()
-      const said  = words ? ` — "${ words.slice( 0, 80 ) }${ words.length > 80 ? '…' : '' }"` : ''
-      return `- **${ t.target }** · ${ t.age } ticks ago${ said } — ${ t.answered ? 'they answered' : 'no answer yet' }`
+      const said  = words ? ` — "${ clip( words, 80 ) }"` : ''
+      // Their words, not merely that they spoke. "they answered" on its own reads
+      // as "I have the answer" — a live Will asked "same time, 3pm?", saw that
+      // flag, never saw the correction to 2pm, and relayed 3pm to a third party as
+      // confirmed. A reply I cannot see is not one I can act on.
+      const back  = t.answered
+        ? ( t.answeredWith?.trim()
+            ? ` — they answered: "${ clip( t.answeredWith.trim(), 100 ) }"`
+            : ' — they answered (I do not have their words here)' )
+        : ' — no answer yet'
+      return `- **${ t.target }** · ${ t.age } ticks ago${ said }${ back }`
     } )
 
     const open = spokenTurns.filter( t => !t.answered ).length

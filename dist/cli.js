@@ -12720,6 +12720,7 @@ function readSpokenTurns(entities) {
       preview: str(m["preview"]) ?? "",
       tick: tickOf(e, m),
       answeredAt: num(m["answeredAt"]),
+      answeredWith: str(m["answeredWith"]),
       unansweredAt: num(m["unansweredAt"]),
       isAck: m["isAck"] === true
     });
@@ -12734,7 +12735,8 @@ function lastHeardByEntity(entities) {
     const source = str(m["sourceKeid"]);
     if (!source) continue;
     const at = tickOf(e, m);
-    if (at > (out.get(source) ?? -Infinity)) out.set(source, at);
+    if (at > (out.get(source)?.tick ?? -Infinity))
+      out.set(source, { tick: at, preview: str(m["preview"]) ?? "" });
   }
   return out;
 }
@@ -12746,8 +12748,8 @@ function resolveReplyExpectations(entities, tick, windowTicks = DEFAULT_REPLY_WI
   for (const t of turns) {
     if (t.isAck || t.answeredAt !== void 0) continue;
     const heard = lastHeard.get(t.targetEntityId);
-    if (heard !== void 0 && heard > t.tick) {
-      answered.push({ turn: t, at: heard });
+    if (heard !== void 0 && heard.tick > t.tick) {
+      answered.push({ turn: t, at: heard.tick, with: heard.preview });
       continue;
     }
     if (t.unansweredAt !== void 0) continue;
@@ -12892,11 +12894,26 @@ async function buildExecutiveContext(state, deps, recallQuery) {
   }
   recentActions.sort((a, b) => b.tick - a.tick);
   const recentActionsCapped = recentActions.slice(0, 5);
+  const nameOf = (keid) => {
+    for (const e of state.entities.values()) {
+      if (e.type !== "known-entity") continue;
+      const m = e.metadata ?? {};
+      if (m["keid"] !== keid) continue;
+      const n = m["name"];
+      return typeof n === "string" && n.trim() ? n : void 0;
+    }
+    return void 0;
+  };
   const spokenTurns = readSpokenTurns(state.entities).filter((t) => !t.isAck).reverse().slice(0, SPOKEN_TURNS_SHOWN).map((t) => ({
-    target: t.targetEntityName ?? t.targetEntityId,
+    // Roster first, the record's stored name second. A name is learned over
+    // time, so records written before the mind knew it keep the raw id — and
+    // the same person rendered as both `FKEM` and `discord:15255…` in one list,
+    // which reads as two people. The roster holds the current best name.
+    target: nameOf(t.targetEntityId) ?? t.targetEntityName ?? t.targetEntityId,
     preview: t.preview,
     age: Math.max(0, state.tick - t.tick),
-    answered: t.answeredAt !== void 0
+    answered: t.answeredAt !== void 0,
+    ...t.answeredWith ? { answeredWith: t.answeredWith } : {}
   }));
   const plans = [];
   for (const entity of state.entities.values()) {
@@ -13702,10 +13719,12 @@ ${lines.join("\n")}${tail}`;
    */
   static _buildSpokenTurnsSection(spokenTurns) {
     if (!spokenTurns?.length) return "";
+    const clip = (s, n) => s.length > n ? `${s.slice(0, n)}\u2026` : s;
     const lines = spokenTurns.map((t) => {
       const words = t.preview.trim();
-      const said = words ? ` \u2014 "${words.slice(0, 80)}${words.length > 80 ? "\u2026" : ""}"` : "";
-      return `- **${t.target}** \xB7 ${t.age} ticks ago${said} \u2014 ${t.answered ? "they answered" : "no answer yet"}`;
+      const said = words ? ` \u2014 "${clip(words, 80)}"` : "";
+      const back = t.answered ? t.answeredWith?.trim() ? ` \u2014 they answered: "${clip(t.answeredWith.trim(), 100)}"` : " \u2014 they answered (I do not have their words here)" : " \u2014 no answer yet";
+      return `- **${t.target}** \xB7 ${t.age} ticks ago${said}${back}`;
     });
     const open = spokenTurns.filter((t) => !t.answered).length;
     const note = open > 0 ? `
@@ -23799,8 +23818,8 @@ var ReafferenceEngine = class {
         metadata: { ...existing.metadata ?? {}, ...patch }
       });
     };
-    for (const { turn, at } of answered) {
-      merge(turn.entityId, { answeredAt: at });
+    for (const { turn, at, with: said } of answered) {
+      merge(turn.entityId, { answeredAt: at, ...said ? { answeredWith: said } : {} });
       this._emitResponsiveness(turn.targetEntityId, true, at - turn.tick, tick);
     }
     for (const turn of unanswered) {

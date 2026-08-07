@@ -73,6 +73,14 @@ whole tail will ride the release that follows, whichever of those lands first.
   (`bun run build`); if the epoch's PRs didn't, land a `chore: rebuild dist`
   catch-up first. Workspace consumers (backend) read the *committed* dist —
   npm is safe regardless (`prepublishOnly` rebuilds in CI), the workspace is not.
+- **`README.md` still describes the product.** Re-read whatever the epoch
+  touched; the front door is the one artifact nothing else checks. At `v0.9.0`
+  it still said a Discord user id "is one entity across servers" and that
+  proactive messages route last-channel → DM → home — the exact behaviour that
+  release replaced, so the README was describing the bug as the feature. Its
+  graph count had been wrong for four releases (`ls docs/graphs/*.svg | wc -l`
+  settles it). Both had been true when written, which is the failure mode: prose
+  does not go red.
 
 ## 1 · The picture
 

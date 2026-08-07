@@ -141,7 +141,9 @@ WILL_IDENTITY="I am Aria — curious, dry-witted, fond of this server's people."
 ANTHROPIC_API_KEY=sk-ant-… npx -y @mindot/will discord
 ```
 
-No command prefix, no forced replies. It perceives the rooms it can see (salience-scored — perceiving costs no LLM call), **decides for itself when to speak** (silence is a valid outcome), learns people's names as *learned* knowledge (`discord:<userId>` is one entity across servers), keeps each channel as its own conversation thread, and **can message first** — proactive utterances route to the addressee's last shared channel, then their DM, then `WILL_DISCORD_HOME_CHANNEL`. On shutdown it hibernates to its PMA and returns as the same self, still knowing everyone.
+No command prefix, no forced replies. It perceives the rooms it can see (salience-scored — perceiving costs no LLM call), **decides for itself when to speak** (silence is a valid outcome, written as `[NO_MESSAGE]` and recorded rather than sent), learns people's names as *learned* knowledge, keeps each channel as its own conversation thread, and **can message first**. On shutdown it hibernates to its PMA and returns as the same self, still knowing everyone.
+
+Someone the Will meets is a **referent**, not an address: `discord:<userId>` becomes an alias onto an anchor, so the same person met in a server, a DM, and on WhatsApp is one entity rather than three. The rooms they are reachable in hang off that anchor as handles carrying the circumstances — private or shared, and when they last *answered* there — so the mind picks where to say something from evidence about where this person actually replies. `WILL_DISCORD_HOME_CHANNEL` and the roster chain (last shared channel → DM → home) remain the bridge's fallback for when it has nothing to go on.
 
 Scope it with `WILL_DISCORD_CHANNELS` (id allowlist) and `WILL_DISCORD_MENTION_ONLY` for busy servers. The bridge grants no tools — it is a mouth and ears, not hands; abilities stay explicit (effectors / MCP). Setup + SDK embedding (`import { connectDiscord } from '@mindot/will/discord'`): [docs/channels/discord.md](docs/channels/discord.md) · runnable: [`examples/discord.ts`](examples/discord.ts).
 
@@ -260,7 +262,7 @@ There is **no synchronous reply** — `ingestText` returns immediately; the Will
 
 ## Architecture
 
-> **Visual map:** [`docs/graphs/`](docs/graphs/) holds twenty-one architecture graphs — the cognitive stories (memory, executive & facets, agency, audition, body & affect, meta-cognition, the executive ⇄ agency seam, planning & goals, social cognition, proactive communication, competence, the two persona channels), the machinery (the deterministic tick, the simulation core, the cognitive bus & wiring, one LLM call end-to-end, transports, the stem's tracts), the edges (host surfaces, the PMA lifecycle), and the [whole composition](docs/graphs/composition.svg). One palette across all of them: violet is always memory, amber executive, green agency. Regenerate with `bun docs/graphs/generate.ts`.
+> **Visual map:** [`docs/graphs/`](docs/graphs/) holds twenty-seven architecture graphs — the cognitive stories (memory, executive & facets, agency, audition, body & affect, meta-cognition, the executive ⇄ agency seam, planning & goals, social cognition, proactive communication, competence, the two persona channels), the loops that close on the world (exafference, policy reafference and its joint RFC, the answered loop, identity vs route), the machinery (the deterministic tick, the simulation core, the cognitive bus & wiring, one LLM call end-to-end, model routing, transports, the stem's tracts), the edges (host surfaces, the PMA lifecycle), and the [whole composition](docs/graphs/composition.svg). One palette across all of them: violet is always memory, amber executive, green agency. Regenerate with `bun docs/graphs/generate.ts`.
 
 ![Will — the whole composition](docs/graphs/composition.svg)
 

@@ -241,7 +241,7 @@ export function enactionFootprint(
  * whatever window the persona wants rather than being capped by the echo TTL.
  */
 export function spokenAtByEntity(
-  entities: ReadonlyMap<string, { type: string; tick?: number; metadata?: ReadonlyMap<string, unknown> | Record<string, unknown> }>,
+  entities: ReadonlyMap<string, { type: string; updatedAtTick?: number; tick?: number; metadata?: ReadonlyMap<string, unknown> | Record<string, unknown> }>,
 ): Map<string, number> {
   const out = new Map<string, number>()
 
@@ -254,8 +254,14 @@ export function spokenAtByEntity(
     // StateManager.setEntity stamps from the sim clock on every write. The fallback
     // matters: not every path that records having spoken fills the metadata field,
     // and defaulting to 0 made every record look infinitely old.
-    const at = typeof m['tick'] === 'number' ? m['tick'] as number
-             : typeof e.tick    === 'number' ? e.tick
+    // `updatedAtTick` is the field `StateManager.setEntity` actually stamps.
+    // This read `e.tick`, which does not exist on SimulationEntity — so the
+    // fallback the comment above describes has never once fired, and any writer
+    // that omitted `metadata.tick` was treated as having spoken at tick 0, i.e.
+    // infinitely long ago, i.e. not satiating at all.
+    const at = typeof m['tick']          === 'number' ? m['tick'] as number
+             : typeof e.updatedAtTick    === 'number' ? e.updatedAtTick
+             : typeof e.tick             === 'number' ? e.tick
              : 0
     if( at > ( out.get( target ) ?? -Infinity ) ) out.set( target, at )
   }

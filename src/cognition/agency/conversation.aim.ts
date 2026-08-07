@@ -50,8 +50,33 @@ export const DEFAULT_REPLY_WINDOW_TICKS = 240
 /** Minimal shape this module needs off a state entity — keeps it testable without a StateManager. */
 export interface EntityLike {
   type:     string
+  /**
+   * The real field. `StateManager.setEntity` stamps it from the sim clock on
+   * every write, and it is the ONLY tick a record written off-tick can have —
+   * an inbound turn arrives between ticks and its writer has no clock to quote.
+   */
+  updatedAtTick?: number
+  /** Not on `SimulationEntity`; accepted so a test can state a tick directly. */
   tick?:    number
   metadata?: ReadonlyMap<string, unknown> | Record<string, unknown>
+}
+
+/**
+ * When a record happened: what its writer declared, else when the state manager
+ * stamped it.
+ *
+ * `SimulationEntity` has no `tick` — it is `updatedAtTick`, and reading the
+ * former silently yields `undefined` on every real entity. That is not a
+ * hypothetical: this module shipped reading `e.tick`, so `lastHeard` was 0 for
+ * everybody, `0 > sentTick` was never true, and NO turn could ever be marked
+ * answered. Caught on a live run where she was mid-conversation and the engine
+ * announced "no answer from Fabrice" about a message he had already replied to.
+ *
+ * The same dead read sits in `spokenAtByEntity` (agency/consequence.ts) behind a
+ * comment explaining why the fallback matters. It never fired there either.
+ */
+export function tickOf( e: EntityLike, meta: Record<string, unknown> ): Tick {
+  return ( num( meta['tick'] ) ?? num( e.updatedAtTick ) ?? num( e.tick ) ?? 0 ) as Tick
 }
 
 /** One thing the mind said to one person, and what became of it. */
@@ -101,7 +126,7 @@ export function readSpokenTurns( entities: ReadonlyMap<string, EntityLike> ): Sp
       targetEntityId:   target,
       targetEntityName: str( m['targetEntityName'] ),
       preview:          str( m['preview'] ) ?? '',
-      tick:             ( num( m['tick'] ) ?? num( e.tick ) ?? 0 ) as Tick,
+      tick:             tickOf( e, m ),
       answeredAt:       num( m['answeredAt'] )   as Tick | undefined,
       unansweredAt:     num( m['unansweredAt'] ) as Tick | undefined,
       isAck:            m['isAck'] === true,
@@ -128,7 +153,7 @@ export function lastHeardByEntity( entities: ReadonlyMap<string, EntityLike> ): 
     const m      = meta( e )
     const source = str( m['sourceKeid'] )
     if( !source ) continue
-    const at = ( num( m['tick'] ) ?? num( e.tick ) ?? 0 ) as Tick
+    const at = tickOf( e, m )
     if( at > ( out.get( source ) ?? -Infinity ) ) out.set( source, at )
   }
   return out

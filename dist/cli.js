@@ -6473,7 +6473,7 @@ function spokenAtByEntity(entities) {
     const m = e.metadata ?? {};
     const target = typeof m["targetEntityId"] === "string" ? m["targetEntityId"] : void 0;
     if (!target) continue;
-    const at = typeof m["tick"] === "number" ? m["tick"] : typeof e.tick === "number" ? e.tick : 0;
+    const at = typeof m["tick"] === "number" ? m["tick"] : typeof e.updatedAtTick === "number" ? e.updatedAtTick : typeof e.tick === "number" ? e.tick : 0;
     if (at > (out.get(target) ?? -Infinity)) out.set(target, at);
   }
   return out;
@@ -12692,6 +12692,9 @@ function readPersona(metadata) {
 var SENT_TYPE = "conversation.sent";
 var RECEIVED_TYPE = "conversation.received";
 var DEFAULT_REPLY_WINDOW_TICKS = 240;
+function tickOf(e, meta2) {
+  return num(meta2["tick"]) ?? num(e.updatedAtTick) ?? num(e.tick) ?? 0;
+}
 function meta(e) {
   const m = e.metadata;
   if (!m) return {};
@@ -12715,7 +12718,7 @@ function readSpokenTurns(entities) {
       targetEntityId: target,
       targetEntityName: str(m["targetEntityName"]),
       preview: str(m["preview"]) ?? "",
-      tick: num(m["tick"]) ?? num(e.tick) ?? 0,
+      tick: tickOf(e, m),
       answeredAt: num(m["answeredAt"]),
       unansweredAt: num(m["unansweredAt"]),
       isAck: m["isAck"] === true
@@ -12730,7 +12733,7 @@ function lastHeardByEntity(entities) {
     const m = meta(e);
     const source = str(m["sourceKeid"]);
     if (!source) continue;
-    const at = num(m["tick"]) ?? num(e.tick) ?? 0;
+    const at = tickOf(e, m);
     if (at > (out.get(source) ?? -Infinity)) out.set(source, at);
   }
   return out;

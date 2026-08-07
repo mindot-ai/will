@@ -38,6 +38,7 @@ import {
   readSpokenTurns, lastHeardByEntity, resolveReplyExpectations, openTurns, isOpen,
   DEFAULT_REPLY_WINDOW_TICKS,
 } from '#agency/conversation.aim'
+import { spokenAtByEntity } from '#agency/consequence'
 
 const CTX = {} as unknown as SimulationContext
 
@@ -105,6 +106,46 @@ describe('reading what the mind has said', () => {
     const s = freshState()
     sent( s, 'ack', 'discord:1', 10, { isAck: true } )
     expect( readSpokenTurns( s.entities ).every( isOpen ) ).toBe( false )
+  } )
+
+  it('reads the tick field state actually stamps — updatedAtTick, not tick', () => {
+    // `SimulationEntity` has NO `tick`; it is `updatedAtTick`. Reading the former
+    // yields undefined on every real entity, silently.
+    //
+    // This shipped broken and a live run caught it: an inbound turn is written
+    // OFF-tick, so its writer has no clock to quote and it carries no
+    // `metadata.tick` — its only tick is the one setEntity stamps. Reading
+    // `e.tick` made lastHeard 0 for everybody, `0 > sentTick` never true, and no
+    // turn could EVER be marked answered. The engine announced "no answer from
+    // Fabrice" about a message he had already replied to, and her read on his
+    // reliability fell to 0.26 on silences that were not silences — the exact
+    // over-attribution `lastHeardByEntity` is commented to avoid.
+    const s = freshState()
+    s.entities.set('r', { id: 'r', type: 'conversation.received', createdAt: 0, updatedAt: 0,
+      updatedAtTick: 77, metadata: { sourceKeid: 'discord:1' } } as unknown as SimulationEntity )
+    expect( lastHeardByEntity( s.entities ).get('discord:1') ).toBe( 77 )
+  } )
+
+  it('an inbound with only a stamped tick still answers an open turn', () => {
+    const s = freshState()
+    s.entities.set('s1', { id: 's1', type: 'conversation.sent', createdAt: 0, updatedAt: 0,
+      updatedAtTick: 20, metadata: { targetEntityId: 'discord:1', tick: 10, preview: 'ask' } } as unknown as SimulationEntity )
+    s.entities.set('r1', { id: 'r1', type: 'conversation.received', createdAt: 0, updatedAt: 0,
+      updatedAtTick: 14, metadata: { sourceKeid: 'discord:1' } } as unknown as SimulationEntity )
+
+    const { answered, unanswered } = resolveReplyExpectations( s.entities, 999, 240 )
+    expect( answered ).toHaveLength( 1 )
+    expect( unanswered ).toHaveLength( 0 )
+  } )
+
+  it('the satiation path reads the same field — it had the identical dead fallback', () => {
+    // `spokenAtByEntity` carries a comment explaining why its `e.tick` fallback
+    // matters. It never fired, so any writer that omitted `metadata.tick` looked
+    // infinitely old and satiated nothing at all.
+    const s = freshState()
+    s.entities.set('s1', { id: 's1', type: 'conversation.sent', createdAt: 0, updatedAt: 0,
+      updatedAtTick: 91, metadata: { targetEntityId: 'discord:1' } } as unknown as SimulationEntity )
+    expect( spokenAtByEntity( s.entities ).get('discord:1') ).toBe( 91 )
   } )
 
   it('hears when each person last spoke to us', () => {

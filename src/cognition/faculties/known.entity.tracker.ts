@@ -113,6 +113,19 @@ const CURIOUS_RESOLVED     = 0.6
 // Forgetting (Phase 4). (Reliability rate is now a Channel-A developable field — analytical.)
 const FORGET_FLOOR     = 0.02    // below this familiarity, an unidentified blip is forgotten
 
+/**
+ * Familiarity decay for a referent the mind has NOT resolved — no name, barely
+ * identified. Two orders of magnitude faster than for a known someone, because
+ * one rate cannot serve both: a face glimpsed once in a crowd should fade in
+ * minutes, and a colleague should not.
+ *
+ * The forgetting gate already drew exactly this line (`!d.name &&
+ * resolutionConfidence < CURIOUS_RESOLUTION`); only the rate did not, so slowing
+ * decay enough for relationships to exist would have left every blip resident
+ * forever. Same value the single shared rate used to have.
+ */
+const BLIP_DECAY_RATE  = 0.005
+
 // Recognition (Phase 5) — guards against conflating two *different* people who share a
 // name. Only recognise a still-thin handle (≤) into a known person, and never when both
 // were active at the same time (two people talking at once ⇒ distinct, not one on two
@@ -164,7 +177,23 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
 
   constructor( config: KnownEntityTrackerConfig = {} ){
     this._growthRate      = config.familiarityGrowthRate ?? 0.15
-    this._decayRate       = config.familiarityDecayRate  ?? 0.005
+    // 0.005/tick spends the entire scale in 200 ticks — under four minutes at the
+    // 1s tick a hosted Will actually runs on. Familiarity could therefore never
+    // accumulate for a mind whose encounters are minutes apart, and it did not:
+    // measured 0.00 on a fresh mind after 5 encounters, and 0.00 on a mind that
+    // had banked 71. A permanently-zero signal is worse than a missing one — it
+    // feeds the curiosity-to-resolve drive (which therefore never fired) and the
+    // pruning order, both of which read it as "a total stranger".
+    //
+    // Mere exposure fades over days, not minutes. At 0.00002 a full scale takes
+    // ~50k ticks (~14h at 1s), so someone met this morning is still familiar
+    // tonight and a stranger from last month has genuinely faded.
+    //
+    // The deeper flaw stays: this is per-TICK, so a psychological timescale is
+    // pinned to a host's tick rate. `react()` already receives the real delta —
+    // expressing decay in experienced time is the actual fix, and it belongs with
+    // the other per-tick decays rather than in this one engine alone.
+    this._decayRate       = config.familiarityDecayRate  ?? 0.00002
     this._curiosityGain   = config.curiosityGain         ?? 1.0
     this._reliabilityRate = config.reliabilityRate       ?? 0.2
     this._maxTracked      = config.maxTracked            ?? 50
@@ -250,8 +279,10 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
 
     // Familiarity fades a little each tick — absence dims the sense of an entity.
     for( const d of this._dossiers.values() )
-      if( d.familiarity > 0 )
-        d.familiarity = Math.max( 0, d.familiarity - this._decayRate )
+      if( d.familiarity > 0 ){
+        const unresolved = !d.name && d.resolutionConfidence < CURIOUS_RESOLUTION
+        d.familiarity = Math.max( 0, d.familiarity - ( unresolved ? BLIP_DECAY_RATE : this._decayRate ) )
+      }
 
     // Drain encounters — each percept is an exposure that re-warms familiarity.
     let touched = false

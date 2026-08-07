@@ -118,6 +118,11 @@ describe('KnownEntityTracker — perceptual dossier accretion', () => {
     expect( d ).toBeDefined()
     expect( d.name ).toBe('Sam')
     expect( d.encounterCount ).toBe( 3 )
-    expect( d.familiarity ).toBeCloseTo( 0.495, 5 )  // restored 0.5, minus one decay tick
+    // Restored 0.5, minus one tick of decay — at the rate for a KNOWN someone.
+    // Sam has a name, so he fades over days rather than minutes: the single old
+    // rate (0.005/tick) spent the whole scale in under four minutes at a 1s tick,
+    // which is why familiarity measured 0.00 on a live mind after 71 encounters.
+    // An unresolved blip still decays at the old speed — see BLIP_DECAY_RATE.
+    expect( d.familiarity ).toBeCloseTo( 0.49998, 5 )
   } )
 } )

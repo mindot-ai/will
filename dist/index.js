@@ -5108,6 +5108,100 @@ var Interoception = class {
   }
 };
 
+// src/cognition/social.identity.ts
+var REFERENT_PREFIX = "ke:";
+var ALIAS_TYPE = "known-entity-alias";
+var DOSSIER_TYPE = "known-entity";
+function isReferentId(id) {
+  return id.startsWith(REFERENT_PREFIX);
+}
+function mintReferentId(seedKeid) {
+  return `${REFERENT_PREFIX}${fnv1a(seedKeid).toString(36)}`;
+}
+function meta(e) {
+  const m = e.metadata;
+  if (!m) return {};
+  return m instanceof Map ? Object.fromEntries(m) : m;
+}
+function str(v) {
+  return typeof v === "string" && v.length > 0 ? v : void 0;
+}
+function readAliases(entities) {
+  const out = /* @__PURE__ */ new Map();
+  for (const [, e] of entities) {
+    if (e.type !== ALIAS_TYPE) continue;
+    const m = meta(e);
+    const a = str(m["aliasKeid"]);
+    const c = str(m["canonicalKeid"]);
+    if (a && c) out.set(a, c);
+  }
+  return out;
+}
+function canonicalOf(aliases, keid) {
+  const seen = /* @__PURE__ */ new Set();
+  let id = keid;
+  while (true) {
+    const next = aliases.get(id);
+    if (!next || next === id || seen.has(next)) return id;
+    seen.add(id);
+    id = next;
+  }
+}
+function resolveKeid(entities, ref) {
+  const needle = ref.trim().toLowerCase();
+  if (!needle) return void 0;
+  const aliases = readAliases(entities);
+  const direct = canonicalOf(aliases, ref.trim());
+  for (const [, e] of entities)
+    if (e.type === DOSSIER_TYPE && str(meta(e)["keid"]) === direct) return direct;
+  for (const [, e] of entities) {
+    if (e.type !== DOSSIER_TYPE) continue;
+    const m = meta(e);
+    const keid = str(m["keid"]);
+    if (!keid) continue;
+    if (keid.toLowerCase() === needle) return canonicalOf(aliases, keid);
+    if (str(m["name"])?.toLowerCase() === needle) return canonicalOf(aliases, keid);
+  }
+  for (const [alias, canon] of aliases)
+    if (alias.toLowerCase() === needle) return canon;
+  return void 0;
+}
+function nameOf(entities, referentId) {
+  for (const [, e] of entities) {
+    if (e.type !== DOSSIER_TYPE || str(meta(e)["keid"]) !== referentId) continue;
+    return str(meta(e)["name"])?.trim() || void 0;
+  }
+  return void 0;
+}
+function handlesOf(entities, referentId) {
+  for (const [, e] of entities) {
+    if (e.type !== DOSSIER_TYPE || str(meta(e)["keid"]) !== referentId) continue;
+    const raw = meta(e)["handles"];
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((h) => h && typeof h.keid === "string").sort((a, b) => (b.lastAnsweredTick ?? -1) - (a.lastAnsweredTick ?? -1) || (b.lastUsedTick ?? -1) - (a.lastUsedTick ?? -1) || (a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0));
+  }
+  return [];
+}
+function defaultHandle(handles) {
+  if (handles.length === 0) return void 0;
+  const answered = handles.filter((h) => h.lastAnsweredTick !== void 0);
+  const pool = answered.length > 0 ? answered : handles;
+  return pool.find((h) => h.kind === "dm") ?? pool[0];
+}
+function withHandle(handles, next) {
+  const out = handles.filter((h) => h.keid !== next.keid);
+  const old = handles.find((h) => h.keid === next.keid);
+  out.push(old ? {
+    ...old,
+    ...next,
+    // Never let a fresh sighting erase evidence the old record already held.
+    lastUsedTick: next.lastUsedTick ?? old.lastUsedTick,
+    lastAnsweredTick: next.lastAnsweredTick ?? old.lastAnsweredTick,
+    tags: [.../* @__PURE__ */ new Set([...old.tags ?? [], ...next.tags ?? []])]
+  } : next);
+  return out.sort((a, b) => a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0);
+}
+
 // src/cognition/faculties/social.perception.ts
 var SocialPerception = class {
   name = "social-perception";
@@ -5229,9 +5323,10 @@ var SocialPerception = class {
   _scanSocialSignals(state) {
     const percepts = [];
     const selfId = "agent-self";
+    const aliases = readAliases(state.entities);
     for (const [id, entity] of state.entities) {
       if (!this._signalTypes.has(entity.type)) continue;
-      const sourceKeid = entity.metadata?.sourceKeid ?? entity.metadata?.from ?? "unknown", action = entity.metadata?.action ?? entity.metadata?.type ?? entity.type, directedAtSelf = entity.metadata?.recipientId === selfId || entity.metadata?.to === selfId || entity.metadata?.targetKeid === selfId || entity.metadata?.directedAtSelf === true, isNew = this._previousActions.get(sourceKeid) !== action;
+      const sourceKeid = canonicalOf(aliases, entity.metadata?.sourceKeid ?? entity.metadata?.from ?? "unknown"), action = entity.metadata?.action ?? entity.metadata?.type ?? entity.type, directedAtSelf = entity.metadata?.recipientId === selfId || entity.metadata?.to === selfId || entity.metadata?.targetKeid === selfId || entity.metadata?.directedAtSelf === true, isNew = this._previousActions.get(sourceKeid) !== action;
       const valence = typeof entity.metadata?.valence === "number" ? entity.metadata.valence : this._defaultValence(action);
       const intensity = typeof entity.metadata?.intensity === "number" ? entity.metadata.intensity : typeof entity.metadata?.salience === "number" ? entity.metadata.salience : 0.5;
       const salience = directedAtSelf ? 0.8 + intensity * 0.2 : isNew ? 0.4 + intensity * 0.3 : 0.2 + intensity * 0.2;
@@ -8056,100 +8151,6 @@ var INNATE_SCHEMAS = [
   }
 ];
 var INNATE_SCHEMA_BY_ID = new Map(INNATE_SCHEMAS.map((s) => [s.id, s]));
-
-// src/cognition/social.identity.ts
-var REFERENT_PREFIX = "ke:";
-var ALIAS_TYPE = "known-entity-alias";
-var DOSSIER_TYPE = "known-entity";
-function isReferentId(id) {
-  return id.startsWith(REFERENT_PREFIX);
-}
-function mintReferentId(seedKeid) {
-  return `${REFERENT_PREFIX}${fnv1a(seedKeid).toString(36)}`;
-}
-function meta(e) {
-  const m = e.metadata;
-  if (!m) return {};
-  return m instanceof Map ? Object.fromEntries(m) : m;
-}
-function str(v) {
-  return typeof v === "string" && v.length > 0 ? v : void 0;
-}
-function readAliases(entities) {
-  const out = /* @__PURE__ */ new Map();
-  for (const [, e] of entities) {
-    if (e.type !== ALIAS_TYPE) continue;
-    const m = meta(e);
-    const a = str(m["aliasKeid"]);
-    const c = str(m["canonicalKeid"]);
-    if (a && c) out.set(a, c);
-  }
-  return out;
-}
-function canonicalOf(aliases, keid) {
-  const seen = /* @__PURE__ */ new Set();
-  let id = keid;
-  while (true) {
-    const next = aliases.get(id);
-    if (!next || next === id || seen.has(next)) return id;
-    seen.add(id);
-    id = next;
-  }
-}
-function resolveKeid(entities, ref) {
-  const needle = ref.trim().toLowerCase();
-  if (!needle) return void 0;
-  const aliases = readAliases(entities);
-  const direct = canonicalOf(aliases, ref.trim());
-  for (const [, e] of entities)
-    if (e.type === DOSSIER_TYPE && str(meta(e)["keid"]) === direct) return direct;
-  for (const [, e] of entities) {
-    if (e.type !== DOSSIER_TYPE) continue;
-    const m = meta(e);
-    const keid = str(m["keid"]);
-    if (!keid) continue;
-    if (keid.toLowerCase() === needle) return canonicalOf(aliases, keid);
-    if (str(m["name"])?.toLowerCase() === needle) return canonicalOf(aliases, keid);
-  }
-  for (const [alias, canon] of aliases)
-    if (alias.toLowerCase() === needle) return canon;
-  return void 0;
-}
-function nameOf(entities, referentId) {
-  for (const [, e] of entities) {
-    if (e.type !== DOSSIER_TYPE || str(meta(e)["keid"]) !== referentId) continue;
-    return str(meta(e)["name"])?.trim() || void 0;
-  }
-  return void 0;
-}
-function handlesOf(entities, referentId) {
-  for (const [, e] of entities) {
-    if (e.type !== DOSSIER_TYPE || str(meta(e)["keid"]) !== referentId) continue;
-    const raw = meta(e)["handles"];
-    if (!Array.isArray(raw)) return [];
-    return raw.filter((h) => h && typeof h.keid === "string").sort((a, b) => (b.lastAnsweredTick ?? -1) - (a.lastAnsweredTick ?? -1) || (b.lastUsedTick ?? -1) - (a.lastUsedTick ?? -1) || (a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0));
-  }
-  return [];
-}
-function defaultHandle(handles) {
-  if (handles.length === 0) return void 0;
-  const answered = handles.filter((h) => h.lastAnsweredTick !== void 0);
-  const pool = answered.length > 0 ? answered : handles;
-  return pool.find((h) => h.kind === "dm") ?? pool[0];
-}
-function withHandle(handles, next) {
-  const out = handles.filter((h) => h.keid !== next.keid);
-  const old = handles.find((h) => h.keid === next.keid);
-  out.push(old ? {
-    ...old,
-    ...next,
-    // Never let a fresh sighting erase evidence the old record already held.
-    lastUsedTick: next.lastUsedTick ?? old.lastUsedTick,
-    lastAnsweredTick: next.lastAnsweredTick ?? old.lastAnsweredTick,
-    tags: [.../* @__PURE__ */ new Set([...old.tags ?? [], ...next.tags ?? []])]
-  } : next);
-  return out.sort((a, b) => a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0);
-}
 
 // src/cognition/faculties/executive.engine/commands.ts
 var EVIDENCE_TO_COUNT = {
@@ -19282,6 +19283,7 @@ var CURIOUS_FAMILIARITY = 0.5;
 var CURIOUS_RESOLUTION = 0.4;
 var CURIOUS_RESOLVED = 0.6;
 var FORGET_FLOOR = 0.02;
+var BLIP_DECAY_RATE = 5e-3;
 var RECOGNITION_MERGE_MAX_ENCOUNTERS = 8;
 var RECOGNITION_CONCURRENCY_WINDOW = 20;
 var KnownEntityTracker = class {
@@ -19314,7 +19316,7 @@ var KnownEntityTracker = class {
   _model = new GenerativeModel();
   constructor(config = {}) {
     this._growthRate = config.familiarityGrowthRate ?? 0.15;
-    this._decayRate = config.familiarityDecayRate ?? 5e-3;
+    this._decayRate = config.familiarityDecayRate ?? 2e-5;
     this._curiosityGain = config.curiosityGain ?? 1;
     this._reliabilityRate = config.reliabilityRate ?? 0.2;
     this._maxTracked = config.maxTracked ?? 50;
@@ -19375,8 +19377,10 @@ var KnownEntityTracker = class {
       this._restored = true;
     }
     for (const d of this._dossiers.values())
-      if (d.familiarity > 0)
-        d.familiarity = Math.max(0, d.familiarity - this._decayRate);
+      if (d.familiarity > 0) {
+        const unresolved = !d.name && d.resolutionConfidence < CURIOUS_RESOLUTION;
+        d.familiarity = Math.max(0, d.familiarity - (unresolved ? BLIP_DECAY_RATE : this._decayRate));
+      }
     let touched = false;
     for (const enc of this._pendingEncounters.splice(0)) {
       const d = this._getOrCreate(enc.keid, enc.domain, tick);

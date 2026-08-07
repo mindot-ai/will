@@ -31,6 +31,7 @@ import type { SimulationEngine, EngineResult, CognitiveEngine } from '#cognition
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import { GenerativeModel } from '#cognition/generative.model'
+import { readAliases, canonicalOf } from '#cognition/social.identity'
 
 export interface SocialPerceptionConfig {
   /** Entity types that represent other agents */
@@ -213,14 +214,29 @@ export class SocialPerception implements SimulationEngine, CognitiveEngine {
     const percepts: SocialPercept[] = []
     const selfId = 'agent-self'
 
+    // Every keid leaving this engine is canonicalized here, at the SOURCE.
+    //
+    // This is the sole publisher of `interaction.occurred`, and it was emitting
+    // the raw transport id the percept arrived with while `social.responsiveness`
+    // emitted the anchor. Measured live on a fresh mind: Fabrice held TWO
+    // reputation records — `discord:1019…` (trust 0.500, five observations) and
+    // `ke:1sqlkux` (trust 0.590, six) — so the two halves of what the mind was
+    // learning about one person accumulated into different records, and whichever
+    // the competition read was missing half the evidence.
+    //
+    // Fixed at the emitter rather than in each consumer: reputation, attachment,
+    // theory-of-mind, empathy and the moral evaluator all key off whatever this
+    // hands them, and patching five of them is five chances to miss one.
+    const aliases = readAliases( state.entities as never )
+
     for( const [ id, entity ] of state.entities ){
       // Only process signal-type entities
       if( !this._signalTypes.has( entity.type ) ) continue
 
       const
-      sourceKeid = ( entity.metadata?.sourceKeid as string )
+      sourceKeid = canonicalOf( aliases, ( entity.metadata?.sourceKeid as string )
                    ?? ( entity.metadata?.from as string )
-                   ?? 'unknown',
+                   ?? 'unknown'),
       action        = ( entity.metadata?.action as string )
                    ?? ( entity.metadata?.type as string )
                    ?? entity.type,

@@ -84,6 +84,21 @@ export interface KnownEntity {
    * this in?" unaskable.
    */
   handles:              Handle[]
+  /**
+   * Referents this one MIGHT be the same someone as, unresolved.
+   *
+   * A blocked merge used to vanish. `_recognise` will only absorb a THIN handle
+   * into an established relationship — rightly, because fusing two real people
+   * who share a name is the dangerous direction — so once the same human was
+   * well-established on two channels they stayed two people permanently, and
+   * nothing anywhere recorded the near-miss.
+   *
+   * A person does not silently fail here. They NOTICE — "hang on, is this the
+   * same Mara?" — and then resolve it by asking. So the doubt is kept, shown, and
+   * left for the mind to settle. Deliberately not a merge: this is a question,
+   * and the answer is the mind's to give.
+   */
+  suspectedSameAs?:     string[]
 }
 
 /** Percept domains whose entities are minds. Everything else defaults to a thing. */
@@ -128,7 +143,11 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     thread?: string; direct?: boolean
   }> = []
   // Buffered from known.entity.learned (the conscious / reasoning write-path, Phase 2.2).
-  private _pendingConscious: Array<{ keid: string; name?: string; feeling?: number }> = []
+  private _pendingConscious: Array<{
+    keid: string; name?: string; feeling?: number
+    /** "This is the same someone as that." The mind settling an identity itself. */
+    sameAs?: string
+  }> = []
   // Buffered from action.outcome — the reliability track-record signal (Phase 4).
   private _pendingOutcomes: Array<{ keid: string; signal: number }> = []
 
@@ -175,9 +194,9 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
 
     // Conscious learning (the reasoning write-path): a learned name + felt valence.
     if( e.type === 'known.entity.learned'){
-      const u = e.payload as { keid?: string; name?: string; feeling?: number }
+      const u = e.payload as { keid?: string; name?: string; feeling?: number; sameAs?: string }
       if( u?.keid && u.keid !== 'agent-self')
-        this._pendingConscious.push({ keid: u.keid, name: u.name, feeling: u.feeling })
+        this._pendingConscious.push({ keid: u.keid, name: u.name, feeling: u.feeling, sameAs: u.sameAs })
       return
     }
 
@@ -244,12 +263,34 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
       // Where this happened is part of what happened. Merged, not appended:
       // meeting someone again in a room already known is news about that room,
       // not a new way to reach them.
-      if( enc.thread )
+      if( enc.thread ){
         d.handles = withHandle( d.handles, {
           keid: enc.thread,
           kind: enc.direct === true ? 'dm' : enc.direct === false ? 'room' : 'unknown',
           lastSeenTick: tick,
         } as Handle )
+
+        // The ROOM is a referent too, and gets a dossier of its own.
+        //
+        // `kind: 'thing'` has existed since this tracker shipped and nothing had
+        // ever created one — SENTIENT_DOMAINS admits only audition, so the seat
+        // for a non-person was built and left empty. A place earns exactly the
+        // same things a person does: familiarity with the room, a felt valence
+        // toward it, and a reliability that means something real — whether the
+        // mind gets answered there. A shared room nobody replies in is a fact
+        // about the ROOM as much as about the people in it, and until now there
+        // was nowhere to put it.
+        //
+        // Private threads are deliberately excluded: a DM is not a place, it is
+        // the person. Giving it a dossier would double every someone.
+        if( enc.direct === false ){
+          const place = this._getOrCreate( enc.thread, 'place', tick )
+          place.encounterCount += 1
+          place.familiarity     = Math.min( 1, place.familiarity + this._growthRate * ( 1 - place.familiarity ) )
+          place.lastSeenTick    = tick
+          place.resolutionConfidence = this._resolution( place )
+        }
+      }
       if( enc.name && !d.name ) d.name = enc.name   // learn a name the channel offers
       d.resolutionConfidence = this._resolution( d )
       touched = true
@@ -259,6 +300,16 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     // toward, not slammed). A known someone can exist here with no perceptual encounter.
     for( const u of this._pendingConscious.splice( 0 ) ){
       const d = this._getOrCreate( u.keid, 'audition', tick )   // a known *someone*
+
+      // "These two are the same person." The mind settling a doubt the heuristic
+      // was not entitled to settle — it has reasons a name-match does not, usually
+      // because somebody just told it. Allowed to fuse two ESTABLISHED referents,
+      // which is exactly what `_recognise` refuses to do on its own.
+      if( u.sameAs ){
+        const other = this._dossiers.get( canonicalOf( this._aliases, u.sameAs ) )
+        if( other && other.keid !== d.keid ) this._fuse( d, other, commands )
+      }
+
       if( u.name ) d.name = u.name
       if( u.feeling != null )
         d.valence = Math.max( -1, Math.min( 1, d.valence + 0.5 * ( u.feeling - d.valence ) ) )
@@ -322,6 +373,7 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
           lastSeenTick:         d.lastSeenTick,
           resolutionConfidence: d.resolutionConfidence,
           handles:              d.handles,
+          ...( d.suspectedSameAs?.length ? { suspectedSameAs: d.suspectedSameAs } : {} ),
         },
       })
     }
@@ -396,6 +448,50 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
 
   // ── Internal ─────────────────────────────────────────────
 
+  /**
+   * Absorb `alias` into `canon` — one someone where there were two.
+   *
+   * Shared by the recognition heuristic and by the mind's own `sameAs` verdict,
+   * because "these are the same person" must mean the same thing whichever
+   * concluded it. The only difference is who is ENTITLED to conclude it: the
+   * heuristic will not absorb an established relationship, the mind may, because
+   * it has reasons a name-match does not — usually that somebody just told it.
+   *
+   * Routes MOVE. This used to delete the absorbed dossier and keep only a
+   * redirect, so the mind concluded "same person" and in the same breath threw
+   * away the second way to reach them.
+   */
+  private _fuse( canon: KnownEntity, alias: KnownEntity, commands: StateCommands ): void {
+    canon.encounterCount       += alias.encounterCount
+    canon.familiarity           = Math.max( canon.familiarity, alias.familiarity )
+    canon.resolutionConfidence  = Math.max( canon.resolutionConfidence, alias.resolutionConfidence )
+    canon.lastSeenTick          = Math.max( canon.lastSeenTick as unknown as number, alias.lastSeenTick as unknown as number ) as unknown as Tick
+    canon.valence               = ( canon.valence + alias.valence ) / 2
+    canon.reliability           = ( canon.reliability + alias.reliability ) / 2
+    canon.name                ??= alias.name
+    for( const h of alias.handles ) canon.handles = withHandle( canon.handles, h )
+
+    // The doubt is answered — on both sides, and about each other only. A
+    // suspicion left standing after the fusion would have the mind keep wondering
+    // about a question it has already settled.
+    const settled = ( held: string[] | undefined ): string[] | undefined => {
+      const out = ( held ?? [] ).filter( k => k !== alias.keid && k !== canon.keid )
+      return out.length > 0 ? out : undefined
+    }
+    canon.suspectedSameAs = settled([ ...( canon.suspectedSameAs ?? [] ), ...( alias.suspectedSameAs ?? [] ) ])
+
+    // Every address that pointed at the absorbed referent must now point here, or
+    // the next message from one of them mints the person all over again.
+    for( const [ a, c ] of this._aliases )
+      if( c === alias.keid ) this._aliases.set( a, canon.keid )
+
+    this._dossiers.delete( alias.keid )
+    this._aliases.set( alias.keid, canon.keid )
+    commands.delete!.push(`ke-${ alias.keid }`)
+    commands.set!.push({ id: `kea-${ alias.keid }`, type: 'known-entity-alias',
+      metadata: { aliasKeid: alias.keid, canonicalKeid: canon.keid } })
+  }
+
   /** Resolution confidence: a learned name plus repeated encounters identify a referent. */
   private _resolution( d: KnownEntity ): number {
     return Math.min( 1, ( d.name ? 0.4 : 0 ) + Math.min( 0.6, d.encounterCount * 0.05 ) )
@@ -424,27 +520,26 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
         // handle is already an established relationship, or if both were active concurrently
         // (two interlocutors at once ⇒ distinct). A same-name match alone is too weak.
         const gap = Math.abs( ( canon.lastSeenTick as unknown as number ) - ( alias.lastSeenTick as unknown as number ) )
-        if( alias.encounterCount >= RECOGNITION_MERGE_MAX_ENCOUNTERS || gap < RECOGNITION_CONCURRENCY_WINDOW )
+
+        // Concurrency is evidence AGAINST: two people talking at once are two
+        // people, and there is nothing to wonder about. Say nothing.
+        if( gap < RECOGNITION_CONCURRENCY_WINDOW ) continue
+
+        // Establishment is merely insufficient evidence FOR. The two may well be
+        // one someone; the heuristic is just not entitled to decide it, because
+        // absorbing an established relationship would take a real person's
+        // history with them. So the mind is told, and gets to settle it itself —
+        // usually the way anyone would, by asking.
+        if( alias.encounterCount >= RECOGNITION_MERGE_MAX_ENCOUNTERS ){
+          for( const [ a, b ] of [ [ canon, alias ], [ alias, canon ] ] as const ){
+            const held = a.suspectedSameAs ?? []
+            if( !held.includes( b.keid ) ) a.suspectedSameAs = [ ...held, b.keid ].sort()
+          }
+          merged = true   // the doubt is a change worth persisting
           continue
+        }
 
-        canon.encounterCount       += alias.encounterCount
-        canon.familiarity           = Math.max( canon.familiarity, alias.familiarity )
-        canon.resolutionConfidence  = Math.max( canon.resolutionConfidence, alias.resolutionConfidence )
-        canon.lastSeenTick          = Math.max( canon.lastSeenTick as unknown as number, alias.lastSeenTick as unknown as number ) as unknown as Tick
-        canon.valence               = ( canon.valence + alias.valence ) / 2
-        canon.reliability           = ( canon.reliability + alias.reliability ) / 2
-        // MOVE the routes, do not drop them. This used to absorb the alias and
-        // delete its dossier, keeping only a redirect — so the mind concluded
-        // "same person" and in the same breath threw away the second way to reach
-        // them. Choosing how to reach someone was impossible by construction,
-        // because after a merge there was only ever one route left.
-        for( const h of alias.handles ) canon.handles = withHandle( canon.handles, h )
-
-        this._dossiers.delete( alias.keid )
-        this._aliases.set( alias.keid, canon.keid )
-        commands.delete!.push(`ke-${alias.keid}`)
-        commands.set!.push({ id: `kea-${alias.keid}`, type: 'known-entity-alias',
-          metadata: { aliasKeid: alias.keid, canonicalKeid: canon.keid } })
+        this._fuse( canon, alias, commands )
         merged = true
       }
     }
@@ -542,6 +637,7 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
         valence:              ( m['valence']              as number ) ?? 0,
         reliability:          ( m['reliability']          as number ) ?? 0.5,
         handles:              Array.isArray( m['handles'] ) ? ( m['handles'] as Handle[] ) : [],
+        ...( Array.isArray( m['suspectedSameAs'] ) ? { suspectedSameAs: m['suspectedSameAs'] as string[] } : {} ),
         encounterCount:       ( m['encounterCount']       as number ) ?? 0,
         lastSeenTick:         ( m['lastSeenTick']         as Tick )   ?? ( 0 as unknown as Tick ),
         resolutionConfidence: ( m['resolutionConfidence'] as number ) ?? 0,

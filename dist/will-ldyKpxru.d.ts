@@ -4579,6 +4579,18 @@ interface ExecutiveOutputFull {
         name?: string;
         learned?: string[];
         feeling?: number;
+        /**
+         * "This is the same someone as that" — another keid I now believe is this
+         * same referent, fusing two of my records into one.
+         *
+         * The mind's own verdict on an identity, and it may do what the recognition
+         * heuristic will not: absorb an ESTABLISHED relationship. The heuristic is
+         * right to refuse — fusing two real people who share a name would take one of
+         * them's whole history — but the mind has evidence a name-match does not,
+         * usually because somebody just told it. Without this, the same human
+         * well-established on two channels stayed two people permanently.
+         */
+        sameAs?: string;
     }>;
     newGoals?: Array<{
         description: string;
@@ -6290,6 +6302,21 @@ interface KnownEntity {
      * this in?" unaskable.
      */
     handles: Handle[];
+    /**
+     * Referents this one MIGHT be the same someone as, unresolved.
+     *
+     * A blocked merge used to vanish. `_recognise` will only absorb a THIN handle
+     * into an established relationship — rightly, because fusing two real people
+     * who share a name is the dangerous direction — so once the same human was
+     * well-established on two channels they stayed two people permanently, and
+     * nothing anywhere recorded the near-miss.
+     *
+     * A person does not silently fail here. They NOTICE — "hang on, is this the
+     * same Mara?" — and then resolve it by asking. So the doubt is kept, shown, and
+     * left for the mind to settle. Deliberately not a merge: this is a question,
+     * and the answer is the mind's to give.
+     */
+    suspectedSameAs?: string[];
 }
 declare class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     readonly name = "known-entity-tracker";
@@ -6339,6 +6366,20 @@ declare class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
      * existing Phase-4 tests caught it, which is exactly what they are for.
      */
     getDossier(keid: string): KnownEntity | undefined;
+    /**
+     * Absorb `alias` into `canon` — one someone where there were two.
+     *
+     * Shared by the recognition heuristic and by the mind's own `sameAs` verdict,
+     * because "these are the same person" must mean the same thing whichever
+     * concluded it. The only difference is who is ENTITLED to conclude it: the
+     * heuristic will not absorb an established relationship, the mind may, because
+     * it has reasons a name-match does not — usually that somebody just told it.
+     *
+     * Routes MOVE. This used to delete the absorbed dossier and keep only a
+     * redirect, so the mind concluded "same person" and in the same breath threw
+     * away the second way to reach them.
+     */
+    private _fuse;
     /** Resolution confidence: a learned name plus repeated encounters identify a referent. */
     private _resolution;
     /**

@@ -170,10 +170,13 @@ export function buildStateCommands(
           supportingEpisodes: belief.supportingEpisodes, tags: belief.tags } })
       })
 
-      if( bus && ( u.name || u.feeling != null ) )
+      if( bus && ( u.name || u.feeling != null || u.sameAs ) )
         effects.push( () => bus.publish({
           type: 'known.entity.learned', version: 1, sourceEngine: 'executive',
-          salience: 0.5, payload: { keid: u.keid, name: u.name, feeling: u.feeling },
+          // An identity verdict is worth more attention than a learned name: it
+          // reorganises everything the mind holds about two referents at once.
+          salience: u.sameAs ? 0.7 : 0.5,
+          payload: { keid: u.keid, name: u.name, feeling: u.feeling, sameAs: u.sameAs },
         }) )
     })
   }

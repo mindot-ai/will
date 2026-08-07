@@ -8135,13 +8135,15 @@ function buildStateCommands(output, footprint, state, deps, recentActionTypes) {
           tags: belief.tags
         } });
       });
-      if (bus && (u.name || u.feeling != null))
+      if (bus && (u.name || u.feeling != null || u.sameAs))
         effects.push(() => bus.publish({
           type: "known.entity.learned",
           version: 1,
           sourceEngine: "executive",
-          salience: 0.5,
-          payload: { keid: u.keid, name: u.name, feeling: u.feeling }
+          // An identity verdict is worth more attention than a learned name: it
+          // reorganises everything the mind holds about two referents at once.
+          salience: u.sameAs ? 0.7 : 0.5,
+          payload: { keid: u.keid, name: u.name, feeling: u.feeling, sameAs: u.sameAs }
         }));
     });
   }
@@ -10511,6 +10513,75 @@ function resolveReplyExpectations(entities, tick, windowTicks = DEFAULT_REPLY_WI
   return { answered, unanswered };
 }
 
+// src/cognition/social.identity.ts
+var REFERENT_PREFIX = "ke:";
+var ALIAS_TYPE = "known-entity-alias";
+var DOSSIER_TYPE = "known-entity";
+function isReferentId(id) {
+  return id.startsWith(REFERENT_PREFIX);
+}
+function mintReferentId(seedKeid) {
+  return `${REFERENT_PREFIX}${fnv1a(seedKeid).toString(36)}`;
+}
+function str2(v) {
+  return typeof v === "string" && v.length > 0 ? v : void 0;
+}
+function readAliases(entities) {
+  const out = /* @__PURE__ */ new Map();
+  for (const [, e] of entities) {
+    if (e.type !== ALIAS_TYPE) continue;
+    const a = str2(e.metadata?.["aliasKeid"]);
+    const c = str2(e.metadata?.["canonicalKeid"]);
+    if (a && c) out.set(a, c);
+  }
+  return out;
+}
+function canonicalOf(aliases, keid) {
+  const seen = /* @__PURE__ */ new Set();
+  let id = keid;
+  while (true) {
+    const next = aliases.get(id);
+    if (!next || next === id || seen.has(next)) return id;
+    seen.add(id);
+    id = next;
+  }
+}
+function nameOf(entities, referentId) {
+  for (const [, e] of entities) {
+    if (e.type !== DOSSIER_TYPE || str2(e.metadata?.["keid"]) !== referentId) continue;
+    return str2(e.metadata?.["name"])?.trim() || void 0;
+  }
+  return void 0;
+}
+function handlesOf(entities, referentId) {
+  for (const [, e] of entities) {
+    if (e.type !== DOSSIER_TYPE || str2(e.metadata?.["keid"]) !== referentId) continue;
+    const raw = e.metadata?.["handles"];
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((h) => h && typeof h.keid === "string").sort((a, b) => (b.lastAnsweredTick ?? -1) - (a.lastAnsweredTick ?? -1) || (b.lastUsedTick ?? -1) - (a.lastUsedTick ?? -1) || (a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0));
+  }
+  return [];
+}
+function defaultHandle(handles) {
+  if (handles.length === 0) return void 0;
+  const answered = handles.filter((h) => h.lastAnsweredTick !== void 0);
+  const pool = answered.length > 0 ? answered : handles;
+  return pool.find((h) => h.kind === "dm") ?? pool[0];
+}
+function withHandle(handles, next) {
+  const out = handles.filter((h) => h.keid !== next.keid);
+  const old = handles.find((h) => h.keid === next.keid);
+  out.push(old ? {
+    ...old,
+    ...next,
+    // Never let a fresh sighting erase evidence the old record already held.
+    lastUsedTick: next.lastUsedTick ?? old.lastUsedTick,
+    lastAnsweredTick: next.lastAnsweredTick ?? old.lastAnsweredTick,
+    tags: [.../* @__PURE__ */ new Set([...old.tags ?? [], ...next.tags ?? []])]
+  } : next);
+  return out.sort((a, b) => a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0);
+}
+
 // src/cognition/faculties/executive.engine/context.ts
 var SPOKEN_TURNS_SHOWN = 6;
 async function buildExecutiveContext(state, deps, recallQuery) {
@@ -10647,7 +10718,7 @@ async function buildExecutiveContext(state, deps, recallQuery) {
   }
   recentActions.sort((a, b) => b.tick - a.tick);
   const recentActionsCapped = recentActions.slice(0, 5);
-  const nameOf = (keid) => {
+  const nameOf2 = (keid) => {
     for (const e of state.entities.values()) {
       if (e.type !== "known-entity") continue;
       const m = e.metadata ?? {};
@@ -10662,7 +10733,7 @@ async function buildExecutiveContext(state, deps, recallQuery) {
     // time, so records written before the mind knew it keep the raw id — and
     // the same person rendered as both `FKEM` and `discord:15255…` in one list,
     // which reads as two people. The roster holds the current best name.
-    target: nameOf(t.targetEntityId) ?? t.targetEntityName ?? t.targetEntityId,
+    target: nameOf2(t.targetEntityId) ?? t.targetEntityName ?? t.targetEntityId,
     preview: t.preview,
     age: Math.max(0, state.tick - t.tick),
     answered: t.answeredAt !== void 0,
@@ -10786,6 +10857,14 @@ function extractKnownEntities(state) {
       if (typeof m.name === "string") a.name = m.name;
       if (m.kind === "thing" || m.kind === "sentient") a.kind = m.kind;
       if (typeof m.reliability === "number") a.reliability = m.reliability;
+      if (Array.isArray(m.handles))
+        a.handles = m.handles.filter((h) => typeof h?.keid === "string").map((h) => ({
+          keid: h.keid,
+          kind: h.kind ?? "unknown",
+          ...typeof h.lastAnsweredTick === "number" ? { answeredAgo: Math.max(0, state.tick - h.lastAnsweredTick) } : {}
+        }));
+      if (Array.isArray(m.suspectedSameAs))
+        a.mayBeSameAs = m.suspectedSameAs.map((k) => nameOf(state.entities, k)).filter((n) => !!n);
       a._recency = Math.max(a._recency, m.lastSeenTick ?? 0);
     } else if (e.type === "attachment.bond") {
       const keid = m.keid ?? e.id.replace(/^bond-/, "");
@@ -10992,7 +11071,7 @@ ${roleDescription}${architectureBlock}
 - **selfObservations**: Notice patterns in my own thinking, feeling, or behavior.
 - **identityUpdates.traits**: Array of {key, value} where value is a DELTA to apply to my trait (e.g., +0.05 to increase a trait by 5%).
 - **identityUpdates.values**: Full list of values to set (replaces existing).
-- **knownEntityUpdates**: What I've learned about someone/something I'm dealing with. Array of {keid, name?, learned?, feeling?}. Use the keid from "## People I Know". Set name only when I actually learn their name; learned is an array of facts about them (stored as memories); feeling is how I feel toward them (-1..1). Record only what I genuinely learned this turn.
+- **knownEntityUpdates**: What I've learned about someone/something I'm dealing with. Array of {keid, name?, learned?, feeling?, sameAs?}. Use the keid from "## People I Know". Set name only when I actually learn their name; learned is an array of facts about them (stored as memories); feeling is how I feel toward them (-1..1). **sameAs** is another keid I have concluded is this same someone met under a different handle \u2014 it fuses my two records into one, so I use it only when I actually know, not when I merely suspect. Record only what I genuinely learned this turn.
 
 ## Required Output
 Output a single JSON object with these fields:
@@ -11231,7 +11310,16 @@ ${context.knownEntities.map((s) => {
       if (s.reliability != null && s.reliability !== 0.5) bits.push(`reliability: ${(s.reliability * 100).toFixed(0)}%`);
       if (s.closeness != null && s.closeness > 0.1) bits.push(`closeness: ${(s.closeness * 100).toFixed(0)}%`);
       const who = s.name ?? (s.kind === "thing" ? "something" : "someone");
-      return `- ${who}${bits.length ? " \u2014 " + bits.join(", ") : ""}`;
+      const where = (s.handles ?? []).map((h) => {
+        const kind = h.kind === "dm" ? "privately" : h.kind === "room" ? "in a shared room" : "somewhere";
+        const ans = h.answeredAgo !== void 0 ? `answered ${h.answeredAgo} ticks ago` : "never answered me there";
+        return `${kind} (${h.keid}) \u2014 ${ans}`;
+      });
+      const reach = where.length ? `
+  reachable: ${where.join("; ")}` : "";
+      const doubt = s.mayBeSameAs?.length ? `
+  I hold a separate record for ${s.mayBeSameAs.join(" and ")} \u2014 this may be the same someone under another handle. I do not know. If I find out they are, I say so with **sameAs**.` : "";
+      return `- ${who}${bits.length ? " \u2014 " + bits.join(", ") : ""}${reach}${doubt}`;
     }).join("\n")}` : "";
     const conversationsBlock = options.mode !== "facet" && options.activeConversations?.length ? `## In Conversation Now
 ${options.activeConversations.map(
@@ -12259,13 +12347,13 @@ ${this._facetReasoningHistory.join("\n")}` : "";
     const keUpdates = dec["knownEntityUpdates"];
     if (keUpdates) {
       for (const u of keUpdates)
-        if (u.keid && u.keid !== "agent-self" && (u.name || u.feeling != null))
+        if (u.keid && u.keid !== "agent-self" && (u.name || u.feeling != null || u.sameAs))
           this._bus.publish({
             type: "known.entity.learned",
             version: 1,
             sourceEngine: `executive-facet-${this.facetId}`,
-            salience: 0.5,
-            payload: { keid: u.keid, name: u.name, feeling: u.feeling }
+            salience: u.sameAs ? 0.7 : 0.5,
+            payload: { keid: u.keid, name: u.name, feeling: u.feeling, sameAs: u.sameAs }
           });
     }
     this._bus.publish({
@@ -19169,68 +19257,6 @@ var ReputationTracker = class {
   }
 };
 
-// src/cognition/social.identity.ts
-var REFERENT_PREFIX = "ke:";
-var ALIAS_TYPE = "known-entity-alias";
-var DOSSIER_TYPE = "known-entity";
-function isReferentId(id) {
-  return id.startsWith(REFERENT_PREFIX);
-}
-function mintReferentId(seedKeid) {
-  return `${REFERENT_PREFIX}${fnv1a(seedKeid).toString(36)}`;
-}
-function str2(v) {
-  return typeof v === "string" && v.length > 0 ? v : void 0;
-}
-function readAliases(entities) {
-  const out = /* @__PURE__ */ new Map();
-  for (const [, e] of entities) {
-    if (e.type !== ALIAS_TYPE) continue;
-    const a = str2(e.metadata?.["aliasKeid"]);
-    const c = str2(e.metadata?.["canonicalKeid"]);
-    if (a && c) out.set(a, c);
-  }
-  return out;
-}
-function canonicalOf(aliases, keid) {
-  const seen = /* @__PURE__ */ new Set();
-  let id = keid;
-  while (true) {
-    const next = aliases.get(id);
-    if (!next || next === id || seen.has(next)) return id;
-    seen.add(id);
-    id = next;
-  }
-}
-function handlesOf(entities, referentId) {
-  for (const [, e] of entities) {
-    if (e.type !== DOSSIER_TYPE || str2(e.metadata?.["keid"]) !== referentId) continue;
-    const raw = e.metadata?.["handles"];
-    if (!Array.isArray(raw)) return [];
-    return raw.filter((h) => h && typeof h.keid === "string").sort((a, b) => (b.lastAnsweredTick ?? -1) - (a.lastAnsweredTick ?? -1) || (b.lastUsedTick ?? -1) - (a.lastUsedTick ?? -1) || (a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0));
-  }
-  return [];
-}
-function defaultHandle(handles) {
-  if (handles.length === 0) return void 0;
-  const answered = handles.filter((h) => h.lastAnsweredTick !== void 0);
-  const pool = answered.length > 0 ? answered : handles;
-  return pool.find((h) => h.kind === "dm") ?? pool[0];
-}
-function withHandle(handles, next) {
-  const out = handles.filter((h) => h.keid !== next.keid);
-  const old = handles.find((h) => h.keid === next.keid);
-  out.push(old ? {
-    ...old,
-    ...next,
-    // Never let a fresh sighting erase evidence the old record already held.
-    lastUsedTick: next.lastUsedTick ?? old.lastUsedTick,
-    lastAnsweredTick: next.lastAnsweredTick ?? old.lastAnsweredTick,
-    tags: [.../* @__PURE__ */ new Set([...old.tags ?? [], ...next.tags ?? []])]
-  } : next);
-  return out.sort((a, b) => a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0);
-}
-
 // src/cognition/faculties/known.entity.tracker.ts
 var SENTIENT_DOMAINS = /* @__PURE__ */ new Set(["audition"]);
 var CURIOUS_FAMILIARITY = 0.5;
@@ -19301,7 +19327,7 @@ var KnownEntityTracker = class {
     if (e.type === "known.entity.learned") {
       const u = e.payload;
       if (u?.keid && u.keid !== "agent-self")
-        this._pendingConscious.push({ keid: u.keid, name: u.name, feeling: u.feeling });
+        this._pendingConscious.push({ keid: u.keid, name: u.name, feeling: u.feeling, sameAs: u.sameAs });
       return;
     }
     if (e.type === "action.outcome") {
@@ -19338,18 +19364,30 @@ var KnownEntityTracker = class {
       d.encounterCount += 1;
       d.familiarity = Math.min(1, d.familiarity + this._growthRate * (1 - d.familiarity));
       d.lastSeenTick = tick;
-      if (enc.thread)
+      if (enc.thread) {
         d.handles = withHandle(d.handles, {
           keid: enc.thread,
           kind: enc.direct === true ? "dm" : enc.direct === false ? "room" : "unknown",
           lastSeenTick: tick
         });
+        if (enc.direct === false) {
+          const place = this._getOrCreate(enc.thread, "place", tick);
+          place.encounterCount += 1;
+          place.familiarity = Math.min(1, place.familiarity + this._growthRate * (1 - place.familiarity));
+          place.lastSeenTick = tick;
+          place.resolutionConfidence = this._resolution(place);
+        }
+      }
       if (enc.name && !d.name) d.name = enc.name;
       d.resolutionConfidence = this._resolution(d);
       touched = true;
     }
     for (const u of this._pendingConscious.splice(0)) {
       const d = this._getOrCreate(u.keid, "audition", tick);
+      if (u.sameAs) {
+        const other = this._dossiers.get(canonicalOf(this._aliases, u.sameAs));
+        if (other && other.keid !== d.keid) this._fuse(d, other, commands);
+      }
       if (u.name) d.name = u.name;
       if (u.feeling != null)
         d.valence = Math.max(-1, Math.min(1, d.valence + 0.5 * (u.feeling - d.valence)));
@@ -19390,7 +19428,8 @@ var KnownEntityTracker = class {
           encounterCount: d.encounterCount,
           lastSeenTick: d.lastSeenTick,
           resolutionConfidence: d.resolutionConfidence,
-          handles: d.handles
+          handles: d.handles,
+          ...d.suspectedSameAs?.length ? { suspectedSameAs: d.suspectedSameAs } : {}
         }
       });
     }
@@ -19448,6 +19487,44 @@ var KnownEntityTracker = class {
     return this._dossiers.get(canonicalOf(this._aliases, keid));
   }
   // ── Internal ─────────────────────────────────────────────
+  /**
+   * Absorb `alias` into `canon` — one someone where there were two.
+   *
+   * Shared by the recognition heuristic and by the mind's own `sameAs` verdict,
+   * because "these are the same person" must mean the same thing whichever
+   * concluded it. The only difference is who is ENTITLED to conclude it: the
+   * heuristic will not absorb an established relationship, the mind may, because
+   * it has reasons a name-match does not — usually that somebody just told it.
+   *
+   * Routes MOVE. This used to delete the absorbed dossier and keep only a
+   * redirect, so the mind concluded "same person" and in the same breath threw
+   * away the second way to reach them.
+   */
+  _fuse(canon, alias, commands) {
+    canon.encounterCount += alias.encounterCount;
+    canon.familiarity = Math.max(canon.familiarity, alias.familiarity);
+    canon.resolutionConfidence = Math.max(canon.resolutionConfidence, alias.resolutionConfidence);
+    canon.lastSeenTick = Math.max(canon.lastSeenTick, alias.lastSeenTick);
+    canon.valence = (canon.valence + alias.valence) / 2;
+    canon.reliability = (canon.reliability + alias.reliability) / 2;
+    canon.name ??= alias.name;
+    for (const h of alias.handles) canon.handles = withHandle(canon.handles, h);
+    const settled = (held) => {
+      const out = (held ?? []).filter((k) => k !== alias.keid && k !== canon.keid);
+      return out.length > 0 ? out : void 0;
+    };
+    canon.suspectedSameAs = settled([...canon.suspectedSameAs ?? [], ...alias.suspectedSameAs ?? []]);
+    for (const [a, c] of this._aliases)
+      if (c === alias.keid) this._aliases.set(a, canon.keid);
+    this._dossiers.delete(alias.keid);
+    this._aliases.set(alias.keid, canon.keid);
+    commands.delete.push(`ke-${alias.keid}`);
+    commands.set.push({
+      id: `kea-${alias.keid}`,
+      type: "known-entity-alias",
+      metadata: { aliasKeid: alias.keid, canonicalKeid: canon.keid }
+    });
+  }
   /** Resolution confidence: a learned name plus repeated encounters identify a referent. */
   _resolution(d) {
     return Math.min(1, (d.name ? 0.4 : 0) + Math.min(0.6, d.encounterCount * 0.05));
@@ -19471,23 +19548,16 @@ var KnownEntityTracker = class {
       const canon = group[0];
       for (const alias of group.slice(1)) {
         const gap = Math.abs(canon.lastSeenTick - alias.lastSeenTick);
-        if (alias.encounterCount >= RECOGNITION_MERGE_MAX_ENCOUNTERS || gap < RECOGNITION_CONCURRENCY_WINDOW)
+        if (gap < RECOGNITION_CONCURRENCY_WINDOW) continue;
+        if (alias.encounterCount >= RECOGNITION_MERGE_MAX_ENCOUNTERS) {
+          for (const [a, b] of [[canon, alias], [alias, canon]]) {
+            const held = a.suspectedSameAs ?? [];
+            if (!held.includes(b.keid)) a.suspectedSameAs = [...held, b.keid].sort();
+          }
+          merged2 = true;
           continue;
-        canon.encounterCount += alias.encounterCount;
-        canon.familiarity = Math.max(canon.familiarity, alias.familiarity);
-        canon.resolutionConfidence = Math.max(canon.resolutionConfidence, alias.resolutionConfidence);
-        canon.lastSeenTick = Math.max(canon.lastSeenTick, alias.lastSeenTick);
-        canon.valence = (canon.valence + alias.valence) / 2;
-        canon.reliability = (canon.reliability + alias.reliability) / 2;
-        for (const h of alias.handles) canon.handles = withHandle(canon.handles, h);
-        this._dossiers.delete(alias.keid);
-        this._aliases.set(alias.keid, canon.keid);
-        commands.delete.push(`ke-${alias.keid}`);
-        commands.set.push({
-          id: `kea-${alias.keid}`,
-          type: "known-entity-alias",
-          metadata: { aliasKeid: alias.keid, canonicalKeid: canon.keid }
-        });
+        }
+        this._fuse(canon, alias, commands);
         merged2 = true;
       }
     }
@@ -19574,6 +19644,7 @@ var KnownEntityTracker = class {
         valence: m["valence"] ?? 0,
         reliability: m["reliability"] ?? 0.5,
         handles: Array.isArray(m["handles"]) ? m["handles"] : [],
+        ...Array.isArray(m["suspectedSameAs"]) ? { suspectedSameAs: m["suspectedSameAs"] } : {},
         encounterCount: m["encounterCount"] ?? 0,
         lastSeenTick: m["lastSeenTick"] ?? 0,
         resolutionConfidence: m["resolutionConfidence"] ?? 0

@@ -291,3 +291,88 @@ describe('an anchor is translated to somewhere the world can be spoken to', () =
     expect( read('stem/mind.ts') ).toMatch( /a\.startsWith\(`\$\{ scheme \}:`\)/ )
   } )
 } )
+
+// ── an identity the heuristic is not entitled to settle ──────
+
+describe('two records of one someone, both established', () => {
+  const read = ( p: string ): string => readFileSync( join( process.cwd(), 'src', p ), 'utf8')
+  const tracker = read('cognition/faculties/known.entity.tracker.ts')
+
+  it('does not loosen the guard — fusing two real people is the dangerous direction', () => {
+    // Absorbing an established relationship would take a real person's whole
+    // history with them. The heuristic must keep refusing.
+    expect( tracker ).toContain('RECOGNITION_MERGE_MAX_ENCOUNTERS')
+  } )
+
+  it('keeps the near-miss as a DOUBT instead of dropping it silently', () => {
+    // The whole failure: a blocked merge vanished, so the same human
+    // well-established on two channels stayed two people permanently and nothing
+    // anywhere recorded that it had nearly noticed.
+    expect( tracker ).toContain('suspectedSameAs')
+  } )
+
+  it('says nothing when concurrency already answered the question', () => {
+    // Two people talking at once are two people. That is evidence AGAINST, not
+    // insufficient evidence FOR, and there is nothing to wonder about.
+    // Ordering is the assertion: the concurrency bail comes BEFORE the block that
+    // records a doubt, so two concurrent interlocutors produce no suspicion at all
+    // rather than one the mind then has to carry around and rule out.
+    const bail  = tracker.indexOf('RECOGNITION_CONCURRENCY_WINDOW ) continue')
+    const doubt = tracker.indexOf('a.suspectedSameAs = [')
+    expect( bail ).toBeGreaterThan( 0 )
+    expect( doubt ).toBeGreaterThan( bail )
+  } )
+
+  it('shows the mind the doubt, as a question and not a conclusion', () => {
+    const factory = read('cognition/faculties/executive.engine/prompt.factory.ts')
+    expect( factory ).toContain('this may be the same someone under another handle')
+    expect( factory ).toContain('I do not know')
+  } )
+
+  it('lets the MIND settle it, doing what the heuristic will not', () => {
+    // It has evidence a name-match does not — usually that somebody just told it.
+    expect( tracker ).toMatch( /if\( u\.sameAs \)/ )
+    expect( read('cognition/faculties/executive.engine/types.ts') ).toMatch( /sameAs\?:\s+string/ )
+    expect( read('cognition/faculties/executive.engine/commands.ts') ).toContain('u.sameAs')
+    expect( read('cognition/faculties/executive.engine/facet.ts') ).toContain('u.sameAs')
+  } )
+
+  it('fuses through ONE implementation, however it was concluded', () => {
+    // "These are the same person" must mean the same thing whichever decided it.
+    // Only who is ENTITLED to decide differs.
+    expect( tracker ).toContain('private _fuse(')
+    expect( tracker ).toMatch( /this\._fuse\( canon, alias, commands \)/ )
+    expect( tracker ).toMatch( /this\._fuse\( d, other, commands \)/ )
+  } )
+
+  it('repoints every address at the survivor, or the person re-forks on the next message', () => {
+    const body = tracker.slice( tracker.indexOf('private _fuse('), tracker.indexOf('private _resolution') )
+    expect( body ).toMatch( /if\( c === alias\.keid \) this\._aliases\.set\( a, canon\.keid \)/ )
+  } )
+
+  it('clears the doubt once it is answered', () => {
+    const body = tracker.slice( tracker.indexOf('private _fuse('), tracker.indexOf('private _resolution') )
+    expect( body ).toContain('suspectedSameAs = settled')
+  } )
+} )
+
+describe('a room is something the mind can know', () => {
+  const tracker = readFileSync( join( process.cwd(), 'src/cognition/faculties/known.entity.tracker.ts'), 'utf8')
+
+  it('gives a shared room its own dossier', () => {
+    // `kind: 'thing'` existed since this tracker shipped and nothing had ever
+    // created one — the seat for a non-person was built and left empty.
+    expect( tracker ).toMatch( /this\._getOrCreate\( enc\.thread, 'place', tick \)/ )
+  } )
+
+  it('does NOT give a private thread one — a DM is not a place, it is the person', () => {
+    // Otherwise every someone would be doubled by a room that is only them.
+    expect( tracker ).toMatch( /if\( enc\.direct === false \)\{/ )
+  } )
+
+  it('lets the mind see where it can reach someone and how that has gone', () => {
+    const factory = readFileSync( join( process.cwd(), 'src/cognition/faculties/executive.engine/prompt.factory.ts'), 'utf8')
+    expect( factory ).toContain('reachable:')
+    expect( factory ).toContain('never answered me there')
+  } )
+} )

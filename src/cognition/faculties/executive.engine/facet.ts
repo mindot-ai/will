@@ -644,13 +644,13 @@ export class ExecutiveFacet {
     const keUpdates = dec[ 'knownEntityUpdates' ] as ExecutiveOutputFull['knownEntityUpdates'] | undefined
     if( keUpdates )
       for( const u of keUpdates )
-        if( u.keid && u.keid !== 'agent-self' && ( u.name || u.feeling != null ) )
+        if( u.keid && u.keid !== 'agent-self' && ( u.name || u.feeling != null || u.sameAs ) )
           this._bus.publish({
             type: 'known.entity.learned',
             version: 1,
             sourceEngine: `executive-facet-${this.facetId}`,
-            salience: 0.5,
-            payload: { keid: u.keid, name: u.name, feeling: u.feeling }
+            salience: u.sameAs ? 0.7 : 0.5,
+            payload: { keid: u.keid, name: u.name, feeling: u.feeling, sameAs: u.sameAs }
           })
 
     // Sync back to master

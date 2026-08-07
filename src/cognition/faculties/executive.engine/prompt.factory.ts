@@ -423,7 +423,7 @@ ${roleDescription}${architectureBlock}
 - **selfObservations**: Notice patterns in my own thinking, feeling, or behavior.
 - **identityUpdates.traits**: Array of {key, value} where value is a DELTA to apply to my trait (e.g., +0.05 to increase a trait by 5%).
 - **identityUpdates.values**: Full list of values to set (replaces existing).
-- **knownEntityUpdates**: What I've learned about someone/something I'm dealing with. Array of {keid, name?, learned?, feeling?}. Use the keid from "## People I Know". Set name only when I actually learn their name; learned is an array of facts about them (stored as memories); feeling is how I feel toward them (-1..1). Record only what I genuinely learned this turn.
+- **knownEntityUpdates**: What I've learned about someone/something I'm dealing with. Array of {keid, name?, learned?, feeling?, sameAs?}. Use the keid from "## People I Know". Set name only when I actually learn their name; learned is an array of facts about them (stored as memories); feeling is how I feel toward them (-1..1). **sameAs** is another keid I have concluded is this same someone met under a different handle — it fuses my two records into one, so I use it only when I actually know, not when I merely suspect. Record only what I genuinely learned this turn.
 
 ## Required Output
 Output a single JSON object with these fields:
@@ -758,7 +758,27 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
           if( s.closeness != null && s.closeness > 0.1 ) bits.push(`closeness: ${( s.closeness * 100 ).toFixed( 0 )}%`)
           // The Will can know *someone* without their name yet — never leak the raw keid.
           const who = s.name ?? ( s.kind === 'thing' ? 'something' : 'someone')
-          return `- ${who}${bits.length ? ' — ' + bits.join(', ') : ''}`
+
+          // Where I can reach them, and how each place has gone. Stated as fact:
+          // which room to speak in is my decision, and I could not make it while
+          // the only thing anyone tracked was where they were last seen.
+          const where = ( s.handles ?? [] ).map( h => {
+            const kind = h.kind === 'dm' ? 'privately' : h.kind === 'room' ? 'in a shared room' : 'somewhere'
+            const ans  = h.answeredAgo !== undefined
+              ? `answered ${ h.answeredAgo } ticks ago`
+              : 'never answered me there'
+            return `${ kind } (${ h.keid }) — ${ ans }`
+          } )
+          const reach = where.length ? `\n  reachable: ${ where.join('; ') }` : ''
+
+          // An identity I have not settled. Deliberately a question and not a
+          // merge: two people really can share a name, so nothing fuses them on my
+          // behalf — but I am told, so I can find out, usually by asking.
+          const doubt = s.mayBeSameAs?.length
+            ? `\n  I hold a separate record for ${ s.mayBeSameAs.join(' and ') } — this may be the same someone under another handle. I do not know. If I find out they are, I say so with **sameAs**.`
+            : ''
+
+          return `- ${who}${bits.length ? ' — ' + bits.join(', ') : ''}${ reach }${ doubt }`
         } ).join('\n')}`
       : ''
 

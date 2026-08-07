@@ -59,6 +59,18 @@ export interface ExecutiveOutputFull {
     name?:    string
     learned?: string[]
     feeling?: number
+    /**
+     * "This is the same someone as that" — another keid I now believe is this
+     * same referent, fusing two of my records into one.
+     *
+     * The mind's own verdict on an identity, and it may do what the recognition
+     * heuristic will not: absorb an ESTABLISHED relationship. The heuristic is
+     * right to refuse — fusing two real people who share a name would take one of
+     * them's whole history — but the mind has evidence a name-match does not,
+     * usually because somebody just told it. Without this, the same human
+     * well-established on two channels stayed two people permanently.
+     */
+    sameAs?:  string
   }>
   newGoals?: Array<{
     description: string
@@ -343,6 +355,10 @@ export interface ExecutiveContext {
    * Omitted when the Will knows no one.
    */
   knownEntities?: Array<{
+    /** Where this referent is reachable, and how each place has gone. */
+    handles?: Array<{ keid: string; kind: string; answeredAgo?: number }>
+    /** Names of referents this one may be the same as — an unsettled identity. */
+    mayBeSameAs?: string[]
     keid:            string
     kind:            'sentient' | 'thing'
     name?:           string

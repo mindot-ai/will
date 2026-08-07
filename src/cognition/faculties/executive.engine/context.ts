@@ -11,6 +11,7 @@ import type { SemanticIntegrator } from '#faculties/semantic.engine/integrator'
 import { readEffectiveParams, summarizePersonaPrior } from '#cognition/persona.prior'
 import { readIdentityName } from '#cognition/identity.entity'
 import { readSpokenTurns } from '#agency/conversation.aim'
+import { nameOf as referentName } from '#cognition/social.identity'
 
 /** How many of the mind's own recent utterances it is shown. Enough to notice a
  *  repetition, few enough not to crowd out what is happening now. */
@@ -476,6 +477,25 @@ export function extractKnownEntities( state: ReadonlySimulationState ): Executiv
       if( typeof m.name === 'string') a.name = m.name
       if( m.kind === 'thing' || m.kind === 'sentient') a.kind = m.kind as 'thing' | 'sentient'
       if( typeof m.reliability === 'number') a.reliability = m.reliability as number
+
+      // The routes, so choosing where to say something is a decision the mind
+      // makes rather than a fallback the plumbing makes for it.
+      if( Array.isArray( m.handles ) )
+        a.handles = ( m.handles as Array<{ keid?: string; kind?: string; lastAnsweredTick?: number }> )
+          .filter( h => typeof h?.keid === 'string')
+          .map( h => ({
+            keid: h.keid!,
+            kind: h.kind ?? 'unknown',
+            ...( typeof h.lastAnsweredTick === 'number'
+              ? { answeredAgo: Math.max( 0, state.tick - h.lastAnsweredTick ) } : {} ),
+          }) )
+
+      // An identity the mind has not settled. Carried as NAMES where it knows
+      // them, because a raw keid in a prompt is noise it cannot act on.
+      if( Array.isArray( m.suspectedSameAs ) )
+        a.mayBeSameAs = ( m.suspectedSameAs as string[] )
+          .map( k => referentName( state.entities, k ) )
+          .filter( ( n ): n is string => !!n )
       a._recency = Math.max( a._recency, ( m.lastSeenTick as number ) ?? 0 )
     }
     else if( e.type === 'attachment.bond'){

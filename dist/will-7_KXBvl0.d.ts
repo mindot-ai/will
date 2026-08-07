@@ -6717,6 +6717,18 @@ interface OutboxMessage {
     };
 }
 
+/**
+ * Referent → a deliverable address, and the room to use when none was chosen.
+ *
+ * Returns null when the referent is already an address (nothing to translate) or
+ * when the mind holds no route at all — in which case the row goes out as-is and
+ * the bridge's own roster fallback still applies, so a message is never silently
+ * dropped for want of a handle.
+ */
+type OutboxRouting = (targetEntityId: string, chosenThread: string | undefined) => {
+    targetEntityId: string;
+    threadId?: string;
+} | null;
 /** The caller-supplied fields of an outbox row; the writer stamps id + defaults. */
 interface OutboxRow {
     targetEntityId: string;
@@ -6738,11 +6750,24 @@ declare class OutboxWriter {
      * which made the embedded ids in `conversation.sent` diverge every run).
      */
     private _seq;
+    private _routing;
     constructor(opts?: {
         outbox?: OutboxMessage[];
         willId?: string;
     });
     attachSessionLogger(logger: SessionLogger | null): void;
+    /**
+     * Turn a referent into somewhere the world can actually be spoken to.
+     *
+     * Injected rather than read here, because this writer is deliberately dumb —
+     * it holds no state and must stay replay-safe. Assembly closes over the state
+     * manager (the same shape as `attachMemorySink`).
+     *
+     * This is the ONE seam both send paths cross: ProactiveCommunicator's
+     * `enqueue()` and AuditionEngine's `enqueueReply()`. Translating anywhere else
+     * would mean doing it twice and getting it wrong once.
+     */
+    attachRouting(resolve: OutboxRouting | null): void;
     private _genId;
     /**
      * Push one canonical outbox row and return its generated id. The single point
@@ -6828,6 +6853,18 @@ interface TextMessage {
     content: string;
     /** Display name — used in the facet focus content. */
     speakerName?: string;
+    /**
+     * True when `threadId` is a PRIVATE thread — this someone and the mind, nobody
+     * else listening. The single fact that decides whether a room is the right
+     * place for a given utterance, and the Discord edge has always computed it
+     * (`isDM`) and discarded it before the mind could see it: a follow-up promised
+     * in a DM went out to a public channel, because the roster's "where did I last
+     * see them" is a different question from "where did I promise this".
+     *
+     * Undefined means the channel did not say, which is honestly different from
+     * false — an unknown room is not known to be public.
+     */
+    direct?: boolean;
 }
 interface VoiceChunk {
     kind: 'voice';
@@ -8833,6 +8870,8 @@ interface Stimulus {
     speaker?: string;
     /** Conversation/thread id (default = `from`). */
     thread?: string;
+    /** True when `thread` is private — just this someone and the Will. See TextMessage.direct. */
+    direct?: boolean;
 }
 /** A message the Will emitted to someone. */
 interface WillMessage {

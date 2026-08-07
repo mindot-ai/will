@@ -17,6 +17,8 @@
  */
 
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   REFERENT_PREFIX, isReferentId, mintReferentId, readAliases, canonicalOf,
   resolveKeid, nameOf, handlesOf, defaultHandle, withHandle, type Handle,
@@ -218,5 +220,74 @@ describe('folding a fresh sighting into what is already known', () => {
     const a = withHandle( withHandle([], { keid: 'z', kind: 'dm' } ), { keid: 'a', kind: 'room' } )
     const b = withHandle( withHandle([], { keid: 'a', kind: 'room' } ), { keid: 'z', kind: 'dm' } )
     expect( a.map( h => h.keid ) ).toEqual( b.map( h => h.keid ) )
+  } )
+} )
+
+// ── the two seats that make it visible ───────────────────────
+
+describe('the room a message was addressed in survives the edge', () => {
+  const read = ( p: string ): string => readFileSync( join( process.cwd(), 'src', p ), 'utf8')
+
+  it('Discord stops discarding isDM', () => {
+    // Computed on every inbound since this bridge shipped, used only to pick a
+    // roster field. It is the one fact that makes a room the right or wrong place
+    // to say something — and a follow-up promised in a DM went out to #general.
+    expect( read('channels/discord.ts') ).toMatch( /direct: isDM/ )
+  } )
+
+  it('WhatsApp distinguishes a group from a one-to-one chat', () => {
+    expect( read('channels/whatsapp.ts') ).toMatch( /@g\.us/ )
+  } )
+
+  it('carries it through the SDK boundary without inventing a default', () => {
+    // Undefined is honestly different from false: an unknown room is not known to
+    // be public, and defaulting would have the mind treat every unlabelled thread
+    // as safe to speak in.
+    const sdk = read('sdk/will.ts')
+    expect( sdk ).toMatch( /direct\?: boolean/ )
+    expect( sdk ).toMatch( /stimulus\.direct !== undefined/ )
+  } )
+
+  it('reaches the dossier as a handle with its kind', () => {
+    const tracker = read('cognition/faculties/known.entity.tracker.ts')
+    expect( tracker ).toMatch( /raw\?\.direct === 'boolean'/ )
+    expect( tracker ).toMatch( /enc\.direct === true \? 'dm'/ )
+  } )
+} )
+
+describe('an anchor is translated to somewhere the world can be spoken to', () => {
+  const read = ( p: string ): string => readFileSync( join( process.cwd(), 'src', p ), 'utf8')
+
+  it('translates at the ONE seam both send paths cross', () => {
+    // ProactiveCommunicator.enqueue() and AuditionEngine.enqueueReply() both
+    // funnel through OutboxWriter. Doing it in each would mean doing it twice and
+    // getting it wrong once.
+    expect( read('stem/tracts/outbox.writer.ts') ).toContain('attachRouting')
+    expect( read('stem/mind.ts') ).toContain('outboxWriter.attachRouting(')
+  } )
+
+  it('lets a chosen room WIN over the fallback', () => {
+    // A reply answers into the thread it was asked in. The mind picking a room is
+    // a decision; the handle default only covers "it made none", and the
+    // alternative to the fallback is dropping the message.
+    const w = read('stem/tracts/outbox.writer.ts')
+    expect( w ).toMatch( /const thread = row\.threadId \?\? routed\?\.threadId/ )
+  } )
+
+  it('leaves an address alone — only an anchor needs translating', () => {
+    expect( read('stem/mind.ts') ).toMatch( /if\( !isReferentId\( targetEntityId \) \) return null/ )
+  } )
+
+  it('never drops a message for want of a handle', () => {
+    // Returning null falls through to the row as written, so the bridge's own
+    // roster fallback still applies. Silence would be the worse failure.
+    const m = read('stem/mind.ts')
+    expect( m ).toMatch( /if\( !address \) return null/ )
+  } )
+
+  it('picks an address on the same platform as the room', () => {
+    // Otherwise a reply in a Discord thread could be addressed to a WhatsApp
+    // handle — the exact confusion the anchor exists to make impossible.
+    expect( read('stem/mind.ts') ).toMatch( /a\.startsWith\(`\$\{ scheme \}:`\)/ )
   } )
 } )

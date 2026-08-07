@@ -1284,16 +1284,16 @@ var DefaultSerializer = class {
       hash |= 0;
     }
     for (const e of state.entities) {
-      const str8 = `${e.id}:${e.type}:${e.updatedAt}:${e.updatedAtTick}:${JSON.stringify(e.metadata)}:${JSON.stringify(e.components)}`;
-      for (let i = 0; i < str8.length; i++) {
-        hash = (hash << 5) - hash + str8.charCodeAt(i);
+      const str9 = `${e.id}:${e.type}:${e.updatedAt}:${e.updatedAtTick}:${JSON.stringify(e.metadata)}:${JSON.stringify(e.components)}`;
+      for (let i = 0; i < str9.length; i++) {
+        hash = (hash << 5) - hash + str9.charCodeAt(i);
         hash |= 0;
       }
     }
     for (const [key, value] of state.metrics) {
-      const str8 = `${key}:${value}`;
-      for (let i = 0; i < str8.length; i++) {
-        hash = (hash << 5) - hash + str8.charCodeAt(i);
+      const str9 = `${key}:${value}`;
+      for (let i = 0; i < str9.length; i++) {
+        hash = (hash << 5) - hash + str9.charCodeAt(i);
         hash |= 0;
       }
     }
@@ -19171,11 +19171,26 @@ var ReputationTracker = class {
 
 // src/cognition/social.identity.ts
 var REFERENT_PREFIX = "ke:";
+var ALIAS_TYPE = "known-entity-alias";
+var DOSSIER_TYPE = "known-entity";
 function isReferentId(id) {
   return id.startsWith(REFERENT_PREFIX);
 }
 function mintReferentId(seedKeid) {
   return `${REFERENT_PREFIX}${fnv1a(seedKeid).toString(36)}`;
+}
+function str2(v) {
+  return typeof v === "string" && v.length > 0 ? v : void 0;
+}
+function readAliases(entities) {
+  const out = /* @__PURE__ */ new Map();
+  for (const [, e] of entities) {
+    if (e.type !== ALIAS_TYPE) continue;
+    const a = str2(e.metadata?.["aliasKeid"]);
+    const c = str2(e.metadata?.["canonicalKeid"]);
+    if (a && c) out.set(a, c);
+  }
+  return out;
 }
 function canonicalOf(aliases, keid) {
   const seen = /* @__PURE__ */ new Set();
@@ -19186,6 +19201,21 @@ function canonicalOf(aliases, keid) {
     seen.add(id);
     id = next;
   }
+}
+function handlesOf(entities, referentId) {
+  for (const [, e] of entities) {
+    if (e.type !== DOSSIER_TYPE || str2(e.metadata?.["keid"]) !== referentId) continue;
+    const raw = e.metadata?.["handles"];
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((h) => h && typeof h.keid === "string").sort((a, b) => (b.lastAnsweredTick ?? -1) - (a.lastAnsweredTick ?? -1) || (b.lastUsedTick ?? -1) - (a.lastUsedTick ?? -1) || (a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0));
+  }
+  return [];
+}
+function defaultHandle(handles) {
+  if (handles.length === 0) return void 0;
+  const answered = handles.filter((h) => h.lastAnsweredTick !== void 0);
+  const pool = answered.length > 0 ? answered : handles;
+  return pool.find((h) => h.kind === "dm") ?? pool[0];
 }
 function withHandle(handles, next) {
   const out = handles.filter((h) => h.keid !== next.keid);
@@ -20751,8 +20781,8 @@ var AffordanceSynthesizer = class {
         if (e.type !== "percept") continue;
         const m = e.metadata;
         const salience = num2(m?.["salience"], 0);
-        const summary = str2(m?.["summary"]) ?? str2(m?.["category"]) ?? "something";
-        const target = str2(m?.["entityId"]) ?? str2(m?.["targetEntityId"]);
+        const summary = str3(m?.["summary"]) ?? str3(m?.["category"]) ?? "something";
+        const target = str3(m?.["entityId"]) ?? str3(m?.["targetEntityId"]);
         candidates.push({
           salience: salience + (target ? goalTargets.get(target) ?? 0 : 0),
           affordance: this._build(perceptSchema, tick, state, valence, energyLow, skills, {
@@ -20768,15 +20798,15 @@ var AffordanceSynthesizer = class {
       for (const [id, e] of state.entities) {
         if (e.type !== "known-entity") continue;
         const m = e.metadata;
-        const kind = str2(m?.["kind"]);
+        const kind = str3(m?.["kind"]);
         const applicable = kind === "sentient" ? personSchemas : kind === "thing" ? objectSchemas : null;
         if (!applicable || applicable.length === 0) continue;
-        const keid = str2(m?.["keid"]) ?? id;
+        const keid = str3(m?.["keid"]) ?? id;
         const fam = num2(m?.["familiarity"], 0);
         const val = num2(m?.["valence"], 0);
         const res = num2(m?.["resolutionConfidence"], 0);
         const salience = fam * 0.6 + Math.max(0, val) * 0.3 + res * 0.1 + (goalTargets.get(keid) ?? 0);
-        const name = str2(m?.["name"]) ?? keid;
+        const name = str3(m?.["name"]) ?? keid;
         for (const schema of applicable)
           candidates.push({
             salience,
@@ -20790,7 +20820,7 @@ var AffordanceSynthesizer = class {
     for (const [id, e] of state.entities) {
       if (e.type !== "ideomotor.intent") continue;
       const m = e.metadata;
-      const schemaId = str2(m?.["schema"]);
+      const schemaId = str3(m?.["schema"]);
       const schema = schemaId ? schemas.find((s) => s.id === schemaId) : void 0;
       if (!schema) continue;
       const willBias = clamp016(num2(m?.["priority"], 0.8));
@@ -20798,7 +20828,7 @@ var AffordanceSynthesizer = class {
         salience: IDEOMOTOR_BASE_SALIENCE + willBias,
         affordance: this._build(schema, tick, state, valence, energyLow, skills, {
           evokedBy: id,
-          targetEntityId: str2(m?.["targetEntityId"]),
+          targetEntityId: str3(m?.["targetEntityId"]),
           parameters: m?.["parameters"] ?? {},
           source: "ideomotor",
           willBias
@@ -20808,7 +20838,7 @@ var AffordanceSynthesizer = class {
     for (const [id, e] of state.entities) {
       if (e.type !== "plan.prior") continue;
       const m = e.metadata;
-      const schemaId = str2(m?.["schema"]);
+      const schemaId = str3(m?.["schema"]);
       const schema = schemaId ? schemas.find((s) => s.id === schemaId) : void 0;
       if (!schema) continue;
       const planBias = clamp016(num2(m?.["planBias"], 0.6));
@@ -20816,12 +20846,12 @@ var AffordanceSynthesizer = class {
         salience: IDEOMOTOR_BASE_SALIENCE + planBias,
         affordance: this._build(schema, tick, state, valence, energyLow, skills, {
           evokedBy: id,
-          targetEntityId: str2(m?.["targetEntityId"]),
+          targetEntityId: str3(m?.["targetEntityId"]),
           parameters: m?.["parameters"] ?? {},
           source: "plan",
           planBias,
-          planId: str2(m?.["planId"]),
-          stepId: str2(m?.["stepId"])
+          planId: str3(m?.["planId"]),
+          stepId: str3(m?.["stepId"])
         })
       });
     }
@@ -20959,7 +20989,7 @@ function metric(state, key, fallback) {
 function num2(v, fallback) {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
-function str2(v) {
+function str3(v) {
   return typeof v === "string" ? v : void 0;
 }
 function clamp016(n) {
@@ -21095,15 +21125,15 @@ var ActionSelector = class {
     for (const [id, e] of state.entities) {
       if (e.type === "agency.intent") {
         const m = e.metadata ?? {};
-        const st = str3(m["status"]) ?? "";
+        const st = str4(m["status"]) ?? "";
         if (st === "expanding") expandingParents.add(id);
         intents.push({
           id,
           st,
-          parentIntentId: str3(m["parentIntentId"]),
+          parentIntentId: str4(m["parentIntentId"]),
           activation: num3(m["activation"], 0),
-          schema: str3(m["schema"]) ?? "",
-          target: str3(m["targetEntityId"]) ?? "",
+          schema: str4(m["schema"]) ?? "",
+          target: str4(m["targetEntityId"]) ?? "",
           dispatchedAt: num3(m["dispatchedAt"], tick)
         });
         continue;
@@ -21391,7 +21421,7 @@ function computeRupture(state, tick, senseEvents = []) {
   for (const e of state.entities.values()) {
     if (e.type !== "percept") continue;
     const m = e.metadata;
-    if (str3(m?.["provenance"]) !== "exafferent") continue;
+    if (str4(m?.["provenance"]) !== "exafferent") continue;
     const pTick = num3(m?.["tick"], -1);
     if (pTick < 0 || tick - pTick > RUPTURE_WINDOW_TICKS) continue;
     const s = num3(m?.["salience"], 0);
@@ -21413,7 +21443,7 @@ function refusedClassSchemas(state) {
     if (e.type !== "agency.outcome") continue;
     const m = e.metadata;
     if (m?.["refused"] !== true || asFinality(m?.["finality"]) !== "class") continue;
-    const schema = str3(m?.["schema"]);
+    const schema = str4(m?.["schema"]);
     if (schema) out.add(schema);
   }
   return out;
@@ -21445,7 +21475,7 @@ function buildBias(state) {
   for (const e of state.entities.values()) {
     if (e.type !== "goal") continue;
     const m = e.metadata;
-    const status = str3(m?.["status"]);
+    const status = str4(m?.["status"]);
     if (status !== "active" && status !== "in_progress") continue;
     maxGoalPriority = Math.max(maxGoalPriority, num3(m?.["priority"], 0));
   }
@@ -21466,11 +21496,11 @@ function readAffordance(id, m) {
   const meta2 = m ?? {};
   return {
     id,
-    schema: str3(meta2["schema"]) ?? "",
-    source: str3(meta2["source"]) ?? "innate",
+    schema: str4(meta2["schema"]) ?? "",
+    source: str4(meta2["source"]) ?? "innate",
     parameters: meta2["parameters"] ?? {},
-    targetEntityId: str3(meta2["targetEntityId"]),
-    evokedBy: str3(meta2["evokedBy"]),
+    targetEntityId: str4(meta2["targetEntityId"]),
+    evokedBy: str4(meta2["evokedBy"]),
     expectedValence: num3(meta2["expectedValence"], 0),
     expectedReward: num3(meta2["expectedReward"], 0),
     cost: num3(meta2["cost"], 0),
@@ -21480,8 +21510,8 @@ function readAffordance(id, m) {
     planBias: typeof meta2["planBias"] === "number" ? meta2["planBias"] : void 0,
     willBias: typeof meta2["willBias"] === "number" ? meta2["willBias"] : void 0,
     socialPrior: typeof meta2["socialPrior"] === "number" ? meta2["socialPrior"] : void 0,
-    planId: str3(meta2["planId"]),
-    stepId: str3(meta2["stepId"]),
+    planId: str4(meta2["planId"]),
+    stepId: str4(meta2["stepId"]),
     tick: num3(meta2["tick"], 0)
   };
 }
@@ -21491,7 +21521,7 @@ function metric2(state, key, fallback) {
 function num3(v, fallback) {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
-function str3(v) {
+function str4(v) {
   return typeof v === "string" ? v : void 0;
 }
 function clamp017(n) {
@@ -21537,7 +21567,7 @@ var DeliberationEngine = class {
     let target = null;
     for (const [id2, e] of state.entities) {
       if (e.type !== "agency.intent") continue;
-      if (str4(e.metadata?.["status"]) !== "deliberating") continue;
+      if (str5(e.metadata?.["status"]) !== "deliberating") continue;
       if (revoked.has(id2)) {
         del.push(id2, revocationId(id2));
         continue;
@@ -21547,7 +21577,7 @@ var DeliberationEngine = class {
     }
     if (!target) return del.length > 0 ? { commands: { delete: del } } : { commands: {} };
     const { id, meta: meta2 } = target;
-    const provisional = str4(meta2["schema"]) ?? "wait";
+    const provisional = str5(meta2["schema"]) ?? "wait";
     const candidates = Array.isArray(meta2["candidates"]) ? meta2["candidates"] : [];
     if (!this._provider)
       return { commands: {
@@ -21628,8 +21658,8 @@ var DeliberationEngine = class {
   /** The deliberation focus body — the candidate actions the substrate surfaced. */
   _buildFocusContent(state, candidates, meta2) {
     const lines = [];
-    const preemptedFrom = str4(meta2["preemptedFrom"]);
-    const revokedBy = str4(meta2["revokedBy"]);
+    const preemptedFrom = str5(meta2["preemptedFrom"]);
+    const revokedBy = str5(meta2["revokedBy"]);
     if (revokedBy)
       lines.push(`Something in my situation just shifted and I let go of what I was weighing ("${revokedBy}"). Decide afresh what to do now:`);
     else if (preemptedFrom)
@@ -21656,7 +21686,7 @@ function extractChosen(decision, candidates) {
   }
   return void 0;
 }
-function str4(v) {
+function str5(v) {
   return typeof v === "string" ? v : void 0;
 }
 
@@ -21670,7 +21700,7 @@ function modeOf(schema) {
 function enact(ctx) {
   const mode = modeOf(ctx.schema);
   if (mode === "communicate") {
-    const name = str5(ctx.parameters["targetEntityName"]) ?? ctx.targetEntityId ?? "them";
+    const name = str6(ctx.parameters["targetEntityName"]) ?? ctx.targetEntityId ?? "them";
     return {
       mode,
       success: true,
@@ -21709,7 +21739,7 @@ function syncStance(ctx) {
     case "express":
       return sync(0.6, 0.1, "My inner state becomes outwardly visible.");
     case "inspect": {
-      const focus = str5(parameters["focus"]) ?? "it";
+      const focus = str6(parameters["focus"]) ?? "it";
       return sync(0.65, 0.05, `I examine ${focus} closely; more of its detail resolves.`);
     }
     default:
@@ -21719,7 +21749,7 @@ function syncStance(ctx) {
 function sync(outcomeQuality, valence, description) {
   return { mode: "sync", success: true, outcomeQuality: clamp018(outcomeQuality), valence, description };
 }
-function str5(v) {
+function str6(v) {
   return typeof v === "string" ? v : void 0;
 }
 function clamp018(n) {
@@ -21829,13 +21859,13 @@ var MotorSchemaExecutor = class {
     if (revoked.size > 0)
       for (const [id, e] of state.entities) {
         if (e.type !== "agency.intent") continue;
-        const parentId = str6(e.metadata?.["parentIntentId"]);
+        const parentId = str7(e.metadata?.["parentIntentId"]);
         if (revoked.has(id)) del.push(id, revocationId(id));
         else if (parentId && revoked.has(parentId)) del.push(id);
       }
     const spokeThisTick = /* @__PURE__ */ new Set();
     for (const [id, e] of state.entities) {
-      if (e.type !== "agency.intent" || str6(e.metadata?.["status"]) !== "awaiting") continue;
+      if (e.type !== "agency.intent" || str7(e.metadata?.["status"]) !== "awaiting") continue;
       if (!this._authored.has(id)) continue;
       const intent = readIntent(id, e.metadata);
       const predicted = {
@@ -21848,7 +21878,7 @@ var MotorSchemaExecutor = class {
     for (const id of this._authored.keys())
       if (!state.entities.has(id)) this._authored.delete(id);
     for (const [id, e] of state.entities) {
-      if (e.type !== "agency.intent" || str6(e.metadata?.["status"]) !== "awaiting") continue;
+      if (e.type !== "agency.intent" || str7(e.metadata?.["status"]) !== "awaiting") continue;
       if (spokeThisTick.has(id)) continue;
       if (this._authoring.has(id)) continue;
       if (e.metadata?.["escalated"] === true) continue;
@@ -21857,7 +21887,7 @@ var MotorSchemaExecutor = class {
       if (age < 0) {
         del.push(id);
         logger.info(
-          `[motor] cleared "${str6(e.metadata?.["schema"]) ?? "intent"}" left awaiting across a restart (dispatched at tick ${dispatchedAt}, now ${tick})`
+          `[motor] cleared "${str7(e.metadata?.["schema"]) ?? "intent"}" left awaiting across a restart (dispatched at tick ${dispatchedAt}, now ${tick})`
         );
         continue;
       }
@@ -21881,11 +21911,11 @@ var MotorSchemaExecutor = class {
         this._emitActionOutcome(intent, false, 0, 1, tick);
       logger.info(`[motor] \u23F1 "${intent.schema}" timed out after ${tick - dispatchedAt} ticks`);
     }
-    const selected = [...state.entities.entries()].filter(([, e]) => e.type === "agency.intent" && str6(e.metadata?.["status"]) === "selected").sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+    const selected = [...state.entities.entries()].filter(([, e]) => e.type === "agency.intent" && str7(e.metadata?.["status"]) === "selected").sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
     let enactedCount = 0;
     for (const [id, e] of selected) {
       if (revoked.has(id)) continue;
-      const parentOf = str6(e.metadata?.["parentIntentId"]);
+      const parentOf = str7(e.metadata?.["parentIntentId"]);
       if (parentOf && revoked.has(parentOf)) continue;
       const intent = readIntent(id, e.metadata);
       const schema = this._resolve(intent.schema);
@@ -21935,7 +21965,7 @@ var MotorSchemaExecutor = class {
               predictedValence: predicted.expectedValence
             }
           });
-          const awaitingText = enaction.mode === "communicate" ? str6(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]) : void 0;
+          const awaitingText = enaction.mode === "communicate" ? str7(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]) : void 0;
           set.push(consequenceEntity({
             intentId: id,
             schema: intent.schema,
@@ -21986,7 +22016,7 @@ var MotorSchemaExecutor = class {
       });
       set.push(this._subIntent(
         parentId,
-        str6(pm["targetEntityId"]),
+        str7(pm["targetEntityId"]),
         pm["parameters"] ?? {},
         steps[nextK],
         nextK,
@@ -21998,9 +22028,9 @@ var MotorSchemaExecutor = class {
     const avgValence = completed > 0 ? accumValence / completed : 0;
     const compIntent = {
       id: parentId,
-      schema: str6(pm["schema"]) ?? "composite",
-      affordanceId: str6(pm["affordanceId"]),
-      targetEntityId: str6(pm["targetEntityId"]),
+      schema: str7(pm["schema"]) ?? "composite",
+      affordanceId: str7(pm["affordanceId"]),
+      targetEntityId: str7(pm["targetEntityId"]),
       parameters: pm["parameters"] ?? {},
       expectedReward: num4(pm["expectedReward"], 0.5),
       expectedValence: num4(pm["expectedValence"], 0)
@@ -22077,7 +22107,7 @@ var MotorSchemaExecutor = class {
       metrics.push(["agency.communicate.blocked", 1]);
       return true;
     }
-    const authored = str6(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]);
+    const authored = str7(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]);
     let bubbles = authored ? [authored] : this._authored.get(id) ?? [];
     this._authored.delete(id);
     if (bubbles.length === 0) {
@@ -22141,9 +22171,9 @@ var MotorSchemaExecutor = class {
    */
   _requestAuthoring(id, intent) {
     if (!this._author || this._authoring.has(id)) return;
-    const name = str6(intent.parameters["targetEntityName"]) ?? intent.targetEntityId ?? "them";
+    const name = str7(intent.parameters["targetEntityName"]) ?? intent.targetEntityId ?? "them";
     this._authoring.add(id);
-    void this._author.authorOutreach(intent.targetEntityId ?? "", name, str6(intent.parameters["gist"])).then((bubbles) => {
+    void this._author.authorOutreach(intent.targetEntityId ?? "", name, str7(intent.parameters["gist"])).then((bubbles) => {
       if (bubbles.length > 0) this._authored.set(id, bubbles);
       else logger.warn(`[motor] outreach authoring returned nothing for "${intent.schema}"`);
     }).catch((err) => {
@@ -22280,20 +22310,20 @@ function readIntent(id, m) {
   const meta2 = m ?? {};
   return {
     id,
-    schema: str6(meta2["schema"]) ?? "",
-    affordanceId: str6(meta2["affordanceId"]),
-    targetEntityId: str6(meta2["targetEntityId"]),
+    schema: str7(meta2["schema"]) ?? "",
+    affordanceId: str7(meta2["affordanceId"]),
+    targetEntityId: str7(meta2["targetEntityId"]),
     parameters: meta2["parameters"] ?? {},
     expectedReward: num4(meta2["expectedReward"], 0.5),
     expectedValence: num4(meta2["expectedValence"], 0),
-    parentIntentId: str6(meta2["parentIntentId"]),
+    parentIntentId: str7(meta2["parentIntentId"]),
     stepIndex: typeof meta2["stepIndex"] === "number" ? meta2["stepIndex"] : void 0,
-    planId: str6(meta2["planId"]),
-    planStepId: str6(meta2["stepId"]),
-    evokedBy: str6(meta2["evokedBy"])
+    planId: str7(meta2["planId"]),
+    planStepId: str7(meta2["stepId"]),
+    evokedBy: str7(meta2["evokedBy"])
   };
 }
-function str6(v) {
+function str7(v) {
   return typeof v === "string" ? v : void 0;
 }
 function firstMessage(v) {
@@ -22655,16 +22685,16 @@ var ReafferenceEngine = class {
       if (e.type !== "agency.outcome") continue;
       const m = e.metadata ?? {};
       outcomes.push({ id, meta: m, fromState: true });
-      const iid = str7(m["intentId"]);
+      const iid = str8(m["intentId"]);
       if (iid) gradedIntentIds.add(iid);
     }
     const awaiting = /* @__PURE__ */ new Map();
     for (const [id, e] of state.entities) {
-      if (e.type !== "agency.intent" || str7(e.metadata?.["status"]) !== "awaiting") continue;
+      if (e.type !== "agency.intent" || str8(e.metadata?.["status"]) !== "awaiting") continue;
       const m = e.metadata ?? {};
       if (tick - num5(m["dispatchedAt"], tick) >= AWAIT_TIMEOUT) continue;
       awaiting.set(id, {
-        schema: str7(m["schema"]) ?? "",
+        schema: str8(m["schema"]) ?? "",
         predictedReward: num5(m["predictedReward"], 0.5),
         predictedValence: num5(m["predictedValence"], 0)
       });
@@ -22674,8 +22704,8 @@ var ReafferenceEngine = class {
     for (const [, e] of state.entities) {
       if (e.type !== "percept") continue;
       const m = e.metadata ?? {};
-      if (str7(m["provenance"]) !== "reafferent") continue;
-      const iid = str7(m["sourceIntentId"]);
+      if (str8(m["provenance"]) !== "reafferent") continue;
+      const iid = str8(m["sourceIntentId"]);
       if (!iid || gradedIntentIds.has(iid) || sensedIntentIds.has(iid)) continue;
       const aw = awaiting.get(iid);
       if (!aw || !aw.schema) continue;
@@ -22683,7 +22713,7 @@ var ReafferenceEngine = class {
       sensory++;
       const feltRaw = m["valence"];
       const felt = typeof feltRaw === "number" && Number.isFinite(feltRaw) ? feltRaw : void 0;
-      const span = str7(m["valenceSource"]) === "entity" ? SENSORY_VALENCE_SPAN_ENTITY : SENSORY_VALENCE_SPAN_AMBIENT;
+      const span = str8(m["valenceSource"]) === "entity" ? SENSORY_VALENCE_SPAN_ENTITY : SENSORY_VALENCE_SPAN_AMBIENT;
       const quality = felt === void 0 ? SENSORY_SOFT_QUALITY : clamp0111(SENSORY_SOFT_QUALITY + Math.max(-1, Math.min(1, felt)) * span);
       outcomes.push({ id: `agency-outcome-${tick}-${iid}-sensory`, fromState: false, meta: {
         schema: aw.schema,
@@ -22697,7 +22727,7 @@ var ReafferenceEngine = class {
         mode: "external",
         reconciled: true,
         sensory: true,
-        ...felt !== void 0 ? { sensoryValence: felt, valenceSource: str7(m["valenceSource"]) } : {},
+        ...felt !== void 0 ? { sensoryValence: felt, valenceSource: str8(m["valenceSource"]) } : {},
         tick
       } });
     }
@@ -22705,7 +22735,7 @@ var ReafferenceEngine = class {
     let discovered = 0;
     let refused = 0;
     for (const { id, meta: m, fromState } of outcomes) {
-      const schema = str7(m["schema"]);
+      const schema = str8(m["schema"]);
       if (!schema) {
         if (fromState) del.push(id);
         continue;
@@ -22715,10 +22745,10 @@ var ReafferenceEngine = class {
         if (finality !== "context")
           this._repertoire.recordRefusal(schema, finality, tick);
         if (fromState) del.push(id);
-        const refusedIntent = str7(m["intentId"]);
+        const refusedIntent = str8(m["intentId"]);
         if (refusedIntent) del.push(refusedIntent);
-        const refusedPlan = str7(m["planId"]);
-        if (refusedPlan) this._emitPlanOutcome(refusedPlan, str7(m["stepId"]), schema, false, 0, 0, tick);
+        const refusedPlan = str8(m["planId"]);
+        if (refusedPlan) this._emitPlanOutcome(refusedPlan, str8(m["stepId"]), schema, false, 0, 0, tick);
         refused++;
         continue;
       }
@@ -22732,12 +22762,12 @@ var ReafferenceEngine = class {
       });
       set.push(skillEntity(skill));
       if (fromState) del.push(id);
-      const intentId = str7(m["intentId"]);
+      const intentId = str8(m["intentId"]);
       if (intentId) del.push(intentId);
       updates++;
-      const planId = str7(m["planId"]);
+      const planId = str8(m["planId"]);
       if (planId)
-        this._emitPlanOutcome(planId, str7(m["stepId"]), schema, m["success"] === true, num5(m["outcomeQuality"], 0), num5(m["surprise"], 0), tick);
+        this._emitPlanOutcome(planId, str8(m["stepId"]), schema, m["success"] === true, num5(m["outcomeQuality"], 0), num5(m["surprise"], 0), tick);
       if (skill.enactments === 1) {
         discovered++;
         this._emitDiscovered(schema, tick);
@@ -22918,7 +22948,7 @@ function skillEntity(s) {
     }
   };
 }
-function str7(v) {
+function str8(v) {
   return typeof v === "string" ? v : void 0;
 }
 function num5(v, fallback) {
@@ -23773,12 +23803,27 @@ var OutboxWriter = class {
    * which made the embedded ids in `conversation.sent` diverge every run).
    */
   _seq = 0;
+  _routing = null;
   constructor(opts = {}) {
     this._outbox = opts.outbox ?? [];
     this._willId = opts.willId ?? "will";
   }
   attachSessionLogger(logger2) {
     this._sessionLogger = logger2;
+  }
+  /**
+   * Turn a referent into somewhere the world can actually be spoken to.
+   *
+   * Injected rather than read here, because this writer is deliberately dumb —
+   * it holds no state and must stay replay-safe. Assembly closes over the state
+   * manager (the same shape as `attachMemorySink`).
+   *
+   * This is the ONE seam both send paths cross: ProactiveCommunicator's
+   * `enqueue()` and AuditionEngine's `enqueueReply()`. Translating anywhere else
+   * would mean doing it twice and getting it wrong once.
+   */
+  attachRouting(resolve) {
+    this._routing = resolve;
   }
   _genId(suffix = "") {
     return `outbox-${this._willId}-${++this._seq}${suffix}`;
@@ -23789,15 +23834,18 @@ var OutboxWriter = class {
    */
   enqueue(row, idSuffix = "") {
     const id = this._genId(idSuffix);
+    const routed = this._routing?.(row.targetEntityId, row.threadId) ?? null;
+    const target = routed?.targetEntityId ?? row.targetEntityId;
+    const thread = row.threadId ?? routed?.threadId;
     this._outbox.push({
       id,
-      targetEntityId: row.targetEntityId,
+      targetEntityId: target,
       ...row.targetEntityName !== void 0 ? { targetEntityName: row.targetEntityName } : {},
       content: row.content,
       effectorName: row.effectorName,
       ...row.gestureType ? { gestureType: row.gestureType } : {},
       ...row.replyToMessageId ? { replyToMessageId: row.replyToMessageId } : {},
-      ...row.threadId ? { threadId: row.threadId } : {},
+      ...thread ? { threadId: thread } : {},
       deliveryStatus: "pending",
       createdAtTick: 0,
       createdAt: Date.now()
@@ -24588,8 +24636,8 @@ var MockEmbedder = class {
     this._seed = seed;
   }
   async embed(content, _fn = "recall") {
-    const str8 = typeof content === "string" ? content : JSON.stringify(content);
-    const hash = this._hashString(str8);
+    const str9 = typeof content === "string" ? content : JSON.stringify(content);
+    const hash = this._hashString(str9);
     const embedding = [];
     let state = hash;
     for (let i = 0; i < this.dimensions; i++) {
@@ -24608,10 +24656,10 @@ var MockEmbedder = class {
     }
     return true;
   }
-  _hashString(str8) {
+  _hashString(str9) {
     let hash = 2166136261;
-    for (let i = 0; i < str8.length; i++) {
-      hash ^= str8.charCodeAt(i);
+    for (let i = 0; i < str9.length; i++) {
+      hash ^= str9.charCodeAt(i);
       hash = Math.imul(hash, 16777619);
     }
     return hash >>> 0;
@@ -25855,6 +25903,22 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   auditionEngine.attachOutboxWriter(outboxWriter);
   auditionEngine.attachGrants(accessGrants);
   auditionEngine.attachMemorySink((entity) => simulation.stateManager.setEntity(entity));
+  outboxWriter.attachRouting((targetEntityId, chosenThread) => {
+    if (!isReferentId(targetEntityId)) return null;
+    const entities = new Map(
+      [
+        ...simulation.stateManager.getEntitiesByType(DOSSIER_TYPE),
+        ...simulation.stateManager.getEntitiesByType(ALIAS_TYPE)
+      ].map((e) => [e.id, e])
+    );
+    const aliases = readAliases(entities);
+    const scheme = chosenThread?.split(":")[0];
+    const addresses = [...aliases.entries()].filter(([, canonical]) => canonical === targetEntityId).map(([alias]) => alias).sort();
+    const address = addresses.find((a) => scheme && a.startsWith(`${scheme}:`)) ?? addresses[0];
+    if (!address) return null;
+    const room = defaultHandle(handlesOf(entities, targetEntityId));
+    return { targetEntityId: address, ...room ? { threadId: room.keid } : {} };
+  });
   auditionEngine.attachAttachmentScore((entityId) => attachmentEvaluator.getAttachmentScore(entityId));
   auditionEngine.attachActiveGoalText(() => goalManager.getActiveGoals().flatMap((g) => [g.description, ...g.tags]));
   const schemaRepertoire = new SchemaRepertoire([...INNATE_SCHEMAS, ...externalSchemas(resolvedEffectors)]);
@@ -29640,7 +29704,9 @@ var Will = class _Will {
       // default ('You'/'User'): without an explicit name the name stays unlearned and
       // the Will knows the person as "someone" until a real one is learned. (The live
       // conversation focus still falls back to the entity id for its Speaker line.)
-      ...stimulus.speaker ? { speakerName: stimulus.speaker } : {}
+      ...stimulus.speaker ? { speakerName: stimulus.speaker } : {},
+      // Omitted rather than defaulted: an unknown room is not known to be public.
+      ...stimulus.direct !== void 0 ? { direct: stimulus.direct } : {}
     });
   }
   /** Perceive from the default user. Sugar over `perceive`. */

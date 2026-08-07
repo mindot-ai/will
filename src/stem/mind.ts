@@ -101,6 +101,10 @@ import {
 } from '#cognition/index'
 import { buildEngineConfigEntities, mergeEngineConfig, EngineConfigEntity } from '#cognition/config.mirror.entities'
 import { mergeIdentity, composeIdentityPrompt, WILL_CORE_PREAMBLE } from '#cognition/identity.entity'
+import {
+  isReferentId, readAliases, handlesOf, defaultHandle,
+  DOSSIER_TYPE, ALIAS_TYPE,
+} from '#cognition/social.identity'
 import type { DeliberationCacheConfig } from '#cognition/cache/types'
 export { WILL_CORE_PREAMBLE }
 
@@ -1059,6 +1063,37 @@ function _constructCognition(
   // (the live message), which drives the single "## Relevant Memories" section in
   // buildExecutiveContext (already vector-backed via the consolidator).
   auditionEngine.attachMemorySink( entity => simulation.stateManager.setEntity( entity ) )
+
+  // Referent → address + room. Closes over the state manager because the writer
+  // is deliberately stateless; this is the one seam both send paths cross, so the
+  // translation happens once rather than in each of them.
+  outboxWriter.attachRouting( ( targetEntityId, chosenThread ) => {
+    if( !isReferentId( targetEntityId ) ) return null   // already an address
+
+    // Through the O(1) type index rather than the whole entity map: this runs on
+    // every outbound message, and the two types it needs are both indexed.
+    const entities = new Map(
+      [ ...simulation.stateManager.getEntitiesByType( DOSSIER_TYPE ),
+        ...simulation.stateManager.getEntitiesByType( ALIAS_TYPE ) ]
+        .map( e => [ e.id, e ] as const ),
+    )
+
+    // An anchor cannot be delivered to. Find an address the world knows them by —
+    // preferring one on the same platform as the room already chosen, so a reply
+    // in a Discord thread is not addressed to a WhatsApp handle.
+    const aliases = readAliases( entities )
+    const scheme  = chosenThread?.split(':')[0]
+    const addresses = [ ...aliases.entries() ]
+      .filter( ( [ , canonical ] ) => canonical === targetEntityId )
+      .map( ( [ alias ] ) => alias )
+      .sort()
+    const address = addresses.find( a => scheme && a.startsWith(`${ scheme }:`) ) ?? addresses[0]
+    if( !address ) return null   // nothing known — let the bridge's roster try
+
+    // Only a fallback: a chosen room always wins upstream (see enqueue).
+    const room = defaultHandle( handlesOf( entities, targetEntityId ) )
+    return { targetEntityId: address, ...( room ? { threadId: room.keid } : {} ) }
+  } )
 
   // Salience inputs (§3): weight conversational salience by relationship closeness
   // and active-goal topic overlap. Both are deterministic faculty-state reads.

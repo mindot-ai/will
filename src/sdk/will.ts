@@ -56,6 +56,8 @@ export interface Stimulus {
   speaker?: string
   /** Conversation/thread id (default = `from`). */
   thread?: string
+  /** True when `thread` is private — just this someone and the Will. See TextMessage.direct. */
+  direct?: boolean
 }
 
 /** A message the Will emitted to someone. */
@@ -384,6 +386,8 @@ export class Will {
       // the Will knows the person as "someone" until a real one is learned. (The live
       // conversation focus still falls back to the entity id for its Speaker line.)
       ...( stimulus.speaker ? { speakerName: stimulus.speaker } : {} ),
+      // Omitted rather than defaulted: an unknown room is not known to be public.
+      ...( stimulus.direct !== undefined ? { direct: stimulus.direct } : {} ),
     } )
   }
 

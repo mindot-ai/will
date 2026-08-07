@@ -157,6 +157,11 @@ async function connectDiscord(will, opts) {
       text,
       from: entityId,
       thread: `discord:${message.channelId}`,
+      // `isDM` has been computed on every inbound since this bridge shipped and
+      // used only to pick a roster field. It is the one fact that makes a room
+      // the right or wrong place to say something, and the mind never saw it —
+      // which is how a follow-up promised in a DM went out to #general.
+      direct: isDM,
       ...speaker ? { speaker } : {}
     });
   }

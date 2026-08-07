@@ -21,6 +21,19 @@ import { logger } from '#core/logger'
 import type { OutboxMessage } from '#types'
 import type { SessionLogger } from './session.logger'
 
+/**
+ * Referent → a deliverable address, and the room to use when none was chosen.
+ *
+ * Returns null when the referent is already an address (nothing to translate) or
+ * when the mind holds no route at all — in which case the row goes out as-is and
+ * the bridge's own roster fallback still applies, so a message is never silently
+ * dropped for want of a handle.
+ */
+export type OutboxRouting = (
+  targetEntityId: string,
+  chosenThread:   string | undefined,
+) => { targetEntityId: string; threadId?: string } | null
+
 /** The caller-supplied fields of an outbox row; the writer stamps id + defaults. */
 export interface OutboxRow {
   targetEntityId:    string
@@ -43,6 +56,7 @@ export class OutboxWriter {
    * which made the embedded ids in `conversation.sent` diverge every run).
    */
   private _seq = 0
+  private _routing: OutboxRouting | null = null
 
   constructor( opts: { outbox?: OutboxMessage[]; willId?: string } = {} ){
     this._outbox = opts.outbox ?? []
@@ -51,6 +65,21 @@ export class OutboxWriter {
 
   attachSessionLogger( logger: SessionLogger | null ): void {
     this._sessionLogger = logger
+  }
+
+  /**
+   * Turn a referent into somewhere the world can actually be spoken to.
+   *
+   * Injected rather than read here, because this writer is deliberately dumb —
+   * it holds no state and must stay replay-safe. Assembly closes over the state
+   * manager (the same shape as `attachMemorySink`).
+   *
+   * This is the ONE seam both send paths cross: ProactiveCommunicator's
+   * `enqueue()` and AuditionEngine's `enqueueReply()`. Translating anywhere else
+   * would mean doing it twice and getting it wrong once.
+   */
+  attachRouting( resolve: OutboxRouting | null ): void {
+    this._routing = resolve
   }
 
   private _genId( suffix = ''): string {
@@ -63,15 +92,24 @@ export class OutboxWriter {
    */
   enqueue( row: OutboxRow, idSuffix = ''): string {
     const id = this._genId( idSuffix )
+    // A `ke:` anchor is who, never where. Resolve it to an address the bridge can
+    // deliver to and a room to say it in — and where a room was already chosen
+    // (a reply answers into the thread it was asked in), that choice WINS. The
+    // mind picking a room is a decision; this is only the fallback for when it
+    // made none, and the alternative to the fallback is dropping the message.
+    const routed = this._routing?.( row.targetEntityId, row.threadId ) ?? null
+    const target = routed?.targetEntityId ?? row.targetEntityId
+    const thread = row.threadId ?? routed?.threadId
+
     this._outbox.push({
       id,
-      targetEntityId:   row.targetEntityId,
+      targetEntityId:   target,
       ...( row.targetEntityName !== undefined ? { targetEntityName: row.targetEntityName } : {} ),
       content:          row.content,
       effectorName:      row.effectorName,
       ...( row.gestureType      ? { gestureType:      row.gestureType }      : {} ),
       ...( row.replyToMessageId ? { replyToMessageId: row.replyToMessageId } : {} ),
-      ...( row.threadId         ? { threadId:         row.threadId }         : {} ),
+      ...( thread               ? { threadId:         thread }               : {} ),
       deliveryStatus:   'pending',
       createdAtTick:    0,
       createdAt:        Date.now(),

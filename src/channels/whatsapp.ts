@@ -166,6 +166,8 @@ export async function connectWhatsApp( will: Will, opts: WhatsAppBridgeOptions =
       text,
       from:   entityId,
       thread: `whatsapp:${ jid }`,
+      // A WhatsApp group jid ends in `@g.us`; anything else is a one-to-one chat.
+      direct: !jid.endsWith('@g.us'),
       ...( speaker ? { speaker } : {} ),
     } )
   }

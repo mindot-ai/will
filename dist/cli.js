@@ -12640,8 +12640,11 @@ function readPersona(metadata) {
   if (typeof stored === "string" && stored.trim()) return stored;
   const prompt = typeof metadata?.["prompt"] === "string" ? metadata["prompt"] : "";
   if (!prompt) return "";
-  const at = prompt.indexOf("## Who I Am");
-  return at === -1 ? "" : prompt.slice(at + "## Who I Am".length).trim();
+  const header = prompt.indexOf("## Who I Am");
+  if (header !== -1) return prompt.slice(header + "## Who I Am".length).trim();
+  if (prompt.startsWith(WILL_CORE_PREAMBLE))
+    return prompt.slice(WILL_CORE_PREAMBLE.length).replace(/^\s*##\s*Who I Am\s*/, "").trim();
+  return prompt.trim();
 }
 
 // src/cognition/faculties/executive.engine/context.ts
@@ -25778,9 +25781,10 @@ var PMALoader = class {
   load(pma, simulation, cognition) {
     const sm = simulation.stateManager;
     const environment = sm.getEntity(IDENTITY_ENTITY_ID)?.metadata?.["environment"];
+    const persona = readPersona({ prompt: pma.identity.prompt });
     mergeIdentity(sm, {
-      persona: pma.identity.prompt,
-      prompt: composeIdentityPrompt(pma.identity.prompt, typeof environment === "string" ? environment : void 0),
+      persona,
+      prompt: composeIdentityPrompt(persona, typeof environment === "string" ? environment : void 0),
       values: pma.identity.values,
       traits: pma.identity.traits,
       traitStats: pma.identity.traitStats,

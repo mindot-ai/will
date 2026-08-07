@@ -265,14 +265,45 @@ describe('identity prompt is two layers, stored apart', () => {
     expect( readPersona( undefined ) ).toBe('')
   } )
 
+  it('recovers the persona when the "## Who I Am" header has been STRIPPED', () => {
+    // The regression that shipped and reached a live Will. The identity guard's
+    // `stripReservedHeaders` removes that header from an artifact on the way in,
+    // so a fallback keyed on the header alone recovers NOTHING — and the loader
+    // then composes a second preamble on top of the first. Measured on the next
+    // boot: a 4132-char prompt reciting its own architecture twice.
+    const stripped = WILL_CORE_PREAMBLE + '\n\nI am Lora, COO of Mindot.'
+    const back = readPersona({ prompt: stripped })
+    expect( back ).toBe('I am Lora, COO of Mindot.')
+    expect( back ).not.toContain('I am NOT a language model')
+  } )
+
+  it('never doubles the preamble on a round trip through the loader', () => {
+    // The invariant, stated as the thing that actually matters: whatever shape an
+    // artifact is in, load → compose must yield exactly one preamble.
+    for( const stored of [
+      WILL_CORE_PREAMBLE + '\n\n## Who I Am\nI am Lora.',   // composed, header intact
+      WILL_CORE_PREAMBLE + '\n\nI am Lora.',                 // composed, header stripped
+      'I am Lora.',                                          // persona alone (post-split)
+    ] ){
+      const composed = composeIdentityPrompt( readPersona({ prompt: stored }) )
+      expect( composed.split('I am NOT a language model').length - 1 ).toBe( 1 )
+      expect( composed ).toContain('I am Lora.')
+    }
+  } )
+
+  it('the loader recovers through readPersona, not from the raw field', () => {
+    const pma = readFileSync( join( SRC, 'pma', 'index.ts'), 'utf8')
+    expect( pma ).toContain('readPersona({ prompt: pma.identity.prompt })')
+  } )
+
   it('the distiller captures the persona layer, the loader recomposes', () => {
     // A woken mind must get TODAY's preamble. Storing the composed string meant a
     // fix to that text could never reach a mind that already existed — each one
     // kept reciting the version it was distilled under.
     const pma = readFileSync( join( SRC, 'pma', 'index.ts'), 'utf8')
     expect( pma ).toContain('prompt:  readPersona( m )')
-    expect( pma ).toContain('composeIdentityPrompt( pma.identity.prompt')
-    expect( pma ).toContain('persona: pma.identity.prompt')
+    expect( pma ).toContain('composeIdentityPrompt( persona,')
+    expect( pma ).toMatch( /persona,\s*$/m )
   } )
 
   it('_seedIdentity stores both the composed view and the persona alone', () => {

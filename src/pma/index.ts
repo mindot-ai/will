@@ -808,9 +808,14 @@ export class PMALoader {
     // persona), and layer 1 comes from the build that is running NOW. This is what
     // makes a preamble fix reach minds that already exist.
     const environment = sm.getEntity( IDENTITY_ENTITY_ID )?.metadata?.['environment']
+    // Through `readPersona`, NOT raw. An artifact written before the layers were
+    // split stores the COMPOSED prompt, so composing over it again gives the mind
+    // its own architecture twice. Putting this fallback only in the distiller was
+    // not enough — the loader is what every existing artifact goes through.
+    const persona = readPersona({ prompt: pma.identity.prompt })
     mergeIdentity( sm, {
-      persona: pma.identity.prompt,
-      prompt:  composeIdentityPrompt( pma.identity.prompt, typeof environment === 'string' ? environment : undefined ),
+      persona,
+      prompt:  composeIdentityPrompt( persona, typeof environment === 'string' ? environment : undefined ),
       values:  pma.identity.values,
       traits:  pma.identity.traits,
       traitStats: pma.identity.traitStats,   // restore the Will's own norm (graded salience B/C)

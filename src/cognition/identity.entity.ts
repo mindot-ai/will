@@ -187,7 +187,19 @@ export function readPersona( metadata: Record<string, unknown> | undefined ): st
 
   const prompt = typeof metadata?.['prompt'] === 'string' ? metadata['prompt'] as string : ''
   if( !prompt ) return ''
-  // Everything from "## Who I Am" onward is layer 2; before it is the preamble.
-  const at = prompt.indexOf('## Who I Am')
-  return at === -1 ? '' : prompt.slice( at + '## Who I Am'.length ).trim()
+
+  // Strip a leading preamble however it survived. Header first, then a raw
+  // prefix match — because the identity guard's `stripReservedHeaders` removes
+  // "## Who I Am" from an artifact on the way in, so keying on the header ALONE
+  // silently recovers nothing and the caller then composes a second preamble on
+  // top of the first. Measured: a live Will woke with a 4132-char prompt reciting
+  // its own architecture twice.
+  const header = prompt.indexOf('## Who I Am')
+  if( header !== -1 ) return prompt.slice( header + '## Who I Am'.length ).trim()
+
+  if( prompt.startsWith( WILL_CORE_PREAMBLE ) )
+    return prompt.slice( WILL_CORE_PREAMBLE.length ).replace( /^\s*##\s*Who I Am\s*/, '').trim()
+
+  // No preamble in it at all ⇒ it is already just the persona.
+  return prompt.trim()
 }

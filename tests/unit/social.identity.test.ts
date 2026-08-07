@@ -18,7 +18,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  PERSON_PREFIX, isPersonId, mintPersonId, readAliases, canonicalOf,
+  REFERENT_PREFIX, isReferentId, mintReferentId, readAliases, canonicalOf,
   resolveKeid, nameOf, handlesOf, defaultHandle, withHandle, type Handle,
 } from '#cognition/social.identity'
 
@@ -32,27 +32,27 @@ const alias = ( a: string, canon: string ): [ string, E ] =>
 
 // ── the anchor ───────────────────────────────────────────────
 
-describe('a person id is an identity, never a route', () => {
+describe('a referent id is an identity, never a route', () => {
   it('is recognisable as an anchor', () => {
-    expect( isPersonId( mintPersonId('discord:123') ) ).toBe( true )
-    expect( isPersonId('discord:123') ).toBe( false )
-    expect( mintPersonId('discord:123').startsWith( PERSON_PREFIX ) ).toBe( true )
+    expect( isReferentId( mintReferentId('discord:123') ) ).toBe( true )
+    expect( isReferentId('discord:123') ).toBe( false )
+    expect( mintReferentId('discord:123').startsWith( REFERENT_PREFIX ) ).toBe( true )
   } )
 
   it('mints identically for the same first sighting — a replay must match', () => {
     // R2: a counter would drift the moment two runs met people in a different
     // order, and a clock or RNG would never match at all.
-    expect( mintPersonId('discord:1019376031150379101') ).toBe( mintPersonId('discord:1019376031150379101') )
+    expect( mintReferentId('discord:1019376031150379101') ).toBe( mintReferentId('discord:1019376031150379101') )
   } )
 
-  it('mints differently for different people', () => {
-    expect( mintPersonId('discord:111') ).not.toBe( mintPersonId('discord:222') )
+  it('mints differently for different referents', () => {
+    expect( mintReferentId('discord:111') ).not.toBe( mintReferentId('discord:222') )
   } )
 
   it('is opaque — the route cannot be read back out of it', () => {
-    // The moment an id reads as `person:discord:123`, something downstream starts
+    // The moment an id reads as `ke:discord:123`, something downstream starts
     // parsing it back into a route and the whole separation quietly stops holding.
-    const id = mintPersonId('discord:1019376031150379101')
+    const id = mintReferentId('discord:1019376031150379101')
     expect( id ).not.toContain('discord')
     expect( id ).not.toContain('1019376031150379101')
   } )
@@ -61,7 +61,7 @@ describe('a person id is an identity, never a route', () => {
 // ── one resolver, because there were two and they disagreed ──
 
 describe('resolving anything the mind might name', () => {
-  const PID = mintPersonId('discord:111')
+  const PID = mintReferentId('discord:111')
   const w = world(
     dossier( PID, { name: 'Fabrice', handles: [
       { keid: 'discord:111', kind: 'dm' }, { keid: 'whatsapp:999', kind: 'dm' },
@@ -127,7 +127,7 @@ describe('resolving anything the mind might name', () => {
 // ── handles: the routes, with the circumstances attached ─────
 
 describe('the ways the mind knows to reach someone', () => {
-  const PID = mintPersonId('discord:111')
+  const PID = mintReferentId('discord:111')
   const withHandles = ( hs: Handle[] ) => world( dossier( PID, { handles: hs } ) )
 
   it('holds every route, rather than discarding all but one', () => {

@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// src/cognition/social.identity.ts  —  who someone IS, vs where to find them
+// src/cognition/social.identity.ts  —  what something IS, vs where to find it
 // ─────────────────────────────────────────────────────────────
 //
 // A `keid` used to be minted by the transport: `discord:${author.id}`,
@@ -17,52 +17,75 @@
 //
 // So identity and route are separated here:
 //
-//   person:<opaque>   — a someone. Never a route. The anchor everything hangs on.
-//   handle            — a way that someone has been reachable, with the
+//   ke:<opaque>       — a referent. Never a route. The anchor everything hangs on.
+//   handle            — a way that referent has been reachable, with the
 //                       circumstances under which it worked.
+//
+// Deliberately NOT social-only. `keid` has always stood for *known entity* id and
+// the dossier has carried `kind: 'sentient' | 'thing'` since it shipped; the
+// first cut of this minted `person:` ids, which was a narrower word than the
+// system already used. A document, a repo, a dashboard, a room each have a what
+// and a where, and the where can change while the what stays put.
 //
 // This is closer to how a person actually holds it. You know someone; you know
 // places; and separately you know where you usually find whom. Three things that
 // compose, not one contact record — which is why a handle carries evidence
 // (`lastAnsweredTick`) rather than a priority number somebody configured.
 //
-// Everything here is pure and deterministic. `mintPersonId` hashes the first
-// transport id ever seen for that person, so a recorded run and its replay mint
+// Everything here is pure and deterministic. `mintReferentId` hashes the first
+// transport id ever seen for that referent, so a recorded run and its replay mint
 // the same id (R2) — no clock, no counter, no RNG.
 // ─────────────────────────────────────────────────────────────
 
 import type { Tick } from '#core/types'
 import { fnv1a } from '#agency/consequence'
 
-/** Marks an id as an identity rather than an address. */
-export const PERSON_PREFIX = 'person:'
+/**
+ * Marks an id as a referent rather than an address.
+ *
+ * `ke` for known-entity, which is what `keid` has always stood for — the
+ * vocabulary was never social. The first cut of this minted `person:` ids and
+ * that was a narrower word than the system uses: the dossier has carried
+ * `kind: 'sentient' | 'thing'` since it shipped, and the split here is not a
+ * social idea. It is referent vs. access path, which is how anything is held —
+ * you remember the book, and separately that it is on the shelf, on the Kindle,
+ * or at the library. A document, a repo, a dashboard, a room all have several
+ * routes that come and go while the thing itself stays put.
+ */
+export const REFERENT_PREFIX = 'ke:'
 
 export const ALIAS_TYPE  = 'known-entity-alias'
 export const DOSSIER_TYPE = 'known-entity'
 
 /** True for an anchor, false for a transport address (`discord:…`, `whatsapp:…`). */
-export function isPersonId( id: string ): boolean {
-  return id.startsWith( PERSON_PREFIX )
+export function isReferentId( id: string ): boolean {
+  return id.startsWith( REFERENT_PREFIX )
 }
 
 /**
- * Mint the anchor for a someone first met at `seedKeid`.
+ * Mint the anchor for a referent first met at `seedKeid`.
+ *
+ * Kind is deliberately NOT in the id. It lives on the dossier, because kind is
+ * LEARNED and correctable — a handle you took for a bot turns out to be a person.
+ * Baked into the id, correcting it would mean re-identifying, and every faculty
+ * keyed off that id would lose its history of them at the moment it finally
+ * understood what they were.
  *
  * Deterministic by construction: the same first-seen transport id always yields
- * the same person id, so a replay of a recorded run mints identically and the
+ * the same referent id, so a replay of a recorded run mints identically and the
  * state hashes match (R2). A counter would drift the moment two runs met people
  * in a different order; a clock or RNG would never match at all.
  *
- * Opaque on purpose. The moment a person id is readable as `person:discord:123`
+ * Opaque on purpose. The moment an id is readable as `ke:discord:123`
  * something downstream starts parsing it back into a route, and the separation
  * this whole module exists for quietly stops holding.
  */
-export function mintPersonId( seedKeid: string ): string {
-  return `${ PERSON_PREFIX }${ fnv1a( seedKeid ).toString( 36 ) }`
+export function mintReferentId( seedKeid: string ): string {
+  return `${ REFERENT_PREFIX }${ fnv1a( seedKeid ).toString( 36 ) }`
 }
 
 /**
- * A way this someone has been reachable, and what happened there.
+ * A way this referent has been reachable, and what happened there.
  *
  * `kind` is the one fact that decides whether a room is the right place for a
  * given utterance, and it was being computed at the Discord edge (`isDM`) and
@@ -76,7 +99,10 @@ export function mintPersonId( seedKeid: string ): string {
 export interface Handle {
   /** The transport address — what a channel bridge can actually deliver to. */
   keid:             string
-  /** 'dm' — a private thread with this person. 'room' — somewhere others are listening. */
+  /**
+   * 'dm' — a private thread. 'room' — somewhere others are listening. Left open
+   * for a non-social referent, where the meaningful distinction is a different one.
+   */
   kind:             'dm' | 'room' | 'unknown'
   /** The place this handle lives in, once places are dossiers of their own. */
   place?:           string
@@ -98,11 +124,11 @@ function str( v: unknown ): string | undefined {
 }
 
 /**
- * alias keid → canonical person id.
+ * alias keid → canonical referent id.
  *
- * Every transport address a person has been met at is an alias of their anchor,
+ * Every transport address a referent has been met at is an alias of its anchor,
  * which is what lets the twenty-two keid consumers keep working untouched: they
- * still see one opaque string per someone, it is simply no longer a route.
+ * still see one opaque string per referent, it is simply no longer a route.
  */
 export function readAliases( entities: ReadonlyMap<string, EntityLike> ): Map<string, string> {
   const out = new Map<string, string>()
@@ -171,19 +197,19 @@ export function resolveKeid(
   return undefined
 }
 
-/** The name the mind has learned for this someone, or undefined — never a placeholder. */
-export function nameOf( entities: ReadonlyMap<string, EntityLike>, personId: string ): string | undefined {
+/** The name the mind has learned for this referent, or undefined — never a placeholder. */
+export function nameOf( entities: ReadonlyMap<string, EntityLike>, referentId: string ): string | undefined {
   for( const [ , e ] of entities ){
-    if( e.type !== DOSSIER_TYPE || str( e.metadata?.['keid'] ) !== personId ) continue
+    if( e.type !== DOSSIER_TYPE || str( e.metadata?.['keid'] ) !== referentId ) continue
     return str( e.metadata?.['name'] )?.trim() || undefined
   }
   return undefined
 }
 
-/** Every route the mind holds for this someone, most recently answered first. */
-export function handlesOf( entities: ReadonlyMap<string, EntityLike>, personId: string ): Handle[] {
+/** Every route the mind holds for this referent, most recently answered first. */
+export function handlesOf( entities: ReadonlyMap<string, EntityLike>, referentId: string ): Handle[] {
   for( const [ , e ] of entities ){
-    if( e.type !== DOSSIER_TYPE || str( e.metadata?.['keid'] ) !== personId ) continue
+    if( e.type !== DOSSIER_TYPE || str( e.metadata?.['keid'] ) !== referentId ) continue
     const raw = e.metadata?.['handles']
     if( !Array.isArray( raw ) ) return []
     return ( raw as Handle[] )

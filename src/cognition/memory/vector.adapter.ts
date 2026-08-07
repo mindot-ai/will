@@ -302,15 +302,24 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
     if( victims.length > 0 ) this._dirty = true
   }
 
+  /**
+   * Throttle, NOT a debounce. The previous version cleared and re-armed the timer on
+   * every index(), so it only ever fired after 5s of complete inactivity — and a mind
+   * consolidating steadily indexes far more often than that, so the write was pushed
+   * back indefinitely and the index never reached disk while it was awake.
+   *
+   * A pending timer is now left alone: the first write after a quiet period sets the
+   * deadline, and everything indexed within the window rides along on it. Persist is
+   * bounded at 5s from the FIRST pending change rather than the last.
+   */
   private _schedulePersist(): void {
-    if( this._persistDebounceTimer )
-      clearTimeout( this._persistDebounceTimer )
+    if( this._persistDebounceTimer ) return
 
     this._persistDebounceTimer = setTimeout( () => {
+      this._persistDebounceTimer = null
       this.persist().catch( err => {
         logger.error(`[VectorMemoryAdapter] Persist failed:`, err )
       } )
-      this._persistDebounceTimer = null
     }, 5000 )
   }
 }

@@ -135,6 +135,39 @@ const CONSCIENTIOUSNESS_MORAL_GAIN = -0.2   // −moral.eventThreshold per unit 
 // native scales — see the selector's effectiveSwitchCost. Lower gain to match the smaller base.
 const CONSCIENTIOUSNESS_SELECTOR_FOCUS_GAIN = 0.1  // +action-selector.switchCost per unit conscientiousness (resists action-interruption)
 
+// Attentional BREADTH — how many focused facets this mind holds at once
+// (engine-config-executive.maxFacets, the FacetSupervisor's ceiling). Two opposing
+// dispositional pulls on one param, the pattern rules 17/17b already use: an open
+// mind spreads itself across more at once, a conscientious one narrows to fewer and
+// sees them through. Scaled against a base of 10, so a strongly-expressed trait moves
+// the ceiling by a few threads, not by an order of magnitude — and consolidatePrior's
+// per-step and cumulative caps bound it regardless.
+const OPENNESS_BREADTH_GAIN          = 4    // +executive.maxFacets per unit openness (hold more at once)
+const CONSCIENTIOUSNESS_BREADTH_GAIN = -3   // −executive.maxFacets per unit conscientiousness (fewer, seen through)
+
+// The same breadth disposition at the ATTENDING level — how many things the mind
+// holds in view at once (engine-config-attention.maxFoci, the allocator's slot cap),
+// as opposed to how many threads it keeps open (maxFacets above). One disposition,
+// two owners — rules 28/28b's pattern. Scaled against a base of 4, so the same trait
+// moves both levels proportionally rather than pulling them apart.
+const OPENNESS_FOCI_GAIN             = 1.5  // +attention.maxFoci per unit openness
+const CONSCIENTIOUSNESS_FOCI_GAIN    = -1.2 // −attention.maxFoci per unit conscientiousness
+
+// How long the Will sits with something it has already said before saying it again
+// (action-selector.repeatDamping, EXAFFERENCE P5). Agreeableness gives people room;
+// demonstrated persistence chases the answer. Scaled against a base of 0.30.
+const AGREEABLENESS_PATIENCE_GAIN    = 0.12  // +repeatDamping per unit agreeableness
+const PERSISTENCE_FOLLOWUP_GAIN      = -0.10 // −repeatDamping per unit persistence
+// The same disposition on the WINDOW rather than the strength: how long what it
+// said stands before coming back to it. Scaled against a base of 60 ticks.
+const AGREEABLENESS_WINDOW_GAIN      = 24   // +repeatWindowTicks per unit agreeableness
+const PERSISTENCE_WINDOW_GAIN        = -20  // −repeatWindowTicks per unit persistence
+// Who the mind is drawn toward. Agreeableness leans into reciprocity (toward the
+// people who answer); demonstrated persistence leans the other way, and can carry
+// this SIGNED weight negative — a mind that reaches hardest for the silence.
+const AGREEABLENESS_RECIPROCITY_GAIN = 0.12  // +action-selector.socialWeight per unit agreeableness
+const PERSISTENCE_RECIPROCITY_GAIN   = -0.14 // −action-selector.socialWeight per unit persistence
+
 // Emotional stability (formed from observed affect dynamics, not task success) develops
 // the affect *reactivity gain* down: a steadier Will lets frustration snowball into
 // chronic irritability more slowly. Distinct axis from resilience — resilience tunes how
@@ -346,6 +379,11 @@ export class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
       [ 'persona.executive.impulsivity_delta',   next.priors[ 'engine-config-executive' ]?.impulsivity ?? 0 ],
       [ 'persona.frustration.irritability_rate_delta', next.priors[ 'engine-config-frustration' ]?.irritabilityRate ?? 0 ],
       [ 'persona.executive.deliberate_threshold_delta', next.priors[ 'engine-config-executive' ]?.deliberateThreshold ?? 0 ],
+      [ 'persona.executive.max_facets_delta',     next.priors[ 'engine-config-executive' ]?.maxFacets ?? 0 ],
+      [ 'persona.attention.max_foci_delta',       next.priors[ 'engine-config-attention' ]?.maxFoci ?? 0 ],
+      [ 'persona.selector.repeat_damping_delta',  next.priors[ 'engine-config-action-selector' ]?.repeatDamping ?? 0 ],
+      [ 'persona.selector.repeat_window_delta',   next.priors[ 'engine-config-action-selector' ]?.repeatWindowTicks ?? 0 ],
+      [ 'persona.selector.social_weight_delta',   next.priors[ 'engine-config-action-selector' ]?.socialWeight ?? 0 ],
       [ 'persona.reward.social_weight_delta', next.priors[ 'engine-config-reward' ]?.socialWeight ?? 0 ],
       [ 'persona.frustration.anger_reactivity_delta', next.priors[ 'engine-config-frustration' ]?.angerReactivity ?? 0 ],
       [ 'persona.novelty.significance_threshold_delta', next.priors[ 'engine-config-novelty' ]?.significanceThreshold ?? 0 ],
@@ -729,6 +767,109 @@ export class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
         gain: CONSCIENTIOUSNESS_FOCUS_GAIN,
         engineConfigId: 'engine-config-task-switcher',
         param: 'baseSwitchCost'
+      },
+      // 27c. Attentional BREADTH — how many things this mind holds at once (the
+      //      FacetSupervisor's facet ceiling). Openness widens it; conscientiousness
+      //      narrows it. Two opposing pulls on one param (rules 17/17b's pattern), so a
+      //      Will that is both lands somewhere of its own rather than at either extreme.
+      //      This is what makes "I can hold five conversations" or "I do one thing at a
+      //      time" a fact about the person instead of a constant — the ceiling is the
+      //      persona's; spare attention only scales the live allowance within it.
+      {
+        magnitude: openDev,
+        threshold: GRIT_THRESHOLD,
+        gain: OPENNESS_BREADTH_GAIN,
+        engineConfigId: 'engine-config-executive',
+        param: 'maxFacets'
+      },
+      {
+        magnitude: conscDev,
+        threshold: GRIT_THRESHOLD,
+        gain: CONSCIENTIOUSNESS_BREADTH_GAIN,
+        engineConfigId: 'engine-config-executive',
+        param: 'maxFacets'
+      },
+      // 27d. The same breadth disposition one level down: how many things the mind
+      //      holds IN VIEW at once (the allocator's `maxFoci` slots), as against how
+      //      many threads it keeps OPEN (27c). A reasoning facet now competes for
+      //      these slots like any percept, so the two levels are one economy — a Will
+      //      can be in ten conversations while attending to two, and which two is
+      //      settled by salience against everything else it could be noticing.
+      //      `maxFoci` was already config-mirrored and read through the persona-prior;
+      //      it just had no description and no edge, so it could never actually move.
+      {
+        magnitude: openDev,
+        threshold: GRIT_THRESHOLD,
+        gain: OPENNESS_FOCI_GAIN,
+        engineConfigId: 'engine-config-attention',
+        param: 'maxFoci'
+      },
+      {
+        magnitude: conscDev,
+        threshold: GRIT_THRESHOLD,
+        gain: CONSCIENTIOUSNESS_FOCI_GAIN,
+        engineConfigId: 'engine-config-attention',
+        param: 'maxFoci'
+      },
+      // 27e. How long the Will lets its own words stand before repeating them. A
+      //      delivered act leaves a live footprint (EXAFFERENCE P5) that damps redoing
+      //      it; how HARD it damps is a disposition. An agreeable Will gives people
+      //      room after saying its piece; a persistent one chases the answer sooner.
+      //      Opposing pulls on one param, same as 17/17b. This is the trait behind
+      //      "she messaged me the same thing three times" — the mechanism stops the
+      //      loop, this decides where in the range between patient and dogged she sits.
+      {
+        magnitude: agreeableDev,
+        threshold: GRIT_THRESHOLD,
+        gain: AGREEABLENESS_PATIENCE_GAIN,
+        engineConfigId: 'engine-config-action-selector',
+        param: 'repeatDamping'
+      },
+      {
+        magnitude: persistDev,
+        threshold: GRIT_THRESHOLD,
+        gain: PERSISTENCE_FOLLOWUP_GAIN,
+        engineConfigId: 'engine-config-action-selector',
+        param: 'repeatDamping'
+      },
+      // 27f. The same patience on the satiation WINDOW rather than its strength —
+      //      27e decides how hard having spoken damps speaking again, this decides
+      //      for how long. Kept separate because a mind can be quick to repeat but
+      //      only briefly, or slow to repeat but for a long time.
+      {
+        magnitude: agreeableDev,
+        threshold: GRIT_THRESHOLD,
+        gain: AGREEABLENESS_WINDOW_GAIN,
+        engineConfigId: 'engine-config-action-selector',
+        param: 'repeatWindowTicks'
+      },
+      {
+        magnitude: persistDev,
+        threshold: GRIT_THRESHOLD,
+        gain: PERSISTENCE_WINDOW_GAIN,
+        engineConfigId: 'engine-config-action-selector',
+        param: 'repeatWindowTicks'
+      },
+      // 27g. Who the Will is drawn toward. `socialWeight` scales its learned read on
+      //      a person in the action competition, and it is the one weight left
+      //      deliberately SIGNED: agreeableness leans into reciprocity (toward the
+      //      people who answer), demonstrated persistence leans against it and can
+      //      carry the weight negative — a mind that reaches hardest for the silence
+      //      precisely because it is silent. Both are coherent colleagues, so the
+      //      container declines to pick and lets the persona land where it lands.
+      {
+        magnitude: agreeableDev,
+        threshold: GRIT_THRESHOLD,
+        gain: AGREEABLENESS_RECIPROCITY_GAIN,
+        engineConfigId: 'engine-config-action-selector',
+        param: 'socialWeight'
+      },
+      {
+        magnitude: persistDev,
+        threshold: GRIT_THRESHOLD,
+        gain: PERSISTENCE_RECIPROCITY_GAIN,
+        engineConfigId: 'engine-config-action-selector',
+        param: 'socialWeight'
       },
       // 28b. Same disposition, the AGENCY selector's owner (R2): a conscientious Will also
       //      resists having an in-flight action preempted — raise the selector's switch-cost

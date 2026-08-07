@@ -76,7 +76,6 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
 
   private _items: WMItem[] = []
   private _modulatedCapacity: number
-  private _currentFocusId: string | null = null
   private _activeGoalCount  = 0
 
   /**
@@ -104,9 +103,14 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
   // ── Engine interface ─────────────────────────────────────
 
 
+  // `attention.focus.changed` used to be listed here as the "preferred" focus source.
+  // Nothing has ever published it — focus reaches this engine through the
+  // `attention.focus` STATE ENTITY that AttentionAllocator writes, read in
+  // _applyAttention, and capacity is modulated from circadian alertness in _react.
+  // Both live paths have the same source, so the subscription was pure redundancy
+  // that read as a live wire. Removed rather than published (#114).
   subscribes(): string[] {
     return [
-      'attention.focus.changed',
       'goal.state.changed',
       'executive.prediction.formed',
     ]
@@ -116,14 +120,6 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
   onCognitiveEvent( e: CognitiveEvent ): StateCommands | void {
     this._model.observe( e.type, e.salience )
     switch( e.type ){
-      case 'attention.focus.changed': {
-        const p = e.payload as Record<string, unknown>
-        const focusId = p['entityId'] as string | undefined
-        if( focusId ) this._currentFocusId = focusId
-        const capacity = p['capacity'] as number | undefined
-        if( capacity != null ) this._modulatedCapacity = Math.round( capacity * this._maxChunks )
-        break
-      }
       case 'goal.state.changed': {
         const p = e.payload as Record<string, number>
         if( p['activeCount'] != null ) this._activeGoalCount = p['activeCount']
@@ -142,7 +138,6 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
     return {
       items:        this._items.length,
       modulatedCap: this._modulatedCapacity,
-      focusId:      this._currentFocusId,
       activeGoals:  this._activeGoalCount,
     }
   }
@@ -323,17 +318,12 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
   }
 
   /**
-   * Mark the currently focused entity's WM item as attended this tick.
-   * Also checks for attention.focus entities in state as a fallback.
+   * Mark the currently focused entity's WM item as attended this tick, from the
+   * `attention.focus` entities AttentionAllocator writes. (A second, bus-driven
+   * branch used to sit above this one, labelled "preferred"; the event behind it was
+   * never published, so this loop has always been the only path — see #114.)
    */
   private _applyAttention( state: ReadonlySimulationState, tick: Tick ): void {
-    // Bus-driven focus (preferred)
-    if( this._currentFocusId ){
-      const item = this._items.find( i => i.sourceEntityId === this._currentFocusId )
-      if( item && !item.attendedAt.includes( tick ) ) item.attendedAt.push( tick )
-    }
-
-    // State-entity fallback: attention.focus entities
     for( const entity of state.entities.values() ){
       if( entity.type !== 'attention.focus') continue
       const targetId = entity.metadata?.targetEntityId as string | undefined

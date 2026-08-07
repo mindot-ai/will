@@ -40,6 +40,7 @@ import {
 } from '#core/orchestrator'
 import { DefaultSimulationClock } from '#core/clock'
 import { DefaultEventBus } from '#core/event.bus'
+import { logger } from '#core/logger'
 import { DefaultStateManager } from '#core/state.manager'
 
 // ── Harness ───────────────────────────────────────────────────
@@ -262,4 +263,61 @@ describe('Orchestrator — events published post-commit with tick stamp (R7)', (
     expect( stampedTick ).toBe( 1 )                 // tick stamped by orchestrator
     expect( entityVisibleInHandler ).toBe( true )   // flush ran after commit
   } )
+} )
+
+// ── 9. Slow non-async engine guard ────────────────────────────
+
+describe('Orchestrator — a non-async engine that holds the tick is reported', () => {
+  /**
+   * The failure this guards against is silent and severe: every agency deadline is
+   * denominated in TICKS, so an engine that awaits network I/O does not merely run
+   * slowly — it rescales time for the whole mind. Measured live, one rate-limited
+   * embedding call awaited inside EpisodicConsolidator produced two 64s ticks, which
+   * turned a 15-tick timeout into 15 minutes, stranded a communicate intent
+   * 'awaiting', and stopped the serial selector from ever choosing again. No error
+   * was raised anywhere; the mind simply stopped acting.
+   */
+  it('warns when a plain engine exceeds its share of the tick interval', async () => {
+    const warn = vi.spyOn( logger, 'warn').mockImplementation( () => {} )
+    const { orch } = makeHarness({ tickIntervalMs: 100 })   // budget = 50ms
+
+    orch.addEngine( makeEngine('slowpoke', async () => {
+      await new Promise( r => setTimeout( r, 120 ) )
+      return {}
+    } ) )
+
+    await orch.step( 1 )
+
+    const line = warn.mock.calls.map( c => String( c[0] ) ).find( m => m.includes('slowpoke') )
+    expect( line ).toBeDefined()
+    expect( line ).toContain('held the tick')
+  }, 10_000 )
+
+  it('stays quiet for a fast engine', async () => {
+    const warn = vi.spyOn( logger, 'warn').mockImplementation( () => {} )
+    const { orch } = makeHarness({ tickIntervalMs: 100 })
+
+    orch.addEngine( makeEngine('brisk', async () => ( {} ) ) )
+    await orch.step( 1 )
+
+    expect( warn.mock.calls.map( c => String( c[0] ) ).find( m => m.includes('brisk') ) ).toBeUndefined()
+  } )
+
+  it('exempts an AsyncEngine — spanning ticks is its contract', async () => {
+    const warn = vi.spyOn( logger, 'warn').mockImplementation( () => {} )
+    const { orch } = makeHarness({ tickIntervalMs: 100 })
+
+    // An AsyncEngine is identified by exposing `hasPendingWork` (the same signal the
+    // orchestrator already uses to track pending async work across engines).
+    const spanning = {
+      name: 'spanner',
+      hasPendingWork: false,
+      react: async () => { await new Promise( r => setTimeout( r, 120 ) ); return {} },
+    } as unknown as SimulationEngine
+
+    orch.addEngine( spanning )
+    await orch.step( 1 )
+
+    expect( warn.mock.calls.map( c => String( c[0] ) ).find( m => m.includes('spanner') ) ).toBeUndefined()
+  }, 10_000 )
 } )

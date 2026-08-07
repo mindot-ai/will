@@ -63,6 +63,18 @@ export interface TextMessage {
   content:  string
   /** Display name — used in the facet focus content. */
   speakerName?: string
+  /**
+   * True when `threadId` is a PRIVATE thread — this someone and the mind, nobody
+   * else listening. The single fact that decides whether a room is the right
+   * place for a given utterance, and the Discord edge has always computed it
+   * (`isDM`) and discarded it before the mind could see it: a follow-up promised
+   * in a DM went out to a public channel, because the roster's "where did I last
+   * see them" is a different question from "where did I promise this".
+   *
+   * Undefined means the channel did not say, which is honestly different from
+   * false — an unknown room is not known to be public.
+   */
+  direct?: boolean
 }
 
 export interface VoiceChunk {

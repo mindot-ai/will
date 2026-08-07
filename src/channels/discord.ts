@@ -93,10 +93,25 @@ export interface DiscordLikeClient {
 export interface DiscordBridgeOptions {
   /** Bot token (Discord developer portal). Unused when `client` is injected pre-logged-in. */
   token?: string
-  /** Channel ids the Will inhabits. Unset = every channel it can see. */
-  channels?: string[]
-  /** Perceive guild messages only when the Will is @mentioned (DMs always perceived). */
-  mentionOnly?: boolean
+  /**
+   * Channel ids the Will inhabits. Unset — or the single wildcard `'*'` — means
+   * every channel it can see, so adding it to a new channel in Discord is enough.
+   * A list restrains it to exactly those, and a message anywhere else is dropped
+   * at the bridge: the Will never perceives it and its silence there is not a choice.
+   */
+  channels?: readonly string[]
+  /**
+   * Where the Will only perceives guild messages that @mention it. DMs are always
+   * perceived either way.
+   *
+   *   `true`            — everywhere
+   *   `[ 'id', … ]`     — only in those channels; it listens openly elsewhere
+   *   omitted / `false` — nowhere
+   *
+   * The list form is what makes a wide-open roster usable: present in every channel,
+   * but a quiet participant in the busy ones.
+   */
+  mentionOnly?: boolean | readonly string[]
   /** Fallback channel for utterances with no reachable addressee. */
   homeChannelId?: string
   /** Roster path (default: ./.will/<willId>.discord.json). */
@@ -125,7 +140,17 @@ export interface DiscordBridgeOptions {
 export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): Promise<ChannelBridge> {
   const log     = opts.log ?? ( ( m: string ) => console.error(`[will:discord] ${ m }`) )
   const roster  = new ChannelRoster( opts.rosterPath ?? `.will/${ will.id }.discord.json`)
-  const allowed = opts.channels?.length ? new Set( opts.channels ) : null
+  // `null` = everywhere. An explicit '*' reads the same as omitting the list, so a
+  // host can say "all channels" out loud instead of by leaving a variable blank.
+  const allowed = opts.channels?.length && !opts.channels.includes('*')
+    ? new Set( opts.channels )
+    : null
+
+  // Mention-gating is either global (true) or scoped to named channels.
+  const mentionEverywhere = opts.mentionOnly === true
+  const mentionIn         = Array.isArray( opts.mentionOnly ) && opts.mentionOnly.length
+    ? new Set( opts.mentionOnly )
+    : null
 
   const client = opts.client ?? await createDiscordClient()
 
@@ -143,7 +168,8 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
     if( !isDM && allowed && !allowed.has( message.channelId ) ) return
 
     const addressed = isDM || ( message.mentions?.has( self.id ) ?? false )
-    if( opts.mentionOnly && !addressed ) return
+    // DMs are addressed by definition, so this never gates them.
+    if( !addressed && ( mentionEverywhere || mentionIn?.has( message.channelId ) ) ) return
 
     const entityId = `discord:${ message.author.id }`
     const speaker  = message.member?.displayName ?? message.author.displayName ?? message.author.username
@@ -179,6 +205,11 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
       text,
       from:   entityId,
       thread: `discord:${ message.channelId }`,
+      // `isDM` has been computed on every inbound since this bridge shipped and
+      // used only to pick a roster field. It is the one fact that makes a room
+      // the right or wrong place to say something, and the mind never saw it —
+      // which is how a follow-up promised in a DM went out to #general.
+      direct: isDM,
       ...( speaker ? { speaker } : {} ),
     } )
   }
@@ -240,8 +271,22 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
     const peer = m.to ? roster.resolve( m.to ) : undefined
     const chunks = chunkText( m.content, DISCORD_MESSAGE_LIMIT )
 
-    // Preference order: where we last shared a room → their DM → home channel.
-    const channelIds = [ peer?.lastChannelId, peer?.dmChannelId, opts.homeChannelId ?? undefined, lastActiveChannelId ?? undefined ]
+    // A reply goes back to the room it was said in. `m.thread` is the thread from
+    // the `perceive()` that prompted this — `discord:<channelId>` — so it is not a
+    // guess about where this person usually is, it is where they just spoke.
+    //
+    // Everything below it IS a guess, and the guesses were wrong in the way that
+    // matters most: a DM arrived, she answered it in seconds, and the answer went
+    // to the shared server channel because `lastChannelId` still held the last
+    // room they had been in together. She looked like she was ignoring him.
+    //
+    // Unprompted utterances carry no thread — nothing was said to them — so those
+    // still fall through to the roster, which is the right behaviour there.
+    const replyTo = m.thread?.startsWith('discord:') ? m.thread.slice('discord:'.length ) : undefined
+
+    // Preference order: the room they spoke in → where we last shared a room →
+    // their DM → home channel.
+    const channelIds = [ replyTo, peer?.lastChannelId, peer?.dmChannelId, opts.homeChannelId ?? undefined, lastActiveChannelId ?? undefined ]
     for( const id of channelIds ){
       if( !id ) continue
       try {
@@ -310,4 +355,38 @@ async function createDiscordClient(): Promise<DiscordLikeClient> {
     ],
     partials: [ Partials.Channel ],   // DMs arrive on uncached channels
   } ) as unknown as DiscordLikeClient
+}
+
+/**
+ * Parse `WILL_DISCORD_MENTION_ONLY` into the `mentionOnly` option.
+ *
+ * Accepts a boolean OR a channel list, because "only speak when spoken to" is
+ * rarely a whole-server property — it is how you stay present in a busy channel
+ * without narrating in it.
+ *
+ *   `1` / `true` / `yes`   → true (everywhere)
+ *   `0` / `false` / unset  → false (nowhere)
+ *   `123,456`              → only those channels
+ *
+ * Exported so every host parses it identically; the CLI and any SDK host share
+ * this rather than each re-deriving the syntax.
+ */
+export function parseMentionOnly( raw?: string ): boolean | string[] {
+  const v = raw?.trim()
+  if( !v ) return false
+  if( /^(1|true|yes)$/i.test( v ) ) return true
+  if( /^(0|false|no)$/i.test( v ) ) return false
+
+  const ids = v.split(',').map( s => s.trim() ).filter( Boolean )
+  return ids.length ? ids : false
+}
+
+/**
+ * Parse `WILL_DISCORD_CHANNELS`. `*` (or unset/empty) means every channel the Will
+ * can see — being added to a channel in Discord is then all it takes. Anything else
+ * restrains it to exactly the ids listed.
+ */
+export function parseChannels( raw?: string ): string[] | undefined {
+  const ids = raw?.split(',').map( s => s.trim() ).filter( Boolean )
+  return ids?.length ? ids : undefined
 }

@@ -39,7 +39,15 @@ const exafferent = ( id: string, salience: number, tick: number ): Ent =>
 
 function busSpy(): { bus: unknown; events: Array<{ type: string; payload: Record<string, unknown> }> } {
   const events: Array<{ type: string; payload: Record<string, unknown> }> = []
-  return { bus: { publish: ( e: { type: string; payload: Record<string, unknown> } ) => events.push( e ) }, events }
+  return {
+    bus: {
+      publish: ( e: { type: string; payload: Record<string, unknown> } ) => events.push( e ),
+      // The bus contract includes subscribe — engines wire their listeners in
+      // attachBus(). A publish-only double is an incomplete bus, not a smaller one.
+      subscribe: () => () => {},
+    },
+    events,
+  }
 }
 const setOf   = ( r: { commands?: { set?: EntityInput[] } } ) => r.commands?.set ?? []
 const delOf   = ( r: { commands?: { delete?: string[] } } ) => r.commands?.delete ?? []

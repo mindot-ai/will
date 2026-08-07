@@ -36,6 +36,8 @@ import type { Affordance, AffordanceSource, MotorSchema, LearnedSkill, SchemaPre
 import type { SchemaRepertoire } from '#agency/schemas/repertoire'
 import { INNATE_SCHEMAS } from '#agency/schemas/innate'
 import { collectGoalTargets } from '#agency/selection.scoring'
+import { readEffectiveParams } from '#cognition/persona.prior'
+import { liveConsequences, enactionFootprint, spokenAtByEntity, CONSEQUENCE_TTL_TICKS, type ConsequenceDescriptor } from '#agency/consequence'
 
 /** Default field width for non-innate affordances when no attention metric exists. */
 const DEFAULT_ATTENTION_CAP = 5
@@ -59,6 +61,19 @@ export class AffordanceSynthesizer implements CognitiveEngine {
   private _schemas:     MotorSchema[]
   private _skills:      SkillAccessor | null = null
   private _repertoire:  SchemaRepertoire | null = null
+
+  /**
+   * This tick's live consequence descriptors — the acts the mind has performed
+   * whose outcome has not yet come back. Refreshed once at the top of react()
+   * because `_build` runs per candidate and reading them is a full-entity scan.
+   */
+  private _inFlight: readonly ConsequenceDescriptor[] = []
+
+  /** Ticks an act stays satiating (engine-config-action-selector.repeatWindowTicks). */
+  private _satiationWindow: number = CONSEQUENCE_TTL_TICKS
+
+  /** Tick of the last thing said to each entity — outlives the descriptor sweep. */
+  private _spokenAt: ReadonlyMap<string, number> = new Map()
   private _bus:         CognitiveBus | null = null
   private _defaultCap:  number
   private _lastFieldSize = 0
@@ -111,6 +126,21 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     const skills    = this._skills?.() ?? this._repertoire?.skills() ?? null
     const valence   = metric( state, 'affect.valence', 0 )
     const energyLow = metric( state, 'energy.level', 0 ) < 30
+
+    // The mind's own acts still in flight (EXAFFERENCE P5). Read once per tick —
+    // `_build` runs for every candidate and this is a full-entity scan. Each
+    // candidate whose (schema, target) matches one of these carries a decaying
+    // `justEnacted`, so having just done a thing damps doing it again.
+    this._inFlight = liveConsequences( state.entities, tick )
+    // How long this mind sits with something it has already done before doing it
+    // again — the tenant's, not the container's. Falls back to the echo TTL only
+    // when unseeded, so a bare harness behaves as before.
+    this._satiationWindow = readEffectiveParams( state, 'engine-config-action-selector').repeatWindowTicks
+      ?? CONSEQUENCE_TTL_TICKS
+    // Durable "when did I last speak to them". Descriptors alone cannot carry
+    // satiation — the executor deletes them at their echo TTL, so any window
+    // longer than that was a no-op.
+    this._spokenAt = spokenAtByEntity( state.entities )
 
     const set:    EntityInput[] = []
     const del:    string[]      = []
@@ -204,13 +234,18 @@ export class AffordanceSynthesizer implements CognitiveEngine {
 
       if( !schema ) continue
 
+      // `priority` is the confidence the executive decided with. It sets BOTH the
+      // evoke-salience (field admission) and — via willBias — the activation the
+      // selector scores, so a decision made at 0.85 pushes harder than one at 0.5.
+      const willBias = clamp01( num( m?.['priority'], 0.8 ) )
       candidates.push({
-        salience: IDEOMOTOR_BASE_SALIENCE + num( m?.['priority'], 0.8 ),
+        salience: IDEOMOTOR_BASE_SALIENCE + willBias,
         affordance: this._build( schema, tick, state, valence, energyLow, skills, {
           evokedBy:       id,
           targetEntityId: str( m?.['targetEntityId'] ),
           parameters:     ( m?.['parameters'] as Record<string, unknown> ) ?? {},
           source:         'ideomotor',
+          willBias,
         } ),
       })
     }
@@ -303,6 +338,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
       parameters?:     Record<string, unknown>
       source?:         AffordanceSource
       planBias?:       number
+      willBias?:       number
       planId?:         string
       stepId?:         string
     },
@@ -313,12 +349,29 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // Will's affordance field is byte-identical. Present only once a refusal dented it.
     const availability = this._repertoire?.availabilityOf( schema.id ) ?? 1
 
+    // What the mind has LEARNED about the person this act is aimed at. Only for a
+    // targeted act; 0 for everything else, so the field is unchanged for a mind that
+    // knows no one. See Affordance.socialPrior.
+    const socialPrior = ctx.targetEntityId
+      ? socialStanding( state, ctx.targetEntityId )
+      : 0
+
     // Learned value if known, else the schema's intrinsic prior mapped to 0..1.
     const expectedReward = skill?.valueEstimate ?? clamp01( ( ( schema.baseValence ?? 0 ) + 1 ) / 2 )
     const expectedValence = schema.baseValence ?? valence
     const habitStrength   = skill?.habitStrength ?? 0
     // Low energy makes everything feel costlier.
     const cost            = clamp01( schema.cost * ( energyLow ? 1.5 : 1 ) )
+
+    // This act's own footprint, if it is still in flight toward this same person.
+    // Satiation only applies to acts aimed at someone the mind SPEAKS to — the
+    // `conversation.sent` half is keyed by person, so it must not damp, say,
+    // inspecting them.
+    const speaks = schema.tags?.includes('communication') ?? false
+    const justEnacted = enactionFootprint(
+      this._inFlight, schema.id, ctx.targetEntityId, tick, this._satiationWindow,
+      speaks ? this._spokenAt : undefined,
+    )
 
     const key    = ctx.targetEntityId ?? ctx.evokedBy ?? schema.id
     const source = ctx.source ?? schema.source
@@ -341,7 +394,10 @@ export class AffordanceSynthesizer implements CognitiveEngine {
       tags:            schema.tags ?? [],
       ...( schema.description ? { description: schema.description } : {} ),
       ...( availability < 1 ? { availability } : {} ),
+      ...( socialPrior !== 0 ? { socialPrior } : {} ),
+      ...( justEnacted > 0 ? { justEnacted } : {} ),
       planBias:        ctx.planBias,
+      willBias:        ctx.willBias,
       planId:          ctx.planId,
       stepId:          ctx.stepId,
       tick,
@@ -366,7 +422,9 @@ export class AffordanceSynthesizer implements CognitiveEngine {
         tags:            a.tags,
         description:     a.description,
         ...( a.availability !== undefined ? { availability: a.availability } : {} ),
+        ...( a.socialPrior !== undefined ? { socialPrior: a.socialPrior } : {} ),
         planBias:        a.planBias,
+        willBias:        a.willBias,
         planId:          a.planId,
         stepId:          a.stepId,
         tick:            a.tick,
@@ -414,4 +472,35 @@ function str( v: unknown ): string | undefined {
 
 function clamp01( n: number ): number {
   return n < 0 ? 0 : n > 1 ? 1 : n
+}
+
+/**
+ * The mind's learned read on one person, −1..1 (0 = unknown or neutral).
+ *
+ * Every input is something the mind formed from experience, none is a constant:
+ *   • ReputationTracker's `trustworthiness`, centred on 0.5 and scaled by that
+ *     model's own `confidence`, so an opinion held on two interactions pushes
+ *     far less than one held on fifty.
+ *   • the mind's current affective tone, as a gentle tilt — feeling low makes
+ *     reaching for anyone a little less attractive, which is a mood, not a verdict
+ *     on them, so it is weighted small and applies the same way to everybody.
+ *
+ * This is the path by which "they never answer me" reaches the competition: the
+ * ReputationTracker learns it from `interaction.occurred`, which only started firing
+ * once inbound conversation reached social cognition (#113).
+ */
+function socialStanding( state: ReadonlySimulationState, keid: string ): number {
+  let trust = 0
+  for( const e of state.entities.values() ){
+    if( e.type !== 'reputation') continue
+    const m = e.metadata as Record<string, unknown> | undefined
+    if( m?.['keid'] !== keid ) continue
+    const t = num( m['trustworthiness'], 0.5 )
+    const c = clamp01( num( m['confidence'], 0 ) )
+    trust = ( t - 0.5 ) * 2 * c
+    break
+  }
+
+  const mood = num( state.metrics.get('affect.valence'), 0 ) * 0.25
+  return Math.max( -1, Math.min( 1, trust + mood ) )
 }

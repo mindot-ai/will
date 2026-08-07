@@ -14,7 +14,7 @@ import type {
   ReadonlySimulationState, SimulationContext, StateCommands, SimulationEntity,
 } from '#core/types'
 import type { MotorSchema } from '#agency/types'
-import { MotorSchemaExecutor } from '#agency/engines/motor.schema.executor'
+import { MotorSchemaExecutor, AWAIT_TIMEOUT } from '#agency/engines/motor.schema.executor'
 import { ActionSelector } from '#agency/engines/action.selector'
 import { RewardEvaluator } from '#faculties/reward.evaluator'
 
@@ -23,7 +23,15 @@ const CTX = {} as unknown as SimulationContext
 /** Capture cognitive-bus publishes from an engine under test. */
 function busSpy(): { bus: unknown; events: Array<{ type: string; payload: Record<string, unknown> }> } {
   const events: Array<{ type: string; payload: Record<string, unknown> }> = []
-  return { bus: { publish: ( e: { type: string; payload: Record<string, unknown> } ) => events.push( e ) }, events }
+  return {
+    bus: {
+      publish: ( e: { type: string; payload: Record<string, unknown> } ) => events.push( e ),
+      // The bus contract includes subscribe — engines wire their listeners in
+      // attachBus(). A publish-only double is an incomplete bus, not a smaller one.
+      subscribe: () => () => {},
+    },
+    events,
+  }
 }
 
 interface MutState { tick: number; time: number; entities: Map<string, SimulationEntity>; metrics: Map<string, number> }
@@ -132,6 +140,120 @@ describe('MotorSchemaExecutor — communicate delivery (Phase 5b)', () => {
     expect( fc.calls ).toHaveLength( 0 )                            // never delivered
     expect( entitiesOfType( s, 'agency.outcome')[0]?.metadata?.['success'] ).toBe( false )
     expect( s.entities.has('agency-intent-1') ).toBe( false )     // resolved, not awaiting
+  })
+})
+
+describe('MotorSchemaExecutor — two-phase outreach authoring', () => {
+  function fakeComms(): { comms: unknown; calls: Array<{ parameters: Record<string, unknown> }> } {
+    const calls: Array<{ parameters: Record<string, unknown> }> = []
+    return {
+      calls,
+      comms: { executeAction: async ( req: { parameters: Record<string, unknown> } ) => {
+        calls.push( req )
+        return { success: true, description: 'sent', commands: { set: [] },
+          feedback: { outcomeQuality: 0.85, surprise: 0, lessons: [] } }
+      } },
+    }
+  }
+  const grant = ( ok: boolean ) => ({ isAllowed: () => ok } as never )
+
+  /**
+   * An author whose promise settles only when the test releases it — standing in for a
+   * real facet, whose answer cannot arrive until the tick loop advances and pumps it.
+   * Under the previous in-tick `await`, react() would never resolve against this.
+   */
+  function deferredAuthor(){
+    let release: ( bubbles: string[] ) => void = () => {}
+    const calls: Array<{ entityId: string; entityName: string; gist?: string }> = []
+    return {
+      calls,
+      release: ( bubbles: string[] ) => release( bubbles ),
+      author: {
+        authorOutreach: ( entityId: string, entityName: string, gist?: string ) => {
+          calls.push({ entityId, entityName, gist })
+          return new Promise<string[]>( resolve => { release = resolve } )
+        },
+      } as never,
+    }
+  }
+
+  const settle = () => new Promise( r => setImmediate( r ) )
+
+  it('requests the words without awaiting them, then delivers once they land', async () => {
+    const exec = new MotorSchemaExecutor()
+    const fc   = fakeComms(); const da = deferredAuthor()
+    exec.attachProactiveCommunicator( fc.comms as never )
+    exec.attachGrants( grant( true ) ); exec.attachOutreachAuthor( da.author )
+    const s = freshState()
+    seedIntent( s, { schema: 'reach-out', targetEntityId: 'alice',
+      parameters: { gist: 'ask how the migration went', targetEntityName: 'Alice' } } )
+
+    // Tick 3 — react RESOLVES while the author is still pending. That is the fix: the
+    // old code awaited here and deadlocked against the facet pump.
+    apply( s, ( await exec.react( 0, 3, frozen( s ), CTX ) ).commands )
+    expect( da.calls ).toHaveLength( 1 )
+    expect( da.calls[0] ).toMatchObject({ entityId: 'alice', entityName: 'Alice',
+      gist: 'ask how the migration went' } )
+    expect( fc.calls ).toHaveLength( 0 )
+    expect( s.entities.get('agency-intent-1')?.metadata?.['status'] ).toBe('awaiting')
+
+    // Still pending across further ticks — exactly ONE call behind the held intent.
+    apply( s, ( await exec.react( 0, 4, frozen( s ), CTX ) ).commands )
+    expect( da.calls ).toHaveLength( 1 )
+    expect( fc.calls ).toHaveLength( 0 )
+
+    // The facet answers off-tick; the NEXT tick speaks it.
+    da.release([ 'Hey Alice — how did the migration go?' ])
+    await settle()
+    apply( s, ( await exec.react( 0, 5, frozen( s ), CTX ) ).commands )
+
+    expect( fc.calls ).toHaveLength( 1 )
+    expect( fc.calls[0]!.parameters['messages'] ).toEqual( [ 'Hey Alice — how did the migration go?' ] )
+    expect( s.entities.has('agency-intent-1') ).toBe( false )   // resolved, not awaiting
+    expect( entitiesOfType( s, 'agency.outcome') ).toHaveLength( 1 )
+  })
+
+  it('pauses the await clock while authoring is in flight', async () => {
+    const exec = new MotorSchemaExecutor()
+    const fc   = fakeComms(); const da = deferredAuthor()
+    exec.attachProactiveCommunicator( fc.comms as never )
+    exec.attachGrants( grant( true ) ); exec.attachOutreachAuthor( da.author )
+    const s = freshState()
+    seedIntent( s, { schema: 'reach-out', targetEntityId: 'alice', parameters: { gist: 'check in' } } )
+
+    apply( s, ( await exec.react( 0, 3, frozen( s ), CTX ) ).commands )
+
+    // Far past AWAIT_TIMEOUT with the call still in flight: a slow facet is not a dead
+    // world, so the intent must NOT be reconciled as a phantom failure.
+    apply( s, ( await exec.react( 0, 3 + AWAIT_TIMEOUT + 20, frozen( s ), CTX ) ).commands )
+    expect( s.entities.get('agency-intent-1')?.metadata?.['status'] ).toBe('awaiting')
+    expect( entitiesOfType( s, 'agency.outcome') ).toHaveLength( 0 )
+
+    // …and words arriving long after the old budget are still spoken, not discarded.
+    da.release([ 'still worth saying' ])
+    await settle()
+    apply( s, ( await exec.react( 0, 3 + AWAIT_TIMEOUT + 21, frozen( s ), CTX ) ).commands )
+    expect( fc.calls ).toHaveLength( 1 )
+    expect( fc.calls[0]!.parameters['messages'] ).toEqual( [ 'still worth saying' ] )
+  })
+
+  it('resumes the clock when authoring comes back empty — a dead author still times out', async () => {
+    const exec = new MotorSchemaExecutor()
+    const fc   = fakeComms(); const da = deferredAuthor()
+    exec.attachProactiveCommunicator( fc.comms as never )
+    exec.attachGrants( grant( true ) ); exec.attachOutreachAuthor( da.author )
+    const s = freshState()
+    seedIntent( s, { schema: 'reach-out', targetEntityId: 'alice', parameters: { gist: 'check in' } } )
+
+    apply( s, ( await exec.react( 0, 3, frozen( s ), CTX ) ).commands )
+    da.release( [] )                    // authoring failed / produced nothing
+    await settle()
+
+    apply( s, ( await exec.react( 0, 3 + AWAIT_TIMEOUT + 1, frozen( s ), CTX ) ).commands )
+
+    expect( fc.calls ).toHaveLength( 0 )
+    expect( s.entities.has('agency-intent-1') ).toBe( false )   // reconciled as failed
+    expect( entitiesOfType( s, 'agency.outcome')[0]?.metadata?.['success'] ).toBe( false )
   })
 })
 

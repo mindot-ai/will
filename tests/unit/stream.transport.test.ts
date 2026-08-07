@@ -121,11 +121,11 @@ describe('Producers — neutral sinks (no transport import, no files)', () => {
 
     t.recordUsage({
       model: 'claude-sonnet-4-5', promptTokens: 100, completionTokens: 200, totalTokens: 300,
-      category: 'executive', attribute: 'master', function: 'decision', tick: 1, latencyMs: 5,
+      category: 'executive', attribute: 'master', process: 'decision', function: '-', tick: 1, latencyMs: 5,
     })
 
     expect( recs ).toHaveLength( 1 )
-    expect( recs[0] ).toMatchObject({ category: 'executive', function: 'decision', inputTok: 100, outputTok: 200 })
+    expect( recs[0] ).toMatchObject({ category: 'executive', process: 'decision', inputTok: 100, outputTok: 200 })
     expect( existsSync(`./data/wills/${willId}/debug/token-report.jsonl`) ).toBe( false )
   } )
 

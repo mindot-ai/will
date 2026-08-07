@@ -141,6 +141,29 @@ export interface Affordance {
    */
   planBias?:       number
   /**
+   * Top-down volitional bias 0..1 — set when the executive DELIBERATELY willed this
+   * affordance (source 'ideomotor'), carrying the confidence it decided with. Like
+   * planBias it lifts activation without bypassing the competition: a willed act must
+   * still out-compete the field, but it no longer arrives with the same standing as an
+   * ambient possibility. Without this term the ideomotor leg created candidates the
+   * arithmetic could not tell apart from idle ones, and a cheap unconditional reflex
+   * ('express', cost 0.02) beat a deliberate 'reach-out' 176 times out of 176.
+   */
+  willBias?:       number
+  /**
+   * Learned social standing of this affordance's addressee, −1..1 (0 = neutral or
+   * unknown). Set only for an act aimed at someone. Every input is LEARNED, none
+   * hardcoded: ReputationTracker's trustworthiness — which is fed by
+   * `interaction.occurred` and so only became live once inbound conversation reached
+   * social cognition (#113) — weighted by that model's own confidence, plus the mind's
+   * current affective tone as a gentle tilt on reaching out at all.
+   *
+   * This is what makes "they never answer me" reach the competition: it arrives as a
+   * fading opinion of a person the mind formed itself and can revise, not as a damping
+   * curve applied behind its back.
+   */
+  socialPrior?:    number
+  /**
    * Policy availability 0..1 (POLICY_REAFFERENCE P2) — learned from refusals,
    * distinct from `available` (precondition satisfaction) and from competence.
    * Present only when < 1 (a refusal has dented it); absent ⇒ fully available,
@@ -149,6 +172,18 @@ export interface Affordance {
    * gets an occasional re-probe and can climb back as availability recovers.
    */
   availability?:   number
+  /**
+   * How much of this act's OWN footprint is still live, 1 → 0 (EXAFFERENCE P5).
+   * Set when a consequence descriptor for the same (schema, target) has not yet
+   * expired — the mind has just done this and does not yet know how it landed.
+   *
+   * Damps the pull to do it again, and decays back to 0 on its own, so a silence
+   * that starts to matter can still out-compete it. Without this the executive's
+   * standing `ideomotor.intent` outlived the act it produced: the same two
+   * messages were delivered to the same person three times, ~21 ticks apart,
+   * each time as though it were the first.
+   */
+  justEnacted?:    number
   /** Provenance: the plan whose frontier step projected this affordance. */
   planId?:         string
   /** Provenance: the frontier step id — flows through to action.outcome so the plan advances. */

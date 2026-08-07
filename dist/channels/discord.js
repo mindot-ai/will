@@ -118,7 +118,9 @@ var MAX_FETCH_BYTES = 256 * 1024;
 async function connectDiscord(will, opts) {
   const log = opts.log ?? ((m) => console.error(`[will:discord] ${m}`));
   const roster = new ChannelRoster(opts.rosterPath ?? `.will/${will.id}.discord.json`);
-  const allowed = opts.channels?.length ? new Set(opts.channels) : null;
+  const allowed = opts.channels?.length && !opts.channels.includes("*") ? new Set(opts.channels) : null;
+  const mentionEverywhere = opts.mentionOnly === true;
+  const mentionIn = Array.isArray(opts.mentionOnly) && opts.mentionOnly.length ? new Set(opts.mentionOnly) : null;
   const client = opts.client ?? await createDiscordClient();
   let lastActiveChannelId = opts.homeChannelId ?? null;
   client.on("messageCreate", (message) => {
@@ -130,7 +132,7 @@ async function connectDiscord(will, opts) {
     const isDM = !message.guildId;
     if (!isDM && allowed && !allowed.has(message.channelId)) return;
     const addressed = isDM || (message.mentions?.has(self.id) ?? false);
-    if (opts.mentionOnly && !addressed) return;
+    if (!addressed && (mentionEverywhere || mentionIn?.has(message.channelId))) return;
     const entityId = `discord:${message.author.id}`;
     const speaker = message.member?.displayName ?? message.author.displayName ?? message.author.username;
     roster.record({
@@ -155,6 +157,11 @@ async function connectDiscord(will, opts) {
       text,
       from: entityId,
       thread: `discord:${message.channelId}`,
+      // `isDM` has been computed on every inbound since this bridge shipped and
+      // used only to pick a roster field. It is the one fact that makes a room
+      // the right or wrong place to say something, and the mind never saw it —
+      // which is how a follow-up promised in a DM went out to #general.
+      direct: isDM,
       ...speaker ? { speaker } : {}
     });
   }
@@ -202,7 +209,8 @@ async function connectDiscord(will, opts) {
   async function deliver(m) {
     const peer = m.to ? roster.resolve(m.to) : void 0;
     const chunks = chunkText(m.content, DISCORD_MESSAGE_LIMIT);
-    const channelIds = [peer?.lastChannelId, peer?.dmChannelId, opts.homeChannelId ?? void 0, lastActiveChannelId ?? void 0];
+    const replyTo = m.thread?.startsWith("discord:") ? m.thread.slice("discord:".length) : void 0;
+    const channelIds = [replyTo, peer?.lastChannelId, peer?.dmChannelId, opts.homeChannelId ?? void 0, lastActiveChannelId ?? void 0];
     for (const id of channelIds) {
       if (!id) continue;
       try {
@@ -273,7 +281,19 @@ async function createDiscordClient() {
     // DMs arrive on uncached channels
   });
 }
+function parseMentionOnly(raw) {
+  const v = raw?.trim();
+  if (!v) return false;
+  if (/^(1|true|yes)$/i.test(v)) return true;
+  if (/^(0|false|no)$/i.test(v)) return false;
+  const ids = v.split(",").map((s) => s.trim()).filter(Boolean);
+  return ids.length ? ids : false;
+}
+function parseChannels(raw) {
+  const ids = raw?.split(",").map((s) => s.trim()).filter(Boolean);
+  return ids?.length ? ids : void 0;
+}
 
-export { connectDiscord };
+export { connectDiscord, parseChannels, parseMentionOnly };
 //# sourceMappingURL=discord.js.map
 //# sourceMappingURL=discord.js.map

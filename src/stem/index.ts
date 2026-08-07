@@ -23,7 +23,7 @@ import type { ExecutiveOutputFull } from '#faculties/executive.engine'
 import type { Cognition, OutboxMessage, effectorInvocation, WorldInterface } from '#types'
 import type { TextMessage, SensoryInput } from '#senses/index'
 import type { ActivityEvent, ActivityEventHandler } from '#cognition/faculties/planning.engine/engine'
-import { assembleMind, type WillConfig } from '#stem/mind'
+import { assembleMind, backfillEngineConfigs, resolveExecutiveInterval, type WillConfig } from '#stem/mind'
 import { reviewIdentityCoherence as runCoherenceReview, type CoherenceInput, type CoherenceResult } from '#stem/guards/identity.coherence'
 import { SessionLogger } from '#stem/tracts/session.logger'
 import { fileLoggingEnabled } from '#stem/tracts/transport/stream.transport'
@@ -39,10 +39,13 @@ import { InboundQueue } from '#stem/tracts/inbound.queue'
 import type { ExternalTransport } from '#stem/tracts/transport'
 import { effectorController } from '#stem/tracts/effector.controller'
 import { externalSchemas } from '#agency/schemas/external'
+import { inFlightOnRestore } from '#agency/restart'
+import { buildEngineConfigEntities } from '#cognition/config.mirror.entities'
 import type { EffectorDeclaration } from '#agency/types'
 import { SensoryController } from '#stem/tracts/sensory.controller'
 import { BiographyWriter } from '#stem/tracts/biography.writer'
 import { HealthReporter } from '#stem/tracts/health.reporter'
+import { mergeIdentity } from '#cognition/identity.entity'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -224,8 +227,66 @@ export class WillStem {
       try {
         const previousState = await simulation.snapshotManager.loadLatestFromStorage()
         if( previousState ){
+          // Work that was in flight when the mind slept does not resume — see
+          // agency/restart.ts. Dropped BEFORE restore so it never enters live
+          // state at all, rather than being swept on some later tick.
+          const inFlight = inFlightOnRestore( previousState.entities )
+          for( const id of inFlight ) previousState.entities.delete( id )
+
           simulation.stateManager.restore( previousState, { entities: true, metrics: false } )
-          logger.info(`[WillStem] Restored snapshot for ${config.id} — ${previousState.entities.size} entities loaded`)
+
+          // TIME MUST NOT GO BACKWARDS.
+          //
+          // Entities come back stamped with the tick they were written at, and
+          // the orchestrator overwrites the StateManager's tick from the CLOCK
+          // every tick (`_clock.tick()` → `updateClock`) — so restoring the
+          // manager's tick alone is undone immediately. The clock is the source
+          // of truth and has to resume too.
+          //
+          // Without this, every `tick - stampedTick` in the codebase computed a
+          // negative age. Measured: an awaiting intent read `-589 ticks`, so it
+          // could never time out, and the selector's staleness decay inverted
+          // into amplification (`1 - (-39 × 0.5)` = 20.6×) — a 0.47 incumbent
+          // scoring 9.74, unpreemptable, holding the channel against every other
+          // contact indefinitely and across restarts. It also means tick-stamped
+          // entity ids (`affordance-${tick}-…`, `agency-outcome-${tick}-…`) stop
+          // colliding with a previous session's.
+          simulation.clock.setTick( previousState.tick )
+
+          // The restore above replaced the entity map wholesale, including the
+          // engine-config mirror `assembleMind` had just seeded — so a Will woke
+          // with whatever config it FIRST hibernated under, and every tunable
+          // added since was unreachable to it. Restored values win; only params it
+          // has never seen are added.
+          backfillEngineConfigs( simulation, buildEngineConfigEntities( config, resolveExecutiveInterval( config ) ) )
+
+          // The same wholesale replacement takes `identity-self` — so the name
+          // `_seedIdentity` wrote moments ago is replaced by whatever the snapshot
+          // carries, which for any mind hibernated before the merging writer
+          // existed is NO NAME AT ALL.
+          //
+          // Caught only by booting: making every writer merge is necessary and was
+          // not sufficient, because restore is not a writer — it is the whole map
+          // arriving at once, and it lands between `_seedIdentity` and `loadPMA`.
+          // A live Will woke from a repaired build and still told her operator "my
+          // self-model says I'm Will".
+          //
+          // ONLY the name is re-asserted. Everything else on this entity — prompt,
+          // values, traits, traitStats, style — is the mind's own accumulated
+          // self-knowledge and must come from the snapshot, not from boot config.
+          // The name is the one field the container supplies and the tenant never
+          // learns, which is exactly why it is the one field a restore may not eat.
+          if( config.name ){
+            const restored = mergeIdentity( simulation.stateManager, { name: config.name } )
+            if( restored.length )
+              logger.info(`[WillStem] identity-self: re-asserted name '${config.name}' after restore`)
+          }
+
+          logger.info(
+            `[WillStem] Restored snapshot for ${config.id} — ${previousState.entities.size} entities loaded, ` +
+            `resuming at tick ${previousState.tick}` +
+            ( inFlight.length ? ` (dropped ${inFlight.length} in-flight)` : '')
+          )
         }
       }
       catch( err ){ logger.warn(`[WillStem] Snapshot restore failed for ${config.id} — starting fresh:`, err ) }
@@ -459,6 +520,12 @@ export class WillStem {
     instance.simulation.snapshotManager.persistNow( pauseState )
       .catch( err => logger.error(`[WillStem] snapshot persist failed on pause (${id}):`, err ))
 
+    // The vector index lives outside the snapshot and only ever persisted itself from
+    // a debounce timer nothing awaited — so it died with the process, and every
+    // restart cold-started with an EMPTY index no matter how much was consolidated.
+    instance.cognition.vectorMemory?.persist()
+      .catch( ( err: unknown ) => logger.error(`[WillStem] vector index persist failed on pause (${id}):`, err ))
+
     this._biography.writeSessionSummary( instance )
     this._biography.writeEmotionalBiographySummary( instance )
     instance.sessionLogger?.close()
@@ -574,6 +641,16 @@ export class WillStem {
       instance.simulation.stateManager.applyCommands( flushCmds )
     const archiveState = instance.simulation.stateManager.snapshot()
     await instance.simulation.snapshotManager.persistNow( archiveState )
+
+    // …and the vector index, which is NOT part of that snapshot. Awaited here (unlike
+    // the pause path) because the process usually exits straight after this: a
+    // fire-and-forget write would simply be lost, which is exactly how a mind ended a
+    // session having consolidated episodes and left a 198-byte index on disk.
+    // Indexing runs in the background (it must not stall the tick loop), so drain it
+    // first — otherwise the last episodes consolidated are still mid-embed when the
+    // index is written and are absent from the file this session leaves behind.
+    await instance.cognition.episodicConsolidator.flushIndexing()
+    await instance.cognition.vectorMemory?.persist()
   }
 
   // Session-biography writers (behavioral + emotional) extracted to

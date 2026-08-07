@@ -122,7 +122,17 @@ export function liveConsequences(
   for( const [ , e ] of entities ){
     if( e.type !== CONSEQUENCE_TYPE ) continue
     const d = readConsequence( e.metadata )
-    if( d && tick < d.expiresAt ) out.push( d )
+    if( !d ) continue
+    // A descriptor stamped LATER than now came from a previous session: descriptors
+    // snapshot with the state, and the tick counter restarts at 1 on wake. Without
+    // this the expiry test (`tick < expiresAt`) reads every restored descriptor as
+    // freshly live — measured: a Will woke at tick 1 holding three reach-out
+    // descriptors stamped 575–596 with expiry 605–626, so for the WHOLE session it
+    // believed it had just messaged that person moments ago. It damped every
+    // reach-out to them and delivered nothing, and the P2 matcher would equally
+    // have attenuated their genuine replies as its own echo.
+    if( d.tick > tick ) continue
+    if( tick < d.expiresAt ) out.push( d )
   }
   return out.sort( ( a, b ) => ( a.intentId < b.intentId ? -1 : a.intentId > b.intentId ? 1 : 0 ) )
 }
@@ -146,6 +156,117 @@ export function matchConsequenceText(
     if( d.text !== undefined && d.text.length >= MIN_TEXT_MATCH_LEN && candidate.includes( d.text ) ) return d
   }
   return null
+}
+
+// ── P5: the act's own footprint, felt as satiation ───────────────────────────
+
+/**
+ * How much of an act's own footprint is still live for this (schema, target),
+ * 1 → 0 as the descriptor ages out. 0 when nothing matching is in flight.
+ *
+ * This is the consumer #112 always described and the descriptors never had. A
+ * delivered message wrote its footprint here and nothing ever read it back, so
+ * the standing `ideomotor.intent` that produced it kept re-winning the
+ * competition and the same words went out again — observed three times, ~21
+ * ticks apart, to the same person, while the mind believed each was the first.
+ *
+ * Deliberately a decaying quantity, not a lock. Right after acting it is ~1 and
+ * the pull to repeat is strongly damped; as the window in which the world could
+ * still answer runs out it returns to 0 and the appetite comes back on its own.
+ * That is a refractory period, not a rule: the mind may still repeat itself if
+ * something has become pressing enough to out-compete the damping, which is
+ * exactly what a person does when the silence starts to matter.
+ *
+ * Matches on (schema, target) rather than on the words, because at the moment
+ * the competition runs the words do not exist yet — a facet authors them later.
+ * "I have just reached out to this person and do not yet know how it landed" is
+ * the honest predicate, and it is the one that governs whether to speak again.
+ */
+export function enactionFootprint(
+  descriptors:    readonly ConsequenceDescriptor[],
+  schema:         string,
+  targetEntityId: string | undefined,
+  tick:           Tick,
+  windowTicks:    number = CONSEQUENCE_TTL_TICKS,
+  /**
+   * Tick of the last thing SAID to each entity, from `conversation.sent`.
+   *
+   * Descriptors cannot carry satiation on their own: the executor deletes them at
+   * `tick >= expiresAt` (motor.schema.executor's TTL sweep), so nothing survives
+   * past the echo window and a satiation window longer than it was silently a
+   * no-op. Observed live: the same relay delivered twice with `justEnacted` never
+   * once reaching the competition.
+   *
+   * `conversation.sent` is the durable record of having spoken — written by
+   * ProactiveCommunicator at push time, snapshotted with the state, and already
+   * what discharges an undertaking. Keyed by person rather than by schema on
+   * purpose: having just spoken to someone damps speaking to them again, however
+   * that speaking happens to be schematised.
+   */
+  spokenAt?:      ReadonlyMap<string, number>,
+): number {
+  if( !targetEntityId ) return 0
+  if( windowTicks <= 0 ) return 0
+
+  let strongest = 0
+
+  const spoken = spokenAt?.get( targetEntityId )
+  if( spoken !== undefined ){
+    const remaining = ( windowTicks - ( tick - spoken ) ) / windowTicks
+    if( remaining > strongest ) strongest = remaining
+  }
+
+  for( const d of descriptors ){
+    if( d.schema !== schema || d.targetEntityId !== targetEntityId ) continue
+    // Measured from when the act happened, against the SATIATION window — not from
+    // the descriptor's own expiry, which is the echo window and a different
+    // question. Conflating them meant "how long before I say this again" was
+    // pinned to "how long until the world's reply could still arrive", and the
+    // second is necessarily short. Observed: re-deliveries landing ~25 ticks
+    // apart against a 30-tick echo TTL, so the damping had decayed to almost
+    // nothing exactly when the next impulse arrived.
+    const elapsed   = tick - d.tick
+    const remaining = ( windowTicks - elapsed ) / windowTicks
+    if( remaining > strongest ) strongest = remaining
+  }
+
+  return strongest < 0 ? 0 : strongest > 1 ? 1 : strongest
+}
+
+/**
+ * When the mind last SAID something to each person, from the durable
+ * `conversation.sent` records. Feeds `enactionFootprint`'s satiation.
+ *
+ * Unlike consequence descriptors these are never swept, so satiation can run on
+ * whatever window the persona wants rather than being capped by the echo TTL.
+ */
+export function spokenAtByEntity(
+  entities: ReadonlyMap<string, { type: string; updatedAtTick?: number; tick?: number; metadata?: ReadonlyMap<string, unknown> | Record<string, unknown> }>,
+): Map<string, number> {
+  const out = new Map<string, number>()
+
+  for( const [ , e ] of entities ){
+    if( e.type !== 'conversation.sent') continue
+    const m      = ( e.metadata ?? {} ) as Record<string, unknown>
+    const target = typeof m['targetEntityId'] === 'string' ? m['targetEntityId'] as string : undefined
+    if( !target ) continue
+    // `metadata.tick` where the writer set one, else the entity's own tick, which
+    // StateManager.setEntity stamps from the sim clock on every write. The fallback
+    // matters: not every path that records having spoken fills the metadata field,
+    // and defaulting to 0 made every record look infinitely old.
+    // `updatedAtTick` is the field `StateManager.setEntity` actually stamps.
+    // This read `e.tick`, which does not exist on SimulationEntity — so the
+    // fallback the comment above describes has never once fired, and any writer
+    // that omitted `metadata.tick` was treated as having spoken at tick 0, i.e.
+    // infinitely long ago, i.e. not satiating at all.
+    const at = typeof m['tick']          === 'number' ? m['tick'] as number
+             : typeof e.updatedAtTick    === 'number' ? e.updatedAtTick
+             : typeof e.tick             === 'number' ? e.tick
+             : 0
+    if( at > ( out.get( target ) ?? -Infinity ) ) out.set( target, at )
+  }
+
+  return out
 }
 
 // ── ACP-P1: entity correspondence (ACTION_CONDITIONED_PREDICTION §2) ─────────

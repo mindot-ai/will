@@ -20,7 +20,7 @@
  * domains (see §6 cross-modal note).
  *
  * - `AuditionEngine` extends this and overrides `publishes()`/`snapshot()` for its
- *   extra `audition.task.signal` schema and session snapshot.
+ *   extra `executive.facet.handoff` schema and session snapshot.
  * - The four shell engines extend `ShellSenseEngine` (below) and are ~6 lines each.
  */
 

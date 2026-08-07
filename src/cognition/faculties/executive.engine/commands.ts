@@ -10,6 +10,8 @@ import type { GoalManager } from '#faculties/goal.manager'
 import type { GenerativeModel } from '#cognition/generative.model'
 import type { SemanticIntegrator } from '#faculties/semantic.engine/integrator'
 import { INNATE_SCHEMA_BY_ID } from '#agency/schemas/innate'
+import { logger } from '#core/logger'
+import { resolveKeid } from '#cognition/social.identity'
 
 /** Maps the LLM's evidence enum to a numeric supportingEpisodes value for the belief store. */
 export const EVIDENCE_TO_COUNT: Record<string, number> = {
@@ -169,10 +171,13 @@ export function buildStateCommands(
           supportingEpisodes: belief.supportingEpisodes, tags: belief.tags } })
       })
 
-      if( bus && ( u.name || u.feeling != null ) )
+      if( bus && ( u.name || u.feeling != null || u.sameAs ) )
         effects.push( () => bus.publish({
           type: 'known.entity.learned', version: 1, sourceEngine: 'executive',
-          salience: 0.5, payload: { keid: u.keid, name: u.name, feeling: u.feeling },
+          // An identity verdict is worth more attention than a learned name: it
+          // reorganises everything the mind holds about two referents at once.
+          salience: u.sameAs ? 0.7 : 0.5,
+          payload: { keid: u.keid, name: u.name, feeling: u.feeling, sameAs: u.sameAs },
         }) )
     })
   }
@@ -322,6 +327,32 @@ export function publishCognitiveEvents(
       }
     })
 
+  // agency.composite.proposed — the mind names a compound action as one skill.
+  //
+  // This is the creation seam for the instrumental→habitual gradient, and it had
+  // no producer: ReafferenceEngine subscribes to this event and its handler is the
+  // ONLY caller of SchemaRepertoire.registerComposite() anywhere in the tree, so
+  // until now no Will could hold a skill beyond the innate floor, for its entire
+  // life (#114). A capability the container offered and no tenant could reach.
+  //
+  // One event per proposal — the consumer registers them individually and drops
+  // anything with fewer than two sub-schemas, since a "composite" of one is just
+  // the schema it already had.
+  for( const skill of output.newSkills ?? [] )
+    bus.publish({
+      type: 'agency.composite.proposed',
+      version: 1,
+      sourceEngine: 'executive-engine',
+      salience: 0.7,
+      payload: {
+        id:         skill.id,
+        composedOf: skill.composedOf,
+        ...( skill.tags ? { tags: skill.tags } : {} ),
+        ...( typeof skill.cost === 'number' ? { cost: skill.cost } : {} ),
+        tick: footprint.tickObserved,
+      }
+    })
+
   // goal.proposed — when executive proposes new goals
   if( output.newGoals?.length )
     bus.publish({
@@ -373,20 +404,45 @@ export function publishCognitiveEvents(
   })
 }
 
-const COMMUNICATE_ACTION_TYPES = new Set([
+/**
+ * Action names that mean "say something to someone". Exported because the
+ * conversation facet partitions its OWN actions by the same rule (an action
+ * aimed at a third party is an intention the master owns, not a reply the facet
+ * may deliver) — one definition, so the two ends cannot drift apart.
+ */
+export const COMMUNICATE_ACTION_TYPES = new Set([
   'communicate', 'speak', 'initiate_conversation', 'reach-out', 'reach_out', 'talk', 'text', 'message',
 ])
 
+/** Arg keys a mind uses for the words themselves — folded into `gist` (see below). */
+const WORDS_ARG_KEYS   = new Set([ 'content', 'message', 'text', 'body' ])
+/** Arg keys naming the addressee — already resolved into `targetEntityId`. */
+const ADDRESS_ARG_KEYS = new Set([ 'to', 'recipient', 'target', 'targetEntityId', 'entityId' ])
+
 /** Resolve an executive action target (a display name OR a keid) to a known-entity keid. */
 function resolveKnownEntity( target: string, state: ReadonlySimulationState ): string | undefined {
-  const t = target.trim().toLowerCase()
+  // THE resolver, shared with everything else that has to turn a reference into a
+  // referent. This was a private scan matching an exact keid or an exact name and
+  // consulting no alias table — so once dossiers were keyed by an anchor, naming
+  // someone by the address they were met at (`discord:1019…`) matched nothing and
+  // the whole intention evaporated silently, which is the failure this function's
+  // own logging exists to make visible.
+  return resolveKeid( state.entities as never, target )
+}
+
+/**
+ * The name the mind has LEARNED for this entity. The outreach facet addresses someone
+ * by it ("I have decided to reach out to ${ name }"), so a keid leaking through here
+ * would have the mind reaching out to `discord:1019376031150379101`. Undefined when
+ * unlearned — the caller omits it rather than substituting a placeholder.
+ */
+function knownEntityName( keid: string, state: ReadonlySimulationState ): string | undefined {
   for( const e of state.entities.values() ){
     if( e.type !== 'known-entity') continue
-    const m    = e.metadata as Record<string, unknown> | undefined
-    const keid = typeof m?.['keid'] === 'string' ? m['keid'] as string : undefined
-    const name = typeof m?.['name'] === 'string' ? m['name'] as string : undefined
-    if( keid && keid.toLowerCase() === t ) return keid
-    if( name && name.toLowerCase() === t ) return keid
+    const m = e.metadata as Record<string, unknown> | undefined
+    if( m?.['keid'] !== keid ) continue
+    const name = typeof m['name'] === 'string' ? m['name'].trim() : ''
+    return name.length > 0 ? name : undefined
   }
   return undefined
 }
@@ -411,6 +467,8 @@ function buildIdeomotorIntents(
   const seen = new Set<string>()
   /** Action names that named nothing this cycle — surfaced back to the mind below. */
   const unresolved = new Set<string>()
+  /** Addressees the mind meant to reach but cannot resolve to anyone it knows. */
+  const unaddressed = new Set<string>()
   const priority = clamp01( output.confidence ?? 0.8 )
 
   // The host abilities currently afforded (source 'external' in the live field) —
@@ -439,19 +497,54 @@ function buildIdeomotorIntents(
       const args = ( action.args && typeof action.args === 'object' ? action.args : {} ) as Record<string, unknown>
       const named = [ action.target, args['to'], args['recipient'], args['target'], args['targetEntityId'], args['entityId'] ]
         .find( v => typeof v === 'string' && v.trim().length > 0 ) as string | undefined
-      if( !named ) continue
+      // Naming NOBODY and naming someone unreachable are different failures, and
+      // both used to `continue` in silence — the intent was never created, nothing
+      // competed, and the mind had no way to find out. Observed: a facet decided to
+      // contact a colleague by a name the mind had heard in conversation but never
+      // bound to a dossier; the whole intention evaporated without a trace, and the
+      // person it had just promised never heard from it.
+      if( !named ){ unaddressed.add('(no one)'); continue }
       const keid = resolveKnownEntity( named, state )
-      if( !keid || seen.has( keid ) ) continue
+      if( !keid ){ unaddressed.add( named ); continue }
+      if( seen.has( keid ) ) continue
       seen.add( keid )
+      // The master forms the INTENT; it does not author the words. Whatever it wrote
+      // is the DIRECTION for the outreach facet (AuditionEngine.authorOutreach) to
+      // speak in — so it lands in `gist`, never `content`. This is load-bearing:
+      // MotorSchemaExecutor._deliver sends `parameters.content` VERBATIM and only
+      // falls back to the facet when it is empty, so carrying the master's sentences
+      // as `content` would put the master itself in a second, parallel conversation
+      // with someone a conversation facet may already be talking to — one mind
+      // holding two threads with one person about one thing. `gist` was read in
+      // three places and written nowhere; this is what writes it.
+      const said = [ ...WORDS_ARG_KEYS ]
+        .map( k => args[ k ] )
+        .find( v => typeof v === 'string' && v.trim().length > 0 ) as string | undefined
+      const parameters: Record<string, unknown> = {}
+      for( const [ k, v ] of Object.entries( args ) )
+        if( !WORDS_ARG_KEYS.has( k ) && !ADDRESS_ARG_KEYS.has( k ) ) parameters[ k ] = v
+      if( said ) parameters['gist'] = said
+      const targetName = knownEntityName( keid, state )
+      if( targetName ) parameters['targetEntityName'] = targetName
+
+      // Named at INFO because this is the seam where a decision to contact someone
+      // either becomes a competing intention or disappears. When a Will named a
+      // colleague seven times over ten minutes and he never heard from it, nothing
+      // in the logs could distinguish "the intent was never created" from "it was
+      // created and lost every competition" — the two have completely different
+      // fixes, and the archaeology to tell them apart needed state snapshots that
+      // sample too coarsely to catch a cycle.
+      logger.info(
+        `[executive] willed reach-out → ${ targetName ?? keid } ` +
+        `(named '${ named }' → ${ keid }, priority=${ priority.toFixed( 2 ) })`
+      )
+
       set.push({
         id:   `ideomotor-reach-out-${ keid }`,
         type: 'ideomotor.intent',
         metadata: {
           schema: 'reach-out', targetEntityId: keid,
-          // Carry the authored words through. The host-ability branch below already
-          // does this; omitting it here meant ProactiveCommunicator reached its
-          // "didn't write anything" arm even when the mind HAD written the message.
-          ...( Object.keys( args ).length > 0 ? { parameters: args } : {} ),
+          ...( Object.keys( parameters ).length > 0 ? { parameters } : {} ),
           priority, origin: 'executive', tick: footprint.tickObserved,
         },
       })
@@ -507,6 +600,28 @@ function buildIdeomotorIntents(
       },
     })
 
+  // An addressee that resolves to nobody is REPORTED, not swallowed.
+  //
+  // Same principle as the unresolved-name report above, one layer down: there the
+  // *verb* named nothing, here the *person* does. The mind can hear a name in
+  // conversation ("coordinate that through FKEM") long before that name is bound
+  // to anyone it can actually reach, and reaching-out to an unbound name simply
+  // does not happen. Told, it can do the human thing — ask how to reach them, or
+  // ask whoever mentioned them to make the introduction. Untold, it believes it
+  // made contact and follows up on a message it never sent.
+  if( unaddressed.size > 0 )
+    set.push({
+      id:   'action.unaddressed',
+      type: 'action.unaddressed',
+      metadata: {
+        names:   [ ...unaddressed ],
+        summary: `I meant to reach ${ [ ...unaddressed ].map( n => `'${ n }'` ).join(', ') }, but ${ unaddressed.size > 1 ? 'those names match no one' : 'that name matches no one' } I know how to contact — no message went out. If I want to reach them I need a way to: someone can introduce us, or tell me where to find them.`,
+        salience: 0.8,
+        origin:   'executive',
+        tick:     footprint.tickObserved,
+      },
+    })
+
   // Clear stale executive-sourced intents the executive no longer imagines this cycle.
   const currentIds = new Set( set.map( s => s.id ) )
   const del: string[] = []
@@ -520,6 +635,8 @@ function buildIdeomotorIntents(
   // as "that last attempt was not a thing", not as a permanent defect in itself.
   if( unresolved.size === 0 && state.entities.has('action.unresolved') )
     del.push('action.unresolved')
+  if( unaddressed.size === 0 && state.entities.has('action.unaddressed') )
+    del.push('action.unaddressed')
 
   return { set, delete: del }
 }

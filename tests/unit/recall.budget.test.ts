@@ -24,7 +24,7 @@ function makeContext( memories: Memory[] ): ExecutiveContext {
     affect: { dominantEmotion: 'calm', valence: 0.1, arousal: 0.2, dominance: 0.5, blends: [] },
     goals: [], plans: [], relevantPlanIds: [], percepts: [], workingMemory: [],
     memories,
-    beliefs: [], beliefsOmitted: 0, recentActions: [],
+    beliefs: [], beliefsOmitted: 0, recentActions: [], spokenTurns: [],
   } as ExecutiveContext
 }
 

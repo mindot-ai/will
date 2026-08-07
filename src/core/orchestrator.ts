@@ -62,6 +62,13 @@ export interface SimulationEngine {
 }
 
 
+/**
+ * Fraction of one tick interval a single non-async engine may consume before the
+ * orchestrator says so. Half a tick is generous for work that is meant to be
+ * in-memory, and low enough to fire long before tick-denominated deadlines drift.
+ */
+const SLOW_ENGINE_FRACTION = 0.5
+
 // ── Middleware ───────────────────────────────────────────────
 
 export type TickMiddleware = (
@@ -384,6 +391,35 @@ export class DefaultOrchestrator implements Orchestrator {
    * calls _executeTick() which handles pause/stop checks internally.
    * The orchestrator is the sole driver of ticks.
    */
+  /**
+   * A plain SimulationEngine's `react()` is implicitly "finish inside the tick" —
+   * only an AsyncEngine is allowed to span ticks, and it does so by LAUNCHING work
+   * and landing it later (see async.engine.ts: "react() never awaits LLM calls").
+   * Nothing enforces that on everyone else, and the failure is silent and severe:
+   * every agency deadline is denominated in TICKS, so an engine that awaits network
+   * I/O does not merely run slowly, it rescales time for the whole mind.
+   *
+   * Measured: one rate-limited embedding call awaited inside EpisodicConsolidator
+   * made two consecutive ticks take 64.9s and 63.5s. `AWAIT_TIMEOUT` — 15 ticks,
+   * normally ~15s — silently became 15 minutes, so a communicate intent sat
+   * 'awaiting' forever and the serial selector never chose anything again. 45
+   * executive decisions produced one intent and zero delivered messages, with no
+   * error anywhere. This turns that into a line in the log the first time it happens.
+   */
+  private _warnIfSlow( engine: SimulationEngine, elapsedMs: number ): void {
+    // AsyncEngines are exempt by design — spanning ticks is their contract.
+    if( ( engine as { hasPendingWork?: unknown } ).hasPendingWork !== undefined ) return
+
+    const budget = ( this._config.tickIntervalMs ?? 1000 ) * SLOW_ENGINE_FRACTION
+    if( elapsedMs <= budget ) return
+
+    logger.warn(
+      `[Orchestrator] Engine "${ engine.name }" held the tick for ${ Math.round( elapsedMs ) }ms ` +
+      `at tick ${ this._currentTick } (budget ${ Math.round( budget ) }ms). A non-async engine must not ` +
+      `await network I/O — tick-denominated deadlines elsewhere are being stretched by this.`
+    )
+  }
+
   private _runLoop( context: SimulationContext ): void {
     if( this._tickTimer ) return
 
@@ -478,6 +514,7 @@ export class DefaultOrchestrator implements Orchestrator {
     const allResults: EngineResult[] = []
 
     const runEngine = async ( engine: SimulationEngine ): Promise<void> => {
+      const startedAt = wallClock()
       try {
         const result = await engine.react?.( this._clock.delta, this._currentTick, snapshot, engineContext )
         if( result ) allResults.push( result )
@@ -494,6 +531,7 @@ export class DefaultOrchestrator implements Orchestrator {
           )
         }
       }
+      finally { this._warnIfSlow( engine, wallClock() - startedAt ) }
     }
 
     for( const engine of this._enginesTick() )

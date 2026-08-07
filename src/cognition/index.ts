@@ -13,6 +13,7 @@ import {
   type ModelPrice,
 } from '#cognition/utilities/token.tracker'
 
+import type { VectorMemoryAdapter } from '#memory/vector.adapter'
 import { EnergyRegulator, type EnergyRegulatorConfig } from '#faculties/energy.regulator'
 import { SleepPressureRegulator, type SleepPressureConfig } from '#faculties/sleep.pressure.regulator'
 import { AttentionAllocator, type AttentionAllocatorConfig } from '#faculties/attention.allocator'
@@ -256,6 +257,12 @@ export type EngineRegistry = {
   affectiveBlender: AffectiveBlender
   workingMemory: WorkingMemory
   episodicConsolidator: EpisodicConsolidator
+  /**
+   * The vector index, when semantic recall is configured. Exposed so shutdown can
+   * FLUSH it: it lives outside the state snapshot and previously persisted only from
+   * a debounce timer no shutdown path awaited, so it died with the process.
+   */
+  vectorMemory: VectorMemoryAdapter | null
   semanticIntegrator: SemanticIntegrator
   spacedRepetition: SpacedRepetition
   forgettingCurve: ForgettingCurve

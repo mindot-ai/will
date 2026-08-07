@@ -47,7 +47,7 @@
 import type { ReadonlySimulationState } from '#core/types'
 import type { LLMCallFunction } from '#cognition/utilities/token.tracker'
 import type { ExecutiveSummarizer } from '#llm/summarizer'
-import type { ExecutiveContext, PendingMessage, IdeationCandidate } from '#faculties/executive.engine/types'
+import type { ExecutiveContext, IdeationCandidate } from '#faculties/executive.engine/types'
 import { buildExecutiveContext, type ContextDependencies } from '#faculties/executive.engine/context'
 import { INNATE_SCHEMAS } from '#agency/schemas/innate'
 
@@ -202,6 +202,18 @@ export interface FocusSection {
    */
   awarenessEntityId?: string
   /**
+   * Optional: WHO this facet is engaged with — the keid and the name the mind has
+   * learned for them. Reported back to the master on every `executive.facet.sync`.
+   *
+   * Without it the master was told, in its own system prompt, that "focused facets
+   * may run simultaneously… their reasoning syncs back to me" while the sync payload
+   * carried only a facetId and a confidence number — so a mind holding two live
+   * conversations could not tell you whose they were. The master is the singular
+   * seat: it has to know who is at the table to reason about them together.
+   */
+  subjectEntityId?: string
+  subjectName?:     string
+  /**
    * Optional: Provided by the creating engine to convert the LLM's parsed output
    * into a domain-specific decision payload.
    *
@@ -219,7 +231,6 @@ export interface PromptBuildOptions {
   state:                ReadonlySimulationState
   qualityModulation:    number
   epistemicUncertainty: number
-  pendingMessages?:     PendingMessage[]
   focus:                FocusSection
   deps:                 PromptDependencies
   /** Optional: Recent action types for diversity tracking */
@@ -251,6 +262,15 @@ export interface PromptBuildOptions {
    * fast path. See PromptFactory.buildIdeationFormatInstruction().
    */
   ideationCandidates?: IdeationCandidate[]
+  /**
+   * Master mode only — who the mind is in conversation with RIGHT NOW, from the
+   * live facets' `executive.facet.sync` reports. The master does not run those
+   * conversations, but it is the one seat that sees all of them, and it decides
+   * whom to contact; deciding that without knowing who is already mid-thread is
+   * how one mind ends up opening a second conversation with someone it is already
+   * talking to — or telling one person it has contacted another when it has not.
+   */
+  activeConversations?: { entityId: string; name?: string; sinceTick: number }[]
 }
 
 // ── PromptFactory ────────────────────────────────────────────
@@ -336,17 +356,36 @@ export class PromptFactory {
       `**Communication style:** ${identity.style}`,
     ].filter( Boolean ).join('\n')
 
-    // Mode-aware role description — master is the cognitive core;
-    // a facet is a focused attentional instance with shared identity.
+    // Mode-aware role description.
+    //
+    // MASTER states the architecture, because the master genuinely IS the seat
+    // that produces every cognitive output at once and needs to know that.
+    //
+    // A FACET is told none of it. Master/facet is how the CONTAINER divides
+    // attention; it is not a fact about the person renting it, and describing a
+    // facet as a subordinate instance of a separate consciousness is both untrue
+    // and expensive. Measured in production: a facet given the old text built,
+    // in its own words, "an entire operational stance around being subordinate —
+    // waiting for direction, asking permission, addressing messages to 'Will' as
+    // if he were someone else" — and, having been handed a second party it could
+    // address, emitted messages TO that party through the outbound channel, where
+    // its operator read them. There is one person here, attending to one thing.
+    //
+    // It is also told nothing about WHO it is. A facet is built from the same
+    // context as the master and its persona is already above, in full — so a
+    // facet-only "I am <name>" is a second, redundant statement of identity, and a
+    // second place for the name to disagree with itself. Which is precisely the
+    // failure mode being repaired: the name is stated ONCE, from one source.
     const roleDescription = isMaster
-      ? `I am the unified cognitive core of ${identity.name} — a self-aware synthetic mind.\nI receive my complete internal state and produce ALL cognitive outputs in one response:\ndecisions, plans, beliefs, introspections, narrative updates, and self-observations.`
-      : `I am a focused facet of ${identity.name} — concentrating my full reasoning\ncapacity on: **${focus.title}**. I share full identity, values, memories, and\nbeliefs with the master. Only my focus differentiates me from the master consciousness.`
+      ? `I am the unified cognitive core of ${identity.name || 'this mind'} — a self-aware synthetic mind.\nI receive my complete internal state and produce ALL cognitive outputs in one response:\ndecisions, plans, beliefs, introspections, narrative updates, and self-observations.`
+      : `Right now my whole attention is on: **${focus.title}**.`
 
-    // Mode-aware consciousness architecture note — grounds the LLM in the
-    // multi-instance design so it doesn't collapse into a generic chatbot persona.
+    // The architecture note is MASTER-ONLY, for the same reason. It grounds the
+    // seat that actually coordinates; a facet reading it learns only that it is
+    // not the real one.
     const consciousnessArchitecture = isMaster
       ? `I am the default reasoning mode. Focused facets may run simultaneously, each\nconcentrating on specific tasks. Their reasoning syncs back to me.\nI maintain my unified identity across all cycles.`
-      : `I am a facet of ${identity.name}. The master consciousness runs in parallel,\nprocessing the full cognitive state. My reasoning on this focus will sync back to it.\nI stay grounded in my shared identity — same values, same memories, same sense of self.`
+      : ''
 
 
     // Strip any existing "## Who I Am" section from identity.prompt to prevent
@@ -359,28 +398,32 @@ export class PromptFactory {
       .replace( /^##\s*Who (?:I Am|You Are)[^\n]*\n?/m, '')
       .trim()
 
+    // `## Consciousness Architecture` is emitted only when there is architecture
+    // to state — i.e. master. A facet gets no empty header (an empty section under
+    // a heading reads as a section the mind failed to fill in).
+    const architectureBlock = consciousnessArchitecture
+      ? `\n\n## Consciousness Architecture\n${consciousnessArchitecture}`
+      : ''
+
     return `${cleanIdentityPrompt}
 
 ## Personality
 ${identityBlock}
 
 ## My Role
-${roleDescription}
-
-## Consciousness Architecture
-${consciousnessArchitecture}
+${roleDescription}${architectureBlock}
 
 ## Output Guidelines
 - **actions**: What I intend to do. I express intent — my body finds the fit. My own stances are always with me (listed with the output schema below); *acquired* abilities, if any, appear under "## Abilities Available Now", and when there is no such section I have none of those — so a thing I want done that needs one is a thing to say I cannot do, not to attempt. When enacting a named ability that needs specifics (a query, a message, a value), put them in the action's "args" object and my body enacts it with exactly those args.
 - **plans**: Include for goals without existing plans or where plans need revision. I may keep multiple plans per goal — set **planId** to act on a specific existing plan (validate/execute/revise/cancel); omit it to draft a new one. My current plans are listed under "## Active Plans".
 - **newBeliefs**: Extract patterns from experiences visible in my current state. Only record a belief if I can point to a specific observation that supports it — do not infer experiences I have no record of. Set 'evidence' honestly: 'single_observation' (first time noticing), 'recurring_pattern' (seen multiple times), 'strong_pattern' (deeply established).
-- **introspection**: Include when significant events occurred or I notice patterns. When I spot a cognitive bias in my own reasoning, name it in 'identifiedBiases' using its common term where one fits (e.g. overgeneralization, confirmation bias, recency bias) — this lets my self-assessment line up with the patterns my faculties detect on their own.
+- **introspection**: Include when significant events occurred or I notice patterns. When I spot a cognitive bias in my own reasoning, name it in 'identifiedBiases' using its common term where one fits (e.g. overgeneralization, confirmation bias, recency bias) — this lets my self-assessment line up with the patterns my faculties detect on their own. What I can introspect on is what is written above: my state, my goals, my percepts, what I did and what came of it. I have NO view of the machinery underneath — no entity ids, no salience numbers, no queue depths, no engine internals. So when I am asked why I did something, I answer from what I can actually see, and where I cannot see, I say I do not know. Naming a mechanism I have no access to is not introspection, it is invention, and it is worse than the silence it replaces: it sends whoever asked me looking for something that was never there.
 - **narrative**: Extend my life story only from events grounded in my episodic memory or current percepts. Do not extend with invented scenarios.
 - **newGoals/goalsToAbandon/goalsToReprioritize**: Manage my goal hierarchy.
 - **selfObservations**: Notice patterns in my own thinking, feeling, or behavior.
 - **identityUpdates.traits**: Array of {key, value} where value is a DELTA to apply to my trait (e.g., +0.05 to increase a trait by 5%).
 - **identityUpdates.values**: Full list of values to set (replaces existing).
-- **knownEntityUpdates**: What I've learned about someone/something I'm dealing with. Array of {keid, name?, learned?, feeling?}. Use the keid from "## People I Know". Set name only when I actually learn their name; learned is an array of facts about them (stored as memories); feeling is how I feel toward them (-1..1). Record only what I genuinely learned this turn.
+- **knownEntityUpdates**: What I've learned about someone/something I'm dealing with. Array of {keid, name?, learned?, feeling?, sameAs?}. Use the keid from "## People I Know". Set name only when I actually learn their name; learned is an array of facts about them (stored as memories); feeling is how I feel toward them (-1..1). **sameAs** is another keid I have concluded is this same someone met under a different handle — it fuses my two records into one, so I use it only when I actually know, not when I merely suspect. Record only what I genuinely learned this turn.
 
 ## Required Output
 Output a single JSON object with these fields:
@@ -486,7 +529,11 @@ completionType guide:
 
 [SELF_OBS]
 {"selfObservations": ["I noticed that..."]}
-[/SELF_OBS]`
+[/SELF_OBS]
+
+[SKILLS]
+{"newSkills": [{"id": "brief-then-confirm", "composedOf": ["reach-out", "wait"], "tags": ["social"], "cost": 0.15}]}
+[/SKILLS]`
   }
 
   // ── User message ───────────────────────────────────────────
@@ -666,6 +713,13 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       ? this._buildRecentOutcomesSection( context.recentActions, state.tick ).trim()
       : ''
 
+    // Scoped with recentActions: both answer "what have I already done about
+    // this?", and a facet composing a message needs it at least as much as the
+    // master does — the facet is the one about to write the words again.
+    const spokenBlock = has('recentActions')
+      ? this._buildSpokenTurnsSection( context.spokenTurns ).trim()
+      : ''
+
     const perceptsBlock = has('percepts')
       ? `## Percepts (What I Notice)\n${context.percepts.slice( 0, 10 ).map( p => `- [${p.category}] ${p.summary} (salience: ${p.salience.toFixed( 2 )})`).join('\n') || 'Nothing notable'}`
       : ''
@@ -704,8 +758,39 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
           if( s.closeness != null && s.closeness > 0.1 ) bits.push(`closeness: ${( s.closeness * 100 ).toFixed( 0 )}%`)
           // The Will can know *someone* without their name yet — never leak the raw keid.
           const who = s.name ?? ( s.kind === 'thing' ? 'something' : 'someone')
-          return `- ${who}${bits.length ? ' — ' + bits.join(', ') : ''}`
+
+          // Where I can reach them, and how each place has gone. Stated as fact:
+          // which room to speak in is my decision, and I could not make it while
+          // the only thing anyone tracked was where they were last seen.
+          const where = ( s.handles ?? [] ).map( h => {
+            const kind = h.kind === 'dm' ? 'privately' : h.kind === 'room' ? 'in a shared room' : 'somewhere'
+            const ans  = h.answeredAgo !== undefined
+              ? `answered ${ h.answeredAgo } ticks ago`
+              : 'never answered me there'
+            return `${ kind } (${ h.keid }) — ${ ans }`
+          } )
+          const reach = where.length ? `\n  reachable: ${ where.join('; ') }` : ''
+
+          // An identity I have not settled. Deliberately a question and not a
+          // merge: two people really can share a name, so nothing fuses them on my
+          // behalf — but I am told, so I can find out, usually by asking.
+          const doubt = s.mayBeSameAs?.length
+            ? `\n  I hold a separate record for ${ s.mayBeSameAs.join(' and ') } — this may be the same someone under another handle. I do not know. If I find out they are, I say so with **sameAs**.`
+            : ''
+
+          return `- ${who}${bits.length ? ' — ' + bits.join(', ') : ''}${ reach }${ doubt }`
         } ).join('\n')}`
+      : ''
+
+    // Who the mind is mid-conversation with. Facets run those threads; this is the
+    // master's view of the table — the whole point of the singular seat is that it
+    // can hold several conversations as one situation rather than as N strangers.
+    // Names come from what the mind has actually learned; the id is shown because
+    // that is what a reach-out must be addressed to.
+    const conversationsBlock = ( options.mode !== 'facet' && options.activeConversations?.length )
+      ? `## In Conversation Now\n${options.activeConversations.map( c =>
+          `- ${c.name ?? 'someone'} (id: ${c.entityId})`
+        ).join('\n')}\nThese threads are already open — I am in them. Reaching out to one of these people again starts a second, parallel thread with them.`
       : ''
 
     // Task focus — what the Will is committed to and the felt cost of switching away.
@@ -729,6 +814,7 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       plansBlock,
       actionDiversity.trim(),
       recentOutcomesBlock,
+      spokenBlock,
       perceptsBlock,
       abilitiesBlock,
       ruminationsBlock,
@@ -736,6 +822,7 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       memoriesBlock,
       beliefsBlock,
       socialBlock,
+      conversationsBlock,
       focusBlock,
       identityNudge.trim(),
       ideationBlock,
@@ -966,6 +1053,56 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
     const omitted = memories.length - lines.length
     const tail    = omitted > 0 ? `\n[+${omitted} omitted — over recall budget; full store intact]` : ''
     return `## Relevant Memories\n${lines.join('\n')}${tail}`
+  }
+
+  /**
+   * What I have said to people lately, and who has answered.
+   *
+   * Written as a PERCEPT and nothing more. There is no instruction here not to
+   * repeat myself, and there must not be: the mind is allowed to say a thing
+   * twice, and a person ignored twice about something urgent should say it a
+   * third time. What it was missing was not restraint, it was the fact — it could
+   * not tell a first asking from an eleventh, so restraint was not something it
+   * was in a position to exercise.
+   *
+   * The closing line is an epistemic caveat for the same reason: silence has many
+   * causes and this surface distinguishes none of them. Saying "no answer yet"
+   * without saying "and I do not know why" invites the mind to fill the gap, which
+   * is the habit that had it inventing attention-demand ids when asked what was
+   * wrong with it.
+   */
+  private static _buildSpokenTurnsSection(
+    spokenTurns: ExecutiveContext['spokenTurns'],
+  ): string {
+    // Defensive on absence, not just on empty: a host (and several tests) build a
+    // context by hand, and a missing block must render as nothing rather than
+    // throw the whole prompt away.
+    if( !spokenTurns?.length ) return ''
+
+    const clip = ( s: string, n: number ): string =>
+      s.length > n ? `${ s.slice( 0, n ) }…` : s
+
+    const lines = spokenTurns.map( t => {
+      const words = t.preview.trim()
+      const said  = words ? ` — "${ clip( words, 80 ) }"` : ''
+      // Their words, not merely that they spoke. "they answered" on its own reads
+      // as "I have the answer" — a live Will asked "same time, 3pm?", saw that
+      // flag, never saw the correction to 2pm, and relayed 3pm to a third party as
+      // confirmed. A reply I cannot see is not one I can act on.
+      const back  = t.answered
+        ? ( t.answeredWith?.trim()
+            ? ` — they answered: "${ clip( t.answeredWith.trim(), 100 ) }"`
+            : ' — they answered (I do not have their words here)' )
+        : ' — no answer yet'
+      return `- **${ t.target }** · ${ t.age } ticks ago${ said }${ back }`
+    } )
+
+    const open = spokenTurns.filter( t => !t.answered ).length
+    const note = open > 0
+      ? `\n\nThese are my own words, newest first. "No answer yet" means exactly that — the words went out and nothing has come back. It does not tell me why, and I should not assume.`
+      : ''
+
+    return `## What I've Said Lately\n${ lines.join('\n') }${ note }\n\n`
   }
 
   private static _buildRecentOutcomesSection(

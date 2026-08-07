@@ -26,7 +26,7 @@ const tracker = () => new TokenTracker( { prices: { ...PRICES } } as never )
 function usage( over: Partial<RecordUsageInput> = {} ): RecordUsageInput {
   return {
     model: 'claude-sonnet-4-5', promptTokens: 0, completionTokens: 0, totalTokens: 0,
-    category: 'executive', attribute: 'master', function: 'decision',
+    category: 'executive', attribute: 'master', process: 'decision', function: '-',
     tick: 1, latencyMs: 0, ...over,
   }
 }

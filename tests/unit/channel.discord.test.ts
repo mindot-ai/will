@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import type { Will, Stimulus, WillMessage } from '#sdk/will'
-import { connectDiscord, type DiscordLikeClient, type DiscordLikeMessage } from '#channels/discord'
+import { connectDiscord, parseChannels, parseMentionOnly, type DiscordLikeClient, type DiscordLikeMessage } from '#channels/discord'
 
 // ── fakes ────────────────────────────────────────────────────────────────────
 
@@ -345,5 +345,86 @@ describe('discord bridge — attachments arrive as a Map (the discord.js Collect
     await flush()
     expect( will.perceived[0]!.text ).toContain('notes.md')
     expect( will.perceived[0]!.text ).not.toContain('unnamed')
+  } )
+} )
+
+// ── channel scope + per-channel mention gating ──────────────────────────────
+
+describe('discord bridge — where the Will is present', () => {
+  const from = ( channelId: string ) => ( {
+    content: 'anyone around?', channelId, author: { id: 'U1', username: 'ada' },
+  } )
+
+  it('an allowlist restrains it — a message elsewhere never becomes a percept', async () => {
+    // This is not the Will choosing silence: the message is dropped at the bridge
+    // and it never perceives anything. A private channel created in Discord and
+    // granted to the bot still went unheard until its id was added here.
+    const { client, will } = await bridgeUp({ channels: [ 'c1' ] })
+    client.emit( from('c1') )
+    client.emit( from('c2') )
+    await flush()
+    expect( will.perceived.map( p => p.thread ) ).toEqual( [ 'discord:c1' ] )
+  } )
+
+  it('"*" means everywhere — being added to a channel in Discord is enough', async () => {
+    const { client, will } = await bridgeUp({ channels: [ '*' ] })
+    client.emit( from('c1') )
+    client.emit( from('c9') )
+    await flush()
+    expect( will.perceived ).toHaveLength( 2 )
+  } )
+
+  it('an unset list behaves like "*" — unchanged from before', async () => {
+    const { client, will } = await bridgeUp({})
+    client.emit( from('c7') )
+    await flush()
+    expect( will.perceived ).toHaveLength( 1 )
+  } )
+
+  it('mentionOnly:true gates every channel', async () => {
+    const { client, will } = await bridgeUp({ mentionOnly: true })
+    client.emit( from('c1') )
+    client.emit( { ...from('c1'), mentions: { has: () => true } } )
+    await flush()
+    expect( will.perceived ).toHaveLength( 1 )
+  } )
+
+  it('mentionOnly as a LIST gates only those channels', async () => {
+    // The combination that makes a wide-open roster liveable: present everywhere,
+    // a quiet participant in the busy rooms.
+    const { client, will } = await bridgeUp({ channels: [ '*' ], mentionOnly: [ 'busy' ] })
+
+    client.emit( from('busy') )                                       // unaddressed → ignored
+    client.emit( { ...from('busy'), mentions: { has: () => true } } )  // @mentioned → heard
+    client.emit( from('quiet') )                                      // open channel → heard
+    await flush()
+
+    // Order is not the contract — arrival interleaves. What matters is WHICH.
+    expect( will.perceived.map( p => p.thread ).sort() ).toEqual( [ 'discord:busy', 'discord:quiet' ] )
+  } )
+
+  it('a DM is always perceived, whatever the gating says', async () => {
+    const { client, will } = await bridgeUp({ channels: [ 'c1' ], mentionOnly: true })
+    client.emit( { ...from('dm1'), guildId: null } )
+    await flush()
+    expect( will.perceived ).toHaveLength( 1 )
+  } )
+} )
+
+describe('discord env parsing', () => {
+  it('reads "*" and blank as everywhere, a list as a restraint', () => {
+    expect( parseChannels('*') ).toEqual( [ '*' ] )
+    expect( parseChannels('') ).toBeUndefined()
+    expect( parseChannels( undefined ) ).toBeUndefined()
+    expect( parseChannels(' a , b ') ).toEqual( [ 'a', 'b' ] )
+  } )
+
+  it('reads mention-only as a boolean OR a channel list', () => {
+    expect( parseMentionOnly('true') ).toBe( true )
+    expect( parseMentionOnly('1') ).toBe( true )
+    expect( parseMentionOnly('false') ).toBe( false )
+    expect( parseMentionOnly('') ).toBe( false )
+    expect( parseMentionOnly( undefined ) ).toBe( false )
+    expect( parseMentionOnly('c1, c2') ).toEqual( [ 'c1', 'c2' ] )
   } )
 } )

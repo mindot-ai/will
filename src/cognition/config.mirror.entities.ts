@@ -13,6 +13,7 @@
 // reason about its own operational parameters.
 
 import { WillConfig } from '#stem/mind'
+import type { StateManager } from '#core/state.manager'
 
 export interface EngineConfigEntity {
   id:     string
@@ -316,6 +317,24 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
         // DOWN from demonstrated `analytical` disposition via the persona-prior mirror,
         // so a more analytical Will deliberates more readily; this is the baseline.
         deliberateThreshold: 0.5,
+        // How many focused facets this Will can hold at once before spawning starts
+        // evicting (FacetSupervisor). A structural ceiling, not the live budget:
+        // attention scales the allowance *within* it each tick, so a tired or loaded
+        // mind narrows on its own. The metacog loop develops it via the persona-prior
+        // (openness widens, conscientiousness narrows), which is what makes "how many
+        // things I can hold at once" a property of this person rather than a constant.
+        maxFacets: 10,
+        // How long a QUIET thread stays open before the mind considers it finished
+        // (FacetSupervisor idle reaper). The sibling of maxFacets — that one is how
+        // many threads at once, this one is how long each survives a silence — and
+        // it was the only number in the economy no personality could move.
+        //
+        // ~30 minutes at a typical tick rate. It was hardcoded at 50 ticks, which is
+        // THIRTY SECONDS: every pause longer than a person taking a moment to type
+        // destroyed the conversation, and the reply landed on a facet that had never
+        // heard of them. Generous is safe — maxFacets + eviction bound the population;
+        // this only decides when silence means "over".
+        facetIdleTtlTicks: 3000,
       },
     },
     {
@@ -366,6 +385,35 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
         switchCost:   0.15,
         riskWeight:   0.20,
         noveltyWeight: 0.10,
+        // How hard an act's own live footprint damps doing it again (EXAFFERENCE
+        // P5) — how long this mind sits with something it has already said before
+        // saying it again. Agreeableness develops it up, demonstrated persistence
+        // down, so "gives people room" vs "chases an answer" is a trait rather
+        // than a constant.
+        repeatDamping: 0.30,
+        // Ticks an act keeps satiating the urge to repeat it. Separate from the
+        // consequence TTL on purpose: that one is "how long until the world's echo
+        // could still arrive" (short, and about perception), this is "how long
+        // before saying it again feels right" (a disposition). Same two traits as
+        // repeatDamping move it — patience lengthens, persistence shortens.
+        repeatWindowTicks: 60,
+        // Ticks before a silence starts to mean something — how long this mind
+        // gives someone to get back to it before it counts the turn unanswered
+        // and learns from that (conversation.aim / ReafferenceEngine).
+        //
+        // Lives beside repeatWindowTicks rather than in a config of its own
+        // because they are two readings of ONE disposition, and splitting them
+        // would let a mind tune itself into contradiction — coming back to
+        // something in 20 ticks while still calling the silence too fresh to
+        // count. Long relative to its neighbours by design: repeatWindowTicks
+        // asks "how long before saying it again feels right", this asks "how long
+        // before I take not hearing back as information", and at 1s/tick that is
+        // four minutes of a real person's time, not one.
+        replyWindowTicks: 240,
+        // How much a learned read on someone biases acting toward them. SIGNED and
+        // unclamped: a warm mind leans toward whoever answers, a dogged one chases
+        // the silence. The container will not choose between those.
+        socialWeight:  0.30,
       },
     },
 
@@ -472,4 +520,64 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
       },
     },
   ]
+}
+
+// ── The single writer ─────────────────────────────────────────
+
+/**
+ * Write an `engine.config` entity — MERGING, always. The only sanctioned way to
+ * write one; `tests/unit/config.mirror.writer.test.ts` fails on a raw
+ * `setEntity({ type: 'engine.config' })` anywhere else.
+ *
+ * Every whole-entity write to one of these has silently dropped params, three
+ * times in one day and each in a different place:
+ *
+ *   • PMALoader replaced `engine-config-executive` with the three behavioural
+ *     params a PMA carries, dropping `deliberateThreshold` — so `readBaseParams`
+ *     returned nothing for it and `consolidatePrior` skipped the analytical and
+ *     decisiveness edges outright, for every Will ever restored from an artifact.
+ *   • The same loader dropped `emitBlendEvents` from the blender and three params
+ *     from forgetting.
+ *   • Snapshot restore replaced the whole mirror, so a Will woke with the config
+ *     it FIRST hibernated under and could never receive a param added later —
+ *     `maxFacets` and `deliberateThreshold` were inert on a live Will for its
+ *     entire life.
+ *
+ * `precedence` says which side wins on a key both hold. Neither ever drops a key.
+ *
+ *   'incoming' — the caller is the authority (boot seed; a PMA supplying the
+ *                tenant's own dispositions). Keys it does not mention survive.
+ *   'existing' — state is the authority (post-restore backfill). Only genuinely
+ *                missing keys are added, so learned and PMA'd values are safe.
+ *
+ * Returns the keys it actually added or changed, for the caller to log.
+ */
+export function mergeEngineConfig(
+  store:      StateManager,
+  cfg:        EngineConfigEntity,
+  precedence: 'incoming' | 'existing' = 'incoming',
+): string[] {
+  const existing = store.getEntity( cfg.id )
+  const current  = ( existing?.metadata as { params?: Record<string, unknown> } | undefined )?.params ?? {}
+
+  const params = precedence === 'existing'
+    ? { ...cfg.params, ...current }   // state wins; fills only what is missing
+    : { ...current, ...cfg.params }   // caller wins; keeps everything else
+
+  const changed = Object.keys( params ).filter( k => params[ k ] !== current[ k ] )
+  if( existing && changed.length === 0 ) return []
+
+  // No timestamps: StateManager.setEntity is the single place they are stamped,
+  // and it sources them from the SIM clock so entity times replay identically
+  // (R2). It also preserves an existing `createdAt`. The write sites this
+  // replaced all passed `Date.now()`, which was both redundant and a real
+  // determinism hole — the guard test caught it the moment the code moved into
+  // `cognition/`, where wall-clock reads are banned.
+  store.setEntity({
+    id:       cfg.id,
+    type:     'engine.config',
+    metadata: { engine: cfg.engine, params },
+  })
+
+  return changed
 }

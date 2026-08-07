@@ -566,3 +566,25 @@ globalSchemaRegistry.register({
     return hasNum( p, 'count')
   },
 })
+
+// ── Deliberation cache (fast-path telemetry) ─────────────────
+// Published from the ExecutiveEngine's committed path (onReasoningComplete),
+// never from inside the pure cache. Lets faculties like the PersonaConsolidator
+// react to how automatic the Will is becoming (e.g. a high hit rate could lower
+// the deliberate-effort threshold).
+
+globalSchemaRegistry.register({
+  type: 'cache.hit', version: 1,
+  validate( p ){
+    if( !isObj(p) ) return 'payload must be object'
+    return hasNum( p, 'confidence') ?? hasNum( p, 'neighborCount')
+  },
+})
+
+globalSchemaRegistry.register({
+  type: 'cache.miss', version: 1,
+  validate( p ){
+    if( !isObj(p) ) return 'payload must be object'
+    return hasNum( p, 'confidence')
+  },
+})

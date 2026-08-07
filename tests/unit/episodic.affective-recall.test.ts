@@ -52,6 +52,9 @@ async function makeConsolidator(){
 
   // First react restores episodes into the store + builds the vector index.
   await consolidator.react( 0 as never, 1 as never, state, {} as never )
+  // Indexing is detached from the tick (a rate-limited embed must not stall the
+  // whole loop), so recall tests have to wait for it explicitly.
+  await consolidator.flushIndexing()
   return consolidator
 }
 

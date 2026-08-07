@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { logger } from '#core/logger'
-import { REPLY_TEXT_TAG } from '#llm/wire.contracts'
+import { REPLY_TEXT_TAG, NO_MESSAGE_TAG, NO_MESSAGE_OPEN } from '#llm/wire.contracts'
 import type { ReadonlySimulationState } from '#core/types'
 import type { ExecutiveOutputFull, ExecutiveOutputMinimal, IdeationCandidate, IdeationOutput } from '#faculties/executive.engine/types'
 
@@ -67,6 +67,18 @@ export function parseResponse(
   // Search the full response text so we find it even when the LLM used a code fence.
   const replyText = extractTextBlock( responseText, REPLY_TEXT_TAG )
   if( replyText ) full.replyText = replyText
+
+  // A declared decision not to speak. Its own field rather than an empty
+  // replyText, because "I chose silence" and "the facet produced nothing" are
+  // different events: one is a decision worth recording, the other a failure worth
+  // noticing, and collapsing them hides both.
+  // Presence of the MARKER is the decision — not the content, which may legitimately
+  // be empty. `extractTextBlock` returns null for an absent tag AND for a present
+  // but empty one, so it cannot tell them apart; testing it for undefined (as this
+  // first did) is true in every case and made the mind mute on every path. The
+  // integration suite caught it; a live boot would have caught it as total silence.
+  if( responseText.includes( NO_MESSAGE_OPEN ) )
+    full.noMessage = extractTextBlock( responseText, NO_MESSAGE_TAG ) ?? '(no reason given)'
 
   return full
 }
@@ -193,6 +205,7 @@ function parseTaggedBlocks(
     'GOALS_REPRIORITIZE',
     'EFFECTORS',
     'SELF_OBS',
+    'SKILLS',
   ],
   found = taggedTypes.filter( t => text.includes(`[${t}]`) )
   if( found.length > 0 ){
@@ -296,6 +309,13 @@ function parseTaggedBlocks(
   try {
     const selfObsData = parseJsonBlock('SELF_OBS') as { selfObservations?: string[] } | null
     if( selfObsData?.selfObservations ) full.selfObservations = selfObsData.selfObservations
+  }
+  catch { /* ignore */ }
+
+  // Named compound skills — the creation seam for learned composites (#114).
+  try {
+    const skillsData = parseJsonBlock('SKILLS') as { newSkills?: ExecutiveOutputFull['newSkills'] } | null
+    if( skillsData?.newSkills ) full.newSkills = skillsData.newSkills
   }
   catch { /* ignore */ }
 

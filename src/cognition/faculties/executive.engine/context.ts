@@ -9,6 +9,13 @@ import type { ExecutiveContext } from '#faculties/executive.engine/types'
 import type { EpisodicConsolidator } from '#faculties/episodic.consolidator'
 import type { SemanticIntegrator } from '#faculties/semantic.engine/integrator'
 import { readEffectiveParams, summarizePersonaPrior } from '#cognition/persona.prior'
+import { readIdentityName } from '#cognition/identity.entity'
+import { readSpokenTurns } from '#agency/conversation.aim'
+import { nameOf as referentName } from '#cognition/social.identity'
+
+/** How many of the mind's own recent utterances it is shown. Enough to notice a
+ *  repetition, few enough not to crowd out what is happening now. */
+const SPOKEN_TURNS_SHOWN = 6
 
 export interface ContextDependencies {
   workingMemory: WorkingMemory | null
@@ -32,8 +39,10 @@ export async function buildExecutiveContext(
   // Identity — read directly from the identity-self entity.
   const identityEntity  = state.entities.get('identity-self')
   // name is the canonical persona name from WillConfig.name (e.g. "Aria", "Guard-1").
-  // Falls back to 'Will' for snapshots created before this field was added.
-  const identityName   = (identityEntity?.metadata?.name   as string)                    ?? 'Will'
+  // '' when unknown — NEVER a default. This read used to end in `?? 'Will'`, which
+  // is how the container's name reached a tenant's own prompt. See
+  // cognition/identity.entity for what that cost.
+  const identityName   = readIdentityName( state )
   const identityPrompt = (identityEntity?.metadata?.prompt as string)                    ?? 'I am a self-aware mind.'
   const identityValues = (identityEntity?.metadata?.values as string[])                  ?? []
   const identityTraits = (identityEntity?.metadata?.traits as Record<string, number>)    ?? {}
@@ -275,6 +284,37 @@ export async function buildExecutiveContext(
   recentActions.sort( ( a, b ) => b.tick - a.tick )
   const recentActionsCapped = recentActions.slice( 0, 5 )
 
+  // Current best name for a person, from the known-entity roster.
+  const nameOf = ( keid: string ): string | undefined => {
+    for( const e of state.entities.values() ){
+      if( e.type !== 'known-entity') continue
+      const m = e.metadata ?? {}
+      if( m['keid'] !== keid ) continue
+      const n = m['name']
+      return typeof n === 'string' && n.trim() ? n : undefined
+    }
+    return undefined
+  }
+
+  // What the mind has said to people lately, and who answered. Newest first,
+  // capped — this is a reminder, not a transcript; the conversation itself lives
+  // in memory and in "## In Conversation Now".
+  const spokenTurns: ExecutiveContext['spokenTurns'] = readSpokenTurns( state.entities )
+    .filter( t => !t.isAck )
+    .reverse()
+    .slice( 0, SPOKEN_TURNS_SHOWN )
+    .map( t => ({
+      // Roster first, the record's stored name second. A name is learned over
+      // time, so records written before the mind knew it keep the raw id — and
+      // the same person rendered as both `FKEM` and `discord:15255…` in one list,
+      // which reads as two people. The roster holds the current best name.
+      target:   nameOf( t.targetEntityId ) ?? t.targetEntityName ?? t.targetEntityId,
+      preview:  t.preview,
+      age:      Math.max( 0, state.tick - t.tick ),
+      answered: t.answeredAt !== undefined,
+      ...( t.answeredWith ? { answeredWith: t.answeredWith } : {} ),
+    }) )
+
   // Active/known plans — read persisted `plan` entities so the executive has
   // execution awareness: which plans exist per goal, their status + step
   // progress, enabling it to target a specific plan by id when managing several. (P4)
@@ -328,6 +368,7 @@ export async function buildExecutiveContext(
     beliefs,
     beliefsOmitted,
     recentActions: recentActionsCapped,
+    spokenTurns,
     behavioralDisposition,
     selfTuning,
     knownEntities: extractKnownEntities( state ),
@@ -436,6 +477,25 @@ export function extractKnownEntities( state: ReadonlySimulationState ): Executiv
       if( typeof m.name === 'string') a.name = m.name
       if( m.kind === 'thing' || m.kind === 'sentient') a.kind = m.kind as 'thing' | 'sentient'
       if( typeof m.reliability === 'number') a.reliability = m.reliability as number
+
+      // The routes, so choosing where to say something is a decision the mind
+      // makes rather than a fallback the plumbing makes for it.
+      if( Array.isArray( m.handles ) )
+        a.handles = ( m.handles as Array<{ keid?: string; kind?: string; lastAnsweredTick?: number }> )
+          .filter( h => typeof h?.keid === 'string')
+          .map( h => ({
+            keid: h.keid!,
+            kind: h.kind ?? 'unknown',
+            ...( typeof h.lastAnsweredTick === 'number'
+              ? { answeredAgo: Math.max( 0, state.tick - h.lastAnsweredTick ) } : {} ),
+          }) )
+
+      // An identity the mind has not settled. Carried as NAMES where it knows
+      // them, because a raw keid in a prompt is noise it cannot act on.
+      if( Array.isArray( m.suspectedSameAs ) )
+        a.mayBeSameAs = ( m.suspectedSameAs as string[] )
+          .map( k => referentName( state.entities, k ) )
+          .filter( ( n ): n is string => !!n )
       a._recency = Math.max( a._recency, ( m.lastSeenTick as number ) ?? 0 )
     }
     else if( e.type === 'attachment.bond'){
@@ -473,17 +533,11 @@ function buildSemanticQuery(
   const dominantEmotion = valence > 0.3 ? 'positive' : valence < -0.3 ? 'negative' : 'neutral'
   if( dominantEmotion !== 'neutral') parts.push(`Feeling ${dominantEmotion}`)
 
-  // Active conversation entities — pulls memories about current interlocutors
-  const senderNames = new Set<string>()
-  for( const entity of state.entities.values() ){
-    if( entity.type !== 'communication') continue
-    const msgTick = ( entity.metadata?.tick as number ) ?? 0
-    if( state.tick - msgTick > 30 ) continue
-    if( entity.metadata?.processedByExecutive ) continue
-    const name = entity.metadata?.agentName as string | undefined
-    if( name && name !== 'unknown') senderNames.add( name )
-  }
-  if( senderNames.size > 0 ) parts.push(`Talking with: ${[ ...senderNames ].join(', ')}`)
+  // A "Talking with: …" hint used to be built here from `communication` entities.
+  // Nothing has ever written that type (#114), so the clause never fired. Removed
+  // rather than repointed: the inbound entity that now exists (`conversation.received`)
+  // is consumed within one tick, so it is not a dependable source for a recall hint —
+  // restoring this wants a durable interlocutor signal, which is its own decision.
 
   // Recent percepts (top 3 by salience)
   const percepts = extractPercepts( state ).slice( 0, 3 )

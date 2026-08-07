@@ -32,6 +32,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { join }                     from 'node:path'
 
 import type { SimulationState }    from '#core/types'
+import { mergeEngineConfig }        from '#cognition/config.mirror.entities'
 import type { DefaultSimulation }  from '#core/simulation'
 import type { Cognition }          from '#types'
 import type {
@@ -45,6 +46,7 @@ import {
   loadCompetence,
   type CompetenceSnapshot,
 } from '#agency/competence.codec'
+import { mergeIdentity, composeIdentityPrompt, readPersona, IDENTITY_ENTITY_ID } from '#cognition/identity.entity'
 
 // ── Schema version ─────────────────────────────────────────────
 // Bump this when any field is removed or semantically changed.
@@ -361,7 +363,12 @@ export class PMADistiller {
       if( entity.type === 'will.identity'){
         const m = entity.metadata ?? {}
         return {
-          prompt:  ( m['prompt']  as string )                     ?? '',
+          // The TENANT's text only. Capturing the composed `prompt` baked the
+          // container's WILL_CORE_PREAMBLE into the artifact, so a woken mind
+          // recited whichever build's preamble had distilled it — forever, and
+          // invisibly. `readPersona` falls back to stripping it out of a composed
+          // prompt, so artifacts written before the split load clean too.
+          prompt:  readPersona( m ),
           values:  ( m['values']  as string[] )                   ?? [],
           traits:  ( m['traits']  as Record<string, number> )     ?? {},
           traitStats: ( m['traitStats'] as PMAIdentity['traitStats'] ) ?? undefined,
@@ -792,22 +799,31 @@ export class PMALoader {
     const sm = simulation.stateManager
 
     // ── 1. Identity (with enhanced fields) ────────────────────
-    sm.setEntity({
-      id:        'identity-self',
-      type:      'will.identity',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      metadata: {
-        prompt:  pma.identity.prompt,
-        values:  pma.identity.values,
-        traits:  pma.identity.traits,
-        traitStats: pma.identity.traitStats,   // restore the Will's own norm (graded salience B/C)
-        version: pma.identity.version,
-        style:   pma.identity.style,
-        socialOrientation: pma.identity.socialOrientation,
-        trustPropensity:   pma.identity.trustPropensity,
-        memoryPersistence: pma.identity.memoryPersistence,
-      },
+    // MERGING (see cognition/identity.entity). An artifact carries what the mind
+    // LEARNED about itself; it does not carry the mind's name, because the name is
+    // supplied at boot by whoever is renting the container. This used to replace
+    // the entity outright, so `_seedIdentity`'s `name` — written moments earlier
+    // in the same wake — was erased before the first tick, every single wake.
+    // Recomposed, never restored verbatim: `pma.identity.prompt` is layer 2 (the
+    // persona), and layer 1 comes from the build that is running NOW. This is what
+    // makes a preamble fix reach minds that already exist.
+    const environment = sm.getEntity( IDENTITY_ENTITY_ID )?.metadata?.['environment']
+    // Through `readPersona`, NOT raw. An artifact written before the layers were
+    // split stores the COMPOSED prompt, so composing over it again gives the mind
+    // its own architecture twice. Putting this fallback only in the distiller was
+    // not enough — the loader is what every existing artifact goes through.
+    const persona = readPersona({ prompt: pma.identity.prompt })
+    mergeIdentity( sm, {
+      persona,
+      prompt:  composeIdentityPrompt( persona, typeof environment === 'string' ? environment : undefined ),
+      values:  pma.identity.values,
+      traits:  pma.identity.traits,
+      traitStats: pma.identity.traitStats,   // restore the Will's own norm (graded salience B/C)
+      version: pma.identity.version,
+      style:   pma.identity.style,
+      socialOrientation: pma.identity.socialOrientation,
+      trustPropensity:   pma.identity.trustPropensity,
+      memoryPersistence: pma.identity.memoryPersistence,
     })
 
     // ── 1b. Persona (learned self-tuning from the metacognition cycle) ──
@@ -889,55 +905,53 @@ export class PMALoader {
     const temperamentValence = pma.emotionalBaseline.temperamentValence
     const reactivity = pma.emotionalBaseline.reactivity
 
-    sm.setEntity({
-      id:        'engine-config-affective-blender',
-      type:      'engine.config',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      metadata: {
-        engine: 'affective-blender',
-        params: {
-          inertia: 1 - reactivity,
-          temperamentValence,
-        },
+    // MERGE, never replace — same trap as engine-config-executive. The mirror
+    // seeds `emitBlendEvents` here and the PMA carries only `inertia`, so a
+    // whole-entity write silently dropped it for every restored Will.
+    mergeEngineConfig( sm, {
+      id: 'engine-config-affective-blender', engine: 'affective-blender',
+      params: {
+        inertia: 1 - reactivity,
+        temperamentValence,
       },
-    })
+    }, 'incoming')
 
     // ── 6. Behavioral parameters ──────────────────────────────
     if( pma.behavioral.riskTolerance !== undefined ||
         pma.behavioral.explorationRate !== undefined ||
         pma.behavioral.impulsivity !== undefined ){
 
-      sm.setEntity({
-        id:        'engine-config-executive',
-        type:      'engine.config',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        metadata: {
-          engine: 'executive',
-          params: {
-            riskTolerance:   pma.behavioral.riskTolerance   ?? 0.5,
-            explorationRate: pma.behavioral.explorationRate ?? 0.3,
-            impulsivity:     pma.behavioral.impulsivity     ?? 0.3,
-          },
+      // MERGE onto the seeded mirror, never replace it.
+      //
+      // createWill() seeds engine-config-executive first (executiveInterval,
+      // cooldownTicks, deliberateThreshold, maxFacets); loadPMA() runs after. A
+      // whole-entity write here dropped every param the PMA does not carry — so
+      // for every Will restored from an artifact (i.e. every production Will), the
+      // executive's dual-process gate lost its base, `readBaseParams` returned
+      // nothing for `deliberateThreshold`, and consolidatePrior skipped its
+      // adjustments outright: the analytical/decisiveness edges that are supposed
+      // to develop how readily this mind stops to think had no base to move.
+      mergeEngineConfig( sm, {
+        id: 'engine-config-executive', engine: 'executive',
+        params: {
+          riskTolerance:   pma.behavioral.riskTolerance   ?? 0.5,
+          explorationRate: pma.behavioral.explorationRate ?? 0.3,
+          impulsivity:     pma.behavioral.impulsivity     ?? 0.3,
         },
-      })
+      }, 'incoming')
     }
 
     // Configure memory persistence for ForgettingCurve
     if( pma.identity.memoryPersistence !== undefined ){
-      sm.setEntity({
-        id:        'engine-config-forgetting',
-        type:      'engine.config',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        metadata: {
-          engine: 'forgetting-curve',
-          params: {
-            baseForgettingRate: 1 - ( pma.identity.memoryPersistence * 0.7 ),
-          },
+      // MERGE — the mirror seeds emotionProtection / pruningThreshold /
+      // maxPrunePerTick here and the PMA carries only baseForgettingRate, so a
+      // whole-entity write dropped three params on every restore.
+      mergeEngineConfig( sm, {
+        id: 'engine-config-forgetting', engine: 'forgetting-curve',
+        params: {
+          baseForgettingRate: 1 - ( pma.identity.memoryPersistence * 0.7 ),
         },
-      })
+      }, 'incoming')
     }
 
     // ── 7. Relationship stubs ─────────────────────────────────

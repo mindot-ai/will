@@ -616,6 +616,22 @@ declare class DefaultOrchestrator implements Orchestrator {
      * calls _executeTick() which handles pause/stop checks internally.
      * The orchestrator is the sole driver of ticks.
      */
+    /**
+     * A plain SimulationEngine's `react()` is implicitly "finish inside the tick" —
+     * only an AsyncEngine is allowed to span ticks, and it does so by LAUNCHING work
+     * and landing it later (see async.engine.ts: "react() never awaits LLM calls").
+     * Nothing enforces that on everyone else, and the failure is silent and severe:
+     * every agency deadline is denominated in TICKS, so an engine that awaits network
+     * I/O does not merely run slowly, it rescales time for the whole mind.
+     *
+     * Measured: one rate-limited embedding call awaited inside EpisodicConsolidator
+     * made two consecutive ticks take 64.9s and 63.5s. `AWAIT_TIMEOUT` — 15 ticks,
+     * normally ~15s — silently became 15 minutes, so a communicate intent sat
+     * 'awaiting' forever and the serial selector never chose anything again. 45
+     * executive decisions produced one intent and zero delivered messages, with no
+     * error anywhere. This turns that into a line in the log the first time it happens.
+     */
+    private _warnIfSlow;
     private _runLoop;
     private _shutdown;
     stop(): void;
@@ -1444,8 +1460,10 @@ interface CognitiveEngine extends SimulationEngine {
 type LLMCallCategory = 'executive' | 'summarizer' | 'embedding' | 'identity-guard';
 /** The actor/subsystem doing the work. */
 type LLMCallAttribute = 'master' | 'facet' | 'memory' | 'guard';
+/** The specific cognitive process being paid for. */
+type LLMCallProcess = 'cog' | 'decision' | 'ideation';
 /** The specific cognitive function being paid for. */
-type LLMCallFunction = 'decision' | 'ideation' | 'deliberation' | 'conversation' | 'outreach' | 'planning' | 'supervision' | 'consolidation' | 'recall' | 'index' | 'identity-coherence';
+type LLMCallFunction = '-' | 'deliberation' | 'conversation' | 'outreach' | 'planning' | 'supervision' | 'consolidation' | 'recall' | 'index' | 'identity-coherence';
 /** One attributed ledger record (5-axis attribution + tokens + cost). */
 type TokenLedgerRecord = Record<string, unknown>;
 type TokenRecordListener = (record: TokenLedgerRecord) => void;
@@ -1529,6 +1547,7 @@ interface TokenUsage {
     demand?: number;
     category: LLMCallCategory;
     attribute: LLMCallAttribute;
+    process: LLMCallProcess;
     function: LLMCallFunction;
     /** Optional specific id or namespace: facet id, entity id, model name. */
     scope?: string;
@@ -1579,6 +1598,8 @@ declare class TokenTracker implements SimulationEngine {
     private _categoryTokens;
     private _functionCosts;
     private _functionTokens;
+    private _processCosts;
+    private _processTokens;
     private _providerCosts;
     private _providerTokens;
     private _tickCosts;
@@ -1625,6 +1646,13 @@ declare class TokenTracker implements SimulationEngine {
         prompt: number;
         completion: number;
     }>;
+    /** Cost broken down by process ('decision' | 'ideation' | 'cog'). */
+    get processBreakdown(): ReadonlyMap<string, number>;
+    /** Token counts (prompt + completion) broken down by process. */
+    get processTokenBreakdown(): ReadonlyMap<string, {
+        prompt: number;
+        completion: number;
+    }>;
     /**
      * Cost broken down by provider ('anthropic' | 'glm' | 'moonshot' | …), plus
      * an `unattributed` bucket for usage recorded without one.
@@ -1652,6 +1680,451 @@ declare class TokenTracker implements SimulationEngine {
     reset(): void;
     private _computeTickCost;
     private _averageTickCost;
+}
+
+/**
+ * Embedding provider interface — abstracts different embedding models.
+ *
+ * Supports:
+ *   - Local models (via Transformers.js or Ollama)
+ *   - Cloud providers (OpenAI, Anthropic, Cohere)
+ *   - Mock embedder for testing/deterministic replay
+ */
+
+/** Embedding is only ever a read or a write. */
+type EmbedFunction = Extract<LLMCallFunction, 'recall' | 'index'>;
+interface EmbeddingProvider {
+    readonly modelName: string;
+    readonly dimensions: number;
+    /** Generate embedding for a single piece of content. `fn` tags the call for
+     *  cost attribution: 'recall' (query) vs 'index' (write). */
+    embed(content: unknown, fn?: string): Promise<number[]>;
+    /** Generate embeddings for multiple items (batched for efficiency). */
+    embedBatch(contents: unknown[], fn?: string): Promise<number[][]>;
+    /** Check if two embeddings are semantically equivalent (for replay validation) */
+    areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
+}
+/**
+ * OpenAI-compatible embedder (works with OpenAI, Azure, LocalAI, Ollama)
+ */
+declare class OpenAICompatibleEmbedder implements EmbeddingProvider {
+    readonly modelName: string;
+    readonly dimensions: number;
+    private _apiUrl;
+    private _apiKey;
+    private _maxConcurrency;
+    private _timeoutMs;
+    private _tokenTracker;
+    /**
+     * Own gate — the same LLMSemaphore the LLM calls use, on a separate instance so
+     * embeddings and reasoning do not compete for one another's slots. It bounds the
+     * fan-out that produced the 10.7s tail, and `withGate` additionally retries a 429
+     * with backoff, which a bare `embed()` previously surfaced as a hard failure.
+     */
+    private _gate;
+    constructor(config: {
+        modelName: string;
+        dimensions: number;
+        apiUrl: string;
+        apiKey?: string | null;
+        /**
+         * Max embedding requests in flight at once — across ALL callers, not just one
+         * embedBatch(). Default 4, chosen from measured provider behaviour rather than
+         * taste: gemini-embedding-001 answers a lone request in ~1.1s, but queues hard
+         * under fan-out — at 8 in flight the slowest three took 10.7s (all HTTP 200, no
+         * 429, simply serialized). That tail is what made recall exceed its 5s budget
+         * and return "no recall" while a mind with six live facets was asking.
+         */
+        maxConcurrency?: number;
+        /** @deprecated use maxConcurrency — kept as its fallback for back-compat. */
+        batchSize?: number;
+        /** Per-request timeout in ms before the connection is aborted. Default 30s. */
+        timeoutMs?: number;
+        /**
+         * Per-Will token tracker. When provided, each embedding call records its
+         * input-token usage under the 'embedding' category so memory-vector spend is
+         * visible alongside LLM spend instead of being a silent cost leak.
+         */
+        tokenTracker?: TokenTracker | null;
+    });
+    /**
+     * Embed one item, gated. Every caller funnels through here — a facet building a
+     * prompt, the master recalling, the consolidator indexing — so the gate is the
+     * only place total in-flight fan-out is bounded. Waiting for a slot is strictly
+     * better than the alternative it replaces: an ungated request that returns after
+     * the recall budget has already expired is a request whose answer is thrown away.
+     */
+    embed(content: unknown, fn?: EmbedFunction): Promise<number[]>;
+    private _embedOnce;
+    embedBatch(contents: unknown[], fn?: EmbedFunction): Promise<number[][]>;
+    areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
+}
+/**
+ * Deterministic mock embedder for testing and replay.
+ * Uses content hashing to produce stable embeddings.
+ */
+declare class MockEmbedder implements EmbeddingProvider {
+    readonly modelName = "mock";
+    readonly dimensions = 128;
+    private _seed;
+    constructor(seed?: number);
+    embed(content: unknown, _fn?: EmbedFunction): Promise<number[]>;
+    embedBatch(contents: unknown[], fn?: EmbedFunction): Promise<number[][]>;
+    areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
+    private _hashString;
+    private _next;
+}
+
+interface EpisodicConsolidatorConfig {
+    /** Threshold above which a WM item is consolidated */
+    consolidationThreshold?: number;
+    /** How much emotional intensity boosts consolidation (multiplier) */
+    emotionBoost?: number;
+    /** Maximum episodes to consolidate per tick */
+    maxPerTick?: number;
+    /** Optional vector memory adapter for semantic search */
+    vectorMemory?: VectorMemoryAdapter;
+    /** Optional embedding provider (required if vectorMemory provided) */
+    embedder?: EmbeddingProvider;
+    /** Whether to automatically index episodes (default true) */
+    autoIndex?: boolean;
+    bus?: CognitiveBus;
+}
+interface EpisodicMemory {
+    id: string;
+    timestamp: Tick;
+    content: unknown;
+    emotionalTags: Record<string, number>;
+    affectiveContext: {
+        valence: number;
+        arousal: number;
+        dominance: number;
+    };
+    activationStrength: number;
+    retrievalCount: number;
+    lastRetrievedAt: Tick | null;
+    tags: string[];
+    sourceType: string;
+    /** Wall-clock ms at the moment the episode was first consolidated. */
+    createdAt: number;
+    /**
+     * Outcome lifecycle of the originating action/intent:
+     *   'intended'  — goal or plan was formed but not yet attempted
+     *   'attempted' — action was dispatched; outcome unknown at consolidation time
+     *   'confirmed' — action was confirmed successful (e.g. message delivered)
+     *   'failed'    — action failed, timed out, or was abandoned
+     */
+    outcomeStatus?: 'intended' | 'attempted' | 'confirmed' | 'failed';
+}
+declare class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
+    readonly name = "episodic-consolidator";
+    private _consolidationThreshold;
+    private _emotionBoost;
+    private _maxPerTick;
+    private _store;
+    private _storeMap;
+    private _restored;
+    /** Ticks between full-store state syncs (captures decay / dream mutations).
+     *  Must be ≤ SnapshotManager.persistInterval (default 15) so every persisted
+     *  snapshot contains up-to-date episode values. */
+    private readonly _syncInterval;
+    private _ticksSinceSync;
+    private _affectValence;
+    private _affectArousal;
+    private _affectDominance;
+    private _bus;
+    private _vectorMemory;
+    /**
+     * In-flight background indexing. Indexing is deliberately not awaited inside
+     * react() (a rate-limit retry chain would stall the whole tick loop), so this is
+     * the handle for the two callers that genuinely must wait for it: shutdown,
+     * before persisting the index, and tests asserting on it.
+     */
+    private _indexing;
+    private _embedder;
+    private _autoIndex;
+    private readonly _model;
+    constructor(config?: EpisodicConsolidatorConfig);
+    attachBus(bus: CognitiveBus): void;
+    private _readConfigFromState;
+    subscribes(): string[];
+    publishes(): CognitiveEventSchema[];
+    onCognitiveEvent(e: CognitiveEvent): StateCommands | void;
+    snapshot(): Record<string, unknown>;
+    react(_delta: Duration, tick: Tick, state: ReadonlySimulationState, context: SimulationContext): Promise<EngineResult>;
+    /**
+     * Query episodic memory by tags, time range, or emotional context.
+     */
+    query(filters: {
+        tags?: string[];
+        fromTick?: Tick;
+        toTick?: Tick;
+        minEmotion?: string;
+        limit?: number;
+    }): EpisodicMemory[];
+    /**
+     * Semantic query via vector memory.
+     * Returns episodes with content semantically similar to the query.
+     * Requires vectorMemory adapter to be configured.
+     *
+     * Similarity ranking, with optional mood-congruent re-ranking: when
+     * `affectiveBias` is supplied, results are re-scored by blending embedding
+     * similarity with affective congruence between the caller's current valence
+     * and each episode's encoded valence (`affectiveContext.valence`) — modelling
+     * mood-congruent recall (Bower). Similarity still dominates at low weights. To
+     * let affect promote a congruent-but-slightly-less-similar memory, we
+     * over-fetch candidates and re-rank before truncating to `limit`.
+     *
+     * Other metadata narrowing (sourceType / tags) remains the caller's job on the
+     * returned episodes (which carry all metadata).
+     */
+    /** Await any background indexing still in flight. Shutdown and tests only. */
+    flushIndexing(): Promise<void>;
+    semanticQuery(query: unknown, filters?: {
+        minSimilarity?: number;
+        limit?: number;
+        /** Mood-congruent re-ranking: target valence [-1,1] + blend weight [0,1]. */
+        affectiveBias?: {
+            valence: number;
+            weight: number;
+        };
+    }): Promise<EpisodicMemory[]>;
+    /**
+     * Mark an episode as retrieved (boosts its strength slightly).
+     *
+     * Immutable replace (mirrors applyDecay): other engines may already hold a
+     * reference to this episode this tick, so we update a copy in both _store and
+     * _storeMap rather than mutating the shared object underneath them. The bumped
+     * retrievalCount is the load-bearing field — it unlocks the ForgettingCurve's
+     * retrievalBoost, so memories that are actively recalled decay slower than
+     * ones that are never used.
+     */
+    markRetrieved(episodeId: string, tick: Tick): void;
+    /**
+     * Get all episodes (for serialization / replay).
+     */
+    getAllEpisodes(): ReadonlyArray<EpisodicMemory>;
+    /**
+     * Permanently remove decayed episodes from the store, the id index, and the
+     * vector index. The consolidator owns the store, so the ForgettingCurve asks
+     * it to prune rather than mutating the store itself. Returns the ids that
+     * were actually present and removed, so the caller can emit matching state
+     * deletions. Removal is order-deterministic for replay.
+     */
+    /**
+     * Apply decayed activation strengths computed by the ForgettingCurve.
+     *
+     * The consolidator owns the episode store, so decay is committed here rather
+     * than written onto the live objects the curve borrowed via getAllEpisodes()
+     * — those references may already be held by other engines this tick. Each
+     * changed episode is replaced with an updated copy (immutable update), so
+     * previously handed-out references are not mutated underneath their holders.
+     */
+    applyDecay(updates: ReadonlyMap<string, number>): void;
+    /**
+     * Commit dream-state mutations computed by the DreamSimulator — reactivation
+     * boosts (activationStrength), REM emotional dampening (emotionalTags), and
+     * creative-recombination tag cross-pollination (tags).
+     *
+     * Like applyDecay, the consolidator owns the store, so the simulator computes
+     * the new field values on its own working copies and hands them here for an
+     * immutable replace, rather than mutating the shared episode objects it
+     * borrowed via getAllEpisodes() — those references may be held by other
+     * engines this tick. Only the fields present in each entry are replaced.
+     */
+    applyDreamUpdates(updates: ReadonlyMap<string, {
+        activationStrength?: number;
+        emotionalTags?: Record<string, number>;
+        tags?: string[];
+    }>): void;
+    pruneEpisodes(ids: Iterable<string>): Promise<string[]>;
+    /**
+     * Force an immediate full sync of all in-memory episodes to StateCommands.
+     *
+     * Called at session end (pauseWill / archiveWill) to guarantee that episode
+     * mutations accumulated since the last periodic sync — activationStrength
+     * decay, emotionalTag dampening, retrieval counts — are captured in the
+     * final persisted snapshot.  Without this, any session that ends between
+     * two scheduled sync ticks loses those mutations on the next cold-start.
+     */
+    flushToState(): StateCommands;
+    /**
+     * Restore episodes from snapshot (for replay).
+     */
+    restoreEpisodes(episodes: EpisodicMemory[]): void;
+    /**
+     * Serialize one episode into a StateCommands entity write.
+     * Used both at creation time and during periodic sync.
+     */
+    private _episodeToEntity;
+    /**
+     * Rehydrate _store from 'episodic_memory' entities in state.
+     * Called once on first tick after snapshot restore.
+     * Also rebuilds vector index if configured.
+     */
+    private _restoreFromState;
+    private _findCandidates;
+    private _readCurrentEmotions;
+    private _computeEmotionalIntensity;
+}
+
+/**
+ * Vector memory types for semantic episodic retrieval.
+ *
+ * Provides similarity search over consolidated episodic memories
+ * without replacing the existing _store array or StateManager.
+ * Acts as a read-optimized secondary index.
+ */
+
+interface VectorMemoryConfig {
+    /** Dimension of embedding vectors (default 1536 for OpenAI text-embedding-3-small) */
+    dimensions?: number;
+    /** Similarity metric: 'cosine', 'euclidean', or 'dot' */
+    similarityMetric?: 'cosine' | 'euclidean' | 'dot';
+    /** Maximum number of episodes to index (older entries evicted) */
+    maxIndexedEpisodes?: number;
+    /** Minimum similarity threshold for query results (0-1). Default 0.35, tuned
+     *  for real sentence embeddings (text-embedding-3-small); raise for higher
+     *  precision. */
+    minSimilarity?: number;
+    /** Seed for the index's level-assignment PRNG — required for deterministic replay */
+    seed?: number;
+}
+interface VectorRecord {
+    id: string;
+    vector: number[];
+    embeddingModel: string;
+    createdAt: number;
+    metadata: {
+        tick: Tick;
+        sourceType: string;
+        /** Encode-time affective valence (-1..1). Stamped here so index backends that
+         *  CAN filter/rank on metadata (pgvector, Qdrant) may do affective filtering
+         *  server-side. The HNSW path is similarity-only, so its mood-congruent recall
+         *  (EpisodicConsolidator.semanticQuery affectiveBias) re-ranks on the
+         *  authoritative resolved-episode valence instead. */
+        emotionalValence: number;
+        tags: string[];
+    };
+}
+interface VectorQueryResult {
+    episodeId: string;
+    similarity: number;
+}
+/**
+ * Query knobs for vector search.
+ *
+ * The HNSW index is **similarity-only**: it ranks by vector distance and
+ * applies a `minSimilarity` floor, nothing else. Metadata is stored on
+ * VectorRecord but is NOT indexed, so any metadata-based narrowing
+ * (sourceType / valence / tags / tick range) must be done by the caller
+ * AFTER the search returns. See episodic.consolidator.semanticQuery.
+ */
+interface VectorQueryFilter {
+    minSimilarity?: number;
+    maxResults?: number;
+}
+
+/**
+ * Vector index interface — allows swapping different implementations.
+ *
+ * Implementations:
+ *   - HNSWIndex (in-memory, deterministic)
+ *   - QdrantClient (cloud)
+ *   - PgVectorClient (Postgres)
+ *   - PineconeClient (cloud)
+ */
+
+interface VectorIndex {
+    /** Insert a vector into the index */
+    insert(record: VectorRecord): Promise<void>;
+    /** Search for k nearest neighbors. Similarity-only — see VectorQueryFilter. */
+    search(vector: number[], k: number, filter?: {
+        minSimilarity?: number;
+    }): Promise<VectorQueryResult[]>;
+    /** Delete a vector from the index */
+    delete(id: string): Promise<boolean>;
+    /** Get current size of index */
+    readonly size: number;
+    /** Iterate all indexed ids in insertion order — lets callers rebuild an
+     *  external id-set (e.g. the adapter's dedup/eviction set) after a load. */
+    keys?(): IterableIterator<string>;
+    /** Serialize index to bytes for persistence (optional) */
+    serialize?(): Uint8Array;
+    /** Deserialize index from bytes (optional) */
+    deserialize?(bytes: Uint8Array): Promise<void>;
+    /** Clear all entries */
+    clear(): Promise<void>;
+}
+
+interface VectorMemoryAdapter {
+    /** Index an episodic memory (called during consolidation) */
+    index(episode: EpisodicMemory, content: unknown): Promise<void>;
+    /** Index multiple episodes in batch */
+    indexBatch(episodes: Array<{
+        episode: EpisodicMemory;
+        content: unknown;
+    }>): Promise<void>;
+    /** Search for semantically similar episodes — returns ID + similarity, caller resolves from store */
+    search(query: unknown, filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
+    /** Search with embedding vector directly */
+    searchWithVector(embedding: number[], filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
+    /** Delete an episode from the index (when pruned from _store) */
+    delete(episodeId: string): Promise<void>;
+    /** Rebuild entire index from store (called on snapshot restore when no persisted index exists) */
+    rebuildFromStore(store: EpisodicMemory[]): Promise<void>;
+    /** Persist index to storage */
+    persist(): Promise<void>;
+    /** Load index from storage */
+    load(): Promise<void>;
+    /** Get current index size */
+    readonly size: number;
+}
+declare class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
+    private _index;
+    private _embedder;
+    private _storage;
+    private _persistPath;
+    private _metaPath;
+    private _maxIndexedEpisodes;
+    private _indexedIds;
+    private _dirty;
+    private _persistDebounceTimer;
+    private _minSimilarity;
+    /** Per-id access recency (insert + search hit) for LRU-style eviction. A plain
+     *  monotonic counter — not persisted; rebuilt from insertion order on load. */
+    private _accessTick;
+    private _accessClock;
+    constructor(embedder: EmbeddingProvider, config?: VectorMemoryConfig & {
+        persistPath?: string;
+    }, storage?: StorageAdapter, indexImpl?: VectorIndex);
+    /** Record that `id` was just inserted or recalled, so eviction keeps the
+     *  memories the Will actually uses (LRU) and drops the genuinely cold ones. */
+    private _touch;
+    get size(): number;
+    index(episode: EpisodicMemory, content: unknown): Promise<void>;
+    indexBatch(episodes: Array<{
+        episode: EpisodicMemory;
+        content: unknown;
+    }>): Promise<void>;
+    search(query: unknown, filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
+    searchWithVector(embedding: number[], filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
+    delete(episodeId: string): Promise<void>;
+    rebuildFromStore(store: EpisodicMemory[]): Promise<void>;
+    persist(): Promise<void>;
+    load(): Promise<void>;
+    private _evictColdest;
+    /**
+     * Throttle, NOT a debounce. The previous version cleared and re-armed the timer on
+     * every index(), so it only ever fired after 5s of complete inactivity — and a mind
+     * consolidating steadily indexes far more often than that, so the write was pushed
+     * back indefinitely and the index never reached disk while it was awake.
+     *
+     * A pending timer is now left alone: the first write after a quiet period sets the
+     * deadline, and everything indexed within the window rides along on it. Persist is
+     * bounded at 5s from the FIRST pending change rather than the last.
+     */
+    private _schedulePersist;
 }
 
 interface EnergyRegulatorConfig {
@@ -2264,6 +2737,13 @@ declare class ThreatEvaluator implements SimulationEngine, CognitiveEngine {
      * metadata.hostile === true). Updates _threatFromHostile and re-emits
      * the full threat/emotion metrics so that downstream engines always see
      * a current picture even when no bus event arrives.
+     *
+     * `threat` is a HOST SEAM, not a starved input (#114). No core engine writes
+     * one — appraisal runs entirely off this engine's six bus inputs (energy,
+     * sleep, stress, novelty, metacognition, prediction), all of which are live.
+     * A host embedding a Will in a world with actual hostile agents writes `threat`
+     * entities to make them felt. Empty here means nothing is hostile, not that
+     * nothing is wired.
      */
     react(_delta: Duration, _tick: Tick, state: ReadonlySimulationState, _context: SimulationContext): Promise<EngineResult>;
     private _computeScarcityThreat;
@@ -2820,7 +3300,6 @@ declare class WorkingMemory implements SimulationEngine, CognitiveEngine {
     private _emitEvents;
     private _items;
     private _modulatedCapacity;
-    private _currentFocusId;
     private _activeGoalCount;
     /**
      * Monotonic suffix counter for injected WM item ids. Replaces Math.random()
@@ -2861,8 +3340,10 @@ declare class WorkingMemory implements SimulationEngine, CognitiveEngine {
      */
     private _ingestGoals;
     /**
-     * Mark the currently focused entity's WM item as attended this tick.
-     * Also checks for attention.focus entities in state as a fallback.
+     * Mark the currently focused entity's WM item as attended this tick, from the
+     * `attention.focus` entities AttentionAllocator writes. (A second, bus-driven
+     * branch used to sit above this one, labelled "preferred"; the event behind it was
+     * never published, so this loop has always been the only path — see #114.)
      */
     private _applyAttention;
     /**
@@ -2876,410 +3357,6 @@ declare class WorkingMemory implements SimulationEngine, CognitiveEngine {
      */
     private _persistItems;
     private _evictIfNeeded;
-}
-
-/**
- * Embedding provider interface — abstracts different embedding models.
- *
- * Supports:
- *   - Local models (via Transformers.js or Ollama)
- *   - Cloud providers (OpenAI, Anthropic, Cohere)
- *   - Mock embedder for testing/deterministic replay
- */
-
-/** Embedding is only ever a read or a write. */
-type EmbedFunction = Extract<LLMCallFunction, 'recall' | 'index'>;
-interface EmbeddingProvider {
-    readonly modelName: string;
-    readonly dimensions: number;
-    /** Generate embedding for a single piece of content. `fn` tags the call for
-     *  cost attribution: 'recall' (query) vs 'index' (write). */
-    embed(content: unknown, fn?: string): Promise<number[]>;
-    /** Generate embeddings for multiple items (batched for efficiency). */
-    embedBatch(contents: unknown[], fn?: string): Promise<number[][]>;
-    /** Check if two embeddings are semantically equivalent (for replay validation) */
-    areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
-}
-/**
- * OpenAI-compatible embedder (works with OpenAI, Azure, LocalAI, Ollama)
- */
-declare class OpenAICompatibleEmbedder implements EmbeddingProvider {
-    readonly modelName: string;
-    readonly dimensions: number;
-    private _apiUrl;
-    private _apiKey;
-    private _maxConcurrency;
-    private _timeoutMs;
-    private _tokenTracker;
-    constructor(config: {
-        modelName: string;
-        dimensions: number;
-        apiUrl: string;
-        apiKey?: string | null;
-        /** Max embedding requests in flight at once for embedBatch(). Default 8. */
-        maxConcurrency?: number;
-        /** @deprecated use maxConcurrency — kept as its fallback for back-compat. */
-        batchSize?: number;
-        /** Per-request timeout in ms before the connection is aborted. Default 30s. */
-        timeoutMs?: number;
-        /**
-         * Per-Will token tracker. When provided, each embedding call records its
-         * input-token usage under the 'embedding' category so memory-vector spend is
-         * visible alongside LLM spend instead of being a silent cost leak.
-         */
-        tokenTracker?: TokenTracker | null;
-    });
-    embed(content: unknown, fn?: EmbedFunction): Promise<number[]>;
-    embedBatch(contents: unknown[], fn?: EmbedFunction): Promise<number[][]>;
-    areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
-}
-/**
- * Deterministic mock embedder for testing and replay.
- * Uses content hashing to produce stable embeddings.
- */
-declare class MockEmbedder implements EmbeddingProvider {
-    readonly modelName = "mock";
-    readonly dimensions = 128;
-    private _seed;
-    constructor(seed?: number);
-    embed(content: unknown, _fn?: EmbedFunction): Promise<number[]>;
-    embedBatch(contents: unknown[], fn?: EmbedFunction): Promise<number[][]>;
-    areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
-    private _hashString;
-    private _next;
-}
-
-/**
- * Vector memory types for semantic episodic retrieval.
- *
- * Provides similarity search over consolidated episodic memories
- * without replacing the existing _store array or StateManager.
- * Acts as a read-optimized secondary index.
- */
-
-interface VectorMemoryConfig {
-    /** Dimension of embedding vectors (default 1536 for OpenAI text-embedding-3-small) */
-    dimensions?: number;
-    /** Similarity metric: 'cosine', 'euclidean', or 'dot' */
-    similarityMetric?: 'cosine' | 'euclidean' | 'dot';
-    /** Maximum number of episodes to index (older entries evicted) */
-    maxIndexedEpisodes?: number;
-    /** Minimum similarity threshold for query results (0-1). Default 0.35, tuned
-     *  for real sentence embeddings (text-embedding-3-small); raise for higher
-     *  precision. */
-    minSimilarity?: number;
-    /** Seed for the index's level-assignment PRNG — required for deterministic replay */
-    seed?: number;
-}
-interface VectorRecord {
-    id: string;
-    vector: number[];
-    embeddingModel: string;
-    createdAt: number;
-    metadata: {
-        tick: Tick;
-        sourceType: string;
-        /** Encode-time affective valence (-1..1). Stamped here so index backends that
-         *  CAN filter/rank on metadata (pgvector, Qdrant) may do affective filtering
-         *  server-side. The HNSW path is similarity-only, so its mood-congruent recall
-         *  (EpisodicConsolidator.semanticQuery affectiveBias) re-ranks on the
-         *  authoritative resolved-episode valence instead. */
-        emotionalValence: number;
-        tags: string[];
-    };
-}
-interface VectorQueryResult {
-    episodeId: string;
-    similarity: number;
-}
-/**
- * Query knobs for vector search.
- *
- * The HNSW index is **similarity-only**: it ranks by vector distance and
- * applies a `minSimilarity` floor, nothing else. Metadata is stored on
- * VectorRecord but is NOT indexed, so any metadata-based narrowing
- * (sourceType / valence / tags / tick range) must be done by the caller
- * AFTER the search returns. See episodic.consolidator.semanticQuery.
- */
-interface VectorQueryFilter {
-    minSimilarity?: number;
-    maxResults?: number;
-}
-
-/**
- * Vector index interface — allows swapping different implementations.
- *
- * Implementations:
- *   - HNSWIndex (in-memory, deterministic)
- *   - QdrantClient (cloud)
- *   - PgVectorClient (Postgres)
- *   - PineconeClient (cloud)
- */
-
-interface VectorIndex {
-    /** Insert a vector into the index */
-    insert(record: VectorRecord): Promise<void>;
-    /** Search for k nearest neighbors. Similarity-only — see VectorQueryFilter. */
-    search(vector: number[], k: number, filter?: {
-        minSimilarity?: number;
-    }): Promise<VectorQueryResult[]>;
-    /** Delete a vector from the index */
-    delete(id: string): Promise<boolean>;
-    /** Get current size of index */
-    readonly size: number;
-    /** Iterate all indexed ids in insertion order — lets callers rebuild an
-     *  external id-set (e.g. the adapter's dedup/eviction set) after a load. */
-    keys?(): IterableIterator<string>;
-    /** Serialize index to bytes for persistence (optional) */
-    serialize?(): Uint8Array;
-    /** Deserialize index from bytes (optional) */
-    deserialize?(bytes: Uint8Array): Promise<void>;
-    /** Clear all entries */
-    clear(): Promise<void>;
-}
-
-interface VectorMemoryAdapter {
-    /** Index an episodic memory (called during consolidation) */
-    index(episode: EpisodicMemory, content: unknown): Promise<void>;
-    /** Index multiple episodes in batch */
-    indexBatch(episodes: Array<{
-        episode: EpisodicMemory;
-        content: unknown;
-    }>): Promise<void>;
-    /** Search for semantically similar episodes — returns ID + similarity, caller resolves from store */
-    search(query: unknown, filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
-    /** Search with embedding vector directly */
-    searchWithVector(embedding: number[], filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
-    /** Delete an episode from the index (when pruned from _store) */
-    delete(episodeId: string): Promise<void>;
-    /** Rebuild entire index from store (called on snapshot restore when no persisted index exists) */
-    rebuildFromStore(store: EpisodicMemory[]): Promise<void>;
-    /** Persist index to storage */
-    persist(): Promise<void>;
-    /** Load index from storage */
-    load(): Promise<void>;
-    /** Get current index size */
-    readonly size: number;
-}
-declare class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
-    private _index;
-    private _embedder;
-    private _storage;
-    private _persistPath;
-    private _metaPath;
-    private _maxIndexedEpisodes;
-    private _indexedIds;
-    private _dirty;
-    private _persistDebounceTimer;
-    private _minSimilarity;
-    /** Per-id access recency (insert + search hit) for LRU-style eviction. A plain
-     *  monotonic counter — not persisted; rebuilt from insertion order on load. */
-    private _accessTick;
-    private _accessClock;
-    constructor(embedder: EmbeddingProvider, config?: VectorMemoryConfig & {
-        persistPath?: string;
-    }, storage?: StorageAdapter, indexImpl?: VectorIndex);
-    /** Record that `id` was just inserted or recalled, so eviction keeps the
-     *  memories the Will actually uses (LRU) and drops the genuinely cold ones. */
-    private _touch;
-    get size(): number;
-    index(episode: EpisodicMemory, content: unknown): Promise<void>;
-    indexBatch(episodes: Array<{
-        episode: EpisodicMemory;
-        content: unknown;
-    }>): Promise<void>;
-    search(query: unknown, filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
-    searchWithVector(embedding: number[], filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
-    delete(episodeId: string): Promise<void>;
-    rebuildFromStore(store: EpisodicMemory[]): Promise<void>;
-    persist(): Promise<void>;
-    load(): Promise<void>;
-    private _evictColdest;
-    private _schedulePersist;
-}
-
-interface EpisodicConsolidatorConfig {
-    /** Threshold above which a WM item is consolidated */
-    consolidationThreshold?: number;
-    /** How much emotional intensity boosts consolidation (multiplier) */
-    emotionBoost?: number;
-    /** Maximum episodes to consolidate per tick */
-    maxPerTick?: number;
-    /** Optional vector memory adapter for semantic search */
-    vectorMemory?: VectorMemoryAdapter;
-    /** Optional embedding provider (required if vectorMemory provided) */
-    embedder?: EmbeddingProvider;
-    /** Whether to automatically index episodes (default true) */
-    autoIndex?: boolean;
-    bus?: CognitiveBus;
-}
-interface EpisodicMemory {
-    id: string;
-    timestamp: Tick;
-    content: unknown;
-    emotionalTags: Record<string, number>;
-    affectiveContext: {
-        valence: number;
-        arousal: number;
-        dominance: number;
-    };
-    activationStrength: number;
-    retrievalCount: number;
-    lastRetrievedAt: Tick | null;
-    tags: string[];
-    sourceType: string;
-    /** Wall-clock ms at the moment the episode was first consolidated. */
-    createdAt: number;
-    /**
-     * Outcome lifecycle of the originating action/intent:
-     *   'intended'  — goal or plan was formed but not yet attempted
-     *   'attempted' — action was dispatched; outcome unknown at consolidation time
-     *   'confirmed' — action was confirmed successful (e.g. message delivered)
-     *   'failed'    — action failed, timed out, or was abandoned
-     */
-    outcomeStatus?: 'intended' | 'attempted' | 'confirmed' | 'failed';
-}
-declare class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
-    readonly name = "episodic-consolidator";
-    private _consolidationThreshold;
-    private _emotionBoost;
-    private _maxPerTick;
-    private _store;
-    private _storeMap;
-    private _restored;
-    /** Ticks between full-store state syncs (captures decay / dream mutations).
-     *  Must be ≤ SnapshotManager.persistInterval (default 15) so every persisted
-     *  snapshot contains up-to-date episode values. */
-    private readonly _syncInterval;
-    private _ticksSinceSync;
-    private _affectValence;
-    private _affectArousal;
-    private _affectDominance;
-    private _bus;
-    private _vectorMemory;
-    private _embedder;
-    private _autoIndex;
-    private readonly _model;
-    constructor(config?: EpisodicConsolidatorConfig);
-    attachBus(bus: CognitiveBus): void;
-    private _readConfigFromState;
-    subscribes(): string[];
-    publishes(): CognitiveEventSchema[];
-    onCognitiveEvent(e: CognitiveEvent): StateCommands | void;
-    snapshot(): Record<string, unknown>;
-    react(_delta: Duration, tick: Tick, state: ReadonlySimulationState, context: SimulationContext): Promise<EngineResult>;
-    /**
-     * Query episodic memory by tags, time range, or emotional context.
-     */
-    query(filters: {
-        tags?: string[];
-        fromTick?: Tick;
-        toTick?: Tick;
-        minEmotion?: string;
-        limit?: number;
-    }): EpisodicMemory[];
-    /**
-     * Semantic query via vector memory.
-     * Returns episodes with content semantically similar to the query.
-     * Requires vectorMemory adapter to be configured.
-     *
-     * Similarity ranking, with optional mood-congruent re-ranking: when
-     * `affectiveBias` is supplied, results are re-scored by blending embedding
-     * similarity with affective congruence between the caller's current valence
-     * and each episode's encoded valence (`affectiveContext.valence`) — modelling
-     * mood-congruent recall (Bower). Similarity still dominates at low weights. To
-     * let affect promote a congruent-but-slightly-less-similar memory, we
-     * over-fetch candidates and re-rank before truncating to `limit`.
-     *
-     * Other metadata narrowing (sourceType / tags) remains the caller's job on the
-     * returned episodes (which carry all metadata).
-     */
-    semanticQuery(query: unknown, filters?: {
-        minSimilarity?: number;
-        limit?: number;
-        /** Mood-congruent re-ranking: target valence [-1,1] + blend weight [0,1]. */
-        affectiveBias?: {
-            valence: number;
-            weight: number;
-        };
-    }): Promise<EpisodicMemory[]>;
-    /**
-     * Mark an episode as retrieved (boosts its strength slightly).
-     *
-     * Immutable replace (mirrors applyDecay): other engines may already hold a
-     * reference to this episode this tick, so we update a copy in both _store and
-     * _storeMap rather than mutating the shared object underneath them. The bumped
-     * retrievalCount is the load-bearing field — it unlocks the ForgettingCurve's
-     * retrievalBoost, so memories that are actively recalled decay slower than
-     * ones that are never used.
-     */
-    markRetrieved(episodeId: string, tick: Tick): void;
-    /**
-     * Get all episodes (for serialization / replay).
-     */
-    getAllEpisodes(): ReadonlyArray<EpisodicMemory>;
-    /**
-     * Permanently remove decayed episodes from the store, the id index, and the
-     * vector index. The consolidator owns the store, so the ForgettingCurve asks
-     * it to prune rather than mutating the store itself. Returns the ids that
-     * were actually present and removed, so the caller can emit matching state
-     * deletions. Removal is order-deterministic for replay.
-     */
-    /**
-     * Apply decayed activation strengths computed by the ForgettingCurve.
-     *
-     * The consolidator owns the episode store, so decay is committed here rather
-     * than written onto the live objects the curve borrowed via getAllEpisodes()
-     * — those references may already be held by other engines this tick. Each
-     * changed episode is replaced with an updated copy (immutable update), so
-     * previously handed-out references are not mutated underneath their holders.
-     */
-    applyDecay(updates: ReadonlyMap<string, number>): void;
-    /**
-     * Commit dream-state mutations computed by the DreamSimulator — reactivation
-     * boosts (activationStrength), REM emotional dampening (emotionalTags), and
-     * creative-recombination tag cross-pollination (tags).
-     *
-     * Like applyDecay, the consolidator owns the store, so the simulator computes
-     * the new field values on its own working copies and hands them here for an
-     * immutable replace, rather than mutating the shared episode objects it
-     * borrowed via getAllEpisodes() — those references may be held by other
-     * engines this tick. Only the fields present in each entry are replaced.
-     */
-    applyDreamUpdates(updates: ReadonlyMap<string, {
-        activationStrength?: number;
-        emotionalTags?: Record<string, number>;
-        tags?: string[];
-    }>): void;
-    pruneEpisodes(ids: Iterable<string>): Promise<string[]>;
-    /**
-     * Force an immediate full sync of all in-memory episodes to StateCommands.
-     *
-     * Called at session end (pauseWill / archiveWill) to guarantee that episode
-     * mutations accumulated since the last periodic sync — activationStrength
-     * decay, emotionalTag dampening, retrieval counts — are captured in the
-     * final persisted snapshot.  Without this, any session that ends between
-     * two scheduled sync ticks loses those mutations on the next cold-start.
-     */
-    flushToState(): StateCommands;
-    /**
-     * Restore episodes from snapshot (for replay).
-     */
-    restoreEpisodes(episodes: EpisodicMemory[]): void;
-    /**
-     * Serialize one episode into a StateCommands entity write.
-     * Used both at creation time and during periodic sync.
-     */
-    private _episodeToEntity;
-    /**
-     * Rehydrate _store from 'episodic_memory' entities in state.
-     * Called once on first tick after snapshot restore.
-     * Also rebuilds vector index if configured.
-     */
-    private _restoreFromState;
-    private _findCandidates;
-    private _readCurrentEmotions;
-    private _computeEmotionalIntensity;
 }
 
 /** Forwards each entry to the consumer (the stem bridges it onto the transport). */
@@ -3726,6 +3803,19 @@ declare class GoalManager implements SimulationEngine, CognitiveEngine {
      * "learn" ↔ "learning").
      */
     private _nudgeActionGoals;
+    /**
+     * Somebody answered. Advance the action goals that were about reaching them.
+     *
+     * Linked the way every other goal→person link in the system is linked: the
+     * `keid:<id>` tag (selection.scoring's `collectGoalTargets` reads the same one
+     * to lift a reach-out's goal relevance) or `requestingEntityId`, set when a
+     * conversation escalation created the goal. Nothing here guesses from wording.
+     *
+     * Unmatched by design: a goal with no link to this person gets nothing, even if
+     * it is tagged 'communication'. Being answered by one person is not progress on
+     * wanting to talk to another.
+     */
+    private _nudgeAnsweredGoals;
     /** True when a metric completionCondition (e.g. "emotion.boredom < 40") is already met. */
     private _isConditionMet;
     private _evaluateMetricProgress;
@@ -4019,6 +4109,8 @@ interface RoutingRule {
     category?: LLMCallMeta['category'];
     /** Match `LLMCallMeta.attribute` exactly (e.g. 'master', 'facet', 'guard'). */
     attribute?: LLMCallMeta['attribute'];
+    /** Match `LLMCallMeta.process` exactly (e.g. 'decision', 'ideation'). */
+    process?: LLMCallMeta['process'];
     /** Match `LLMCallMeta.function` exactly (e.g. 'decision', 'consolidation'). */
     function?: LLMCallMeta['function'];
     /**
@@ -4189,6 +4281,8 @@ interface LLMCallMeta {
     category: LLMCallCategory;
     /** The actor/subsystem doing the work. */
     attribute: LLMCallAttribute;
+    /** The specific cognitive function. */
+    process: LLMCallProcess;
     /** The specific cognitive function. */
     function: LLMCallFunction;
     /** Optional specific id or namespace: facet id, entity id, model name. */
@@ -4485,6 +4579,18 @@ interface ExecutiveOutputFull {
         name?: string;
         learned?: string[];
         feeling?: number;
+        /**
+         * "This is the same someone as that" — another keid I now believe is this
+         * same referent, fusing two of my records into one.
+         *
+         * The mind's own verdict on an identity, and it may do what the recognition
+         * heuristic will not: absorb an ESTABLISHED relationship. The heuristic is
+         * right to refuse — fusing two real people who share a name would take one of
+         * them's whole history — but the mind has evidence a name-match does not,
+         * usually because somebody just told it. Without this, the same human
+         * well-established on two channels stayed two people permanently.
+         */
+        sameAs?: string;
     }>;
     newGoals?: Array<{
         description: string;
@@ -4503,6 +4609,8 @@ interface ExecutiveOutputFull {
         reason: string;
     }>;
     selfObservations?: string[];
+    /** Compound actions the mind is naming as single skills (see ProposedSkill). */
+    newSkills?: ProposedSkill[];
     /**
      * Plain-text reply from a conversation facet — populated by parseResponse()
      * from the [REPLY_TEXT]...[/REPLY_TEXT] block.
@@ -4510,6 +4618,11 @@ interface ExecutiveOutputFull {
      * Paragraphs (double-newline separated) map to separate reply bubbles.
      */
     replyText?: string;
+    /**
+     * Set when the facet declared it is NOT speaking this cycle, carrying why.
+     * Present ⇒ nothing is sent, whatever else the response contains.
+     */
+    noMessage?: string;
     /**
      * @deprecated Legacy JSON reply format — no longer emitted by conversation facets.
      * Kept for backward compatibility with any tests/tooling that inspect parsed output.
@@ -4558,6 +4671,24 @@ interface ExecutiveEngineConfig$1 {
     executiveInterval?: number;
     cooldownTicks?: number;
     bus?: CognitiveBus;
+}
+/**
+ * A compound action the mind names as one thing it does — "when I do A then B,
+ * that is <name>". Registered into the SchemaRepertoire as a composite, after
+ * which it competes as a single affordance and can proceduralize into a habit.
+ *
+ * This is the creation seam for the instrumental→habitual gradient. Before it,
+ * `agency.composite.proposed` was subscribed by ReafferenceEngine — whose handler
+ * is the only caller of `registerComposite()` anywhere — and published by nothing,
+ * so no Will could ever hold a skill beyond the innate floor (#114).
+ */
+interface ProposedSkill {
+    /** What the mind calls it. Becomes the schema id. */
+    id: string;
+    /** The sub-schemas it is made of, in order. Two or more, or it is not compound. */
+    composedOf: string[];
+    tags?: string[];
+    cost?: number;
 }
 
 /**
@@ -4647,6 +4778,18 @@ interface FocusSection {
      */
     awarenessEntityId?: string;
     /**
+     * Optional: WHO this facet is engaged with — the keid and the name the mind has
+     * learned for them. Reported back to the master on every `executive.facet.sync`.
+     *
+     * Without it the master was told, in its own system prompt, that "focused facets
+     * may run simultaneously… their reasoning syncs back to me" while the sync payload
+     * carried only a facetId and a confidence number — so a mind holding two live
+     * conversations could not tell you whose they were. The master is the singular
+     * seat: it has to know who is at the table to reason about them together.
+     */
+    subjectEntityId?: string;
+    subjectName?: string;
+    /**
      * Optional: Provided by the creating engine to convert the LLM's parsed output
      * into a domain-specific decision payload.
      *
@@ -4672,6 +4815,18 @@ interface FacetReport {
     contextId?: string;
     /** Optional dynamic instructions to append to the user message */
     instructions?: string;
+    /**
+     * Attend to something else for THIS report only, leaving the facet's standing
+     * focus untouched.
+     *
+     * A facet's focus was a single mutable field, so anything that wanted a live
+     * facet to consider one different thing had to `setFocus()` first — clobbering
+     * whatever the facet was already set up for, and racing with any report already
+     * queued behind it. That is why a self-initiated message to someone the mind was
+     * ALREADY talking to had to be composed by a separate, transient facet that could
+     * not see the live conversation at all.
+     */
+    focus?: FocusSection;
 }
 interface FacetDecision {
     facetId: string;
@@ -4681,6 +4836,16 @@ interface FacetDecision {
     decision: unknown;
     reasoning: string;
     confidence: number;
+    /**
+     * Sim tick this decision was reasoned at.
+     *
+     * The facet has always known it and never passed it on, so a subscriber writing
+     * state in response had no deterministic clock and reached for a process-local
+     * counter instead — which resets on restart and collides. Never wall-clock: this
+     * reaches ids that live in state, and a wall-clock id makes recorded and replayed
+     * runs diverge (R2).
+     */
+    tick: number;
 }
 type FacetEventListener = (decision: FacetDecision) => void;
 interface ExecutiveFacetHandle {
@@ -4714,6 +4879,44 @@ interface ExecutiveFacetHandle {
     onReaped: (handler: () => void) => void;
 }
 
+/**
+ * DeliberationCache — types and contracts.
+ *
+ * The cache stores past executive outputs keyed by a deterministic
+ * cognitive fingerprint. It is pure, deterministic, and R2-safe:
+ * the same state + same history ⇒ same retrieval + same composition.
+ *
+ * Scope note: Phase 1 caches the ACTIONS block only. The composed output
+ * is a valid `ExecutiveOutputFull` carrying the three required fields
+ * (actions, reasoning, confidence) plus whatever optional blocks the
+ * enabled scopes cover. Everything else stays undefined and the existing
+ * downstream (`buildStateCommands`) treats it as "nothing to do", which is
+ * exactly the intended Phase-1 behaviour.
+ */
+
+/** Which blocks of the executive output the cache may synthesise. */
+type CacheScope = 'actions' | 'goals' | 'beliefs';
+interface DeliberationCacheConfig {
+    /** Maximum patterns to retain. Lowest (competence × recency) evicted when full. */
+    maxPatterns?: number;
+    /** Neighbors retrieved for composition. */
+    k?: number;
+    /** Minimum similarity for a stored pattern to count as a neighbor. */
+    minSimilarity?: number;
+    /** Confidence threshold θ — cache hit requires ρ ≥ θ. Start conservative. */
+    theta?: number;
+    /** Temperature for softmax weights over neighbors. */
+    tau?: number;
+    /** Learning rate (EMA) for competence updates. */
+    eta?: number;
+    /** Competence decay per executive cycle (applied via decay()). */
+    decayPerCycle?: number;
+    /** Verify 1-in-N cache hits against the LLM (0 = never). */
+    verifyEveryNHits?: number;
+    /** Which output blocks to synthesise. Phase 1 default: ['actions']. */
+    scopes?: CacheScope[];
+}
+
 interface ExecutiveEngineConfig {
     executiveInterval?: number;
     cooldownTicks?: number;
@@ -4727,12 +4930,17 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     private _consumedBufferEntries;
     private _llmDirector;
     private _testMode;
-    private _messageQueue;
     private _recentActionTypes;
     private _coherenceVersion;
     private _lastEpistemicUncertainty;
     private _lastExecutiveOutput;
     private _lastExecutiveTick;
+    private _cache;
+    private _cacheRestored;
+    private _pendingVerify;
+    private _lastCacheHit;
+    private _lastCacheConfidence;
+    private _lastCacheNeighborCount;
     private _willId;
     /**
      * The Will's default model (config.model's `executive` role, resolved in
@@ -4754,11 +4962,28 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     private _inbox;
     private _tokenTracker;
     private readonly _facetSupervisor;
-    private _facetSyncSubscribed;
+    /**
+     * Who each live facet is engaged with, learned from `executive.facet.sync`.
+     * Keyed by facetId; the last sync wins. Rendered into the master's own prompt so
+     * the singular seat can reason across its conversations "as if they were sitting
+     * at the same table" — which it cannot do while it only knows facet numbers.
+     * Stale entries age out on read (see _activeConversations).
+     */
+    private _facetSubjects;
     private readonly _model;
     private readonly _generativeModel;
     private _summarizerRestored;
     private _lastStateRef;
+    /**
+     * The tick currently being processed, refreshed every react() — distinct from
+     * `_lastStateRef` (which tracks the REASONING tick and must not move under
+     * onReasoningComplete) and from `_lastExecutiveTick` (the last cycle that ran).
+     *
+     * Off-tick arrivals — a facet handoff, in particular — need to be stamped with
+     * when they actually happened. Using `_lastExecutiveTick` for that dated them to
+     * the last master cycle, which can be hundreds of ticks behind.
+     */
+    private _currentTick;
     private readonly _deferred;
     private _chunkBroadcaster;
     private readonly _escalations;
@@ -4853,10 +5078,22 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * spawn site sets a focus whose `function` matches its role — so the routed
      * answer is the same one, decided later and from the work itself.
      */
-    spawnFacet(role?: 'deliberation' | 'conversation' | 'outreach' | 'supervision'): {
+    spawnFacet(role?: 'deliberation' | 'conversation' | 'outreach' | 'supervision', 
+    /**
+     * What this facet is FOR — see `FacetSpawnDeps.key`. Two spawns with the same
+     * key get the same facet, so callers no longer each invent their own dedup
+     * (and `authorOutreach`, which had none, no longer opens a rival facet on a
+     * person the mind is already talking to).
+     */
+    key?: string): {
         attention: 'available' | 'full';
         handle?: ExecutiveFacetHandle;
     };
+    /**
+     * The facet already attending to `key`, if one is open — without spawning.
+     * See FacetSupervisor.handleFor.
+     */
+    facetFor(key: string): ExecutiveFacetHandle | undefined;
     subscribes(): string[];
     publishes(): CognitiveEventSchema[];
     snapshot(): Record<string, unknown>;
@@ -4868,12 +5105,119 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * its `executive.last_tick` metric reflects whether our prior commands landed.
      */
     react(delta: Duration, tick: Tick, state: ReadonlySimulationState, context: SimulationContext): Promise<EngineResult>;
+    /**
+     * What the mind is attending to because a facet is reasoning about it, as
+     * `attention.demand` entities the AttentionAllocator allocates real capacity
+     * against (`_extractSalienceSignals` reads this type; `costPerFocus` is then
+     * charged against the same 100-unit budget as perceptual foci).
+     *
+     * This closes a loop that was open in one direction only: the allocator's
+     * `freeFraction` scaled the facet budget, but facets never appeared in
+     * `_activeFocus`, so holding three conversations reported exactly as much spare
+     * attention as holding none. The budget was being scaled by a signal blind to the
+     * thing it was bounding.
+     *
+     * `urgency` sits below 1 on purpose: a live conversation is a genuine claim on
+     * attention but must not automatically outrank every percept — the allocator sorts
+     * candidates by salience into `maxFoci` slots, and a facet that always won would
+     * starve perception. Only BUSY facets are charged; an open-but-quiet thread is one
+     * the mind is in, not one it is attending to.
+     */
+    private _facetAttentionDemands;
     protected shouldAct(state: ReadonlySimulationState, tick: Tick, _context: SimulationContext): boolean;
     protected readState(state: ReadonlySimulationState, tick: Tick): ReasoningFootprint;
     protected reasonAsync(footprint: ReasoningFootprint, state: ReadonlySimulationState, context: SimulationContext, stream: IntermediateStream): Promise<unknown>;
     protected onIntermediateResult(step: string, result: unknown, _footprint: ReasoningFootprint, _context: SimulationContext): StateCommands | null;
     protected onReasoningComplete(output: unknown, footprint: ReasoningFootprint, _context: SimulationContext): StateCommands;
-    private _ensureFacetSyncSubscription;
+    /**
+     * The people the mind is in conversation with right now, newest first.
+     *
+     * Pruned against the supervisor's live facets on every read: a reaped facet is a
+     * conversation that has ended, and a master that still believes it is mid-thread
+     * with someone reasons about a table that is no longer there.
+     */
+    private _activeConversations;
+    /**
+     * Facet sync — remember WHO each facet is with, and wake the master.
+     *
+     * Reached from `onCognitiveEvent`, NOT from its own `bus.subscribe`. The bus
+     * stores one subscription per engineId (`_subscriptions.set( engineId, … )`),
+     * so a second `subscribe(this.name, …)` silently REPLACES the first — and the
+     * orchestrator registers `subscribe( engine.name, engine.subscribes(), … )`
+     * after `attachBus`, which replaced everything registered here. Two dedicated
+     * handlers used to be installed at this point; the second overwrote the first
+     * and the orchestrator then overwrote that, so neither ever ran. The escalation
+     * leg had been dead in production for its whole life: a facet could escalate,
+     * the audition engine published, and nothing was listening.
+     */
+    /**
+     * Retire undertakings the mind has already honoured, and refuse to restate one
+     * it is already carrying.
+     *
+     * An undertaking percept says, in the first person, "I said I would reach X and
+     * nothing has gone to them yet". That sentence has to stop being true at some
+     * point, and nothing made it stop. Measured on a live Will: SEVEN of them
+     * accumulated in state, every one still asserting nothing had been sent, while
+     * a `conversation.sent` to that person sat right beside them. She read seven
+     * standing unfulfilled promises every cycle and dutifully sent the same message
+     * again, five times in five minutes and once more in the next session — the
+     * percept meant to stop her forgetting a promise was making her unable to
+     * believe she had kept it.
+     *
+     * Discharged by EVIDENCE, not by a timer: a `conversation.sent` to that target,
+     * written no earlier than the undertaking, means the contact happened. That
+     * record is durable and snapshots with the state, so the discharge survives a
+     * restart exactly as the promise does — which the tick-scoped satiation in
+     * `enactionFootprint` deliberately cannot.
+     *
+     * It stays a decision, not an erasure. Retiring the percept removes the standing
+     * claim that the words are unsent; whether to say more to that person is then an
+     * ordinary competition like any other.
+     */
+    private _reconcileUndertakings;
+    private _onFacetSync;
+    /**
+     * A focused part of me surfaced something the singular seat owns — work to plan
+     * (`escalation`) or an intention toward a third party (`undertaking`).
+     *
+     * ONE handler for every facet type. This was `_onAuditionTaskSignal`, listening
+     * on a topic named for one sense engine and typed with one sense engine's nouns
+     * (`entityId`, `threadId`), which meant a planning, supervision or deliberation
+     * facet had no way to hand anything up at all. See EscalationBuffer for the full
+     * rationale; new kinds go in `HandoffBody`, not in a new topic and a new handler
+     * beside this one.
+     *
+     * Master stays out of the reply path entirely:
+     *   • The facet has already said (or will say) whatever the person in front of
+     *     it needed to hear.
+     *   • The master's job is purely cognitive: create a [PLANS] block, update
+     *     goals, reflect, or decide whether it still means to make that contact.
+     *     Any follow-up communication flows through the agency competition —
+     *     NEVER via [REPLY].
+     *
+     * Buffered rather than written directly: state is read-only here, so
+     * `EscalationBuffer.drainToPercepts()` emits it as a StateCommand on the next
+     * master cycle, where Exteroception surfaces it under "## Percepts (What I Notice)".
+     */
+    private _onFacetHandoff;
+    /** Enable the deliberation cache (off by default). Call during mind assembly. */
+    enableCache(config?: DeliberationCacheConfig): void;
+    /** True when the cache is active. */
+    get cacheEnabled(): boolean;
+    /** Telemetry snapshot for harnesses / eval. Null when disabled. */
+    cacheStats(): {
+        size: number;
+        hits: number;
+        misses: number;
+    } | null;
+    /**
+     * Reafference hook — update cache competence from a confirmed action outcome.
+     * Optional, layered on top of the inline verify loop. Reward follows the
+     * research sketch: mean of (action succeeded, stress relief, goal progress).
+     */
+    onActionOutcome(state: ReadonlySimulationState, tick: Tick, success: boolean, stressDelta: number, goalProgressDelta: number): void;
+    private _actionTypesMatch;
+    private _restoreDeliberationCache;
     private _restoreSummarizer;
 }
 
@@ -5236,6 +5580,8 @@ declare class SelfModelUpdater extends AsyncEngine implements CognitiveEngine {
     private _affectObservations;
     private _bus;
     private _semanticIntegrator;
+    /** The reasoning tick's state — onReasoningComplete needs it to merge identity. */
+    private _lastStateRef;
     private readonly _model;
     constructor(config?: SelfModelUpdaterConfig);
     attachBus(bus: CognitiveBus): void;
@@ -5815,6 +6161,19 @@ interface Reputation {
     negativeInteractions: number;
     lastInteractionTick: Tick;
     confidence: number;
+    /**
+     * Everything the mind has OBSERVED about this person, acts and silences alike.
+     *
+     * `interactionCount` counts acts, and only acts — a silence must never inflate
+     * it or the mind remembers conversations that never happened. But confidence is
+     * about how much evidence a read rests on, and a silence is evidence. Counting
+     * only acts meant someone who never answers could never be confidently known as
+     * someone who never answers, which is precisely the read worth holding.
+     *
+     * Rises in lockstep with `interactionCount` on the interaction path, so a mind
+     * that has only ever been spoken to behaves exactly as it did before.
+     */
+    observations: number;
 }
 declare class ReputationTracker implements SimulationEngine, CognitiveEngine {
     readonly name = "reputation-tracker";
@@ -5826,6 +6185,8 @@ declare class ReputationTracker implements SimulationEngine, CognitiveEngine {
     /** True after reputations have been rehydrated from persisted state on first tick. */
     private _restored;
     private _pendingInteractions;
+    /** Whether someone answered when the mind spoke to them (ReafferenceEngine). */
+    private _pendingResponsiveness;
     private _bus;
     private readonly _model;
     constructor(config?: ReputationTrackerConfig);
@@ -5845,6 +6206,36 @@ declare class ReputationTracker implements SimulationEngine, CognitiveEngine {
     private _restoreFromState;
     private _getOrCreate;
     private _prune;
+}
+
+/**
+ * A way this referent has been reachable, and what happened there.
+ *
+ * `kind` is the one fact that decides whether a room is the right place for a
+ * given utterance, and it was being computed at the Discord edge (`isDM`) and
+ * discarded before the mind could see it.
+ *
+ * `lastAnsweredTick` is evidence, not configuration — it arrives free from the
+ * `social.responsiveness` signal. It is what lets the mind prefer the DM because
+ * that is where this person actually answers, rather than because a constant in
+ * the code says DMs rank higher.
+ */
+interface Handle {
+    /** The transport address — what a channel bridge can actually deliver to. */
+    keid: string;
+    /**
+     * 'dm' — a private thread. 'room' — somewhere others are listening. Left open
+     * for a non-social referent, where the meaningful distinction is a different one.
+     */
+    kind: 'dm' | 'room' | 'unknown';
+    /** The place this handle lives in, once places are dossiers of their own. */
+    place?: string;
+    /** When the mind last SAID something here. */
+    lastUsedTick?: Tick;
+    /** When someone last answered it here — the only evidence that this route works. */
+    lastAnsweredTick?: Tick;
+    /** Free-form, so a host can mark what its own vocabulary cares about. */
+    tags?: string[];
 }
 
 /**
@@ -5901,6 +6292,31 @@ interface KnownEntity {
     lastSeenTick: Tick;
     /** 0–1: how identified/coherent this referent is (a name + repeated encounters raise it). */
     resolutionConfidence: number;
+    /**
+     * The ways this referent has been reachable, with the circumstances.
+     *
+     * Distinct from an ALIAS, and the distinction is load-bearing: an alias is
+     * another NAME for the same referent (a transport user id), a handle is a
+     * PLACE it can be reached (a thread, a room). One person has one identity and
+     * several rooms, and conflating them is what made "which room should I say
+     * this in?" unaskable.
+     */
+    handles: Handle[];
+    /**
+     * Referents this one MIGHT be the same someone as, unresolved.
+     *
+     * A blocked merge used to vanish. `_recognise` will only absorb a THIN handle
+     * into an established relationship — rightly, because fusing two real people
+     * who share a name is the dangerous direction — so once the same human was
+     * well-established on two channels they stayed two people permanently, and
+     * nothing anywhere recorded the near-miss.
+     *
+     * A person does not silently fail here. They NOTICE — "hang on, is this the
+     * same Mara?" — and then resolve it by asking. So the doubt is kept, shown, and
+     * left for the mind to settle. Deliberately not a merge: this is a question,
+     * and the answer is the mind's to give.
+     */
+    suspectedSameAs?: string[];
 }
 declare class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     readonly name = "known-entity-tracker";
@@ -5916,6 +6332,13 @@ declare class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     private _pendingEncounters;
     private _pendingConscious;
     private _pendingOutcomes;
+    /**
+     * Aliases minted this tick, awaiting persistence. `_getOrCreate` runs deep inside
+     * the drain loops with no access to the command list, and an alias that lives
+     * only in memory is one the mind forgets on restart — every transport address
+     * would mint a SECOND anchor next boot and the person would fork in two.
+     */
+    private _mintedAliases;
     private _bus;
     private readonly _model;
     constructor(config?: KnownEntityTrackerConfig);
@@ -5932,7 +6355,31 @@ declare class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     snapshot(): Record<string, unknown>;
     react(_delta: Duration, tick: Tick, state: ReadonlySimulationState, _ctx: SimulationContext): Promise<EngineResult>;
     /** The dossier for a referent, if the Will has one. */
+    /**
+     * The dossier for anything that names this referent — its anchor, or any address
+     * it has been met at.
+     *
+     * Alias-aware because a caller has no business knowing the anchor. This read
+     * `_dossiers.get(keid)` raw, so the moment addresses became aliases of a minted
+     * anchor, every caller holding a transport id got `undefined` — the mind would
+     * have looked up someone it knows perfectly well and found a stranger. The
+     * existing Phase-4 tests caught it, which is exactly what they are for.
+     */
     getDossier(keid: string): KnownEntity | undefined;
+    /**
+     * Absorb `alias` into `canon` — one someone where there were two.
+     *
+     * Shared by the recognition heuristic and by the mind's own `sameAs` verdict,
+     * because "these are the same person" must mean the same thing whichever
+     * concluded it. The only difference is who is ENTITLED to conclude it: the
+     * heuristic will not absorb an established relationship, the mind may, because
+     * it has reasons a name-match does not — usually that somebody just told it.
+     *
+     * Routes MOVE. This used to delete the absorbed dossier and keep only a
+     * redirect, so the mind concluded "same person" and in the same breath threw
+     * away the second way to reach them.
+     */
+    private _fuse;
     /** Resolution confidence: a learned name plus repeated encounters identify a referent. */
     private _resolution;
     /**
@@ -5940,8 +6387,35 @@ declare class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
      * true if any merge happened. Pure + deterministic.
      */
     private _recognise;
+    /**
+     * The dossier for a referent, minting its anchor the first time it is met.
+     *
+     * A transport address arriving here (`discord:1019…`) is not an identity, it is
+     * a way the world happened to name someone. So it becomes an ALIAS of a fresh
+     * `ke:` anchor, and the dossier lives under the anchor. Everything downstream —
+     * reputation, theory-of-mind, attachment, goals, the PMA — keeps working
+     * untouched: it still sees one opaque string per referent, which is simply no
+     * longer a route. The same human met later on another channel resolves to this
+     * same anchor instead of becoming a second person nobody could connect.
+     */
     private _getOrCreate;
     /** Keep the most-familiar dossiers; absence-faded acquaintances fall away (forgetting). */
+    /**
+     * Forget the least-held referents when over capacity.
+     *
+     * Ranked by more than exposure, deliberately. This sorted on `familiarity`
+     * alone, which is MERE EXPOSURE — and now that a referent need not be a person
+     * (a document, a repo, a room), things get far more exposure than people do. A
+     * mind that touched sixty files would have evicted a colleague it speaks to
+     * weekly in favour of a config file it opened a lot, silently, taking that
+     * person's reputation, theory-of-mind model and attachment bond with it.
+     *
+     * So a referent the mind has actually got to know is stickier than one it has
+     * merely seen often: knowing their NAME is the single strongest signal (it is
+     * what distinguishes a someone from a blip), then how resolved the referent is,
+     * then exposure. Nothing here is about being a person — a named, well-resolved
+     * document outranks a glimpsed stranger, which is correct.
+     */
     private _prune;
     private _restoreFromState;
 }
@@ -6284,6 +6758,18 @@ interface OutboxMessage {
     };
 }
 
+/**
+ * Referent → a deliverable address, and the room to use when none was chosen.
+ *
+ * Returns null when the referent is already an address (nothing to translate) or
+ * when the mind holds no route at all — in which case the row goes out as-is and
+ * the bridge's own roster fallback still applies, so a message is never silently
+ * dropped for want of a handle.
+ */
+type OutboxRouting = (targetEntityId: string, chosenThread: string | undefined) => {
+    targetEntityId: string;
+    threadId?: string;
+} | null;
 /** The caller-supplied fields of an outbox row; the writer stamps id + defaults. */
 interface OutboxRow {
     targetEntityId: string;
@@ -6305,11 +6791,24 @@ declare class OutboxWriter {
      * which made the embedded ids in `conversation.sent` diverge every run).
      */
     private _seq;
+    private _routing;
     constructor(opts?: {
         outbox?: OutboxMessage[];
         willId?: string;
     });
     attachSessionLogger(logger: SessionLogger | null): void;
+    /**
+     * Turn a referent into somewhere the world can actually be spoken to.
+     *
+     * Injected rather than read here, because this writer is deliberately dumb —
+     * it holds no state and must stay replay-safe. Assembly closes over the state
+     * manager (the same shape as `attachMemorySink`).
+     *
+     * This is the ONE seam both send paths cross: ProactiveCommunicator's
+     * `enqueue()` and AuditionEngine's `enqueueReply()`. Translating anywhere else
+     * would mean doing it twice and getting it wrong once.
+     */
+    attachRouting(resolve: OutboxRouting | null): void;
     private _genId;
     /**
      * Push one canonical outbox row and return its generated id. The single point
@@ -6395,6 +6894,18 @@ interface TextMessage {
     content: string;
     /** Display name — used in the facet focus content. */
     speakerName?: string;
+    /**
+     * True when `threadId` is a PRIVATE thread — this someone and the mind, nobody
+     * else listening. The single fact that decides whether a room is the right
+     * place for a given utterance, and the Discord edge has always computed it
+     * (`isDM`) and discarded it before the mind could see it: a follow-up promised
+     * in a DM went out to a public channel, because the roster's "where did I last
+     * see them" is a different question from "where did I promise this".
+     *
+     * Undefined means the channel did not say, which is honestly different from
+     * false — an unknown room is not known to be public.
+     */
+    direct?: boolean;
 }
 interface VoiceChunk {
     kind: 'voice';
@@ -6578,6 +7089,12 @@ declare class AuditionEngine extends BaseSenseEngine {
      * other percept uses. Wired to `stateManager.setEntity` in assembleMind().
      */
     private _memorySink;
+    /**
+     * Sim tick of the most recent facet decision — the only deterministic clock this
+     * off-tick engine has. Stamped from `FacetDecision.tick`, and used to key the
+     * conversation records it writes into state.
+     */
+    private _lastDecisionTick;
     /** Speaker attachment strength accessor (0–1) — weights salience by relationship. */
     private _getAttachmentScore;
     /** Active-goal topic text accessor — for salience topic-overlap. */
@@ -6586,6 +7103,8 @@ declare class AuditionEngine extends BaseSenseEngine {
     private _inflightInbound;
     /** In-flight thread per entity — stamps chunk envelopes with the current threadId. */
     private _inflightThread;
+    /** Targets with an outreach being composed right now — see authorOutreach. */
+    private _outreachInFlight;
     attachExecutiveEngine(exec: ExecutiveEngine): void;
     /**
      * Inject the OutboxWriter so reply bubbles are delivered through the canonical
@@ -6629,7 +7148,7 @@ declare class AuditionEngine extends BaseSenseEngine {
     attachAttachmentScore(fn: (entityId: string) => number): void;
     /** Inject an active-goal topic-text accessor (reads GoalManager) for salience overlap. */
     attachActiveGoalText(fn: () => string[]): void;
-    /** Override: audition adds the master-escalation signal to the base percept schema. */
+    /** Override: audition adds the facet→master handoff to the base percept schema. */
     publishes(): CognitiveEventSchema[];
     snapshot(): Record<string, unknown>;
     /**
@@ -6698,6 +7217,52 @@ declare class AuditionEngine extends BaseSenseEngine {
      * (Section 1.2) routes ingest through the tick loop. The entity carries no
      * wall-clock timestamp — `setEntity` stamps createdAt/tick from the sim clock.
      */
+    /**
+     * The inbound as a social signal in state — mirror of `conversation.sent`.
+     *
+     * Shaped for `SocialPerception._scanSocialSignals`, which reads `sourceKeid` for
+     * who acted and `directedAtSelf` for whether it was aimed at us. Valence is left
+     * UNSET on purpose: the words have not been appraised yet, and guessing a number
+     * here would feed reputation and affect a sentiment nobody measured. Absent, the
+     * scanner falls back to its neutral default, so the Will learns *that* someone
+     * engaged (familiarity, recency, reliability) without inventing how it felt.
+     */
+    /**
+     * A durable, deterministic id for a conversation record.
+     *
+     * `<prefix>-<entity>-<tick>-<hash of the words>`. Every part earns its place:
+     *   • entity — whose conversation this is;
+     *   • tick   — WHEN, from the sim clock, which resumes from the snapshot and so
+     *              keeps rising across restarts;
+     *   • hash   — which utterance, so two things said to one person on one tick stay
+     *              two records.
+     *
+     * What it replaces was `<prefix>-<entity>-<N>` with N a process-local counter.
+     * It restarted at 1 on every boot, so each session OVERWROTE the previous
+     * session's records of the same person — a mind that had spoken with someone
+     * across four restarts held one session's worth of evidence that it ever had.
+     * Found by diffing a live snapshot against the Discord transcript it came from:
+     * `conv-sent-reply-discord:1019…-1` held that morning's greeting, and every
+     * earlier conversation keyed to the same id was simply gone.
+     *
+     * No wallClock: these ids live in state, and a wall-clock id makes the recorded
+     * and replayed runs diverge (R2).
+     */
+    private _sentKey;
+    private _writeReceived;
+    /**
+     * Record that the mind SPOKE to someone, mirroring `_writeReceived`.
+     *
+     * Only ProactiveCommunicator wrote `conversation.sent`, so a reply — which is
+     * most of what a Will says — left no durable trace of having spoken. Everything
+     * that asks "have I already said something to them?" was therefore blind to
+     * conversation: satiation could not damp repeating a relay delivered as a reply,
+     * and an undertaking discharged inside a conversation stayed forever unkept,
+     * which is exactly how the same message went out again and again.
+     *
+     * Speaking is speaking, whichever path carried it.
+     */
+    private _writeSent;
     private _persistExchangeMemory;
     private _onFacetDecision;
     /**
@@ -6789,6 +7354,16 @@ declare class AffordanceSynthesizer implements CognitiveEngine {
     private _schemas;
     private _skills;
     private _repertoire;
+    /**
+     * This tick's live consequence descriptors — the acts the mind has performed
+     * whose outcome has not yet come back. Refreshed once at the top of react()
+     * because `_build` runs per candidate and reading them is a full-entity scan.
+     */
+    private _inFlight;
+    /** Ticks an act stays satiating (engine-config-action-selector.repeatWindowTicks). */
+    private _satiationWindow;
+    /** Tick of the last thing said to each entity — outlives the descriptor sweep. */
+    private _spokenAt;
     private _bus;
     private _defaultCap;
     private _lastFieldSize;
@@ -6922,6 +7497,21 @@ declare class MotorSchemaExecutor implements CognitiveEngine {
     private _author;
     private _grants;
     private _bus;
+    /**
+     * Two-phase outreach authoring. A facet cannot be awaited from inside a tick:
+     * `ExecutiveFacet.report()` only QUEUES in tick-discipline mode and the reasoning
+     * launches from `pump()`, which the ExecutiveEngine calls once per tick — so an
+     * in-tick `await` blocks the very loop that would produce the answer. Observed
+     * live: a 61s freeze of the whole mind inside one tick, then an empty result.
+     * (It passes unit tests because bare facets have no inbox and author inline.)
+     *
+     * So `_deliver` REQUESTS words and returns false (the intent holds 'awaiting'),
+     * the facet answers off-tick, and a later tick delivers. Process-local by design:
+     * an authoring call in flight cannot survive a restart, and the intent would
+     * simply re-request.
+     */
+    private _authoring;
+    private _authored;
     constructor(schemas?: MotorSchema[]);
     attachBus(bus: CognitiveBus): void;
     /** Resolve schemas (incl. learned composites) from the live repertoire first. */
@@ -6961,6 +7551,13 @@ declare class MotorSchemaExecutor implements CognitiveEngine {
      * conversation facet); this is the single enaction → delivery path.
      */
     private _deliver;
+    /**
+     * Ask a facet for the words, off-tick. Fire-and-forget on purpose: awaiting this
+     * from inside `react()` deadlocks the tick loop against the facet pump. Idempotent
+     * per intent — a request already in flight is not duplicated, so the intent may sit
+     * 'awaiting' across many ticks with exactly one LLM call behind it.
+     */
+    private _requestAuthoring;
     private _emitEnacted;
     /**
      * Publish `action.outcome` for EVERY enaction — the shared metacognitive/affective
@@ -6969,6 +7566,32 @@ declare class MotorSchemaExecutor implements CognitiveEngine {
      * RewardEvaluator reads it as a reward signal. `confidence` carries the agency's
      * own forward-model prior so calibration has a real prediction to score.
      */
+    /**
+     * Retire the `ideomotor.intent` that produced this act.
+     *
+     * Nothing deleted these. They were cleared only when the executive next ran and
+     * declined to name the same action again — and the executive runs on an interval,
+     * so between cycles a willed reach-out STOOD in state, was rebuilt into an
+     * affordance every single tick, and competed every single tick. Observed as
+     * dozens of identical lines:
+     *
+     *   [selector] willed reach-out → … NOT selected: 0.297 < inspect… 0.340
+     *
+     * losing by four thousandths, over and over, until it won — twice. Fabrice got
+     * the same message byte-for-byte 25 ticks apart, two outbox ids.
+     *
+     * `justEnacted` was built to hold this line and cannot: it is a DECAYING
+     * quantity, capped at `repeatDamping` (0.30), and a standing intent outlasts it
+     * by construction. Damping a permanent pull only ever delays it. So the intention
+     * is discharged by being acted on, which is what an intention is — you meant to
+     * tell someone something, you told them, and it is finished. If the mind still
+     * wants to say more, the next executive cycle forms a new one, now seeing "I said
+     * this 25 ticks ago and have had no answer" in front of it.
+     *
+     * Satiation stays exactly as it was, and still earns its keep: it damps saying
+     * the same thing again for reasons that did NOT come from a standing will.
+     */
+    private _dischargeWill;
     private _emitActionOutcome;
     private _emitDispatch;
 }
@@ -6985,6 +7608,35 @@ declare class ReafferenceEngine implements CognitiveEngine {
     onCognitiveEvent(e: CognitiveEvent): void;
     snapshot(): Record<string, unknown>;
     react(_delta: Duration, tick: Tick, state: ReadonlySimulationState, _context: SimulationContext): Promise<EngineResult>;
+    /**
+     * Latch each open turn's fate onto its own record and announce it once.
+     *
+     * Two rules earn their keep here:
+     *
+     *  • MERGE, never replace. `StateManager.setEntity` overwrites the whole entity,
+     *    and a `conversation.sent` carries `outboxMessageIds` — the sole key by which
+     *    a later delivery ack can find it. Rewriting the record with only the fields
+     *    this method cares about would sever that, silently, for every turn that got
+     *    an answer.
+     *
+     *  • Latch, don't recompute. `answeredAt`/`unansweredAt` persist, so the event
+     *    fires on the one tick the fact changed rather than every tick for the rest
+     *    of the session — which for an unanswered turn would be thousands of
+     *    identical reputation hits against one person for one silence.
+     */
+    private _resolveReplies;
+    /**
+     * Publish how a person responded to being spoken to.
+     *
+     * Deliberately NOT an `interaction.occurred`: that event means "someone did
+     * something toward us" and carries a valence for what they did. A silence is
+     * nobody doing anything, and forcing it through that channel would have the
+     * ReputationTracker book a hostile *act* where there was only an absence — the
+     * mind would come to think it was being rebuffed rather than simply not
+     * answered yet. Separate signal, separate meaning, one consumer decides what
+     * either is worth.
+     */
+    private _emitResponsiveness;
     private _emitProceduralized;
     /**
      * Emit the `action.outcome{planId,stepId}` for an async (host-acked) plan-step
@@ -7016,6 +7668,12 @@ type EngineRegistry = {
     affectiveBlender: AffectiveBlender;
     workingMemory: WorkingMemory;
     episodicConsolidator: EpisodicConsolidator;
+    /**
+     * The vector index, when semantic recall is configured. Exposed so shutdown can
+     * FLUSH it: it lives outside the state snapshot and previously persisted only from
+     * a debounce timer no shutdown path awaited, so it died with the process.
+     */
+    vectorMemory: VectorMemoryAdapter | null;
     semanticIntegrator: SemanticIntegrator;
     spacedRepetition: SpacedRepetition;
     forgettingCurve: ForgettingCurve;
@@ -7302,6 +7960,24 @@ interface WillConfig {
     profile?: string | null;
     /** Persona definition seeded into the will.identity entity. */
     identity: WillIdentity;
+    /**
+     * This config's `identity` is a PLACEHOLDER — the real one arrives from a PMA
+     * artifact moments later, on the same boot.
+     *
+     * Set by `Will.wake`, which passes `{ prompt: '' }` because a woken mind's
+     * persona belongs to its artifact, not to the caller. Without this flag the
+     * creation-time identity guard inspected that placeholder and warned, on every
+     * single wake, that "identity.values is empty", "identity.style is generic" and
+     * "identity is shallow (strength 0)" — three alarms about a config nobody
+     * intended to use, fired before the real identity had loaded.
+     *
+     * It suppresses only the WARNINGS. Errors still throw (an over-long or
+     * malformed prompt is a hard failure whenever it appears), and the artifact's
+     * OWN identity is fully guarded at the load boundary by PMAController.load,
+     * which is the honest place to ask whether this mind's persona is thin — it is
+     * the only point where the answer is knowable.
+     */
+    identityFromArtifact?: boolean;
     /** Anatomy — 'mind' (default) or the no-LLM 'reflex' shell. */
     anatomy?: Anatomy;
     /**
@@ -7337,6 +8013,21 @@ interface WillConfig {
      * Plan-enforced floor for executiveInterval — the customer cannot go faster.
      */
     minExecutiveInterval?: number;
+    /**
+     * Enable the DeliberationCache — a learned fast path that composes an executive
+     * output from highly-similar, highly-competent precedent instead of calling the
+     * LLM. Off unless asked for.
+     *
+     * OFF BY DEFAULT ON PURPOSE, and the default is the interesting part: this
+     * changes how a mind THINKS, not how fast it runs. A cache hit means the mind
+     * acted from precedent without deliberating, which is a real thing minds do and
+     * a real thing an operator must opt into for a specific Will — not something a
+     * dependency bump should switch on underneath one that is already living.
+     *
+     * Pass `true` for the built-in conservative settings, or a config object to tune
+     * the retrieval/competence parameters (see cognition/cache/types).
+     */
+    deliberationCache?: boolean | DeliberationCacheConfig;
     /**
      * Goals seeded before the first tick. If omitted or empty, the Will starts
      * goalless — the executive engine will generate context-appropriate goals on its
@@ -8220,6 +8911,8 @@ interface Stimulus {
     speaker?: string;
     /** Conversation/thread id (default = `from`). */
     thread?: string;
+    /** True when `thread` is private — just this someone and the Will. See TextMessage.direct. */
+    direct?: boolean;
 }
 /** A message the Will emitted to someone. */
 interface WillMessage {
@@ -8229,6 +8922,20 @@ interface WillMessage {
     content: string;
     /** Entity id the Will addressed (the speaker you used in say()/tell(), or a bond). */
     to: string;
+    /**
+     * The conversation this belongs to — the `thread` from the `perceive()` that
+     * prompted it. Absent when the Will spoke unprompted, which genuinely has no
+     * thread.
+     *
+     * WHERE, not just to whom. The engine knew this the whole way down —
+     * `OutboxMessage.threadId` carries it — and the projection dropped it here, so
+     * a channel adapter had nothing to answer INTO and had to guess from a roster.
+     * Observed live: a DM arrived on `discord:1532693…`, she answered it correctly
+     * and in seconds, and the reply went to the shared server channel because that
+     * was the last room the roster had seen this person in. From the operator's
+     * side she had simply ignored him.
+     */
+    thread?: string;
 }
 /**
  * A motor act the Will *chose* to enact — a projection of its agency, surfaced

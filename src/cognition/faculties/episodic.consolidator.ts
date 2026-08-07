@@ -114,6 +114,13 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
 
   // Vector memory integration
   private _vectorMemory: VectorMemoryAdapter | null = null
+  /**
+   * In-flight background indexing. Indexing is deliberately not awaited inside
+   * react() (a rate-limit retry chain would stall the whole tick loop), so this is
+   * the handle for the two callers that genuinely must wait for it: shutdown,
+   * before persisting the index, and tests asserting on it.
+   */
+  private _indexing: Promise<void> = Promise.resolve()
   private _embedder: EmbeddingProvider | null = null
   private _autoIndex: boolean
 
@@ -278,7 +285,35 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
         content: ep.content
       } ) )
 
-      await this._vectorMemory.indexBatch( episodesWithContent )
+      // Indexing is BEST-EFFORT, exactly like semanticQuery. It calls an embedding
+      // provider, so a rate limit or an outage is an ordinary condition, not a
+      // cognitive fault: the episode is already consolidated and in the store, and
+      // only its vector is missing. Letting that throw took the whole engine down
+      // mid-tick — observed live as `Engine "episodic-consolidator" threw at tick
+      // 107: Embedding failed: 429`, which also aborted the rest of this react()
+      // (store sync, forgetting-curve decay) for that tick.
+      //
+      // The episode itself is NOT lost: it is in `_store` and is written to state by
+      // the periodic full-store sync below, so it survives snapshot/restore. Only its
+      // VECTOR is missing, which costs semantic recall of that episode for the rest of
+      // the session — `rebuildFromStore()` re-indexes the whole store on a later
+      // restore that finds no persisted index. Nothing re-indexes it in-session; that
+      // is a known gap, not a claim that this self-heals.
+      // NOT awaited. Nothing in this tick reads the vector index, and the embedding
+      // call is a network round-trip behind a rate-limit gate whose retry chain runs
+      // ~60s (4+8+16+32s) before giving up. Awaiting it made a single 429 stall the
+      // WHOLE TICK LOOP for a minute — measured: ticks 3→4 and 4→5 took 64.9s and
+      // 63.5s, one per deferred batch. That is not merely slow: `AWAIT_TIMEOUT` and
+      // every other agency deadline are denominated in TICKS, so a 60s tick silently
+      // turned a 15-tick timeout into 15 minutes, left one communicate intent stuck
+      // 'awaiting', and — because the selector is serial — blocked every subsequent
+      // action. 45 executive decisions produced 1 intent and 0 delivered messages.
+      this._indexing = this._vectorMemory.indexBatch( episodesWithContent ).catch( ( err: unknown ) => {
+        logger.warn(
+          `[EpisodicConsolidator] indexing deferred for ${ newEpisodes.length } episode(s) — ` +
+          `${ err instanceof Error ? err.message : String( err ) }`
+        )
+      } )
     }
 
     // 5. Periodic full-store sync — captures activationStrength decay (forgetting curve),
@@ -385,6 +420,9 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
    * Other metadata narrowing (sourceType / tags) remains the caller's job on the
    * returned episodes (which carry all metadata).
    */
+  /** Await any background indexing still in flight. Shutdown and tests only. */
+  async flushIndexing(): Promise<void> { await this._indexing }
+
   async semanticQuery(
     query: unknown,
     filters?: {
@@ -417,10 +455,18 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
     let timer: ReturnType<typeof setTimeout> | undefined
     const timedOut = Symbol('recall-timeout')
 
+    // The search keeps running after the race is lost — its own rate-limit retry
+    // chain can outlive this timeout by a minute. Its rejection is caught HERE
+    // rather than left to the race: a promise that loses a Promise.race still
+    // settles, and an unhandled 429 rejection surfaces as a process-level warning
+    // (or a crash, depending on host) long after the recall it belonged to gave up.
     const results = await Promise.race( [
       this._vectorMemory.search( query, {
         maxResults:    fetch,
         minSimilarity: filters?.minSimilarity,
+      } ).catch( ( err: unknown ) => {
+        logger.warn(`[EpisodicConsolidator] recall search failed — ${ err instanceof Error ? err.message : String( err ) }`)
+        return []
       } ),
       new Promise<typeof timedOut>( resolve => { timer = setTimeout( () => resolve( timedOut ), timeoutMs ) } ),
     ] ).finally( () => clearTimeout( timer ) )
@@ -658,8 +704,18 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
     if( this._vectorMemory ){
       await this._vectorMemory.load()
       if( this._vectorMemory.size === 0 && this._store.length > 0 ){
-        await this._vectorMemory.rebuildFromStore( this._store )
-        logger.info(`[episodic] vector index rebuilt with ${this._store.length} episodes`)
+        // Re-embedding the whole store is a bulk network operation, and this runs on
+        // the FIRST TICK after restore. Awaited, it held tick 1 for 66.7s against a
+        // 500ms budget and threw on a rate limit — a mind spending its first waking
+        // minute frozen, with every tick-denominated deadline stretched around it.
+        // Detached: recall degrades to "not yet indexed" until it lands, which is the
+        // same best-effort contract semanticQuery already has. `flushIndexing()` is
+        // what shutdown drains, so a rebuild in flight is still written out.
+        this._indexing = this._vectorMemory.rebuildFromStore( this._store )
+          .then( () => { logger.info(`[episodic] vector index rebuilt with ${ this._store.length } episodes`) } )
+          .catch( ( err: unknown ) => {
+            logger.warn(`[episodic] vector index rebuild deferred — ${ err instanceof Error ? err.message : String( err ) }`)
+          } )
       } else if( this._vectorMemory.size > 0 ){
         logger.info(`[episodic] vector index loaded from disk (${this._vectorMemory.size} entries)`)
       }

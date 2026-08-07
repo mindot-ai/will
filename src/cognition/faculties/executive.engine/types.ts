@@ -59,6 +59,18 @@ export interface ExecutiveOutputFull {
     name?:    string
     learned?: string[]
     feeling?: number
+    /**
+     * "This is the same someone as that" — another keid I now believe is this
+     * same referent, fusing two of my records into one.
+     *
+     * The mind's own verdict on an identity, and it may do what the recognition
+     * heuristic will not: absorb an ESTABLISHED relationship. The heuristic is
+     * right to refuse — fusing two real people who share a name would take one of
+     * them's whole history — but the mind has evidence a name-match does not,
+     * usually because somebody just told it. Without this, the same human
+     * well-established on two channels stayed two people permanently.
+     */
+    sameAs?:  string
   }>
   newGoals?: Array<{
     description: string
@@ -70,6 +82,8 @@ export interface ExecutiveOutputFull {
   goalsToAbandon?: Array<{ goalId: string; reason: string }>
   goalsToReprioritize?: Array<{ goalId: string; newPriority: number; reason: string }>
   selfObservations?: string[]
+  /** Compound actions the mind is naming as single skills (see ProposedSkill). */
+  newSkills?: ProposedSkill[]
   /**
    * Plain-text reply from a conversation facet — populated by parseResponse()
    * from the [REPLY_TEXT]...[/REPLY_TEXT] block.
@@ -77,6 +91,11 @@ export interface ExecutiveOutputFull {
    * Paragraphs (double-newline separated) map to separate reply bubbles.
    */
   replyText?: string
+  /**
+   * Set when the facet declared it is NOT speaking this cycle, carrying why.
+   * Present ⇒ nothing is sent, whatever else the response contains.
+   */
+  noMessage?: string
   /**
    * @deprecated Legacy JSON reply format — no longer emitted by conversation facets.
    * Kept for backward compatibility with any tests/tooling that inspect parsed output.
@@ -287,6 +306,33 @@ export interface ExecutiveContext {
     /** planId if this action came from a plan step */
     planId?: string
   }>
+  /**
+   * What the mind has said to people lately, and who has answered.
+   *
+   * The one thing it could never see about itself. `conversation.sent` has been in
+   * state since the beginning — 57 records on the Will this was found on — and
+   * reached no prompt at all, so the sole evidence of having spoken was a `✓
+   * reach-out` line under Recent Action Outcomes: no words, no person, and a tick
+   * mark asserting it had worked. That is why the same question went out eleven
+   * times in two and a half minutes; from the inside each one was the first.
+   *
+   * Newest first. Answered turns are kept alongside open ones deliberately — "I
+   * asked and they replied" and "I asked and heard nothing" only mean anything
+   * against each other.
+   */
+  spokenTurns: Array<{
+    /** Who it was said to, by name where the mind knows one. */
+    target:  string
+    /** The opening words — enough to recognise a thing already said. */
+    preview: string
+    /** Ticks since it was said. */
+    age:     number
+    /** Unset while still in the air; the mind is told which. */
+    answered: boolean
+    /** What they said back, when they did. The fact of an answer without its
+     *  content is worse than silence — it invites acting as though it is known. */
+    answeredWith?: string
+  }>
   /** Behavioral disposition loaded from PMA at session start — stable per session. */
   behavioralDisposition?: {
     riskTolerance:   number
@@ -309,6 +355,10 @@ export interface ExecutiveContext {
    * Omitted when the Will knows no one.
    */
   knownEntities?: Array<{
+    /** Where this referent is reachable, and how each place has gone. */
+    handles?: Array<{ keid: string; kind: string; answeredAgo?: number }>
+    /** Names of referents this one may be the same as — an unsettled identity. */
+    mayBeSameAs?: string[]
     keid:            string
     kind:            'sentient' | 'thing'
     name?:           string
@@ -335,6 +385,25 @@ export interface ExecutiveContext {
 }
 
 // ── Pending message ──────────────────────────────────────────
+
+/**
+ * A compound action the mind names as one thing it does — "when I do A then B,
+ * that is <name>". Registered into the SchemaRepertoire as a composite, after
+ * which it competes as a single affordance and can proceduralize into a habit.
+ *
+ * This is the creation seam for the instrumental→habitual gradient. Before it,
+ * `agency.composite.proposed` was subscribed by ReafferenceEngine — whose handler
+ * is the only caller of `registerComposite()` anywhere — and published by nothing,
+ * so no Will could ever hold a skill beyond the innate floor (#114).
+ */
+export interface ProposedSkill {
+  /** What the mind calls it. Becomes the schema id. */
+  id: string
+  /** The sub-schemas it is made of, in order. Two or more, or it is not compound. */
+  composedOf: string[]
+  tags?: string[]
+  cost?: number
+}
 
 export interface PendingMessage {
   id: string

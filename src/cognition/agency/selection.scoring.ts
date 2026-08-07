@@ -13,6 +13,8 @@
 //              + driveUrgency
 //              + habitStrength·W                              (additive habit bonus)
 //              + planBias·W                                   (top-down prior)
+//              + willBias·W                                   (deliberate volition)
+//              + socialPrior·W                                (learned read on WHO)
 //              − cost
 //              − inhibition
 //              − risk
@@ -47,9 +49,34 @@ export interface ScoreWeights {
   habit:   number
   /** Top-down planning prior — how strongly an executing plan biases the competition. */
   plan:    number
+  /**
+   * Volitional prior — how strongly a DELIBERATE executive decision biases the
+   * competition. Peer of `plan`: a plan's frontier is a standing prior, a willed act
+   * is a prior formed this cycle. Strong enough that no habit (≤1) can out-weigh a
+   * confident decision, weak enough that inhibition, threat, or a genuinely more
+   * pressing affordance still can — willing is not a rubber stamp.
+   */
+  will:    number
+  /**
+   * How strongly the mind's LEARNED read on an addressee biases acting toward them.
+   * Peer of `goal` in magnitude: who someone has shown themselves to be should weigh
+   * about as much as a goal pointed at them. Signed — a person the mind has come to
+   * trust pulls it toward contact, one who never answers pulls it away — and it
+   * reaches zero for anyone unknown, so a mind that knows no one scores as before.
+   */
+  social:  number
   cost:    number
   inhib:   number
   risk:    number
+  /**
+   * How strongly an act's own live footprint damps doing it again (EXAFFERENCE
+   * P5). Satiation, not a lock: it decays with the descriptor, so the pull
+   * returns once the window in which the world could have answered has passed.
+   * Peer of `will` in magnitude — a freshly-delivered message should roughly
+   * cancel the volitional prior that produced it, and no more, so a genuinely
+   * pressing reason to speak again still wins.
+   */
+  repeat:  number
 }
 
 export const DEFAULT_WEIGHTS: ScoreWeights = {
@@ -59,9 +86,12 @@ export const DEFAULT_WEIGHTS: ScoreWeights = {
   drive:   0.25,
   habit:   0.20,
   plan:    0.30,
+  will:    0.30,
+  social:  0.30,
   cost:    0.20,
   inhib:   0.30,
   risk:    0.20,
+  repeat:  0.30,
 }
 
 /**
@@ -154,9 +184,12 @@ export function scoreAffordance(
     + w.drive   * driveUrgency( a, bias )
     + w.habit   * a.habitStrength
     + w.plan    * ( a.planBias ?? 0 )
+    + w.will    * ( a.willBias ?? 0 )
+    + w.social  * ( a.socialPrior ?? 0 )
     - w.cost    * a.cost
     - w.inhib   * bias.inhibition
     - w.risk    * risk( a, bias )
+    - w.repeat  * ( a.justEnacted ?? 0 )
   )
   // POLICY_REAFFERENCE P2 — policy availability damps a POSITIVE activation only,
   // never flipping its sign: a refused ability competes weakly (so it is rarely

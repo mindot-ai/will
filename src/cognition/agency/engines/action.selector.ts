@@ -371,6 +371,42 @@ export class ActionSelector implements CognitiveEngine {
     const winner = scored[0]
     if( !winner ) return busy( eligible.length )
 
+    // Whenever more than one person is a candidate for contact, record how the
+    // competition between them actually resolved. A Will that names someone and
+    // never messages them looks identical from outside whether the intention was
+    // never formed or was formed and beaten every cycle; this is the only place
+    // that difference is visible, and it is one line per contested tick.
+    // Why a WILLED contact did not happen. Gated on the executive having actually
+    // willed one (source 'ideomotor') that is not the winner — so a mind whose
+    // decision is being enacted logs nothing, and a mind that decided to contact
+    // someone and then did not says exactly what beat it.
+    //
+    // The earlier version of this gated on `reachers.length > 1`, assuming the
+    // failure was one addressee out-competing another. It is not: each master cycle
+    // sweeps every executive intent it did not name that cycle, so there is usually
+    // exactly ONE reach-out candidate in the field and the contest log never fired.
+    // The competition that matters is the willed contact against the rest of the
+    // field, which is what this prints.
+    // EVERY willed contact that lost, not just the strongest. An earlier version
+    // used `.find()`, which reports only the highest-scoring one — so with two
+    // live intents a second loser went unlogged, and the log would have quietly
+    // understated how many people the mind decided to contact and then did not.
+    const lostReaches = scored.filter( s =>
+      s !== winner
+      && s.affordance.schema === 'reach-out'
+      && s.affordance.source === 'ideomotor'
+      && s.affordance.targetEntityId )
+
+    for( const lost of lostReaches )
+      logger.info(
+        `[selector] willed reach-out → ${ lost.affordance.targetEntityId } NOT selected: ` +
+        `${ lost.activation.toFixed( 3 ) }` +
+        `${ lost.affordance.justEnacted ? ` (justEnacted ${ lost.affordance.justEnacted.toFixed( 2 ) })` : '' }` +
+        ` < ${ winner.affordance.schema }` +
+        `${ winner.affordance.targetEntityId ? `→${ winner.affordance.targetEntityId }` : '' }` +
+        ` ${ winner.activation.toFixed( 3 ) }`
+      )
+
     // ── Preempt a mid-composite routine (IMMEDIATE SWITCH) ────────
     // A strong/high-stakes challenger cuts the routine off AND takes the body
     // the same tick. We cannot delete the parent here: the executor runs later
@@ -426,12 +462,37 @@ export class ActionSelector implements CognitiveEngine {
       const sameAction = winner.affordance.schema === awaiting.schema && ( winner.affordance.targetEntityId ?? '') === awaiting.target
       if( sameAction ) return busy( eligible.length )   // field still favours what we await
 
-      const staleness         = Math.min( 1, ( tick - awaiting.dispatchedAt ) / AWAIT_STALE_TICKS )
+      // Clamped at BOTH ends. The upper bound was always there; the lower one matters
+      // because a restored intent's age is negative (state snapshots, the tick counter
+      // restarts at 1), and an unclamped negative staleness flips the decay into
+      // amplification: `1 - (-39 × 0.5)` = 20.6×, turning a 0.47 incumbent into 9.74 and
+      // making it permanently unpreemptable. The executor now clears such intents, so
+      // this is the second line of defence rather than the fix — but an incumbent's
+      // hysteresis must never be able to exceed its own recorded activation, whatever
+      // arithmetic feeds it.
+      const staleness         = Math.min( 1, Math.max( 0, ( tick - awaiting.dispatchedAt ) / AWAIT_STALE_TICKS ) )
       const incumbentStrength = awaiting.activation * ( 1 - staleness * STALE_DECAY )
       const switchCost        = effSwitchCost * ( 1 - stakes( winner.affordance, bias ) )
 
-      if( winner.activation <= incumbentStrength + switchCost )
+      if( winner.activation <= incumbentStrength + switchCost ){
+        // A challenger aimed at a DIFFERENT person losing to an awaiting incumbent
+        // is the starvation shape: every proactive reach-out sits 'awaiting' while a
+        // facet authors its words (8–18s = many ticks), and the incumbent's recorded
+        // activation does not decay with the challenger's damping. If one addressee
+        // can hold the channel this way, a Will can decide to contact someone else
+        // every cycle and never once do it — which is exactly the report.
+        if( winner.affordance.schema === 'reach-out'
+            && winner.affordance.targetEntityId
+            && winner.affordance.targetEntityId !== awaiting.target )
+          logger.info(
+            `[selector] reach-out → ${ winner.affordance.targetEntityId } BLOCKED by awaiting ` +
+            `${ awaiting.schema } → ${ awaiting.target || '—' }: ` +
+            `challenger ${ winner.activation.toFixed( 3 ) } ≤ incumbent ${ incumbentStrength.toFixed( 3 ) } ` +
+            `+ switch ${ switchCost.toFixed( 3 ) } (awaiting ${ tick - awaiting.dispatchedAt } ticks)`
+          )
+
         return busy( eligible.length )   // not worth interrupting — keep waiting
+      }
 
       preemptDelete = awaiting.id        // PREEMPT — fall through and commit the challenger
       preemptedFrom = awaiting.schema
@@ -478,6 +539,11 @@ export class ActionSelector implements CognitiveEngine {
         targetEntityId:  winner.affordance.targetEntityId,
         parameters:      winner.affordance.parameters,
         source:          winner.affordance.source,
+        // What evoked this — for an ideomotor winner, the `ideomotor.intent` entity
+        // the executive wrote. Carried so the executor can DISCHARGE it once the act
+        // happens: an intention that has been acted on is no longer an intention, and
+        // nothing was deleting these. See MotorSchemaExecutor._dischargeWill.
+        ...( winner.affordance.evokedBy ? { evokedBy: winner.affordance.evokedBy } : {} ),
         // Plan provenance (when a plan's frontier-step prior won the competition) —
         // flows through the executor's action.outcome so the PlanningEngine advances.
         ...( winner.affordance.planId ? { planId: winner.affordance.planId } : {} ),
@@ -677,6 +743,19 @@ function effectiveWeights( state: ReadonlySimulationState ): ScoreWeights {
     ...DEFAULT_WEIGHTS,
     risk:    Math.max( 0, num( p['riskWeight'],    DEFAULT_WEIGHTS.risk    ) ),
     novelty: Math.max( 0, num( p['noveltyWeight'], DEFAULT_WEIGHTS.novelty ) ),
+    // How long the mind sits with something it has already said before saying it
+    // again. Agreeableness raises it (does not badger); demonstrated persistence
+    // lowers it (follows up sooner). Clamped at 0 so a prior can flatten the
+    // damping into indifference but never turn repeating into a *reward*.
+    repeat:  Math.max( 0, num( p['repeatDamping'], DEFAULT_WEIGHTS.repeat  ) ),
+    // How much the mind's learned read on a person biases acting toward them.
+    // Deliberately NOT clamped at 0 — this weight is genuinely signed territory,
+    // and it is the tenant's to occupy. A warm, reciprocal mind leans toward
+    // whoever answers; a dogged, duty-bound one chases a silence precisely
+    // because it is silent. Both are coherent people. The container supplies the
+    // term and the persona supplies the sign; hardcoding it here would be the
+    // container deciding what kind of colleague every tenant has to be.
+    social:  num( p['socialWeight'], DEFAULT_WEIGHTS.social ),
   }
 }
 
@@ -729,6 +808,8 @@ function readAffordance( id: string, m: ReadonlyMap<string, unknown> | Record<st
     available:       meta['available'] === true,
     tags:            Array.isArray( meta['tags'] ) ? ( meta['tags'] as unknown[] ).filter( ( t ): t is string => typeof t === 'string') : [],
     planBias:        typeof meta['planBias'] === 'number' ? ( meta['planBias'] as number ) : undefined,
+    willBias:        typeof meta['willBias'] === 'number' ? ( meta['willBias'] as number ) : undefined,
+    socialPrior:     typeof meta['socialPrior'] === 'number' ? ( meta['socialPrior'] as number ) : undefined,
     planId:          str( meta['planId'] ),
     stepId:          str( meta['stepId'] ),
     tick:            num( meta['tick'], 0 ),

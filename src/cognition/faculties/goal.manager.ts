@@ -71,6 +71,21 @@ const DRIVE_TAGS = new Set([ 'energy', 'sleep', 'stress', 'survival', 'wellbeing
 // conscientiousness-developable baseSwitchCost, #28). Recomputed fresh each tick from
 // basePriority — never accumulates. This is what makes the focus mechanically "stick":
 // the focused goal stays top for goal selection, the executive, and planning.
+/**
+ * Schema ids and effector names that mean "the mind said something to someone".
+ *
+ * `reach-out` is the innate schema; `text`/`talk`/`gesture`/`broadcast` are the
+ * effectors it resolves to. Both spellings appear as an `action.outcome`'s
+ * `actionType` depending on which path emitted it, and only the second set was
+ * ever recognised here. Mirrors `COMM_SCHEMAS` in agency/execution.primitives.
+ */
+const COMMUNICATIVE_SCHEMAS = new Set([
+  'reach-out', 'reach_out', 'communicate', 'talk', 'text', 'broadcast', 'gesture',
+])
+
+/** Progress an action goal gains when the person it concerns actually answers. */
+const ANSWER_PROGRESS_STEP = 0.12
+
 const FOCUS_COMMITMENT_RAMP = 30   // ticks of focus to reach full commitment weight
 const COMMITMENT_GAIN       = 0.3  // scales switchCost × commitment × plan-sunk-cost
 const MAX_COMMITMENT_BOOST  = 0.2  // cap — a clearly higher-priority goal still wins
@@ -203,6 +218,7 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
       'executive.facet.progress',
       'plan.completed',
       'action.outcome',   // 4.1: advance action-type goals when matching outcomes fire
+      'social.responsiveness',   // somebody answered — the only progress a message can make
     ]
   }
   publishes(): CognitiveEventSchema[] {
@@ -300,6 +316,13 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
         // Epistemic/metric goals are advanced by their own mechanisms (_updateProgress).
         const p = e.payload as { actionType: string; domain: string; outcomeQuality: number }
         this._nudgeActionGoals( p.domain, p.actionType, p.outcomeQuality )
+        break
+      }
+      // A communicative act only advances a goal once somebody answers it. The
+      // send itself is not progress — see _nudgeActionGoals.
+      case 'social.responsiveness': {
+        const p = e.payload as { keid: string; answered: boolean }
+        if( p.answered === true && p.keid ) this._nudgeAnsweredGoals( p.keid )
         break
       }
     }
@@ -864,11 +887,26 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
     const dLow = domain.toLowerCase()
     const aLow = actionType.toLowerCase()
 
-    // Communication actions — 'talk' and 'text' are always treated as
-    // matching the 'communication' and 'reply' tag families so goals created
-    // in response to incoming messages get their progress nudged.
-    const isCommunicationAction = aLow === 'talk' || aLow === 'text'
-                                || dLow === 'communication'
+    // A communicative act makes NO progress by being sent.
+    //
+    // This is the whole shape of the repetition failure, seen from the goal side.
+    // `action.outcome` for a message fires the moment the outbox accepts it, with
+    // `outcomeQuality` describing the delivery — so crediting it here would have a
+    // goal like "get a clear answer to one operational question" complete itself
+    // after nine unanswered messages, and the mind would be right to keep sending
+    // because sending was visibly working.
+    //
+    // The answer is progress. It arrives later, through `social.responsiveness`,
+    // and lands in _nudgeAnsweredGoals.
+    //
+    // (Before this the question was moot in the worst way: `actionType` for an
+    // outreach is the SCHEMA id, `reach-out`, and the old test looked only for
+    // 'talk'/'text', so no communicative act ever reached a goal at all. Measured
+    // on a live Will: 8 goals, 28 reach-outs, and `lastActionAttemptTick` unset on
+    // every single goal. The bridge was not miscalibrated, it was disconnected —
+    // which is why fixing the match alone would have turned a silent failure into
+    // a loud one.)
+    if( COMMUNICATIVE_SCHEMAS.has( aLow ) || dLow === 'communication') return
 
     for( const goal of this._goals.values() ){
       if( goal.status !== 'active' && goal.status !== 'blocked') continue
@@ -880,15 +918,40 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
             || t === aLow
             || dLow.includes( t ) || t.includes( dLow )
             || aLow.includes( t ) || t.includes( aLow )
-      }) || ( isCommunicationAction && goal.tags.some( t =>
-        t === 'communication' || t === 'reply' || t === 'conversation'
-      ) )
+      })
 
       if( hasMatch ){
         goal.progress = Math.min( 1, goal.progress + outcomeQuality * 0.12 )
         goal.lastActionAttemptTick = this._currentTick
         goal.lastActionType        = actionType
       }
+    }
+  }
+
+  /**
+   * Somebody answered. Advance the action goals that were about reaching them.
+   *
+   * Linked the way every other goal→person link in the system is linked: the
+   * `keid:<id>` tag (selection.scoring's `collectGoalTargets` reads the same one
+   * to lift a reach-out's goal relevance) or `requestingEntityId`, set when a
+   * conversation escalation created the goal. Nothing here guesses from wording.
+   *
+   * Unmatched by design: a goal with no link to this person gets nothing, even if
+   * it is tagged 'communication'. Being answered by one person is not progress on
+   * wanting to talk to another.
+   */
+  private _nudgeAnsweredGoals( keid: string ): void {
+    const tag = `keid:${ keid }`.toLowerCase()
+
+    for( const goal of this._goals.values() ){
+      if( goal.status !== 'active' && goal.status !== 'blocked') continue
+      if( goal.completionType !== 'action') continue
+      if( goal.requestingEntityId !== keid
+        && !goal.tags.some( t => t.toLowerCase() === tag ) ) continue
+
+      goal.progress              = Math.min( 1, goal.progress + ANSWER_PROGRESS_STEP )
+      goal.lastActionAttemptTick = this._currentTick
+      goal.lastActionType        = 'answered'
     }
   }
 

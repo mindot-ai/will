@@ -106,7 +106,8 @@ describe('Per-Will token tracker isolation (R4-a)', () => {
       totalTokens:      2_000_000,
       category:         'executive',
       attribute:        'master',
-      function:         'decision',
+      process:         'decision',
+      function:         '-',
       tick:             1,
       latencyMs:        10,
     })

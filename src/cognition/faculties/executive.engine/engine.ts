@@ -24,7 +24,8 @@ import type {
   SimulationContext,
   ReadonlySimulationState,
   ReasoningFootprint,
-  StateCommands
+  StateCommands,
+  EntityInput
 } from '#core/types'
 import { AsyncEngine } from '#core/async.engine'
 import type { IntermediateStream } from '#core/async.engine'
@@ -42,6 +43,9 @@ import { GenerativeModel } from '#cognition/generative.model'
 import { ExecutiveSummarizer } from '#llm/summarizer'
 import { ExecutiveFacet, type ExecutiveFacetHandle } from '#faculties/executive.engine/facet'
 import type { ExecutiveOutputFull, IdeationCandidate } from '#faculties/executive.engine/types'
+import { DeliberationCache } from '#cognition/cache/deliberation.cache'
+import { extractFingerprint } from '#cognition/cache/fingerprint'
+import type { DeliberationCacheConfig, DeliberationCacheSnapshot } from '#cognition/cache/types'
 import {
   PromptFactory,
   type PromptDependencies,
@@ -68,14 +72,13 @@ import { buildFallbackOutput, parseResponse } from '#faculties/executive.engine/
 import { selectProcess, ideationTemperature, DELIBERATE_THRESHOLD } from '#faculties/executive.engine/effort.gate'
 import { proposeCandidates } from '#faculties/executive.engine/deliberate.reasoning'
 import { readEffectiveParams } from '#cognition/persona.prior'
-import { MessageQueue } from '#faculties/executive.engine/messages'
 import {
   buildStateCommands,
   publishCognitiveEvents,
   type CommandDependencies
 } from '#faculties/executive.engine/commands'
 import { DeferredEffectQueue } from '#faculties/executive.engine/deferred.effects'
-import { EscalationBuffer } from '#faculties/executive.engine/escalation.buffer'
+import { EscalationBuffer, type HandoffBody } from '#faculties/executive.engine/escalation.buffer'
 import { FacetSupervisor } from '#faculties/executive.engine/facet.supervisor'
 import type { EngineResult } from '#core/orchestrator'
 import type { Duration } from '#core/types'
@@ -83,6 +86,17 @@ import { wallClock } from '#core/wall.clock'
 
 // Re-export for compatibility
 export { ExecutiveFacet, type ExecutiveFacetHandle }
+
+/**
+ * How hard a reasoning facet pulls on attention, as an `attention.demand` urgency.
+ *
+ * Deliberately below 1: holding a live conversation is a real claim on attention,
+ * but the allocator sorts candidates into `maxFoci` slots by salience, and a facet
+ * that always outranked everything would starve perception — the mind would stop
+ * noticing the world whenever it was talking. At 0.7 an urgent percept still wins
+ * a slot; routine traffic does not.
+ */
+const FACET_ATTENTION_URGENCY = 0.7
 
 // ── Engine config ───────────────────────────────────────────
 
@@ -131,7 +145,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   private _testMode = false
 
   // ── Message queue ──────────────────────────────────────────
-  private _messageQueue = new MessageQueue()
 
   // ── Action diversity tracking ──────────────────────────────
   private _recentActionTypes: string[] = []
@@ -145,6 +158,15 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   // ── Last output ────────────────────────────────────────────
   private _lastExecutiveOutput: ExecutiveOutputFull | null = null
   private _lastExecutiveTick: number = -100
+
+  // ── DeliberationCache (optional fast path) ─────────────────
+  private _cache: DeliberationCache | null = null
+  private _cacheRestored = false
+  private _pendingVerify: { fingerprint: Float32Array; cachedActionTypes: string[] } | null = null
+  // Last cache outcome this cycle, surfaced as metrics/events from the committed path.
+  private _lastCacheHit = false
+  private _lastCacheConfidence = 0
+  private _lastCacheNeighborCount = 0
 
   // ── Injected dependencies ──────────────────────────────────
   private _willId: string | null = null
@@ -175,7 +197,15 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   // engine keeps only the bus-subscription guard, since those subscriptions
   // feed the gating salience buffer and are shared with the escalation path.
   private readonly _facetSupervisor = new FacetSupervisor()
-  private _facetSyncSubscribed = false
+
+  /**
+   * Who each live facet is engaged with, learned from `executive.facet.sync`.
+   * Keyed by facetId; the last sync wins. Rendered into the master's own prompt so
+   * the singular seat can reason across its conversations "as if they were sitting
+   * at the same table" — which it cannot do while it only knows facet numbers.
+   * Stale entries age out on read (see _activeConversations).
+   */
+  private _facetSubjects = new Map<string, { entityId: string; name?: string; tick: number }>()
 
   // ── Cognitive models ───────────────────────────────────────
   private readonly _model = new GenerativeModel()
@@ -186,6 +216,17 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
   // ── Last state reference (for onReasoningComplete and facets) ─
   private _lastStateRef: ReadonlySimulationState | null = null
+
+  /**
+   * The tick currently being processed, refreshed every react() — distinct from
+   * `_lastStateRef` (which tracks the REASONING tick and must not move under
+   * onReasoningComplete) and from `_lastExecutiveTick` (the last cycle that ran).
+   *
+   * Off-tick arrivals — a facet handoff, in particular — need to be stamped with
+   * when they actually happened. Using `_lastExecutiveTick` for that dated them to
+   * the last master cycle, which can be hundreds of ticks behind.
+   */
+  private _currentTick = 0
 
   // ── Deferred manager side-effects (FN11) ───────────────────
   // Commit-gated queue for the mirroring manager writes returned by
@@ -231,8 +272,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       goallessTickCount: 0,
       lowValenceTickCount: 0
     }
-
-    this._ensureFacetSyncSubscription()
   }
 
   // ── Dependency injection ───────────────────────────────────
@@ -256,7 +295,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   /** Called by CognitiveOrchestrator.addEngine() — injects the shared bus. */
   attachBus( bus: CognitiveBus ): void {
     this._bus = bus
-    this._ensureFacetSyncSubscription()
   }
 
   /**
@@ -393,12 +431,22 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
    * spawn site sets a focus whose `function` matches its role — so the routed
    * answer is the same one, decided later and from the work itself.
    */
-   spawnFacet( role?: 'deliberation' | 'conversation' | 'outreach' | 'supervision'): { attention: 'available' | 'full', handle?: ExecutiveFacetHandle } {
+   spawnFacet(
+    role?: 'deliberation' | 'conversation' | 'outreach' | 'supervision',
+    /**
+     * What this facet is FOR — see `FacetSpawnDeps.key`. Two spawns with the same
+     * key get the same facet, so callers no longer each invent their own dedup
+     * (and `authorOutreach`, which had none, no longer opens a rival facet on a
+     * person the mind is already talking to).
+     */
+    key?: string,
+  ): { attention: 'available' | 'full', handle?: ExecutiveFacetHandle } {
     void role
     // Delegate to FacetSupervisor (R5-g-3), passing the current engine
     // attachments. The supervisor owns the registry + attention budget and
     // performs the throw-checks on bus / director / state ref.
     return this._facetSupervisor.spawn( {
+      ...( key ? { key } : {} ),
       bus:         this._bus,
       llmDirector: this._llmDirector,
       stateRef:    this._lastStateRef,
@@ -414,6 +462,14 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         summarizer:          this._summarizer
       }
     } )
+  }
+
+  /**
+   * The facet already attending to `key`, if one is open — without spawning.
+   * See FacetSupervisor.handleFor.
+   */
+  facetFor( key: string ): ExecutiveFacetHandle | undefined {
+    return this._facetSupervisor.handleFor( key )
   }
 
   // ── CognitiveEngine interface ──────────────────────────────
@@ -432,11 +488,25 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   onCognitiveEvent( event: CognitiveEvent ): StateCommands | void {
     if( event.sourceEngine === this.name ) return
 
-    // Set attention state for bandwidth allowance
-    // One facet per ~0.3 free capacity units, floor at 1
+    // Spare attention scales the facet allowance within the persona's ceiling.
     if( event.type === 'attention.state.changed'){
       const p = event.payload as { freeFraction: number }
       this._facetSupervisor.setAttentionState( p.freeFraction )
+      return
+    }
+
+    // The facet legs. These MUST be dispatched here rather than through their own
+    // `bus.subscribe` calls: the bus keeps one subscription per engineId, and the
+    // orchestrator's `subscribe( engine.name, engine.subscribes(), … )` runs after
+    // `attachBus`, so anything registered separately is silently replaced. This
+    // `['*']` subscription is the engine's only live one.
+    if( event.type === 'executive.facet.sync'){
+      this._onFacetSync( event )
+      return
+    }
+
+    if( event.type === 'executive.facet.handoff'){
+      this._onFacetHandoff( event )
       return
     }
 
@@ -462,6 +532,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     state: ReadonlySimulationState,
     context: SimulationContext,
   ): Promise<EngineResult> {
+    this._currentTick = tick as unknown as number
     this._deferred.flush( state, tick as unknown as number )
     this._deferred.markReactTick( tick as unknown as number )
     // Per-tick facet pump: refresh every facet's state ref to THIS tick's frozen
@@ -469,7 +540,77 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // Sits at a fixed point in the serial engine order — the issue-side twin of
     // the CompletionInbox drain in Phase 2. See .TODO/FACET_REPLAY_DETERMINISM.md.
     this._facetSupervisor.pump( state )
-    return super.react( delta, tick, state, context )
+
+    const result = await super.react( delta, tick, state, context )
+
+    // Reasoning facets occupy attention. Merged into whatever this tick already
+    // produced — AsyncEngine.react returns commands on every tick, reasoning or not,
+    // so the allocator sees the cost land the tick it is incurred.
+    const focus = this._facetAttentionDemands( state, tick as unknown as number )
+    if( focus.set.length || focus.delete.length ){
+      result.commands ??= {}
+      result.commands.set    = [ ...( result.commands.set    ?? [] ), ...focus.set ]
+      result.commands.delete = [ ...( result.commands.delete ?? [] ), ...focus.delete ]
+    }
+
+    return result
+  }
+
+  /**
+   * What the mind is attending to because a facet is reasoning about it, as
+   * `attention.demand` entities the AttentionAllocator allocates real capacity
+   * against (`_extractSalienceSignals` reads this type; `costPerFocus` is then
+   * charged against the same 100-unit budget as perceptual foci).
+   *
+   * This closes a loop that was open in one direction only: the allocator's
+   * `freeFraction` scaled the facet budget, but facets never appeared in
+   * `_activeFocus`, so holding three conversations reported exactly as much spare
+   * attention as holding none. The budget was being scaled by a signal blind to the
+   * thing it was bounding.
+   *
+   * `urgency` sits below 1 on purpose: a live conversation is a genuine claim on
+   * attention but must not automatically outrank every percept — the allocator sorts
+   * candidates by salience into `maxFoci` slots, and a facet that always won would
+   * starve perception. Only BUSY facets are charged; an open-but-quiet thread is one
+   * the mind is in, not one it is attending to.
+   */
+  private _facetAttentionDemands(
+    state: ReadonlySimulationState,
+    tick: number,
+  ): { set: EntityInput[]; delete: string[] } {
+    const busy = this._facetSupervisor.busyFacetIds()
+    const set: EntityInput[] = []
+    const live = new Set<string>()
+
+    for( const facetId of busy ){
+      const id = `facet-attending-${facetId}`
+      live.add( id )
+      const subject = this._facetSubjects.get( facetId )
+      set.push({
+        id,
+        type: 'attention.demand',
+        metadata: {
+          urgency: FACET_ATTENTION_URGENCY,
+          source:  'executive-facet',
+          facetId,
+          ...( subject?.entityId ? { subjectEntityId: subject.entityId } : {} ),
+          ...( subject?.name     ? { subjectName:     subject.name     } : {} ),
+          // NOT `generatesGoal` — GoalManager turns flagged demands into goals, and
+          // "I am talking to someone" is a state, not something to pursue.
+          tick,
+        },
+      })
+    }
+
+    // Release the attention a facet held once it stops reasoning (or is reaped).
+    const del: string[] = []
+    for( const [ id, e ] of state.entities )
+      if( e.type === 'attention.demand'
+          && ( e.metadata as Record<string, unknown> | undefined )?.['source'] === 'executive-facet'
+          && !live.has( id ) )
+        del.push( id )
+
+    return { set, delete: del }
   }
 
   protected override shouldAct(
@@ -481,6 +622,12 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     if( !this._summarizerRestored ){
       this._restoreSummarizer( state )
       this._summarizerRestored = true
+    }
+
+    // Restore the deliberation cache from state on first tick (parallels the summary)
+    if( this._cache && !this._cacheRestored ){
+      this._restoreDeliberationCache( state )
+      this._cacheRestored = true
     }
 
     // Read runtime config overrides from state
@@ -522,7 +669,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // Evaluate gating
     const gatingDeps: GatingDependencies = {
       generativeModel: this._generativeModel,
-      pendingMessages: this._messageQueue.pendingMessages,
       hasPendingWork: this.hasPendingWork
     }
 
@@ -564,7 +710,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     stream: IntermediateStream,
   ): Promise<unknown> {
     this._lastStateRef = state
-    this._messageQueue.pendingCallStartTick = state.tick
 
     // Mark which buffer entries this cycle consumes. Anything pushed after this
     // point arrives during the LLM call and was never part of the broadcast, so
@@ -573,6 +718,47 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
     // Update all facets with the latest state reference
     this._facetSupervisor.broadcastStateRef( state )
+
+    // ── DeliberationCache fast path (optional) ───────────────
+    // A learned interpolation of past executive outputs. When a highly similar,
+    // highly competent precedent exists we skip the LLM entirely. R2-safe: the
+    // fingerprint, retrieval and composition are pure functions of the frozen
+    // state and the cache's own snapshotted contents. The mandatory bookkeeping
+    // above (buffer marking, facet broadcast) has already run, so a cache hit and
+    // a slow tick leave the facet/buffer discipline in the same state.
+    this._pendingVerify = null
+    if( this._cache ){
+      const cacheTick = footprint.tickObserved as unknown as number
+      this._cache.decay()
+      const fp = extractFingerprint( state )
+      const cacheResult = this._cache.retrieve( fp, cacheTick )
+      this._lastCacheHit           = cacheResult.hit
+      this._lastCacheConfidence    = cacheResult.confidence
+      this._lastCacheNeighborCount = cacheResult.neighbors.length
+
+      if( cacheResult.hit && cacheResult.output ){
+        if( !this._cache.shouldVerify() ){
+          // FAST PATH — return the composed output; this tick spends no tokens.
+          stream.report('executive_complete', {
+            actionCount:      cacheResult.output.actions.length,
+            planCount:        0,
+            newBeliefCount:   cacheResult.output.newBeliefs?.length ?? 0,
+            hasIntrospection: false,
+            hasNarrative:     false,
+          } )
+          logger.info(
+            `[executive] ⚡ cache hit tick=${cacheTick}  ` +
+            `ρ=${cacheResult.confidence.toFixed( 3 )}  neighbors=${cacheResult.neighbors.length}`
+          )
+          return cacheResult.output
+        }
+        // Hit selected for verification — run the LLM and score the cache against it.
+        this._pendingVerify = {
+          fingerprint:       fp,
+          cachedActionTypes: cacheResult.output.actions.map( a => a.type ),
+        }
+      }
+    }
 
     // Build executive context using PromptFactory's helper
     const execContext = await PromptFactory.buildFreshContext( {
@@ -607,7 +793,13 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       priorConfidence:   this._lastExecutiveOutput?.confidence ?? 0.5,
       novelty:           state.metrics.get('perception.novelty') ?? 0,
       stressLoad:        state.metrics.get('stress.load') ?? 0,
-      hasPendingMessage: this._messageQueue.pendingMessages.length > 0,
+      // Something a conversation surfaced is waiting on the master and has not
+      // been dealt with. This used to read the pending-message queue, which was
+      // never filled — so the effort gate's `pending_reply` term was structurally
+      // zero for every master that has ever run. Escalations are the master's real
+      // version of "someone is waiting on me": the facets do the replying, the
+      // master owns what they escalate.
+      hasPendingMessage: this._escalations.size > 0,
     }, deliberateThreshold )
     stream.report('process_selected', {
       process:     processSelection.process,
@@ -650,11 +842,11 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         state,
         qualityModulation,
         epistemicUncertainty,
-        pendingMessages: [ ...this._messageQueue.pendingMessages ],
-        focus,
+          focus,
         deps: promptDeps,
         recentActionTypes: [ ...this._recentActionTypes ],
         mode: 'master',
+        activeConversations: this._activeConversations(),
         outputFormat: PromptFactory.buildIdeationFormatInstruction(),
       } )
       // Propose temperature scales with the creativity trait (TODO #4): a creative Will
@@ -668,7 +860,13 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         ideationUserMessage,
         tick: state.tick,
         proposeTemperature,
-        meta: { category: 'executive', attribute: 'master', function: 'ideation', demand: processSelection.effortScore },
+        meta: {
+          category: 'executive',
+          attribute: 'master',
+          process: 'ideation',
+          function: '-',
+          demand: processSelection.effortScore
+        },
       } )
       logger.info(
         `[executive] ◆ deliberate propose tick=${state.tick}  ` +
@@ -688,11 +886,11 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       state,
       qualityModulation,
       epistemicUncertainty,
-      pendingMessages: [ ...this._messageQueue.pendingMessages ],
       focus,
       deps: promptDeps,
       recentActionTypes: [ ...this._recentActionTypes ],
       mode: 'master',
+      activeConversations: this._activeConversations(),
       ideationCandidates
     } )
 
@@ -706,7 +904,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       // D2: context counts for per-tick cognitive state snapshot
       workingMemoryItems: execContext.workingMemory.length,
       goalCount:          execContext.goals.length,
-      pendingMessages:    this._messageQueue.pendingMessages.length,
       beliefCount:        execContext.beliefs.length,
       beliefsOmitted:     execContext.beliefsOmitted,
       promptPath: this._llmDirector?.writeDebugPrompt( state.tick, systemPrompt, userMessage ) ?? ''
@@ -724,7 +921,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       // MODEL_ROUTING W0 — the effort gate already weighed this tick's demand
       // (uncertainty, prior confidence, novelty, a pending reply, stress load);
       // forward it rather than inventing a second measure of the same thing.
-      const masterMeta: LLMCallMeta = { category: 'executive', attribute: 'master', function: 'decision', demand: processSelection.effortScore }
+      const masterMeta: LLMCallMeta = { category: 'executive', attribute: 'master', process: 'decision', function: '-', demand: processSelection.effortScore }
       const result = this._chunkBroadcaster
         ? await this._llmDirector.callStream( systemPrompt, userMessage, state.tick, this._chunkBroadcaster, undefined, masterMeta )
         : await this._llmDirector.call( systemPrompt, userMessage, state.tick, undefined, masterMeta )
@@ -811,6 +1008,23 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       hasNarrative: !!executiveOutput.narrative
     } )
 
+    // ── DeliberationCache learning (slow path) ───────────────
+    // extractFingerprint is pure over the frozen `state`, so recomputing here
+    // yields the identical vector used on entry — no need to thread it through.
+    if( this._cache ){
+      const learnTick = footprint.tickObserved as unknown as number
+      if( this._pendingVerify ){
+        const match = this._actionTypesMatch(
+          this._pendingVerify.cachedActionTypes,
+          executiveOutput.actions.map( a => a.type ),
+        )
+        this._cache.updateCompetence( this._pendingVerify.fingerprint, match ? 1 : 0, learnTick )
+        this._pendingVerify = null
+      } else {
+        this._cache.learn( extractFingerprint( state ), executiveOutput, learnTick )
+      }
+    }
+
     return executiveOutput
   }
 
@@ -889,7 +1103,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     )
 
     // ── Flush pending escalation percepts ──────────────────────
-    // Convert buffered audition.task.signal events into high-salience
+    // Convert buffered executive.facet.handoff events into high-salience
     // percept entities so Exteroception surfaces them as
     // "## Percepts (What I Notice)" on the NEXT master cycle.
     // The master sees them as environmental signals — not as messages to reply to.
@@ -976,12 +1190,54 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       } )
 
     // Clear processed messages
-    this._messageQueue.clearProcessedMessages()
 
-    // Merge escalation percepts into final commands
-    if( escalationPercepts.length ){
+    // Merge escalation percepts into final commands, and retire the ones already
+    // honoured. See _dischargedUndertakings for why this is not optional.
+    const { keep, discharge } = this._reconcileUndertakings( escalationPercepts, this._lastStateRef! )
+    if( keep.length ){
       commands.set ??= []
-      commands.set.push( ...escalationPercepts )
+      commands.set.push( ...keep )
+    }
+    if( discharge.length ){
+      commands.delete ??= []
+      commands.delete.push( ...discharge )
+    }
+
+    // ── Persist deliberation cache (mirrors the rolling summary) ──
+    // Written each executive cycle so the learned patterns survive snapshot/
+    // restore (R2). Bounded by maxPatterns; the stored output objects are only
+    // ever read back, so state's deep-freeze of them is harmless.
+    if( this._cache ){
+      commands.set ??= []
+      commands.set.push( {
+        id: 'executive-deliberation-cache',
+        type: 'executive.cache',
+        metadata: { snapshot: this._cache.snapshot() },
+      } )
+
+      // Surface cache state the R2-safe way: metrics ride the returned
+      // StateCommands (never a frozen-state mutation), and hit/miss events
+      // publish from this committed path so faculties can react to how
+      // automatic the Will is becoming.
+      const total = this._cache.hitCount + this._cache.missCount
+      commands.metrics ??= []
+      commands.metrics.push(
+        [ 'cache.hit',        this._lastCacheHit ? 1 : 0 ],
+        [ 'cache.confidence', this._lastCacheConfidence ],
+        [ 'cache.hit_rate',   total > 0 ? this._cache.hitCount / total : 0 ],
+        [ 'cache.size',       this._cache.size ],
+      )
+      this._bus?.publish( this._lastCacheHit
+        ? {
+            type: 'cache.hit', version: 1, sourceEngine: this.name,
+            salience: this._lastCacheConfidence,
+            payload: { confidence: this._lastCacheConfidence, neighborCount: this._lastCacheNeighborCount },
+          }
+        : {
+            type: 'cache.miss', version: 1, sourceEngine: this.name,
+            salience: 0.3,
+            payload: { confidence: this._lastCacheConfidence },
+          } )
     }
 
     // Track entities modified
@@ -1001,122 +1257,287 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
   // ── Private helpers ────────────────────────────────────────
 
-  private _ensureFacetSyncSubscription(): void {
-    if( this._facetSyncSubscribed || !this._bus ) return
-    this._facetSyncSubscribed = true
+  /**
+   * The people the mind is in conversation with right now, newest first.
+   *
+   * Pruned against the supervisor's live facets on every read: a reaped facet is a
+   * conversation that has ended, and a master that still believes it is mid-thread
+   * with someone reasons about a table that is no longer there.
+   */
+  private _activeConversations(): { entityId: string; name?: string; sinceTick: number }[] {
+    const live = this._facetSupervisor.liveFacetIds()
+    for( const id of [ ...this._facetSubjects.keys() ] )
+      if( !live.has( id ) ) this._facetSubjects.delete( id )
 
-    // ── executive.facet.sync ─────────────────────────────────────
-    // Facet sync events enter the salience buffer so the master
-    // can re-evaluate when enough facet activity accumulates.
-    this._bus.subscribe(
-      this.name,
-      [ 'executive.facet.sync' ],
-      ( event ) => {
-        const payload = event.payload as {
-          facetId?: string
-          reasoning?: string
-          confidence?: number
-          tick?: number
+    return [ ...this._facetSubjects.values() ]
+      .sort( ( a, b ) => b.tick - a.tick )
+      .map( s => ({ entityId: s.entityId, ...( s.name ? { name: s.name } : {} ), sinceTick: s.tick }) )
+  }
+
+  /**
+   * Facet sync — remember WHO each facet is with, and wake the master.
+   *
+   * Reached from `onCognitiveEvent`, NOT from its own `bus.subscribe`. The bus
+   * stores one subscription per engineId (`_subscriptions.set( engineId, … )`),
+   * so a second `subscribe(this.name, …)` silently REPLACES the first — and the
+   * orchestrator registers `subscribe( engine.name, engine.subscribes(), … )`
+   * after `attachBus`, which replaced everything registered here. Two dedicated
+   * handlers used to be installed at this point; the second overwrote the first
+   * and the orchestrator then overwrote that, so neither ever ran. The escalation
+   * leg had been dead in production for its whole life: a facet could escalate,
+   * the audition engine published, and nothing was listening.
+   */
+  /**
+   * Retire undertakings the mind has already honoured, and refuse to restate one
+   * it is already carrying.
+   *
+   * An undertaking percept says, in the first person, "I said I would reach X and
+   * nothing has gone to them yet". That sentence has to stop being true at some
+   * point, and nothing made it stop. Measured on a live Will: SEVEN of them
+   * accumulated in state, every one still asserting nothing had been sent, while
+   * a `conversation.sent` to that person sat right beside them. She read seven
+   * standing unfulfilled promises every cycle and dutifully sent the same message
+   * again, five times in five minutes and once more in the next session — the
+   * percept meant to stop her forgetting a promise was making her unable to
+   * believe she had kept it.
+   *
+   * Discharged by EVIDENCE, not by a timer: a `conversation.sent` to that target,
+   * written no earlier than the undertaking, means the contact happened. That
+   * record is durable and snapshots with the state, so the discharge survives a
+   * restart exactly as the promise does — which the tick-scoped satiation in
+   * `enactionFootprint` deliberately cannot.
+   *
+   * It stays a decision, not an erasure. Retiring the percept removes the standing
+   * claim that the words are unsent; whether to say more to that person is then an
+   * ordinary competition like any other.
+   */
+  private _reconcileUndertakings(
+    incoming: EntityInput[],
+    state:    ReadonlySimulationState,
+  ): { keep: EntityInput[]; discharge: string[] } {
+    /** Latest tick at which anything was sent to each target. */
+    const contacted = new Map<string, number>()
+    for( const [ , e ] of state.entities ){
+      if( e.type !== 'conversation.sent') continue
+      const m      = e.metadata as Record<string, unknown> | undefined
+      const target = typeof m?.['targetEntityId'] === 'string' ? m['targetEntityId'] as string : undefined
+      if( !target ) continue
+      // metadata.tick where set, else the entity's own sim-clock tick. Reading
+      // metadata alone defaulted every record to 0, so `contacted >= madeAt` was
+      // false for any promise made after tick 0 — this discharge never once fired.
+      const at = typeof m?.['tick'] === 'number' ? m['tick'] as number
+               : typeof ( e as { tick?: number } ).tick === 'number' ? ( e as { tick?: number } ).tick as number
+               : 0
+      contacted.set( target, Math.max( contacted.get( target ) ?? 0, at ) )
+    }
+
+    /** An undertaking is spent once we have reached its target since making it. */
+    const honoured = ( target: string | undefined, madeAt: number ): boolean =>
+      !!target && ( contacted.get( target ) ?? -1 ) >= madeAt
+
+    const undertakingOf = ( m: Record<string, unknown> | undefined ) =>
+      m?.['category'] === 'undertaking'
+        ? {
+          target: typeof m['undertakingTarget'] === 'string' ? m['undertakingTarget'] as string : undefined,
+          madeAt: typeof m['tick'] === 'number' ? m['tick'] as number : 0,
         }
+        : undefined
 
-        const syntheticEvent = {
-          id: '',
-          type: 'executive.facet.sync',
-          version: 1,
-          sequenceNumber: 1,
-          sourceEngine: `executive-facet-${payload.facetId ?? 'unknown'}`,
-          salience: Math.max( 0.5, payload.confidence ?? 0.5 ),
-          payload,
-          wallTime: payload.tick as number,
-          logicalTime: payload.tick as number
-        }
+    const discharge: string[] = []
+    /** Targets we are already carrying a live, unhonoured undertaking toward. */
+    const carrying = new Set<string>()
 
-        this._gatingState.salienceBuffer.push( {
-          event: syntheticEvent,
-          tick: payload.tick ?? 0
-        } )
+    for( const [ id, e ] of state.entities ){
+      if( e.type !== 'percept') continue
+      const u = undertakingOf( e.metadata as Record<string, unknown> | undefined )
+      if( !u ) continue
 
-        logger.info(
-          `[executive] master received facet sync from ${payload.facetId} ` +
+      // No target ⇒ it predates the field this reconciliation keys on, so it can
+      // never be matched against a contact and would assert "nothing has gone to
+      // them yet" for the rest of the mind's life. Seven of these were found in a
+      // live snapshot, each one re-read every cycle. Undischargeable is strictly
+      // worse than gone.
+      if( !u.target ){ discharge.push( id ); continue }
+
+      if( honoured( u.target, u.madeAt ) ) discharge.push( id )
+      else carrying.add( u.target )
+    }
+
+    // Drop an incoming restatement of something already honoured or already held.
+    // Duplicates were how seven of these piled up: each master cycle drained a
+    // fresh copy of a promise that could never be marked kept.
+    const keep = incoming.filter( p => {
+      const u = undertakingOf( p.metadata as Record<string, unknown> | undefined )
+      if( !u?.target ) return true
+      if( honoured( u.target, u.madeAt ) ) return false
+      if( carrying.has( u.target ) ) return false
+      carrying.add( u.target )
+      return true
+    } )
+
+    if( discharge.length )
+      logger.info(`[executive] ${ discharge.length } undertaking(s) discharged — the contact was made`)
+
+    return { keep, discharge }
+  }
+
+  private _onFacetSync( event: CognitiveEvent ): void {
+    const payload = event.payload as {
+      facetId?: string
+      reasoning?: string
+      confidence?: number
+      tick?: number
+      subjectEntityId?: string
+      subjectName?: string
+    }
+
+    // Remember WHO this facet is with, not just that it reported.
+    if( payload.facetId && payload.subjectEntityId )
+      this._facetSubjects.set( payload.facetId, {
+        entityId: payload.subjectEntityId,
+        ...( payload.subjectName ? { name: payload.subjectName } : {} ),
+        tick: payload.tick ?? this._lastExecutiveTick ?? 0,
+      })
+
+    // Unconditional (not gated on WORKSPACE_THRESHOLD like ordinary traffic):
+    // a facet reporting back is the master's own attention returning, and the
+    // point of the spike is that it re-evaluates rather than waiting out its
+    // interval.
+    this._gatingState.salienceBuffer.push({
+      event,
+      tick: payload.tick ?? event.logicalTime ?? 0,
+    })
+
+    logger.info(
+      `[executive] master received facet sync from ${payload.facetId}` +
+      ( payload.subjectName || payload.subjectEntityId
+        ? ` (with ${payload.subjectName ?? payload.subjectEntityId})` : '') +
+      ` (confidence=${payload.confidence?.toFixed( 2 )})`
+    )
+  }
+
+  /**
+   * A focused part of me surfaced something the singular seat owns — work to plan
+   * (`escalation`) or an intention toward a third party (`undertaking`).
+   *
+   * ONE handler for every facet type. This was `_onAuditionTaskSignal`, listening
+   * on a topic named for one sense engine and typed with one sense engine's nouns
+   * (`entityId`, `threadId`), which meant a planning, supervision or deliberation
+   * facet had no way to hand anything up at all. See EscalationBuffer for the full
+   * rationale; new kinds go in `HandoffBody`, not in a new topic and a new handler
+   * beside this one.
+   *
+   * Master stays out of the reply path entirely:
+   *   • The facet has already said (or will say) whatever the person in front of
+   *     it needed to hear.
+   *   • The master's job is purely cognitive: create a [PLANS] block, update
+   *     goals, reflect, or decide whether it still means to make that contact.
+   *     Any follow-up communication flows through the agency competition —
+   *     NEVER via [REPLY].
+   *
+   * Buffered rather than written directly: state is read-only here, so
+   * `EscalationBuffer.drainToPercepts()` emits it as a StateCommand on the next
+   * master cycle, where Exteroception surfaces it under "## Percepts (What I Notice)".
+   */
+  private _onFacetHandoff( event: CognitiveEvent ): void {
+    const payload = event.payload as {
+      facetId?:         string
+      subjectEntityId?: string
+      subjectName?:     string
+      threadId?:        string
+      confidence?:      number
+      tick?:            number
+      body:             HandoffBody
+    }
+    if( !payload?.body?.kind ) return
+
+    // NOW, not the last time the master happened to run.
+    //
+    // This was `this._lastExecutiveTick`, so an undertaking formed at tick 900 was
+    // stamped 780 if that was the last master cycle. `_reconcileUndertakings`
+    // discharges on "contacted at or after `madeAt`", which means a message sent at
+    // tick 800 — BEFORE the promise existed — retired it. Over-discharge is the safe
+    // direction, which is why it never surfaced as a symptom, but it made the promise
+    // unfalsifiable: it could be marked kept by something that happened first.
+    const tick = payload.tick ?? this._currentTick
+
+    this._escalations.push({
+      tick,
+      ...( payload.facetId         ? { facetId:         payload.facetId }         : {} ),
+      ...( payload.subjectEntityId ? { subjectEntityId: payload.subjectEntityId } : {} ),
+      ...( payload.subjectName     ? { subjectName:     payload.subjectName }     : {} ),
+      ...( payload.threadId        ? { threadId:        payload.threadId }        : {} ),
+      body: payload.body.kind === 'undertaking'
+        ? { ...payload.body, reasoning: ( payload.body.reasoning ?? '').slice( 0, 400 ) }
+        : { ...payload.body, reasoning: ( payload.body.reasoning ?? '').slice( 0, 400 ) },
+    })
+
+    // Spike the salience buffer so the master fires soon rather than waiting for
+    // the next scheduled interval. The master must NOT be handed the inbound as a
+    // message to answer — that would make it produce a [REPLY], duplicating the
+    // facet's and breaking the facet/master boundary. (The queue that once carried
+    // inbound this way was removed in #114: nothing ever filled it.)
+    this._gatingState.salienceBuffer.push({ event, tick })
+
+    const from = payload.subjectName ?? payload.subjectEntityId ?? payload.facetId ?? 'a focus'
+    logger.info(
+      payload.body.kind === 'undertaking'
+        ? `[executive] master queued undertaking from ${from} ` +
+          `→ reach ${payload.body.target} (confidence=${payload.confidence?.toFixed( 2 )})`
+        : `[executive] master queued escalation percept from ${from} ` +
           `(confidence=${payload.confidence?.toFixed( 2 )})`
-        )
-      }
     )
+  }
 
-    // ── audition.task.signal ─────────────────────────────────────
-    // Published by AuditionEngine when a conversation facet emits the
-    // 'escalate' action type — signalling that the conversation revealed
-    // a task requiring the master's cognitive machinery (plan creation,
-    // goal reprioritization, identity reflection).
-    //
-    // IMPORTANT — master stays out of the reply path entirely:
-    //   • The conversation facet has already sent (or will send) the
-    //     acknowledgement to the user ("Got it, I'll get started on that.").
-    //   • The master's job is purely cognitive: create a [PLANS] block,
-    //     update goals, or reflect. Any follow-up communication to the user
-    //     flows through plan step execution (effector: 'text') via
-    //     ActionExecutor → ProactiveCommunicator — NEVER via [REPLY].
-    //
-    // Implementation:
-    //   • Write a high-salience 'percept' entity to simulation state so
-    //     Exteroception surfaces it under "## Percepts (What I Notice)".
-    //   • Spike the salience buffer so the master fires soon.
-    //   • Do NOT push into _messageQueue.pendingMessages — that would
-    //     cause the master to produce a [REPLY], creating a duplicate
-    //     message and breaking the facet/master communication boundary.
-    this._bus.subscribe(
-      this.name,
-      [ 'audition.task.signal' ],
-      ( event ) => {
-        const payload = event.payload as {
-          entityId:   string
-          threadId:   string
-          reasoning:  string
-          confidence: number
-        }
+  // ── DeliberationCache wiring ───────────────────────────────
 
-        // Write a percept entity so Exteroception surfaces this in
-        // "## Percepts (What I Notice)" — master sees it as an
-        // environmental signal prompting cognitive work, not a reply.
-        if( this._lastStateRef ){
-          // State is read-only here; we can't write directly.
-          // Instead, buffer the escalation for injection on next tick.
-          // The master's shouldAct() will fire due to the salience spike below.
-          // The actual percept write happens in onReasoningComplete() via
-          // a synthetic percept we store here and emit as a StateCommand.
-          this._escalations.push({
-            entityId:  payload.entityId,
-            threadId:  payload.threadId,
-            reasoning: payload.reasoning.slice( 0, 400 ),
-            tick:      this._lastExecutiveTick ?? 0,
-          })
-        }
+  /** Enable the deliberation cache (off by default). Call during mind assembly. */
+  enableCache( config?: DeliberationCacheConfig ): void {
+    this._cache = new DeliberationCache( config )
+  }
 
-        // Spike the salience buffer so the master fires soon rather than
-        // waiting for the next scheduled interval.
-        const syntheticEvent = {
-          id: '',
-          type: 'audition.task.signal',
-          version: 1,
-          sequenceNumber: 1,
-          sourceEngine: 'audition-engine',
-          salience: event.salience ?? 0.9,
-          payload,
-          wallTime: wallClock(),  // telemetry field; logicalTime carries the deterministic clock
-          logicalTime: this._lastExecutiveTick ?? 0
-        }
+  /** True when the cache is active. */
+  get cacheEnabled(): boolean { return this._cache !== null }
 
-        this._gatingState.salienceBuffer.push( {
-          event: syntheticEvent,
-          tick: this._lastExecutiveTick ?? 0
-        } )
+  /** Telemetry snapshot for harnesses / eval. Null when disabled. */
+  cacheStats(): { size: number; hits: number; misses: number } | null {
+    if( !this._cache ) return null
+    return { size: this._cache.size, hits: this._cache.hitCount, misses: this._cache.missCount }
+  }
 
-        logger.info(
-          `[executive] master queued escalation percept from entity ${payload.entityId} ` +
-          `(confidence=${payload.confidence.toFixed( 2 )})`
-        )
-      }
-    )
+  /**
+   * Reafference hook — update cache competence from a confirmed action outcome.
+   * Optional, layered on top of the inline verify loop. Reward follows the
+   * research sketch: mean of (action succeeded, stress relief, goal progress).
+   */
+  onActionOutcome(
+    state: ReadonlySimulationState,
+    tick: Tick,
+    success: boolean,
+    stressDelta: number,
+    goalProgressDelta: number,
+  ): void {
+    if( !this._cache ) return
+    const reward = (
+      ( success ? 1 : 0 ) +
+      ( 1 - Math.max( 0, Math.min( 1, stressDelta ) ) ) +
+      Math.max( 0, Math.min( 1, goalProgressDelta ) )
+    ) / 3
+    this._cache.updateCompetence( extractFingerprint( state ), reward, tick )
+  }
+
+  private _actionTypesMatch( a: string[], b: string[] ): boolean {
+    if( a.length !== b.length ) return false
+    for( let i = 0; i < a.length; i++ ) if( a[ i ] !== b[ i ] ) return false
+    return true
+  }
+
+  private _restoreDeliberationCache( state: ReadonlySimulationState ): void {
+    if( !this._cache ) return
+    const entity = state.entities.get('executive-deliberation-cache')
+    if( !entity ) return
+    const snap = entity.metadata?.[ 'snapshot' ] as DeliberationCacheSnapshot | undefined
+    if( snap ) this._cache.restore( snap )
   }
 
   private _restoreSummarizer( state: ReadonlySimulationState ): void {

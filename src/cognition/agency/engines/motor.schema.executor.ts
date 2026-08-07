@@ -71,6 +71,11 @@ interface Intent {
    */
   planId?:         string
   planStepId?:     string
+  /**
+   * The entity that evoked this — for an ideomotor winner, the `ideomotor.intent`
+   * the executive wrote. Read so enaction can retire it (see _dischargeWill).
+   */
+  evokedBy?:       string
 }
 
 /** Authors the words for a self-initiated communicate the agency selected (no inbound triggered it). */
@@ -87,6 +92,22 @@ export class MotorSchemaExecutor implements CognitiveEngine {
   private _author: OutreachAuthor | null = null
   private _grants: AccessGrants | null = null
   private _bus: CognitiveBus | null = null
+
+  /**
+   * Two-phase outreach authoring. A facet cannot be awaited from inside a tick:
+   * `ExecutiveFacet.report()` only QUEUES in tick-discipline mode and the reasoning
+   * launches from `pump()`, which the ExecutiveEngine calls once per tick — so an
+   * in-tick `await` blocks the very loop that would produce the answer. Observed
+   * live: a 61s freeze of the whole mind inside one tick, then an empty result.
+   * (It passes unit tests because bare facets have no inbox and author inline.)
+   *
+   * So `_deliver` REQUESTS words and returns false (the intent holds 'awaiting'),
+   * the facet answers off-tick, and a later tick delivers. Process-local by design:
+   * an authoring call in flight cannot survive a restart, and the intent would
+   * simply re-request.
+   */
+  private _authoring = new Set<string>()
+  private _authored  = new Map<string, string[]>()
 
   constructor( schemas: MotorSchema[] = INNATE_SCHEMAS ){
     for( const s of schemas ) this._schemas.set( s.id, s )
@@ -173,18 +194,76 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         else if( parentId && revoked.has( parentId ) ) del.push( id )
       }
 
+    // ── Words that landed off-tick → deliver now ─────────────────
+    // Second half of two-phase authoring: a previous tick asked a facet for the words
+    // and held the intent 'awaiting'; the facet answered between ticks. Runs BEFORE
+    // the timeout sweep so words arriving on the same tick the clock would expire are
+    // still spoken rather than discarded.
+    const spokeThisTick = new Set<string>()
+    for( const [ id, e ] of state.entities ){
+      if( e.type !== 'agency.intent' || str( e.metadata?.['status'] ) !== 'awaiting') continue
+      if( !this._authored.has( id ) ) continue
+
+      const intent = readIntent( id, e.metadata )
+      const predicted: EfferenceCopy = {
+        expectedReward:  num( e.metadata?.['predictedReward'],  intent.expectedReward ),
+        expectedValence: num( e.metadata?.['predictedValence'], intent.expectedValence ),
+      }
+      if( await this._deliver( id, intent, predicted, state, tick, set, del, metrics ) )
+        spokeThisTick.add( id )
+    }
+
+    // Words whose intent no longer exists (revoked, timed out, superseded) are words
+    // that will never be said — drop them so the map cannot grow without bound.
+    for( const id of this._authored.keys() )
+      if( !state.entities.has( id ) ) this._authored.delete( id )
+
     // ── Timeout stranded async intents ───────────────────────────
     // An 'awaiting' intent whose host/delivery never returned would block the
     // serial Will forever. After AWAIT_TIMEOUT ticks, abandon it as a failed
     // outcome (which also teaches reafference the action is unreliable here).
     for( const [ id, e ] of state.entities ){
       if( e.type !== 'agency.intent' || str( e.metadata?.['status'] ) !== 'awaiting') continue
+      // Already delivered above — its outcome and deletion are queued for this tick.
+      if( spokeThisTick.has( id ) ) continue
+      // Words are being authored right now. The clock PAUSES rather than extends: a
+      // facet LLM call is 10–30s of latency we do not control, and any fixed budget
+      // large enough to cover a slow one is also large enough to strand a dead one.
+      // While a call is genuinely in flight the world has not failed to answer. The
+      // pause is bounded, not open-ended: `authorOutreach` always settles (its own 60s
+      // timeout resolves empty), so `_authoring` always clears and the clock resumes.
+      if( this._authoring.has( id ) ) continue
       // POLICY_REAFFERENCE P4 — an escalated intent is HELD: the stem owns its
       // lifecycle (extended TTL → approve/deny/expire), so the executor must not
       // time it out at AWAIT_TIMEOUT and reconcile it as a phantom failure.
       if( e.metadata?.['escalated'] === true ) continue
       const dispatchedAt = num( e.metadata?.['dispatchedAt'], tick )
-      if( tick - dispatchedAt < AWAIT_TIMEOUT ) continue
+      const age          = tick - dispatchedAt
+
+      // Dispatched LATER than now ⇒ it was in flight when the mind went to sleep.
+      // Intents snapshot with the state and the tick counter restarts at 1 on wake,
+      // so a restored `awaiting` intent has a NEGATIVE age — and every guard here
+      // inverts on it: `age < AWAIT_TIMEOUT` is trivially true for -589, so it never
+      // timed out, and the selector's staleness went negative, INFLATING the
+      // incumbent's strength instead of decaying it. Measured on a live Will:
+      // incumbent 9.742 against challengers of 0.52, unpreemptable and immortal.
+      // One person's stale intent held the channel and every attempt to contact
+      // anyone else was refused, indefinitely, across restarts.
+      //
+      // Cleared WITHOUT a failure outcome: hibernating is not the world declining
+      // to answer. Reconciling it as a timeout would teach reafference that
+      // reaching that person does not work, which is a lesson about the process
+      // lifecycle, not about them.
+      if( age < 0 ){
+        del.push( id )
+        logger.info(
+          `[motor] cleared "${ str( e.metadata?.['schema'] ) ?? 'intent' }" left awaiting ` +
+          `across a restart (dispatched at tick ${ dispatchedAt }, now ${ tick })`
+        )
+        continue
+      }
+
+      if( age < AWAIT_TIMEOUT ) continue
 
       const intent    = readIntent( id, e.metadata )
       const predicted: EfferenceCopy = {
@@ -437,17 +516,16 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       return true
     }
 
-    // Content authored upstream when present (host / host-facet); otherwise, for a
-    // self-initiated communicate the agency just selected, author it now via a facet
-    // — the unified conversation voice, since no inbound triggered it. Empty ⇒ await.
+    // Content authored upstream when present (host / host-facet), else words a facet
+    // authored off-tick and landed since a previous tick asked for them. Neither ⇒
+    // request authoring (never awaited here — see `_authoring`) and hold 'awaiting'.
     const authored = str( intent.parameters['content'] ) ?? firstMessage( intent.parameters['messages'] )
-    let bubbles: string[] = authored ? [ authored ] : []
-    if( bubbles.length === 0 && this._author ){
-      const name = str( intent.parameters['targetEntityName'] ) ?? intent.targetEntityId ?? 'them'
-      try { bubbles = await this._author.authorOutreach( intent.targetEntityId ?? '', name, str( intent.parameters['gist'] ) ) }
-      catch( err ){ logger.warn(`[motor] outreach authoring failed: ${ errMsg( err ) }`) }
+    let bubbles: string[] = authored ? [ authored ] : ( this._authored.get( id ) ?? [] )
+    this._authored.delete( id )
+    if( bubbles.length === 0 ){
+      this._requestAuthoring( id, intent )
+      return false   // nothing to send yet → await
     }
-    if( bubbles.length === 0 ) return false   // nothing authored to send → await
 
     const request: ActionRequest = {
       effector,
@@ -477,11 +555,42 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         text:     bubbles.join('\n'),
         expiresAt: tick + CONSEQUENCE_TTL_TICKS, tick,
       }) )
+    // The words are out. Whatever willed them is DONE being an intention.
+    //
+    // Discharged here rather than at dispatch on purpose: `_deliver` holds the
+    // intent 'awaiting' while a facet authors, and that authoring can time out or
+    // return nothing. Clearing the will at dispatch would lose the intention
+    // silently — the mind would have decided to say something and simply never
+    // have, which is the failure `commands.ts` calls "the whole intention
+    // evaporated without a trace". Enaction is the discharge; a request is not.
+    if( result.success ) this._dischargeWill( intent, del )
+
     this._emitEnacted( intent, out, predicted, tick )
     this._emitActionOutcome( intent, result.success, result.feedback.outcomeQuality,
       clamp01( Math.abs( predicted.expectedReward - result.feedback.outcomeQuality ) ), tick )
     metrics.push([ 'agency.communicate.delivered', 1 ])
     return true
+  }
+
+  /**
+   * Ask a facet for the words, off-tick. Fire-and-forget on purpose: awaiting this
+   * from inside `react()` deadlocks the tick loop against the facet pump. Idempotent
+   * per intent — a request already in flight is not duplicated, so the intent may sit
+   * 'awaiting' across many ticks with exactly one LLM call behind it.
+   */
+  private _requestAuthoring( id: string, intent: Intent ): void {
+    if( !this._author || this._authoring.has( id ) ) return
+
+    const name = str( intent.parameters['targetEntityName'] ) ?? intent.targetEntityId ?? 'them'
+    this._authoring.add( id )
+    void this._author
+      .authorOutreach( intent.targetEntityId ?? '', name, str( intent.parameters['gist'] ) )
+      .then( bubbles => {
+        if( bubbles.length > 0 ) this._authored.set( id, bubbles )
+        else logger.warn(`[motor] outreach authoring returned nothing for "${ intent.schema }"`)
+      } )
+      .catch( err => { logger.warn(`[motor] outreach authoring failed: ${ errMsg( err ) }`) } )
+      .finally( () => { this._authoring.delete( id ) } )
   }
 
   // ── bus emission ─────────────────────────────────────────────
@@ -506,6 +615,38 @@ export class MotorSchemaExecutor implements CognitiveEngine {
    * RewardEvaluator reads it as a reward signal. `confidence` carries the agency's
    * own forward-model prior so calibration has a real prediction to score.
    */
+  /**
+   * Retire the `ideomotor.intent` that produced this act.
+   *
+   * Nothing deleted these. They were cleared only when the executive next ran and
+   * declined to name the same action again — and the executive runs on an interval,
+   * so between cycles a willed reach-out STOOD in state, was rebuilt into an
+   * affordance every single tick, and competed every single tick. Observed as
+   * dozens of identical lines:
+   *
+   *   [selector] willed reach-out → … NOT selected: 0.297 < inspect… 0.340
+   *
+   * losing by four thousandths, over and over, until it won — twice. Fabrice got
+   * the same message byte-for-byte 25 ticks apart, two outbox ids.
+   *
+   * `justEnacted` was built to hold this line and cannot: it is a DECAYING
+   * quantity, capped at `repeatDamping` (0.30), and a standing intent outlasts it
+   * by construction. Damping a permanent pull only ever delays it. So the intention
+   * is discharged by being acted on, which is what an intention is — you meant to
+   * tell someone something, you told them, and it is finished. If the mind still
+   * wants to say more, the next executive cycle forms a new one, now seeing "I said
+   * this 25 ticks ago and have had no answer" in front of it.
+   *
+   * Satiation stays exactly as it was, and still earns its keep: it damps saying
+   * the same thing again for reasons that did NOT come from a standing will.
+   */
+  private _dischargeWill( intent: Intent, del: string[] ): void {
+    const willId = intent.evokedBy
+    if( !willId || !willId.startsWith('ideomotor-') ) return
+    del.push( willId )
+    logger.info(`[motor] discharged the will behind "${ intent.schema }" (${ willId })`)
+  }
+
   private _emitActionOutcome(
     intent: Intent, success: boolean, outcomeQuality: number, surprise: number, tick: Tick,
   ): void {
@@ -588,6 +729,7 @@ function readIntent( id: string, m: ReadonlyMap<string, unknown> | Record<string
     stepIndex:       typeof meta['stepIndex'] === 'number' ? ( meta['stepIndex'] as number ) : undefined,
     planId:          str( meta['planId'] ),
     planStepId:      str( meta['stepId'] ),
+    evokedBy:        str( meta['evokedBy'] ),
   }
 }
 

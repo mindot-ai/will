@@ -13,6 +13,7 @@
 
 import type { TokenTracker } from '#cognition/utilities/token.tracker'
 import type { LLMCallFunction } from '#cognition/utilities/token.tracker'
+import { LLMSemaphore, withGate } from '#llm/gate'
 
 /** Embedding is only ever a read or a write. */
 export type EmbedFunction = Extract<LLMCallFunction, 'recall' | 'index'>
@@ -44,13 +45,27 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
   private _maxConcurrency: number
   private _timeoutMs: number
   private _tokenTracker: TokenTracker | null
+  /**
+   * Own gate — the same LLMSemaphore the LLM calls use, on a separate instance so
+   * embeddings and reasoning do not compete for one another's slots. It bounds the
+   * fan-out that produced the 10.7s tail, and `withGate` additionally retries a 429
+   * with backoff, which a bare `embed()` previously surfaced as a hard failure.
+   */
+  private _gate: LLMSemaphore
 
   constructor( config: {
     modelName: string
     dimensions: number
     apiUrl: string
     apiKey?: string | null
-    /** Max embedding requests in flight at once for embedBatch(). Default 8. */
+    /**
+     * Max embedding requests in flight at once — across ALL callers, not just one
+     * embedBatch(). Default 4, chosen from measured provider behaviour rather than
+     * taste: gemini-embedding-001 answers a lone request in ~1.1s, but queues hard
+     * under fan-out — at 8 in flight the slowest three took 10.7s (all HTTP 200, no
+     * 429, simply serialized). That tail is what made recall exceed its 5s budget
+     * and return "no recall" while a mind with six live facets was asking.
+     */
     maxConcurrency?: number
     /** @deprecated use maxConcurrency — kept as its fallback for back-compat. */
     batchSize?: number
@@ -67,12 +82,24 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
     this.dimensions = config.dimensions
     this._apiUrl = config.apiUrl
     this._apiKey = config.apiKey ?? null
-    this._maxConcurrency = Math.max( 1, config.maxConcurrency ?? config.batchSize ?? 8 )
+    this._maxConcurrency = Math.max( 1, config.maxConcurrency ?? config.batchSize ?? 4 )
+    this._gate = new LLMSemaphore( this._maxConcurrency )
     this._timeoutMs = config.timeoutMs ?? 30_000
     this._tokenTracker = config.tokenTracker ?? null
   }
 
+  /**
+   * Embed one item, gated. Every caller funnels through here — a facet building a
+   * prompt, the master recalling, the consolidator indexing — so the gate is the
+   * only place total in-flight fan-out is bounded. Waiting for a slot is strictly
+   * better than the alternative it replaces: an ungated request that returns after
+   * the recall budget has already expired is a request whose answer is thrown away.
+   */
   async embed( content: unknown, fn: EmbedFunction = 'recall'): Promise<number[]> {
+    return withGate( () => this._embedOnce( content, fn ), `embed:${ this.modelName }`, this._gate )
+  }
+
+  private async _embedOnce( content: unknown, fn: EmbedFunction ): Promise<number[]> {
     let response: Response
     try {
       response = await fetch(`${this._apiUrl}/embeddings`, {
@@ -110,6 +137,21 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
     if( !Array.isArray( embedding ) || embedding.length === 0 )
       throw new Error(`Embedding response was empty or malformed for model ${this.modelName}`)
 
+    // The configured width must match what the provider actually returns. This class
+    // sends no `dimensions` param, so the index is sized from config alone — and a
+    // wrong number does not fail, it silently builds an index that can never match.
+    // Providers differ per model family and change defaults between versions, so the
+    // number is checked against reality once rather than trusted. Failing here is safe:
+    // indexing degrades to "deferred" and recall to "no recall", both already
+    // best-effort, and the message carries the value to set.
+    if( embedding.length !== this.dimensions )
+      throw new Error(
+        `Embedding width mismatch for ${ this.modelName }: provider returned ${ embedding.length } ` +
+        `dimensions, index is configured for ${ this.dimensions }. ` +
+        `Set WILL_EMBEDDING_DIMENSIONS=${ embedding.length } (and delete any existing ` +
+        `vector_index built at the old width).`
+      )
+
     // Meter embedding token usage (input-only — embeddings have no completion).
     // Recorded under the 'embedding' category so per-Will dashboards can split
     // memory-vector spend from LLM reasoning spend.
@@ -122,6 +164,7 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
         totalTokens:      usedTok,
         category:         'embedding',
         attribute:        'memory',
+        process:          'cog',        // background: no deliberation happens here
         function:         fn,           // 'recall' (query) | 'index' (write)
         scope:            this.modelName,
         tick:             0,

@@ -56,6 +56,8 @@ export interface Stimulus {
   speaker?: string
   /** Conversation/thread id (default = `from`). */
   thread?: string
+  /** True when `thread` is private — just this someone and the Will. See TextMessage.direct. */
+  direct?: boolean
 }
 
 /** A message the Will emitted to someone. */
@@ -66,6 +68,20 @@ export interface WillMessage {
   content: string
   /** Entity id the Will addressed (the speaker you used in say()/tell(), or a bond). */
   to: string
+  /**
+   * The conversation this belongs to — the `thread` from the `perceive()` that
+   * prompted it. Absent when the Will spoke unprompted, which genuinely has no
+   * thread.
+   *
+   * WHERE, not just to whom. The engine knew this the whole way down —
+   * `OutboxMessage.threadId` carries it — and the projection dropped it here, so
+   * a channel adapter had nothing to answer INTO and had to guess from a roster.
+   * Observed live: a DM arrived on `discord:1532693…`, she answered it correctly
+   * and in seconds, and the reply went to the shared server channel because that
+   * was the last room the roster had seen this person in. From the operator's
+   * side she had simply ignored him.
+   */
+  thread?: string
 }
 
 /**
@@ -319,17 +335,29 @@ export class Will {
     pma: PMASnapshot,
     opts: Omit<CreateWillOptions, 'identity'> & { identity?: Partial<WillIdentity> },
   ): Promise<Will> {
-    const id = opts.id ?? `${slug( opts.name )}-${Math.random().toString( 36 ).slice( 2, 8 )}`
+    // Waking IS being the same mind, so the id continues from the artifact unless the
+    // caller overrides it. The id is the path key for everything durable that lives
+    // OUTSIDE the artifact — `data/wills/<id>/vector_index`, snapshots, session logs.
+    // Minting a fresh `name-<random>` here gave a woken mind a brand-new, empty vector
+    // store every boot: identity/beliefs/goals returned (those are in the artifact) while
+    // episodic recall came back permanently empty, and the orphaned index was left behind
+    // on disk. Observed: four boots, four `lora-*` directories, four 4KB indexes, and a
+    // mind that concluded at 100% confidence that its own channel might not be viable
+    // because it could not recall a conversation it had just had.
+    const id = opts.id ?? pma.willId ?? `${slug( opts.name )}-${Math.random().toString( 36 ).slice( 2, 8 )}`
     const stem = new WillStem()
     const will = new Will( stem, id, opts.name )
 
     for( const [ name, entry ] of Object.entries( opts.effectors ?? {} ) )
       will._register( name, entry )
 
-    await stem.createWill(
-      will._buildConfig( id, { ...opts, identity: { prompt: '', ...opts.identity } } ),
-      true /* startPaused — load the artifact before the first tick */,
-    )
+    const config = will._buildConfig( id, { ...opts, identity: { prompt: '', ...opts.identity } } )
+    // Say out loud that this identity is a placeholder. Otherwise the creation
+    // guard warns about the empty persona we just constructed on purpose — three
+    // alarms per wake, drowning the real check that runs when the artifact loads.
+    config.identityFromArtifact = true
+
+    await stem.createWill( config, true /* startPaused — load the artifact before the first tick */ )
     stem.loadPMA( id, pma )
     stem.resumeWill( id )
     will._attach()
@@ -358,6 +386,8 @@ export class Will {
       // the Will knows the person as "someone" until a real one is learned. (The live
       // conversation focus still falls back to the entity id for its Speaker line.)
       ...( stimulus.speaker ? { speakerName: stimulus.speaker } : {} ),
+      // Omitted rather than defaulted: an unknown room is not known to be public.
+      ...( stimulus.direct !== undefined ? { direct: stimulus.direct } : {} ),
     } )
   }
 
@@ -561,7 +591,10 @@ export class Will {
     this._unsub = this.stem.addTickListener( this.id, ( _snapshot, _tick, outbox, invocations ) => {
       // Outbound messages → event + auto delivery-ack.
       for( const msg of outbox ){
-        this._emitMessage( { id: msg.id, content: msg.content, to: msg.targetEntityId } )
+        this._emitMessage( {
+          id: msg.id, content: msg.content, to: msg.targetEntityId,
+          ...( msg.threadId ? { thread: msg.threadId } : {} ),
+        } )
         try { this.stem.confirmMessageDelivery( this.id, msg.id, true ) } catch { /* best-effort */ }
       }
       // Effector invocations → project the motor act, then run the handler → ack.

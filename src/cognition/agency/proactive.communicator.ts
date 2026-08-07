@@ -190,7 +190,17 @@ export class ProactiveCommunicator {
     // Generate outbox message IDs first so we can embed them in conversation.sent
     // and correlate deliveries back to this intent (TODO 11.3).
     const originalMessage  = ( request.parameters?.originalMessage as string ) ?? ''
-    const deliveryTick     = ( request.parameters?.tick as number ) ?? 0
+    // `decidedAt` is the enacting tick and is always set by the caller; the
+    // `parameters.tick` fallback is for hosts that build a request by hand.
+    //
+    // This defaulted to 0 for every agency-path delivery, because MotorSchemaExecutor
+    // builds `parameters` from the intent and never put a tick in it. Two
+    // consequences, both silent: every `conversation.sent` was stamped tick 0, so
+    // anything comparing against it (satiation, undertaking discharge) compared
+    // against zero and never fired; and the id `conv-sent-<target>-0` was CONSTANT,
+    // so each send to a person overwrote the record of the last one — the mind kept
+    // exactly one memory of having spoken to each person, forever.
+    const deliveryTick     = ( request.parameters?.tick as number ) ?? request.decidedAt ?? 0
     const replyToMessageId = ( request.parameters?.replyToMessageId as string ) ?? undefined
     const isAck            = ( request.parameters?.isAck as boolean ) ?? false
 
@@ -264,9 +274,15 @@ export class ProactiveCommunicator {
       description: `I reach out to ${targetEntityName}: "${fullReply.slice( 0, 80 )}${fullReply.length > 80 ? '…' : ''}"`,
       commands,
       feedback: {
-        outcomeQuality: 0.85,
+        // NOT a success yet. This reports the TRANSPORT, and the act's point is to be
+        // answered — an outcome not yet known at this moment. Scoring delivery as 0.85
+        // taught the mind that reaching out works every time, including the times it
+        // was ignored, which is why it re-asked the same question 19 times in two
+        // minutes. Neutral here; the unanswered/answered signal in outreach.silence.ts
+        // is what actually moves the pull toward this person.
+        outcomeQuality: 0.5,
         surprise: 0.15,
-        lessons: [ `My message is queued for delivery to ${targetEntityName}.` ],
+        lessons: [ `My words are on their way to ${targetEntityName}. Whether they land is not yet known.` ],
       },
     }
   }

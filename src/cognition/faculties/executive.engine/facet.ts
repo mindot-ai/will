@@ -53,6 +53,18 @@ export interface FacetReport {
   contextId?: string
   /** Optional dynamic instructions to append to the user message */
   instructions?: string
+  /**
+   * Attend to something else for THIS report only, leaving the facet's standing
+   * focus untouched.
+   *
+   * A facet's focus was a single mutable field, so anything that wanted a live
+   * facet to consider one different thing had to `setFocus()` first — clobbering
+   * whatever the facet was already set up for, and racing with any report already
+   * queued behind it. That is why a self-initiated message to someone the mind was
+   * ALREADY talking to had to be composed by a separate, transient facet that could
+   * not see the live conversation at all.
+   */
+  focus?: FocusSection
 }
 
 export interface FacetDecision {
@@ -63,6 +75,16 @@ export interface FacetDecision {
   decision: unknown
   reasoning: string
   confidence: number
+  /**
+   * Sim tick this decision was reasoned at.
+   *
+   * The facet has always known it and never passed it on, so a subscriber writing
+   * state in response had no deterministic clock and reached for a process-local
+   * counter instead — which resets on restart and collides. Never wall-clock: this
+   * reaches ids that live in state, and a wall-clock id makes recorded and replayed
+   * runs diverge (R2).
+   */
+  tick: number
 }
 
 export type FacetEventListener = ( decision: FacetDecision ) => void
@@ -133,6 +155,19 @@ export class ExecutiveFacet {
   /** Accumulated reasoning history for continuity across report() calls */
   private _facetReasoningHistory: string[] = []
   private _masterSyncHistory: string[] = []
+
+  /**
+   * This facet's own prior reasoning, for the supervisor to carry to whichever
+   * facet takes over the same keyed thread. Continuity belongs to the thread, not
+   * to the instance holding it: a facet reaped mid-conversation used to take the
+   * mind's private thinking about that person with it.
+   */
+  get reasoningHistory(): string[] { return [ ...this._facetReasoningHistory ] }
+
+  /** Resume a thread's reasoning on spawn (supervisor-only; see FacetSpawnDeps.key). */
+  restoreReasoningHistory( history: string[] ): void {
+    this._facetReasoningHistory = [ ...history ]
+  }
 
   /** Confidence of this facet's *previous* decision — a dual-process gate signal. */
   private _lastConfidence = 0.5
@@ -260,9 +295,7 @@ export class ExecutiveFacet {
   private _launchReason( report: FacetReport ): void {
     this._inflight++
     this._reason( report )
-      .catch( err =>
-        logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err )
-      )
+      .catch( err => logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err ) )
       .finally( () => {
         this._inflight--
         this.markActive( ( this._currentStateRef?.tick as number ) ?? this._lastActiveTick )
@@ -322,9 +355,14 @@ export class ExecutiveFacet {
 
     logger.info(`[executive.facet] ${this.facetId} synced from master (tick=${payload.tick})`)
 
-    // Store master's latest reasoning for context in next report()
+    // Store the wider reasoning for context in the next report().
+    //
+    // Rendered in the FIRST PERSON and with no mention of a "master": this is the
+    // same mind's thinking arriving from where the rest of its attention has been,
+    // not a report from a superior. Naming it "Master sync" gave the facet a second
+    // party to address — and it addressed it, out loud, on the outbound channel.
     if( payload.reasoning )
-      this._masterSyncHistory.push(`[Master sync — tick ${payload.tick}] ${payload.reasoning.slice( 0, 400 )}`)
+      this._masterSyncHistory.push(`[tick ${payload.tick}] ${payload.reasoning.slice( 0, 400 )}`)
 
     // Keep only last 5 sync entries
     if( this._masterSyncHistory.length > 5 )
@@ -338,7 +376,11 @@ export class ExecutiveFacet {
     if( !this._currentStateRef )
       throw new Error(`[executive.facet] ${this.facetId} no state reference available`)
 
-    if( !this._currentFocus )
+    // This report's focus: its own if it carried one, else the facet's standing
+    // one. A per-report focus never mutates `_currentFocus`, so a live thread can
+    // be asked to attend to one different thing and come straight back.
+    const reportFocus = report.focus ?? this._currentFocus
+    if( !reportFocus )
       throw new Error(`[executive.facet] ${this.facetId} no focus set. Call setFocus() before report().`)
 
     const currentState = this._currentStateRef
@@ -346,7 +388,7 @@ export class ExecutiveFacet {
     // Build fresh context from current state
     // A focus may supply a recall query (e.g. the live conversation message) to
     // drive the single "## Relevant Memories" section — one recall surface (§5).
-    const execContext = await PromptFactory.buildFreshContext( this._contextDeps, currentState, this._currentFocus?.recallQuery )
+    const execContext = await PromptFactory.buildFreshContext( this._contextDeps, currentState, reportFocus.recallQuery )
 
     const qualityModulation = PromptFactory.computeQualityModulation( currentState )
     const epistemicUncertainty = PromptFactory.computeEpistemicUncertainty( execContext, currentState )
@@ -355,10 +397,10 @@ export class ExecutiveFacet {
     // the appropriate content via setFocus()
     const focus: FocusSection = this._masterSyncHistory.length > 0
             ? {
-                ...this._currentFocus,
-                content: `${this._currentFocus.content}\n\n## Master Consciousness Updates\n${this._masterSyncHistory.join('\n')}`
+                ...reportFocus,
+                content: `${reportFocus.content}\n\n## What I've Been Turning Over\n${this._masterSyncHistory.join('\n')}`
               }
-            : this._currentFocus
+            : reportFocus
 
     // Build system prompt using PromptFactory — same schema as master, [REPLY] gated out.
     const systemPrompt = PromptFactory.buildSystemPrompt( {
@@ -377,7 +419,7 @@ export class ExecutiveFacet {
     // isn't cold on each cycle. Injected before the caller's instructions so the
     // caller content always comes last (highest recency bias from the LLM).
     const continuityBlock = this._facetReasoningHistory.length > 0
-      ? `## My Prior Reasoning (this facet)\n${this._facetReasoningHistory.join('\n')}`
+      ? `## Where My Thinking Had Got To\n${this._facetReasoningHistory.join('\n')}`
       : ''
 
     const reportContent = [
@@ -399,7 +441,7 @@ export class ExecutiveFacet {
       stressLoad:        currentState.metrics.get('stress.load') ?? 0,
       // A facet's "stakes-bearing moment" is a live message awaiting reply (conversation
       // facets set focus.recallQuery to it); planning/other facets rely on uncertainty.
-      hasPendingMessage: !!this._currentFocus?.recallQuery,
+      hasPendingMessage: !!reportFocus.recallQuery,
     }, deliberateThreshold )
 
     let ideationCandidates: IdeationCandidate[] | undefined
@@ -410,7 +452,6 @@ export class ExecutiveFacet {
         state: currentState,
         qualityModulation,
         epistemicUncertainty,
-        pendingMessages: [],
         focus,
         deps: this._promptDeps,
         recentActionTypes: [],
@@ -424,7 +465,14 @@ export class ExecutiveFacet {
         ideationUserMessage,
         tick: currentState.tick,
         proposeTemperature,
-        meta: { category: 'executive', attribute: 'facet', function: this._currentFocus?.function ?? 'ideation', scope: this.facetId, demand: processSelection.effortScore },
+        meta: {
+          category: 'executive',
+          attribute: 'facet',
+          process: 'ideation',
+          function: reportFocus.function ?? '-',
+          scope: this.facetId,
+          demand: processSelection.effortScore
+        },
       } )
       logger.info(
         `[executive.facet] ${this.facetId} ◆ deliberate propose tick=${currentState.tick}  ` +
@@ -437,7 +485,6 @@ export class ExecutiveFacet {
       state: currentState,
       qualityModulation,
       epistemicUncertainty,
-      pendingMessages: [],
       focus,
       deps: this._promptDeps,
       recentActionTypes: [],
@@ -471,11 +518,12 @@ export class ExecutiveFacet {
       const facetMeta: LLMCallMeta = {
         category:  'executive',
         attribute: 'facet',
+        process: 'decision',
         // A focus that declares no function is making its decision call, the
         // facet's analogue of master's 'decision'. This previously fell back to
         // 'facet' — an *attribute* value, which quietly created a bogus bucket
         // in the by-function cost breakdown. The typed axes caught it.
-        function:  this._currentFocus?.function ?? 'decision',
+        function:  reportFocus.function ?? '-',
         scope:     this.facetId,
         demand:    processSelection.effortScore,
       }
@@ -555,7 +603,8 @@ export class ExecutiveFacet {
       respondingToType: report.type,
       decision: this._extractDecisionPayload( output, focus ),
       reasoning: output.reasoning,
-      confidence: output.confidence
+      confidence: output.confidence,
+      tick: currentState.tick as unknown as number
     }
 
     // Promote subscriber-visible fields from the decision object to the event payload
@@ -566,7 +615,7 @@ export class ExecutiveFacet {
       ? decision.decision as Record<string, unknown>
       : {}
 
-    this._bus.publish( {
+    this._bus.publish({
       type: 'executive.facet.progress',
       version: 1,
       sourceEngine: `executive-facet-${this.facetId}`,
@@ -587,7 +636,7 @@ export class ExecutiveFacet {
         contextId:        report.contextId,
         tick:             currentState.tick
       }
-    } )
+    })
 
     // Conscious learning about others — route name/feeling to known.entity.tracker (the
     // dossier owner) the same way the master does, so routine (un-escalated) conversation
@@ -595,15 +644,17 @@ export class ExecutiveFacet {
     const keUpdates = dec[ 'knownEntityUpdates' ] as ExecutiveOutputFull['knownEntityUpdates'] | undefined
     if( keUpdates )
       for( const u of keUpdates )
-        if( u.keid && u.keid !== 'agent-self' && ( u.name || u.feeling != null ) )
-          this._bus.publish( {
-            type: 'known.entity.learned', version: 1,
+        if( u.keid && u.keid !== 'agent-self' && ( u.name || u.feeling != null || u.sameAs ) )
+          this._bus.publish({
+            type: 'known.entity.learned',
+            version: 1,
             sourceEngine: `executive-facet-${this.facetId}`,
-            salience: 0.5, payload: { keid: u.keid, name: u.name, feeling: u.feeling }
-          } )
+            salience: u.sameAs ? 0.7 : 0.5,
+            payload: { keid: u.keid, name: u.name, feeling: u.feeling, sameAs: u.sameAs }
+          })
 
     // Sync back to master
-    this._bus.publish( {
+    this._bus.publish({
       type: 'executive.facet.sync',
       version: 1,
       sourceEngine: `executive-facet-${this.facetId}`,
@@ -613,9 +664,13 @@ export class ExecutiveFacet {
         reasoning: output.reasoning,
         confidence: output.confidence,
         actionTypes: output.actions.map( a => a.type ),
+        // WHO this facet is engaged with (FocusSection.subject*). The master keeps
+        // the singular seat, so it needs the person, not just the facet number.
+        ...( focus.subjectEntityId ? { subjectEntityId: focus.subjectEntityId } : {} ),
+        ...( focus.subjectName     ? { subjectName:     focus.subjectName     } : {} ),
         tick: currentState.tick
       }
-    } )
+    })
 
     // Notify all listeners (PlanningEngine, AuditionEngine, etc.).
     //

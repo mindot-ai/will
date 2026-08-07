@@ -1,0 +1,181 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="720" viewBox="0 0 1360 720" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-e2e8f0" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#e2e8f0"/></marker>
+<marker id="arr-f472b6" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#f472b6"/></marker>
+<marker id="arr-94a3b8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#94a3b8"/></marker>
+<marker id="arr-4ade80" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#4ade80"/></marker>
+</defs>
+<rect width="1360" height="720" fill="url(#sky)"/>
+<rect x="1" y="1" width="1358" height="718" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">Who someone is, vs where to find them</text>
+<text x="40" y="80" font-size="13" fill="#8b93a7">A keid used to be minted by the transport, so identity WAS an address and one human on two channels was two people. An anchor is now a referent; the addresses become aliases and the rooms become handles — so how to reach someone is a decision, not a roster guess</text>
+<rect x="1166" y="42" width="154" height="22" rx="11" fill="#fbbf2414" stroke="#fbbf2455" stroke-width="1"/>
+<circle cx="1178" cy="53" r="3.4" fill="#fbbf24"/>
+<text x="1187" y="57" font-size="10.5" fill="#cbd5e1">Executive (System 2)</text>
+<rect x="1034.5" y="42" width="123.5" height="22" rx="11" fill="#4ade8014" stroke="#4ade8055" stroke-width="1"/>
+<circle cx="1046.5" cy="53" r="3.4" fill="#4ade80"/>
+<text x="1055.5" y="57" font-size="10.5" fill="#cbd5e1">Agency (action)</text>
+<rect x="866.4" y="42" width="160.1" height="22" rx="11" fill="#94a3b814" stroke="#94a3b855" stroke-width="1"/>
+<circle cx="878.4" cy="53" r="3.4" fill="#94a3b8"/>
+<text x="887.4" y="57" font-size="10.5" fill="#cbd5e1">Stem / infrastructure</text>
+<rect x="728.8" y="42" width="129.6" height="22" rx="11" fill="#f472b614" stroke="#f472b655" stroke-width="1"/>
+<circle cx="740.8" cy="53" r="3.4" fill="#f472b6"/>
+<text x="749.8" y="57" font-size="10.5" fill="#cbd5e1">Social cognition</text>
+<rect x="615.5999999999999" y="42" width="105.19999999999999" height="22" rx="11" fill="#e2e8f014" stroke="#e2e8f055" stroke-width="1"/>
+<circle cx="627.5999999999999" cy="53" r="3.4" fill="#e2e8f0"/>
+<text x="636.5999999999999" y="57" font-size="10.5" fill="#cbd5e1">Host / world</text>
+<rect x="44" y="118" width="236" height="264" rx="16" fill="#e2e8f007" stroke="#e2e8f02e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#e2e8f0bb">THE WORLD NAMES SOMEONE</text>
+<rect x="300" y="118" width="250" height="404" rx="16" fill="#f472b607" stroke="#f472b62e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="316" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#f472b6bb">THE TRACKER</text>
+<rect x="570" y="118" width="250" height="404" rx="16" fill="#f472b607" stroke="#f472b62e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="586" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#f472b6bb">THE DOSSIER</text>
+<rect x="840" y="118" width="240" height="404" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="856" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">SETTLING IDENTITY</text>
+<rect x="1100" y="118" width="222" height="404" rx="16" fill="#4ade8007" stroke="#4ade802e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="1116" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#4ade80bb">REACHING BACK OUT</text>
+<path d="M 162 214 C 162 248, 162 266, 162 300" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 262 187 C 370.5071352492545 187, 209.49286475074553 467, 318 467" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
+<rect x="256.86763178885286" y="220.75" width="88.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="301.26763178885284" y="234.25" font-size="10" fill="#cbd5e1" text-anchor="middle">a shared room</text>
+<path d="M 262 327 C 319.2981535479111 327, 260.7018464520889 187, 318 187" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<rect x="242.8" y="247" width="94.39999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="290" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">first sighting</text>
+<path d="M 425 214 C 425 248, 425 266, 425 300" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f472b6)"/>
+<rect x="349.8" y="247" width="150.39999999999998" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<text x="425" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">address becomes an alias</text>
+<path d="M 532 187 C 566 187, 554 187, 588 187" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f472b6)"/>
+<path d="M 162 214 C 162 334, 342.00561795540153 604.6165136830056, 400 620 C 457.99438204459847 635.3834863169944, 468 327, 588 327" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
+<rect x="341.6" y="610" width="116.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="400" y="623.5" font-size="10" fill="#cbd5e1" text-anchor="middle">direct ⇒ dm | room</text>
+<path d="M 695 214 C 695 248, 695 266, 695 300" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f472b6)"/>
+<path d="M 588 187 C 562 187, 562 467, 588 467" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
+<rect x="518.5" y="317" width="100" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<text x="568.5" y="330.5" font-size="10" fill="#cbd5e1" text-anchor="middle">a blocked merge</text>
+<path d="M 532 327 C 652 327, 738 187, 858 187" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
+<rect x="577.0559999999998" y="286.75999999999993" width="111.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<text x="632.6559999999998" y="300.25999999999993" font-size="10" fill="#cbd5e1" text-anchor="middle">follows the chain</text>
+<path d="M 802 187 C 836 187, 824 187, 858 187" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f472b6)"/>
+<path d="M 802 467 C 859.2981535479112 467, 800.7018464520888 327, 858 327" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f472b6)"/>
+<path d="M 802 467 C 836 467, 824 467, 858 467" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f472b6)"/>
+<rect x="752" y="457" width="156" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<text x="830" y="470.5" font-size="10" fill="#cbd5e1" text-anchor="middle">shown, so it can be asked</text>
+<path d="M 960 354 C 960 474, 790 590, 730 590 C 670 590, 695 444.66086476534406, 695 354" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<rect x="663.2" y="580" width="133.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="730" y="593.5" font-size="10" fill="#cbd5e1" text-anchor="middle">fuse MOVES the routes</text>
+<path d="M 1062 467 C 1082 467, 1082 327, 1062 327" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<rect x="1010.2" y="387" width="133.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="1077" y="400.5" font-size="10" fill="#cbd5e1" text-anchor="middle">one _fuse, either way</text>
+<path d="M 1062 187 C 1096 187, 1080 187, 1114 187" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 802 327 C 922 327, 994 187, 1114 187" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
+<rect x="980.3679999999999" y="207.23999999999998" width="72" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<text x="1016.3679999999999" y="220.73999999999998" font-size="10" fill="#cbd5e1" text-anchor="middle">the routes</text>
+<path d="M 1209 214 C 1209 248, 1209 266, 1209 300" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<rect x="1145" y="247" width="128" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="1209" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">the room to speak in</text>
+<path d="M 695 354 C 695 474, 842.0697343358108 624.3768018614478, 900 640 C 957.9302656641892 655.6231981385522, 1009.4309319157907 467, 1114 467" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
+<rect x="830.4" y="630" width="139.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<text x="900" y="643.5" font-size="10" fill="#cbd5e1" text-anchor="middle">so the mind can choose</text>
+<g>
+<rect x="62" y="160" width="200" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="62" y="160" width="200" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="63.2" y="169" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="162" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Inbound — a channel</text>
+<text x="162" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">from · thread · direct (dm?)</text>
+</g>
+<g>
+<rect x="62" y="300" width="200" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="62" y="300" width="200" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="63.2" y="309" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="162" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">discord:&lt;userId&gt;</text>
+<text x="162" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">an ADDRESS — never an identity</text>
+</g>
+<g filter="url(#glow)" color="#f472b6">
+<rect x="318" y="160" width="214" height="54" rx="12" fill="#10141d" stroke="#f472b699" stroke-width="1.4"/>
+<rect x="318" y="160" width="214" height="54" rx="12" fill="#f472b612"/>
+<rect x="319.2" y="169" width="3.2" height="36" rx="1.6" fill="#f472b6"/>
+<text x="425" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">KnownEntityTracker</text>
+<text x="425" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">mints ke:&lt;opaque&gt; — replay-stable</text>
+</g>
+<g>
+<rect x="318" y="300" width="214" height="54" rx="12" fill="#10141d" stroke="#f472b699" stroke-width="1.4"/>
+<rect x="318" y="300" width="214" height="54" rx="12" fill="#f472b612"/>
+<rect x="319.2" y="309" width="3.2" height="36" rx="1.6" fill="#f472b6"/>
+<text x="425" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">known-entity-alias</text>
+<text x="425" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">persisted — or it re-forks on boot</text>
+</g>
+<g>
+<rect x="318" y="440" width="214" height="54" rx="12" fill="#10141d" stroke="#f472b699" stroke-width="1.4"/>
+<rect x="318" y="440" width="214" height="54" rx="12" fill="#f472b612"/>
+<rect x="319.2" y="449" width="3.2" height="36" rx="1.6" fill="#f472b6"/>
+<text x="425" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">a ROOM is a referent</text>
+<text x="425" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">kind:'thing' — a seat built, never used</text>
+</g>
+<g>
+<rect x="588" y="160" width="214" height="54" rx="12" fill="#10141d" stroke="#f472b699" stroke-width="1.4"/>
+<rect x="588" y="160" width="214" height="54" rx="12" fill="#f472b612"/>
+<rect x="589.2" y="169" width="3.2" height="36" rx="1.6" fill="#f472b6"/>
+<text x="695" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">known-entity ke:…</text>
+<text x="695" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">kind · name · familiarity · valence</text>
+</g>
+<g>
+<rect x="588" y="300" width="214" height="54" rx="12" fill="#10141d" stroke="#f472b699" stroke-width="1.4"/>
+<rect x="588" y="300" width="214" height="54" rx="12" fill="#f472b612"/>
+<rect x="589.2" y="309" width="3.2" height="36" rx="1.6" fill="#f472b6"/>
+<text x="695" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">handles[]</text>
+<text x="695" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">dm | room · lastAnsweredTick</text>
+</g>
+<g>
+<rect x="588" y="440" width="214" height="54" rx="12" fill="#10141d" stroke="#f472b699" stroke-width="1.4"/>
+<rect x="588" y="440" width="214" height="54" rx="12" fill="#f472b612"/>
+<rect x="589.2" y="449" width="3.2" height="36" rx="1.6" fill="#f472b6"/>
+<text x="695" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">suspectedSameAs</text>
+<text x="695" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">a question the mind holds, not a merge</text>
+</g>
+<g filter="url(#glow)" color="#94a3b8">
+<rect x="858" y="160" width="204" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="858" y="160" width="204" height="54" rx="12" fill="#94a3b812"/>
+<rect x="859.2" y="169" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="960" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">resolveKeid</text>
+<text x="960" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">ONE resolver — anchor, address or name</text>
+</g>
+<g>
+<rect x="858" y="300" width="204" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="858" y="300" width="204" height="54" rx="12" fill="#94a3b812"/>
+<rect x="859.2" y="309" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="960" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">recognition</text>
+<text x="960" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">absorbs only a THIN handle</text>
+</g>
+<g>
+<rect x="858" y="440" width="204" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="858" y="440" width="204" height="54" rx="12" fill="#94a3b812"/>
+<rect x="859.2" y="449" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="960" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">the mind: sameAs</text>
+<text x="960" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">may fuse two ESTABLISHED — it was told</text>
+</g>
+<g>
+<rect x="1114" y="160" width="190" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="1114" y="160" width="190" height="54" rx="12" fill="#4ade8012"/>
+<rect x="1115.2" y="169" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="1209" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">OutboxWriter routing</text>
+<text x="1209" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">anchor → address + room</text>
+</g>
+<g>
+<rect x="1114" y="300" width="190" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="1114" y="300" width="190" height="54" rx="12" fill="#4ade8012"/>
+<rect x="1115.2" y="309" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="1209" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">the channel bridge</text>
+<text x="1209" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">a chosen room always wins</text>
+</g>
+<g filter="url(#glow)" color="#fbbf24">
+<rect x="1114" y="440" width="190" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="1114" y="440" width="190" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="1115.2" y="449" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="1209" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">## People I Know</text>
+<text x="1209" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">reachable: where, and how it went</text>
+</g>
+<text x="40" y="698" font-size="10.5" fill="#5b6372">@mindot/will · identity-and-route</text>
+<text x="1320" y="698" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

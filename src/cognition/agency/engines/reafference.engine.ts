@@ -31,6 +31,10 @@ import type { SchemaRepertoire } from '#agency/schemas/repertoire'
 import { schemaEntityId, availabilityEntityId } from '#agency/schemas/repertoire'
 import { asFinality } from '#stem/policy/arbiter'
 import { AWAIT_TIMEOUT } from '#agency/engines/motor.schema.executor'
+import { readEffectiveParams } from '#cognition/persona.prior'
+import {
+  SENT_TYPE, DEFAULT_REPLY_WINDOW_TICKS, resolveReplyExpectations,
+} from '#agency/conversation.aim'
 
 const PROC_THRESHOLD = 0.60   // mirror of repertoire's threshold for the habitual-count metric
 
@@ -81,6 +85,11 @@ export class ReafferenceEngine implements CognitiveEngine {
       // action.outcome the PlanningEngine advances on. (The executor is the emitter
       // for sync/timeout outcomes; this is its async counterpart — one emitter each.)
       { type: 'action.outcome',              version: 1, validate: () => null },
+      // Whether a person answers the mind when it speaks to them. Distinct from
+      // `interaction.occurred`, which reports something someone DID — a silence is
+      // not an act and so can never appear there, which is why "they never answer
+      // me" was unlearnable despite `socialStanding` being built to carry it.
+      { type: 'social.responsiveness',       version: 1, validate: () => null },
     ]
   }
   /** Creation seam: register a composite proposed by the executive/deliberation facet. */
@@ -281,6 +290,19 @@ export class ReafferenceEngine implements CognitiveEngine {
     // Availability entries (P2) mirror the same way — empty until a refusal lands.
     for( const e of this._repertoire.availabilityEntities() ) set.push( e )
 
+    // ── 3.5 Did the words achieve what they were for? ────────────
+    // The motor loop above graded whether each act EXECUTED. For a communicative
+    // act that is the smaller half of the question: the outbox accepting a message
+    // is not the world answering it. Both were the same fact until now, which is
+    // how `reach-out` came to sit at 28 enactments / 28 successes while the person
+    // it kept reaching had said nothing back.
+    //
+    // Folded here rather than in a new engine because this is the same question
+    // this engine already exists to ask, one layer out — reafference over a social
+    // act instead of a motor one. The resolution itself is pure (conversation.aim);
+    // all that happens here is writing it down and saying it out loud.
+    const replied = this._resolveReplies( tick, state, set )
+
     // ── 4. Telemetry ─────────────────────────────────────────────
     const skills    = this._repertoire.skills()
     const habitual  = [ ...skills.values() ].filter( s => s.habitStrength >= PROC_THRESHOLD ).length
@@ -291,11 +313,105 @@ export class ReafferenceEngine implements CognitiveEngine {
       [ 'agency.habitual.count',   habitual ],
       [ 'agency.sensory.confirmed', sensory ],
     )
+    // Quiet path stays byte-identical: a Will that has spoken to nobody, or whose
+    // every turn was answered, writes nothing here (cf. EXAFFERENCE P3).
+    if( replied.answered   > 0 ) metrics.push([ 'social.answered.count',   replied.answered ])
+    if( replied.unanswered > 0 ) metrics.push([ 'social.unanswered.count', replied.unanswered ])
     // Only emit the refusal metric when it fired — a never-refused Will writes
     // nothing here, preserving the byte-identical quiet path (cf. EXAFFERENCE P3).
     if( refused > 0 ) metrics.push([ 'agency.refused.count', refused ])
 
     return { commands: { set, delete: del, metrics } }
+  }
+
+  /**
+   * Latch each open turn's fate onto its own record and announce it once.
+   *
+   * Two rules earn their keep here:
+   *
+   *  • MERGE, never replace. `StateManager.setEntity` overwrites the whole entity,
+   *    and a `conversation.sent` carries `outboxMessageIds` — the sole key by which
+   *    a later delivery ack can find it. Rewriting the record with only the fields
+   *    this method cares about would sever that, silently, for every turn that got
+   *    an answer.
+   *
+   *  • Latch, don't recompute. `answeredAt`/`unansweredAt` persist, so the event
+   *    fires on the one tick the fact changed rather than every tick for the rest
+   *    of the session — which for an unanswered turn would be thousands of
+   *    identical reputation hits against one person for one silence.
+   */
+  private _resolveReplies(
+    tick:  Tick,
+    state: ReadonlySimulationState,
+    set:   EntityInput[],
+  ): { answered: number; unanswered: number } {
+    // A trait, not a constant: how long a silence takes to mean something differs
+    // between minds, so it tunes through the persona prior like every other
+    // developable parameter. Absent ⇒ the default ⇒ the pre-seam behaviour.
+    //
+    // Read from the SELECTOR's config despite being applied here, because it and
+    // `repeatWindowTicks` are two readings of one disposition — how long this mind
+    // sits with something it has said. Held apart, a mind could tune itself into
+    // saying a thing again while still calling the silence too fresh to count.
+    const window = Math.max(
+      1,
+      Math.round(
+        readEffectiveParams( state, 'engine-config-action-selector').replyWindowTicks
+          ?? DEFAULT_REPLY_WINDOW_TICKS
+      ),
+    )
+
+    const { answered, unanswered } = resolveReplyExpectations( state.entities, tick, window )
+    if( answered.length === 0 && unanswered.length === 0 ) return { answered: 0, unanswered: 0 }
+
+    const merge = ( id: string, patch: Record<string, unknown> ): void => {
+      const existing = state.entities.get( id )
+      if( !existing ) return
+      set.push({
+        id, type: SENT_TYPE,
+        metadata: { ...( existing.metadata as Record<string, unknown> ?? {} ), ...patch },
+      })
+    }
+
+    for( const { turn, at } of answered ){
+      merge( turn.entityId, { answeredAt: at } )
+      this._emitResponsiveness( turn.targetEntityId, true, at - turn.tick, tick )
+    }
+
+    for( const turn of unanswered ){
+      merge( turn.entityId, { unansweredAt: tick } )
+      this._emitResponsiveness( turn.targetEntityId, false, tick - turn.tick, tick )
+      logger.info(
+        `[reafference] no answer from ${ turn.targetEntityName ?? turn.targetEntityId } ` +
+        `after ${ tick - turn.tick } ticks — "${ turn.preview.slice( 0, 60 ) }"`
+      )
+    }
+
+    return { answered: answered.length, unanswered: unanswered.length }
+  }
+
+  /**
+   * Publish how a person responded to being spoken to.
+   *
+   * Deliberately NOT an `interaction.occurred`: that event means "someone did
+   * something toward us" and carries a valence for what they did. A silence is
+   * nobody doing anything, and forcing it through that channel would have the
+   * ReputationTracker book a hostile *act* where there was only an absence — the
+   * mind would come to think it was being rebuffed rather than simply not
+   * answered yet. Separate signal, separate meaning, one consumer decides what
+   * either is worth.
+   */
+  private _emitResponsiveness( keid: string, answered: boolean, waitedTicks: number, tick: Tick ): void {
+    if( !this._bus ) return
+    try {
+      this._bus.publish({
+        type: 'social.responsiveness', version: 1, sourceEngine: this.name,
+        // An answer is ordinary; being ignored is the one worth interrupting for.
+        salience: answered ? 0.3 : 0.55,
+        payload: { keid, answered, waitedTicks, tick },
+      })
+    }
+    catch( err ){ logger.warn(`[reafference] responsiveness publish failed: ${ err instanceof Error ? err.message : String( err ) }`) }
   }
 
   private _emitProceduralized( skill: LearnedSkill, tick: Tick ): void {

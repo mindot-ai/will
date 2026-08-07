@@ -713,6 +713,13 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       ? this._buildRecentOutcomesSection( context.recentActions, state.tick ).trim()
       : ''
 
+    // Scoped with recentActions: both answer "what have I already done about
+    // this?", and a facet composing a message needs it at least as much as the
+    // master does — the facet is the one about to write the words again.
+    const spokenBlock = has('recentActions')
+      ? this._buildSpokenTurnsSection( context.spokenTurns ).trim()
+      : ''
+
     const perceptsBlock = has('percepts')
       ? `## Percepts (What I Notice)\n${context.percepts.slice( 0, 10 ).map( p => `- [${p.category}] ${p.summary} (salience: ${p.salience.toFixed( 2 )})`).join('\n') || 'Nothing notable'}`
       : ''
@@ -787,6 +794,7 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       plansBlock,
       actionDiversity.trim(),
       recentOutcomesBlock,
+      spokenBlock,
       perceptsBlock,
       abilitiesBlock,
       ruminationsBlock,
@@ -1025,6 +1033,44 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
     const omitted = memories.length - lines.length
     const tail    = omitted > 0 ? `\n[+${omitted} omitted — over recall budget; full store intact]` : ''
     return `## Relevant Memories\n${lines.join('\n')}${tail}`
+  }
+
+  /**
+   * What I have said to people lately, and who has answered.
+   *
+   * Written as a PERCEPT and nothing more. There is no instruction here not to
+   * repeat myself, and there must not be: the mind is allowed to say a thing
+   * twice, and a person ignored twice about something urgent should say it a
+   * third time. What it was missing was not restraint, it was the fact — it could
+   * not tell a first asking from an eleventh, so restraint was not something it
+   * was in a position to exercise.
+   *
+   * The closing line is an epistemic caveat for the same reason: silence has many
+   * causes and this surface distinguishes none of them. Saying "no answer yet"
+   * without saying "and I do not know why" invites the mind to fill the gap, which
+   * is the habit that had it inventing attention-demand ids when asked what was
+   * wrong with it.
+   */
+  private static _buildSpokenTurnsSection(
+    spokenTurns: ExecutiveContext['spokenTurns'],
+  ): string {
+    // Defensive on absence, not just on empty: a host (and several tests) build a
+    // context by hand, and a missing block must render as nothing rather than
+    // throw the whole prompt away.
+    if( !spokenTurns?.length ) return ''
+
+    const lines = spokenTurns.map( t => {
+      const words = t.preview.trim()
+      const said  = words ? ` — "${ words.slice( 0, 80 ) }${ words.length > 80 ? '…' : '' }"` : ''
+      return `- **${ t.target }** · ${ t.age } ticks ago${ said } — ${ t.answered ? 'they answered' : 'no answer yet' }`
+    } )
+
+    const open = spokenTurns.filter( t => !t.answered ).length
+    const note = open > 0
+      ? `\n\nThese are my own words, newest first. "No answer yet" means exactly that — the words went out and nothing has come back. It does not tell me why, and I should not assume.`
+      : ''
+
+    return `## What I've Said Lately\n${ lines.join('\n') }${ note }\n\n`
   }
 
   private static _buildRecentOutcomesSection(

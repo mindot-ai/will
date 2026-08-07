@@ -45,7 +45,7 @@ describe('buildUserMessage — Task Focus block + persistence resistance', () =>
         worldState: { energyLevel: 80, sleepPressure: 10, stressLoad: 5, circadianPhase: 0.5, timeOfDay: 12, threatLevel: 0 },
         affect: { dominantEmotion: 'calm', valence: 0.1, arousal: 0.2, dominance: 0.5, blends: [] },
         goals, plans: [], relevantPlanIds: [], percepts: [], workingMemory: [], memories: [],
-        beliefs: [], beliefsOmitted: 0, recentActions: [], currentFocus,
+        beliefs: [], beliefsOmitted: 0, recentActions: [], spokenTurns: [], currentFocus,
       } as ExecutiveContext,
       state: { tick: 5, metrics: new Map(), entities: new Map() } as any,
       qualityModulation: 1, epistemicUncertainty: 0.3,

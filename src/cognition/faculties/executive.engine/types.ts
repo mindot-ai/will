@@ -289,6 +289,30 @@ export interface ExecutiveContext {
     /** planId if this action came from a plan step */
     planId?: string
   }>
+  /**
+   * What the mind has said to people lately, and who has answered.
+   *
+   * The one thing it could never see about itself. `conversation.sent` has been in
+   * state since the beginning — 57 records on the Will this was found on — and
+   * reached no prompt at all, so the sole evidence of having spoken was a `✓
+   * reach-out` line under Recent Action Outcomes: no words, no person, and a tick
+   * mark asserting it had worked. That is why the same question went out eleven
+   * times in two and a half minutes; from the inside each one was the first.
+   *
+   * Newest first. Answered turns are kept alongside open ones deliberately — "I
+   * asked and they replied" and "I asked and heard nothing" only mean anything
+   * against each other.
+   */
+  spokenTurns: Array<{
+    /** Who it was said to, by name where the mind knows one. */
+    target:  string
+    /** The opening words — enough to recognise a thing already said. */
+    preview: string
+    /** Ticks since it was said. */
+    age:     number
+    /** Unset while still in the air; the mind is told which. */
+    answered: boolean
+  }>
   /** Behavioral disposition loaded from PMA at session start — stable per session. */
   behavioralDisposition?: {
     riskTolerance:   number

@@ -1284,16 +1284,16 @@ var DefaultSerializer = class {
       hash |= 0;
     }
     for (const e of state.entities) {
-      const str7 = `${e.id}:${e.type}:${e.updatedAt}:${e.updatedAtTick}:${JSON.stringify(e.metadata)}:${JSON.stringify(e.components)}`;
-      for (let i = 0; i < str7.length; i++) {
-        hash = (hash << 5) - hash + str7.charCodeAt(i);
+      const str8 = `${e.id}:${e.type}:${e.updatedAt}:${e.updatedAtTick}:${JSON.stringify(e.metadata)}:${JSON.stringify(e.components)}`;
+      for (let i = 0; i < str8.length; i++) {
+        hash = (hash << 5) - hash + str8.charCodeAt(i);
         hash |= 0;
       }
     }
     for (const [key, value] of state.metrics) {
-      const str7 = `${key}:${value}`;
-      for (let i = 0; i < str7.length; i++) {
-        hash = (hash << 5) - hash + str7.charCodeAt(i);
+      const str8 = `${key}:${value}`;
+      for (let i = 0; i < str8.length; i++) {
+        hash = (hash << 5) - hash + str8.charCodeAt(i);
         hash |= 0;
       }
     }
@@ -3656,8 +3656,8 @@ var ACP_SELF_PRECISION = 0.35;
 var PERSONA_PRIOR_ID = "persona-prior";
 var PERSONA_PRIOR_TYPE = "persona.prior";
 function readPersonaPrior(state, engineConfigId) {
-  const meta = state.entities.get(PERSONA_PRIOR_ID)?.metadata;
-  return meta?.priors?.[engineConfigId] ?? {};
+  const meta2 = state.entities.get(PERSONA_PRIOR_ID)?.metadata;
+  return meta2?.priors?.[engineConfigId] ?? {};
 }
 function readEffectiveParams(state, engineConfigId) {
   const base = state.entities.get(engineConfigId)?.metadata?.params ?? {};
@@ -3712,6 +3712,7 @@ var PRIOR_DESCRIPTIONS = {
   "engine-config-action-selector.noveltyWeight": { lower: "feeling less pull toward the untried", raise: "drawn more strongly to do the untried and unpracticed" },
   "engine-config-action-selector.repeatDamping": { lower: "following up sooner when I have had no answer", raise: "giving people room after I have said my piece" },
   "engine-config-action-selector.repeatWindowTicks": { lower: "coming back to something sooner after I have said it", raise: "letting what I have said stand for longer before returning to it" },
+  "engine-config-action-selector.replyWindowTicks": { lower: "reading a silence as an answer sooner", raise: "giving someone longer before I take their quiet as telling me anything" },
   "engine-config-action-selector.socialWeight": { lower: "reaching for people regardless of whether they answer me", raise: "drawn toward the people who actually answer me" },
   "engine-config-moral.eventThreshold": { lower: "holding myself to my principles more sharply", raise: "letting moral lapses weigh on me less" },
   "engine-config-frustration.decayRate": { lower: "staying frustrated for longer after a setback", raise: "shaking off frustration and bouncing back faster" },
@@ -3722,10 +3723,10 @@ var PRIOR_DESCRIPTIONS = {
   "engine-config-known-entity.reliabilityRate": { lower: "being slower to revise whether I can rely on something", raise: "quickly updating whether I can rely on something" }
 };
 function summarizePersonaPrior(state) {
-  const meta = readPersonaPriorMeta(state);
-  if (!meta?.priors) return [];
+  const meta2 = readPersonaPriorMeta(state);
+  if (!meta2?.priors) return [];
   const out = [];
-  for (const [engineConfigId, params] of Object.entries(meta.priors))
+  for (const [engineConfigId, params] of Object.entries(meta2.priors))
     for (const [param, delta] of Object.entries(params)) {
       if (!delta) continue;
       const key = `${engineConfigId}.${param}`;
@@ -4460,22 +4461,22 @@ function consequenceEntity(d) {
   };
 }
 function readConsequence(m) {
-  const meta = m ?? {};
-  const intentId = typeof meta["intentId"] === "string" ? meta["intentId"] : void 0;
-  const schema = typeof meta["schema"] === "string" ? meta["schema"] : void 0;
-  const mode = meta["mode"] === "communicate" || meta["mode"] === "external" ? meta["mode"] : void 0;
+  const meta2 = m ?? {};
+  const intentId = typeof meta2["intentId"] === "string" ? meta2["intentId"] : void 0;
+  const schema = typeof meta2["schema"] === "string" ? meta2["schema"] : void 0;
+  const mode = meta2["mode"] === "communicate" || meta2["mode"] === "external" ? meta2["mode"] : void 0;
   if (!intentId || !schema || !mode) return null;
   return {
     intentId,
     schema,
     mode,
-    effector: typeof meta["effector"] === "string" ? meta["effector"] : void 0,
-    targetEntityId: typeof meta["targetEntityId"] === "string" ? meta["targetEntityId"] : void 0,
-    textHash: typeof meta["textHash"] === "number" ? meta["textHash"] : void 0,
-    text: typeof meta["text"] === "string" ? meta["text"] : void 0,
-    paramsHash: typeof meta["paramsHash"] === "number" ? meta["paramsHash"] : void 0,
-    expiresAt: typeof meta["expiresAt"] === "number" ? meta["expiresAt"] : 0,
-    tick: typeof meta["tick"] === "number" ? meta["tick"] : 0
+    effector: typeof meta2["effector"] === "string" ? meta2["effector"] : void 0,
+    targetEntityId: typeof meta2["targetEntityId"] === "string" ? meta2["targetEntityId"] : void 0,
+    textHash: typeof meta2["textHash"] === "number" ? meta2["textHash"] : void 0,
+    text: typeof meta2["text"] === "string" ? meta2["text"] : void 0,
+    paramsHash: typeof meta2["paramsHash"] === "number" ? meta2["paramsHash"] : void 0,
+    expiresAt: typeof meta2["expiresAt"] === "number" ? meta2["expiresAt"] : 0,
+    tick: typeof meta2["tick"] === "number" ? meta2["tick"] : 0
   };
 }
 function liveConsequences(entities, tick) {
@@ -9695,6 +9696,16 @@ var DreamSimulator = class {
 };
 
 // src/cognition/faculties/goal.manager.ts
+var COMMUNICATIVE_SCHEMAS = /* @__PURE__ */ new Set([
+  "reach-out",
+  "reach_out",
+  "communicate",
+  "talk",
+  "text",
+  "broadcast",
+  "gesture"
+]);
+var ANSWER_PROGRESS_STEP = 0.12;
 var FOCUS_COMMITMENT_RAMP = 30;
 var COMMITMENT_GAIN = 0.3;
 var MAX_COMMITMENT_BOOST = 0.2;
@@ -9764,8 +9775,10 @@ var GoalManager = class {
       "executive.prediction.formed",
       "executive.facet.progress",
       "plan.completed",
-      "action.outcome"
+      "action.outcome",
       // 4.1: advance action-type goals when matching outcomes fire
+      "social.responsiveness"
+      // somebody answered — the only progress a message can make
     ];
   }
   publishes() {
@@ -9834,6 +9847,13 @@ var GoalManager = class {
       case "action.outcome": {
         const p = e.payload;
         this._nudgeActionGoals(p.domain, p.actionType, p.outcomeQuality);
+        break;
+      }
+      // A communicative act only advances a goal once somebody answers it. The
+      // send itself is not progress — see _nudgeActionGoals.
+      case "social.responsiveness": {
+        const p = e.payload;
+        if (p.answered === true && p.keid) this._nudgeAnsweredGoals(p.keid);
         break;
       }
     }
@@ -10045,29 +10065,29 @@ var GoalManager = class {
     for (const entity of state.entities.values()) {
       if (entity.type !== "goal") continue;
       if (this._goals.has(entity.id)) continue;
-      const meta = entity.metadata ?? {};
-      const status = meta.status ?? "active";
+      const meta2 = entity.metadata ?? {};
+      const status = meta2.status ?? "active";
       if (status === "completed" || status === "abandoned") continue;
       this._goals.set(entity.id, {
         id: entity.id,
-        description: meta.description ?? entity.id,
-        priority: meta.priority ?? 0.5,
-        basePriority: meta.basePriority ?? meta.priority ?? 0.5,
-        progress: meta.progress ?? 0,
+        description: meta2.description ?? entity.id,
+        priority: meta2.priority ?? 0.5,
+        basePriority: meta2.basePriority ?? meta2.priority ?? 0.5,
+        progress: meta2.progress ?? 0,
         status,
-        parentGoalId: meta.parentGoalId,
+        parentGoalId: meta2.parentGoalId,
         // COPY, never adopt. `meta` belongs to a state entity, and the state
         // manager deep-freezes those — adopting the array by reference gives the
         // goal a frozen `tags`/`subGoals`, and the next push (abandonGoal, or
         // addGoal appending to a parent) throws TypeError mid-tick.
-        subGoals: [...meta.subGoals ?? []],
-        activatedAt: meta.activatedAt ?? tick,
-        deadline: meta.deadline,
-        tags: [...meta.tags ?? []],
-        beliefsAtActivation: meta.beliefsAtActivation ?? this._currentBeliefCount,
-        completionType: meta.completionType ?? "epistemic",
-        completionCondition: meta.completionCondition,
-        abandonedReason: meta.abandonedReason
+        subGoals: [...meta2.subGoals ?? []],
+        activatedAt: meta2.activatedAt ?? tick,
+        deadline: meta2.deadline,
+        tags: [...meta2.tags ?? []],
+        beliefsAtActivation: meta2.beliefsAtActivation ?? this._currentBeliefCount,
+        completionType: meta2.completionType ?? "epistemic",
+        completionCondition: meta2.completionCondition,
+        abandonedReason: meta2.abandonedReason
       });
     }
   }
@@ -10219,21 +10239,42 @@ var GoalManager = class {
   _nudgeActionGoals(domain, actionType, outcomeQuality) {
     const dLow = domain.toLowerCase();
     const aLow = actionType.toLowerCase();
-    const isCommunicationAction = aLow === "talk" || aLow === "text" || dLow === "communication";
+    if (COMMUNICATIVE_SCHEMAS.has(aLow) || dLow === "communication") return;
     for (const goal of this._goals.values()) {
       if (goal.status !== "active" && goal.status !== "blocked") continue;
       if (goal.completionType !== "action") continue;
       const hasMatch = goal.tags.some((tag) => {
         const t = tag.toLowerCase();
         return t === dLow || t === aLow || dLow.includes(t) || t.includes(dLow) || aLow.includes(t) || t.includes(aLow);
-      }) || isCommunicationAction && goal.tags.some(
-        (t) => t === "communication" || t === "reply" || t === "conversation"
-      );
+      });
       if (hasMatch) {
         goal.progress = Math.min(1, goal.progress + outcomeQuality * 0.12);
         goal.lastActionAttemptTick = this._currentTick;
         goal.lastActionType = actionType;
       }
+    }
+  }
+  /**
+   * Somebody answered. Advance the action goals that were about reaching them.
+   *
+   * Linked the way every other goal→person link in the system is linked: the
+   * `keid:<id>` tag (selection.scoring's `collectGoalTargets` reads the same one
+   * to lift a reach-out's goal relevance) or `requestingEntityId`, set when a
+   * conversation escalation created the goal. Nothing here guesses from wording.
+   *
+   * Unmatched by design: a goal with no link to this person gets nothing, even if
+   * it is tagged 'communication'. Being answered by one person is not progress on
+   * wanting to talk to another.
+   */
+  _nudgeAnsweredGoals(keid) {
+    const tag = `keid:${keid}`.toLowerCase();
+    for (const goal of this._goals.values()) {
+      if (goal.status !== "active" && goal.status !== "blocked") continue;
+      if (goal.completionType !== "action") continue;
+      if (goal.requestingEntityId !== keid && !goal.tags.some((t) => t.toLowerCase() === tag)) continue;
+      goal.progress = Math.min(1, goal.progress + ANSWER_PROGRESS_STEP);
+      goal.lastActionAttemptTick = this._currentTick;
+      goal.lastActionType = "answered";
     }
   }
   /** True when a metric completionCondition (e.g. "emotion.boredom < 40") is already met. */
@@ -10400,7 +10441,73 @@ function readPersona(metadata) {
   return prompt.trim();
 }
 
+// src/cognition/agency/conversation.aim.ts
+var SENT_TYPE = "conversation.sent";
+var RECEIVED_TYPE = "conversation.received";
+var DEFAULT_REPLY_WINDOW_TICKS = 240;
+function meta(e) {
+  const m = e.metadata;
+  if (!m) return {};
+  return m instanceof Map ? Object.fromEntries(m) : m;
+}
+function str(v) {
+  return typeof v === "string" ? v : void 0;
+}
+function num(v) {
+  return typeof v === "number" && Number.isFinite(v) ? v : void 0;
+}
+function readSpokenTurns(entities) {
+  const out = [];
+  for (const [id, e] of entities) {
+    if (e.type !== SENT_TYPE) continue;
+    const m = meta(e);
+    const target = str(m["targetEntityId"]);
+    if (!target) continue;
+    out.push({
+      entityId: id,
+      targetEntityId: target,
+      targetEntityName: str(m["targetEntityName"]),
+      preview: str(m["preview"]) ?? "",
+      tick: num(m["tick"]) ?? num(e.tick) ?? 0,
+      answeredAt: num(m["answeredAt"]),
+      unansweredAt: num(m["unansweredAt"]),
+      isAck: m["isAck"] === true
+    });
+  }
+  return out.sort((a, b) => a.tick - b.tick || (a.entityId < b.entityId ? -1 : a.entityId > b.entityId ? 1 : 0));
+}
+function lastHeardByEntity(entities) {
+  const out = /* @__PURE__ */ new Map();
+  for (const [, e] of entities) {
+    if (e.type !== RECEIVED_TYPE) continue;
+    const m = meta(e);
+    const source = str(m["sourceKeid"]);
+    if (!source) continue;
+    const at = num(m["tick"]) ?? num(e.tick) ?? 0;
+    if (at > (out.get(source) ?? -Infinity)) out.set(source, at);
+  }
+  return out;
+}
+function resolveReplyExpectations(entities, tick, windowTicks = DEFAULT_REPLY_WINDOW_TICKS) {
+  const turns = readSpokenTurns(entities);
+  const lastHeard = lastHeardByEntity(entities);
+  const answered = [];
+  const unanswered = [];
+  for (const t of turns) {
+    if (t.isAck || t.answeredAt !== void 0) continue;
+    const heard = lastHeard.get(t.targetEntityId);
+    if (heard !== void 0 && heard > t.tick) {
+      answered.push({ turn: t, at: heard });
+      continue;
+    }
+    if (t.unansweredAt !== void 0) continue;
+    if (windowTicks > 0 && tick - t.tick >= windowTicks) unanswered.push(t);
+  }
+  return { answered, unanswered };
+}
+
 // src/cognition/faculties/executive.engine/context.ts
+var SPOKEN_TURNS_SHOWN = 6;
 async function buildExecutiveContext(state, deps, recallQuery) {
   const identityEntity = state.entities.get("identity-self");
   const identityName = readIdentityName(state);
@@ -10535,6 +10642,12 @@ async function buildExecutiveContext(state, deps, recallQuery) {
   }
   recentActions.sort((a, b) => b.tick - a.tick);
   const recentActionsCapped = recentActions.slice(0, 5);
+  const spokenTurns = readSpokenTurns(state.entities).filter((t) => !t.isAck).reverse().slice(0, SPOKEN_TURNS_SHOWN).map((t) => ({
+    target: t.targetEntityName ?? t.targetEntityId,
+    preview: t.preview,
+    age: Math.max(0, state.tick - t.tick),
+    answered: t.answeredAt !== void 0
+  }));
   const plans = [];
   for (const entity of state.entities.values()) {
     if (entity.type !== "plan") continue;
@@ -10582,6 +10695,7 @@ async function buildExecutiveContext(state, deps, recallQuery) {
     beliefs,
     beliefsOmitted,
     recentActions: recentActionsCapped,
+    spokenTurns,
     behavioralDisposition,
     selfTuning,
     knownEntities: extractKnownEntities(state),
@@ -11074,6 +11188,7 @@ ${context.goals.map((g) => {
     const planRelevantIds = mode === "master" ? void 0 : context.relevantPlanIds;
     const plansBlock = has("plans") ? this._buildActivePlansSection(context.plans, focus.awarenessEntityId, planRelevantIds).trim() : "";
     const recentOutcomesBlock = has("recentActions") ? this._buildRecentOutcomesSection(context.recentActions, state.tick).trim() : "";
+    const spokenBlock = has("recentActions") ? this._buildSpokenTurnsSection(context.spokenTurns).trim() : "";
     const perceptsBlock = has("percepts") ? `## Percepts (What I Notice)
 ${context.percepts.slice(0, 10).map((p) => `- [${p.category}] ${p.summary} (salience: ${p.salience.toFixed(2)})`).join("\n") || "Nothing notable"}` : "";
     const abilitiesBlock = context.abilities && context.abilities.length > 0 ? `## Abilities Available Now
@@ -11114,6 +11229,7 @@ I've been focused on ${context.currentFocus.goalDescription ? `"${context.curren
       plansBlock,
       actionDiversity.trim(),
       recentOutcomesBlock,
+      spokenBlock,
       perceptsBlock,
       abilitiesBlock,
       ruminationsBlock,
@@ -11317,6 +11433,38 @@ ${recent.map((t, i) => `${i + 1}. ${t}`).join(" \u2192 ")}${warning}
 [+${omitted} omitted \u2014 over recall budget; full store intact]` : "";
     return `## Relevant Memories
 ${lines.join("\n")}${tail}`;
+  }
+  /**
+   * What I have said to people lately, and who has answered.
+   *
+   * Written as a PERCEPT and nothing more. There is no instruction here not to
+   * repeat myself, and there must not be: the mind is allowed to say a thing
+   * twice, and a person ignored twice about something urgent should say it a
+   * third time. What it was missing was not restraint, it was the fact — it could
+   * not tell a first asking from an eleventh, so restraint was not something it
+   * was in a position to exercise.
+   *
+   * The closing line is an epistemic caveat for the same reason: silence has many
+   * causes and this surface distinguishes none of them. Saying "no answer yet"
+   * without saying "and I do not know why" invites the mind to fill the gap, which
+   * is the habit that had it inventing attention-demand ids when asked what was
+   * wrong with it.
+   */
+  static _buildSpokenTurnsSection(spokenTurns) {
+    if (!spokenTurns?.length) return "";
+    const lines = spokenTurns.map((t) => {
+      const words = t.preview.trim();
+      const said = words ? ` \u2014 "${words.slice(0, 80)}${words.length > 80 ? "\u2026" : ""}"` : "";
+      return `- **${t.target}** \xB7 ${t.age} ticks ago${said} \u2014 ${t.answered ? "they answered" : "no answer yet"}`;
+    });
+    const open = spokenTurns.filter((t) => !t.answered).length;
+    const note = open > 0 ? `
+
+These are my own words, newest first. "No answer yet" means exactly that \u2014 the words went out and nothing has come back. It does not tell me why, and I should not assume.` : "";
+    return `## What I've Said Lately
+${lines.join("\n")}${note}
+
+`;
   }
   static _buildRecentOutcomesSection(recentActions, currentTick) {
     if (recentActions.length === 0) return "";
@@ -12657,9 +12805,9 @@ var TableRouter = class {
     this._rules = [...rules];
     this.name = name;
   }
-  route(meta) {
+  route(meta2) {
     for (const rule of this._rules) {
-      if (matches(rule, meta)) return rule.route;
+      if (matches(rule, meta2)) return rule.route;
     }
     return null;
   }
@@ -12671,10 +12819,10 @@ function chainRouters(...routers) {
   const warned = /* @__PURE__ */ new Set();
   return {
     name: chain.map((r) => r.name).join(">"),
-    route(meta) {
+    route(meta2) {
       for (const router of chain) {
         try {
-          const hit = router.route(meta);
+          const hit = router.route(meta2);
           if (hit) return hit;
         } catch (err) {
           if (!warned.has(router.name)) {
@@ -12687,14 +12835,14 @@ function chainRouters(...routers) {
     }
   };
 }
-function matches(rule, meta) {
-  if (rule.category !== void 0 && rule.category !== meta.category) return false;
-  if (rule.attribute !== void 0 && rule.attribute !== meta.attribute) return false;
-  if (rule.process !== void 0 && rule.process !== meta.process) return false;
-  if (rule.function !== void 0 && rule.function !== meta.function) return false;
+function matches(rule, meta2) {
+  if (rule.category !== void 0 && rule.category !== meta2.category) return false;
+  if (rule.attribute !== void 0 && rule.attribute !== meta2.attribute) return false;
+  if (rule.process !== void 0 && rule.process !== meta2.process) return false;
+  if (rule.function !== void 0 && rule.function !== meta2.function) return false;
   const bounded = rule.minDemand !== void 0 || rule.maxDemand !== void 0;
   if (bounded) {
-    const d = meta.demand;
+    const d = meta2.demand;
     if (typeof d !== "number" || Number.isNaN(d)) return false;
     if (rule.minDemand !== void 0 && d < rule.minDemand) return false;
     if (rule.maxDemand !== void 0 && d >= rule.maxDemand) return false;
@@ -12902,11 +13050,11 @@ var LLMDirector = class {
    * whenever the router has no opinion, throws, or names a provider we hold no
    * credential for — degrade, never crash.
    */
-  _resolveEndpoint(meta) {
+  _resolveEndpoint(meta2) {
     if (isNullRouter(this._router)) return this._defaultEndpoint;
     let route;
     try {
-      route = this._router.route(meta);
+      route = this._router.route(meta2);
     } catch (err) {
       this._warnRouteOnce(
         `throw:${this._router.name}`,
@@ -13014,14 +13162,14 @@ var LLMDirector = class {
    * arrives, then returns the full result once the stream is done.
    * Currently Anthropic only — other providers fall back to a single-chunk call.
    */
-  async callStream(systemPrompt, userMessage, tick, onChunk, temperature, meta = DEFAULT_CALL_META) {
+  async callStream(systemPrompt, userMessage, tick, onChunk, temperature, meta2 = DEFAULT_CALL_META) {
     const start = Date.now();
     const replay = this._replayCompletion(systemPrompt, userMessage, tick);
     if (replay) {
       if (!replay.mock) onChunk(replay.text);
       return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok };
     }
-    const ep = this._resolveEndpoint(meta);
+    const ep = this._resolveEndpoint(meta2);
     if (this._mock) {
       const result2 = this._mockResponse(tick, userMessage);
       this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - start, true, ep);
@@ -13032,7 +13180,7 @@ var LLMDirector = class {
       onChunk(r.text);
       return r;
     })();
-    this._track(result, meta, tick, Date.now() - start, this._estPromptTokens(systemPrompt, userMessage), ep);
+    this._track(result, meta2, tick, Date.now() - start, this._estPromptTokens(systemPrompt, userMessage), ep);
     this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - start, false, ep);
     return result;
   }
@@ -13042,7 +13190,7 @@ var LLMDirector = class {
    * mock/replay directors, so the call is simply skipped. Cache read/write tokens
    * are forwarded so the tracker prices them at 0.1× / 1.25× input.
    */
-  _track(result, meta, tick, latencyMs, estPromptTokens, ep = this._defaultEndpoint) {
+  _track(result, meta2, tick, latencyMs, estPromptTokens, ep = this._defaultEndpoint) {
     this._tokenTracker?.recordUsage({
       // The endpoint that actually served this call — routed or default.
       // Pricing must follow the real model, or routed spend is attributed
@@ -13052,18 +13200,18 @@ var LLMDirector = class {
       provider: ep.provider,
       // The router's own input, kept alongside its output. Without this the
       // ledger records WHERE a call went and never WHY.
-      demand: meta.demand,
+      demand: meta2.demand,
       promptTokens: result.inputTok,
       completionTokens: result.outputTok,
       totalTokens: result.inputTok + result.outputTok,
       cacheReadTokens: result.cacheReadTok,
       cacheWriteTokens: result.cacheWriteTok,
-      category: meta.category,
-      attribute: meta.attribute,
-      process: meta.process,
-      function: meta.function,
-      scope: meta.scope,
-      label: meta.label,
+      category: meta2.category,
+      attribute: meta2.attribute,
+      process: meta2.process,
+      function: meta2.function,
+      scope: meta2.scope,
+      label: meta2.label,
       estPromptTokens,
       tick,
       latencyMs
@@ -13182,12 +13330,12 @@ var LLMDirector = class {
    * Call the LLM directly via fetch — no SDK, no middleware.
    * Routes through withGate for concurrency limiting and 429 retry.
    */
-  async call(systemPrompt, userMessage, tick, temperature, meta = DEFAULT_CALL_META) {
+  async call(systemPrompt, userMessage, tick, temperature, meta2 = DEFAULT_CALL_META) {
     const llmStart = Date.now();
     const replay = this._replayCompletion(systemPrompt, userMessage, tick);
     if (replay)
       return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok };
-    const ep = this._resolveEndpoint(meta);
+    const ep = this._resolveEndpoint(meta2);
     if (this._mock) {
       const result2 = this._mockResponse(tick, userMessage);
       this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - llmStart, true, ep);
@@ -13198,7 +13346,7 @@ var LLMDirector = class {
       }, temperature) : this._callProvider(ep, systemPrompt, userMessage, temperature),
       "executive/direct"
     );
-    this._track(result, meta, tick, Date.now() - llmStart, this._estPromptTokens(systemPrompt, userMessage), ep);
+    this._track(result, meta2, tick, Date.now() - llmStart, this._estPromptTokens(systemPrompt, userMessage), ep);
     this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - llmStart, false, ep);
     return result;
   }
@@ -18809,6 +18957,8 @@ var ReputationTracker = class {
   /** True after reputations have been rehydrated from persisted state on first tick. */
   _restored = false;
   _pendingInteractions = [];
+  /** Whether someone answered when the mind spoke to them (ReafferenceEngine). */
+  _pendingResponsiveness = [];
   _bus = null;
   _model = new GenerativeModel();
   constructor(config = {}) {
@@ -18825,7 +18975,8 @@ var ReputationTracker = class {
   subscribes() {
     return [
       "executive.prediction.formed",
-      "interaction.occurred"
+      "interaction.occurred",
+      "social.responsiveness"
     ];
   }
   publishes() {
@@ -18841,6 +18992,10 @@ var ReputationTracker = class {
     if (e.type === "interaction.occurred") {
       const p = e.payload;
       this._pendingInteractions.push(p);
+    }
+    if (e.type === "social.responsiveness") {
+      const p = e.payload;
+      if (p.keid) this._pendingResponsiveness.push({ keid: p.keid, answered: p.answered === true });
     }
   }
   snapshot() {
@@ -18858,6 +19013,7 @@ var ReputationTracker = class {
       if (!keid || keid === "agent-self") continue;
       const rep = this._getOrCreate(keid, tick);
       rep.interactionCount++;
+      rep.observations++;
       rep.lastInteractionTick = tick;
       if (valence > 0) {
         rep.positiveInteractions++;
@@ -18872,7 +19028,16 @@ var ReputationTracker = class {
       else if (valence < -0.7)
         rep.reliability = Math.max(0, rep.reliability - 0.08);
       rep.trustworthiness = rep.reliability * 0.5 + rep.cooperativeness * 0.5;
-      rep.confidence = Math.min(1, rep.interactionCount / this._minInteractions);
+      rep.confidence = Math.min(1, rep.observations / this._minInteractions);
+    }
+    for (const { keid, answered } of this._pendingResponsiveness.splice(0)) {
+      if (!keid || keid === "agent-self") continue;
+      const rep = this._getOrCreate(keid, tick);
+      rep.reliability = answered ? Math.min(1, rep.reliability + 0.03) : Math.max(0, rep.reliability - 0.06);
+      if (!answered) rep.lastInteractionTick = tick;
+      rep.observations++;
+      rep.trustworthiness = rep.reliability * 0.5 + rep.cooperativeness * 0.5;
+      rep.confidence = Math.min(1, rep.observations / this._minInteractions);
     }
     for (const rep of this._reputations.values()) {
       const ticksSince = tick - rep.lastInteractionTick;
@@ -18882,7 +19047,7 @@ var ReputationTracker = class {
     }
     this._prune();
     for (const rep of this._reputations.values()) {
-      if (rep.interactionCount === 0) continue;
+      if (rep.observations === 0) continue;
       commands.set.push({
         id: `reputation-${rep.keid}`,
         type: "reputation",
@@ -18897,6 +19062,7 @@ var ReputationTracker = class {
           negativeInteractions: rep.negativeInteractions,
           lastInteractionTick: rep.lastInteractionTick,
           confidence: rep.confidence,
+          observations: rep.observations,
           tick
         }
       });
@@ -18943,7 +19109,10 @@ var ReputationTracker = class {
         positiveInteractions: m["positiveInteractions"] ?? 0,
         negativeInteractions: m["negativeInteractions"] ?? 0,
         lastInteractionTick: m["lastInteractionTick"] ?? 0,
-        confidence: m["confidence"] ?? 0.1
+        confidence: m["confidence"] ?? 0.1,
+        // Older records predate this field; their interaction count IS their
+        // whole evidence base, so restoring it there loses nothing.
+        observations: m["observations"] ?? m["interactionCount"] ?? 0
       });
     }
   }
@@ -18960,7 +19129,8 @@ var ReputationTracker = class {
       positiveInteractions: 0,
       negativeInteractions: 0,
       lastInteractionTick: tick,
-      confidence: 0.1
+      confidence: 0.1,
+      observations: 0
     };
     this._reputations.set(keid, rep);
     return rep;
@@ -20439,9 +20609,9 @@ var AffordanceSynthesizer = class {
       for (const [id, e] of state.entities) {
         if (e.type !== "percept") continue;
         const m = e.metadata;
-        const salience = num(m?.["salience"], 0);
-        const summary = str(m?.["summary"]) ?? str(m?.["category"]) ?? "something";
-        const target = str(m?.["entityId"]) ?? str(m?.["targetEntityId"]);
+        const salience = num2(m?.["salience"], 0);
+        const summary = str2(m?.["summary"]) ?? str2(m?.["category"]) ?? "something";
+        const target = str2(m?.["entityId"]) ?? str2(m?.["targetEntityId"]);
         candidates.push({
           salience: salience + (target ? goalTargets.get(target) ?? 0 : 0),
           affordance: this._build(perceptSchema, tick, state, valence, energyLow, skills, {
@@ -20457,15 +20627,15 @@ var AffordanceSynthesizer = class {
       for (const [id, e] of state.entities) {
         if (e.type !== "known-entity") continue;
         const m = e.metadata;
-        const kind = str(m?.["kind"]);
+        const kind = str2(m?.["kind"]);
         const applicable = kind === "sentient" ? personSchemas : kind === "thing" ? objectSchemas : null;
         if (!applicable || applicable.length === 0) continue;
-        const keid = str(m?.["keid"]) ?? id;
-        const fam = num(m?.["familiarity"], 0);
-        const val = num(m?.["valence"], 0);
-        const res = num(m?.["resolutionConfidence"], 0);
+        const keid = str2(m?.["keid"]) ?? id;
+        const fam = num2(m?.["familiarity"], 0);
+        const val = num2(m?.["valence"], 0);
+        const res = num2(m?.["resolutionConfidence"], 0);
         const salience = fam * 0.6 + Math.max(0, val) * 0.3 + res * 0.1 + (goalTargets.get(keid) ?? 0);
-        const name = str(m?.["name"]) ?? keid;
+        const name = str2(m?.["name"]) ?? keid;
         for (const schema of applicable)
           candidates.push({
             salience,
@@ -20479,15 +20649,15 @@ var AffordanceSynthesizer = class {
     for (const [id, e] of state.entities) {
       if (e.type !== "ideomotor.intent") continue;
       const m = e.metadata;
-      const schemaId = str(m?.["schema"]);
+      const schemaId = str2(m?.["schema"]);
       const schema = schemaId ? schemas.find((s) => s.id === schemaId) : void 0;
       if (!schema) continue;
-      const willBias = clamp016(num(m?.["priority"], 0.8));
+      const willBias = clamp016(num2(m?.["priority"], 0.8));
       candidates.push({
         salience: IDEOMOTOR_BASE_SALIENCE + willBias,
         affordance: this._build(schema, tick, state, valence, energyLow, skills, {
           evokedBy: id,
-          targetEntityId: str(m?.["targetEntityId"]),
+          targetEntityId: str2(m?.["targetEntityId"]),
           parameters: m?.["parameters"] ?? {},
           source: "ideomotor",
           willBias
@@ -20497,20 +20667,20 @@ var AffordanceSynthesizer = class {
     for (const [id, e] of state.entities) {
       if (e.type !== "plan.prior") continue;
       const m = e.metadata;
-      const schemaId = str(m?.["schema"]);
+      const schemaId = str2(m?.["schema"]);
       const schema = schemaId ? schemas.find((s) => s.id === schemaId) : void 0;
       if (!schema) continue;
-      const planBias = clamp016(num(m?.["planBias"], 0.6));
+      const planBias = clamp016(num2(m?.["planBias"], 0.6));
       candidates.push({
         salience: IDEOMOTOR_BASE_SALIENCE + planBias,
         affordance: this._build(schema, tick, state, valence, energyLow, skills, {
           evokedBy: id,
-          targetEntityId: str(m?.["targetEntityId"]),
+          targetEntityId: str2(m?.["targetEntityId"]),
           parameters: m?.["parameters"] ?? {},
           source: "plan",
           planBias,
-          planId: str(m?.["planId"]),
-          stepId: str(m?.["stepId"])
+          planId: str2(m?.["planId"]),
+          stepId: str2(m?.["stepId"])
         })
       });
     }
@@ -20645,10 +20815,10 @@ var AffordanceSynthesizer = class {
 function metric(state, key, fallback) {
   return state.metrics.get(key) ?? fallback;
 }
-function num(v, fallback) {
+function num2(v, fallback) {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
-function str(v) {
+function str2(v) {
   return typeof v === "string" ? v : void 0;
 }
 function clamp016(n) {
@@ -20660,12 +20830,12 @@ function socialStanding(state, keid) {
     if (e.type !== "reputation") continue;
     const m = e.metadata;
     if (m?.["keid"] !== keid) continue;
-    const t = num(m["trustworthiness"], 0.5);
-    const c = clamp016(num(m["confidence"], 0));
+    const t = num2(m["trustworthiness"], 0.5);
+    const c = clamp016(num2(m["confidence"], 0));
     trust = (t - 0.5) * 2 * c;
     break;
   }
-  const mood = num(state.metrics.get("affect.valence"), 0) * 0.25;
+  const mood = num2(state.metrics.get("affect.valence"), 0) * 0.25;
   return Math.max(-1, Math.min(1, trust + mood));
 }
 
@@ -20784,16 +20954,16 @@ var ActionSelector = class {
     for (const [id, e] of state.entities) {
       if (e.type === "agency.intent") {
         const m = e.metadata ?? {};
-        const st = str2(m["status"]) ?? "";
+        const st = str3(m["status"]) ?? "";
         if (st === "expanding") expandingParents.add(id);
         intents.push({
           id,
           st,
-          parentIntentId: str2(m["parentIntentId"]),
-          activation: num2(m["activation"], 0),
-          schema: str2(m["schema"]) ?? "",
-          target: str2(m["targetEntityId"]) ?? "",
-          dispatchedAt: num2(m["dispatchedAt"], tick)
+          parentIntentId: str3(m["parentIntentId"]),
+          activation: num3(m["activation"], 0),
+          schema: str3(m["schema"]) ?? "",
+          target: str3(m["targetEntityId"]) ?? "",
+          dispatchedAt: num3(m["dispatchedAt"], tick)
         });
         continue;
       }
@@ -21065,7 +21235,7 @@ var ActionSelector = class {
 };
 function effectiveSwitchCost(state) {
   const params = readEffectiveParams(state, "engine-config-action-selector");
-  const base = num2(params["switchCost"], BASE_SWITCH_COST);
+  const base = num3(params["switchCost"], BASE_SWITCH_COST);
   const focusTicks = metric2(state, "task_switch.current_focus_ticks", 0);
   const stability = metric2(state, "situation.stability", 1);
   return base * (1 + focusTicks * FOCUS_GAIN * stability);
@@ -21075,10 +21245,10 @@ function computeRupture(state, tick, senseEvents = []) {
   for (const e of state.entities.values()) {
     if (e.type !== "percept") continue;
     const m = e.metadata;
-    if (str2(m?.["provenance"]) !== "exafferent") continue;
-    const pTick = num2(m?.["tick"], -1);
+    if (str3(m?.["provenance"]) !== "exafferent") continue;
+    const pTick = num3(m?.["tick"], -1);
     if (pTick < 0 || tick - pTick > RUPTURE_WINDOW_TICKS) continue;
-    const s = num2(m?.["salience"], 0);
+    const s = num3(m?.["salience"], 0);
     if (s > maxSalience) maxSalience = s;
   }
   if (senseEvents.length > 0) {
@@ -21097,7 +21267,7 @@ function refusedClassSchemas(state) {
     if (e.type !== "agency.outcome") continue;
     const m = e.metadata;
     if (m?.["refused"] !== true || asFinality(m?.["finality"]) !== "class") continue;
-    const schema = str2(m?.["schema"]);
+    const schema = str3(m?.["schema"]);
     if (schema) out.add(schema);
   }
   return out;
@@ -21106,13 +21276,13 @@ function effectiveWeights(state) {
   const p = readEffectiveParams(state, "engine-config-action-selector");
   return {
     ...DEFAULT_WEIGHTS,
-    risk: Math.max(0, num2(p["riskWeight"], DEFAULT_WEIGHTS.risk)),
-    novelty: Math.max(0, num2(p["noveltyWeight"], DEFAULT_WEIGHTS.novelty)),
+    risk: Math.max(0, num3(p["riskWeight"], DEFAULT_WEIGHTS.risk)),
+    novelty: Math.max(0, num3(p["noveltyWeight"], DEFAULT_WEIGHTS.novelty)),
     // How long the mind sits with something it has already said before saying it
     // again. Agreeableness raises it (does not badger); demonstrated persistence
     // lowers it (follows up sooner). Clamped at 0 so a prior can flatten the
     // damping into indifference but never turn repeating into a *reward*.
-    repeat: Math.max(0, num2(p["repeatDamping"], DEFAULT_WEIGHTS.repeat)),
+    repeat: Math.max(0, num3(p["repeatDamping"], DEFAULT_WEIGHTS.repeat)),
     // How much the mind's learned read on a person biases acting toward them.
     // Deliberately NOT clamped at 0 — this weight is genuinely signed territory,
     // and it is the tenant's to occupy. A warm, reciprocal mind leans toward
@@ -21120,7 +21290,7 @@ function effectiveWeights(state) {
     // because it is silent. Both are coherent people. The container supplies the
     // term and the persona supplies the sign; hardcoding it here would be the
     // container deciding what kind of colleague every tenant has to be.
-    social: num2(p["socialWeight"], DEFAULT_WEIGHTS.social)
+    social: num3(p["socialWeight"], DEFAULT_WEIGHTS.social)
   };
 }
 function buildBias(state) {
@@ -21129,9 +21299,9 @@ function buildBias(state) {
   for (const e of state.entities.values()) {
     if (e.type !== "goal") continue;
     const m = e.metadata;
-    const status = str2(m?.["status"]);
+    const status = str3(m?.["status"]);
     if (status !== "active" && status !== "in_progress") continue;
-    maxGoalPriority = Math.max(maxGoalPriority, num2(m?.["priority"], 0));
+    maxGoalPriority = Math.max(maxGoalPriority, num3(m?.["priority"], 0));
   }
   return {
     goalTargets,
@@ -21147,35 +21317,35 @@ function buildBias(state) {
   };
 }
 function readAffordance(id, m) {
-  const meta = m ?? {};
+  const meta2 = m ?? {};
   return {
     id,
-    schema: str2(meta["schema"]) ?? "",
-    source: str2(meta["source"]) ?? "innate",
-    parameters: meta["parameters"] ?? {},
-    targetEntityId: str2(meta["targetEntityId"]),
-    evokedBy: str2(meta["evokedBy"]),
-    expectedValence: num2(meta["expectedValence"], 0),
-    expectedReward: num2(meta["expectedReward"], 0),
-    cost: num2(meta["cost"], 0),
-    habitStrength: num2(meta["habitStrength"], 0),
-    available: meta["available"] === true,
-    tags: Array.isArray(meta["tags"]) ? meta["tags"].filter((t) => typeof t === "string") : [],
-    planBias: typeof meta["planBias"] === "number" ? meta["planBias"] : void 0,
-    willBias: typeof meta["willBias"] === "number" ? meta["willBias"] : void 0,
-    socialPrior: typeof meta["socialPrior"] === "number" ? meta["socialPrior"] : void 0,
-    planId: str2(meta["planId"]),
-    stepId: str2(meta["stepId"]),
-    tick: num2(meta["tick"], 0)
+    schema: str3(meta2["schema"]) ?? "",
+    source: str3(meta2["source"]) ?? "innate",
+    parameters: meta2["parameters"] ?? {},
+    targetEntityId: str3(meta2["targetEntityId"]),
+    evokedBy: str3(meta2["evokedBy"]),
+    expectedValence: num3(meta2["expectedValence"], 0),
+    expectedReward: num3(meta2["expectedReward"], 0),
+    cost: num3(meta2["cost"], 0),
+    habitStrength: num3(meta2["habitStrength"], 0),
+    available: meta2["available"] === true,
+    tags: Array.isArray(meta2["tags"]) ? meta2["tags"].filter((t) => typeof t === "string") : [],
+    planBias: typeof meta2["planBias"] === "number" ? meta2["planBias"] : void 0,
+    willBias: typeof meta2["willBias"] === "number" ? meta2["willBias"] : void 0,
+    socialPrior: typeof meta2["socialPrior"] === "number" ? meta2["socialPrior"] : void 0,
+    planId: str3(meta2["planId"]),
+    stepId: str3(meta2["stepId"]),
+    tick: num3(meta2["tick"], 0)
   };
 }
 function metric2(state, key, fallback) {
   return state.metrics.get(key) ?? fallback;
 }
-function num2(v, fallback) {
+function num3(v, fallback) {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
-function str2(v) {
+function str3(v) {
   return typeof v === "string" ? v : void 0;
 }
 function clamp017(n) {
@@ -21221,24 +21391,24 @@ var DeliberationEngine = class {
     let target = null;
     for (const [id2, e] of state.entities) {
       if (e.type !== "agency.intent") continue;
-      if (str3(e.metadata?.["status"]) !== "deliberating") continue;
+      if (str4(e.metadata?.["status"]) !== "deliberating") continue;
       if (revoked.has(id2)) {
         del.push(id2, revocationId(id2));
         continue;
       }
-      const meta2 = e.metadata ?? {};
-      if (!target || id2 < target.id) target = { id: id2, meta: meta2 };
+      const meta3 = e.metadata ?? {};
+      if (!target || id2 < target.id) target = { id: id2, meta: meta3 };
     }
     if (!target) return del.length > 0 ? { commands: { delete: del } } : { commands: {} };
-    const { id, meta } = target;
-    const provisional = str3(meta["schema"]) ?? "wait";
-    const candidates = Array.isArray(meta["candidates"]) ? meta["candidates"] : [];
+    const { id, meta: meta2 } = target;
+    const provisional = str4(meta2["schema"]) ?? "wait";
+    const candidates = Array.isArray(meta2["candidates"]) ? meta2["candidates"] : [];
     if (!this._provider)
       return { commands: {
-        set: [this._commit(id, meta, provisional, candidates, "no-executive")],
+        set: [this._commit(id, meta2, provisional, candidates, "no-executive")],
         ...del.length > 0 ? { delete: del } : {}
       } };
-    const chosen = await this._deliberate(state, candidates, provisional, meta);
+    const chosen = await this._deliberate(state, candidates, provisional, meta2);
     this._deliberations++;
     if (this._bus) {
       try {
@@ -21254,7 +21424,7 @@ var DeliberationEngine = class {
     }
     return {
       commands: {
-        set: [this._commit(id, meta, chosen, candidates, "facet")],
+        set: [this._commit(id, meta2, chosen, candidates, "facet")],
         ...del.length > 0 ? { delete: del } : {},
         metrics: [["agency.deliberation.count", 1]]
       }
@@ -21262,7 +21432,7 @@ var DeliberationEngine = class {
   }
   // ── internals ─────────────────────────────────────────────────
   /** Run one unified-inference deliberation. Returns the chosen schema (or the provisional winner on any failure). */
-  async _deliberate(state, candidates, provisional, meta) {
+  async _deliberate(state, candidates, provisional, meta2) {
     try {
       if (!this._handle) {
         const spawned = this._provider.spawnFacet("deliberation");
@@ -21279,7 +21449,7 @@ var DeliberationEngine = class {
       this._handle.setFocus({
         title: "Deliberation",
         function: "deliberation",
-        content: this._buildFocusContent(state, candidates, meta),
+        content: this._buildFocusContent(state, candidates, meta2),
         instructions: DELIBERATION_INSTRUCTIONS
       });
       await this._handle.report({ type: "deliberation", payload: { candidateSchemas: candidates.map((c) => c.schema) } });
@@ -21293,16 +21463,16 @@ var DeliberationEngine = class {
     }
   }
   /** Write the deliberating intent back as 'selected' with the chosen action. */
-  _commit(id, meta, chosen, candidates, via) {
+  _commit(id, meta2, chosen, candidates, via) {
     const cand = candidates.find((c) => c.schema === chosen);
     return {
       id,
       type: "agency.intent",
       metadata: {
-        ...meta,
+        ...meta2,
         schema: chosen,
-        targetEntityId: cand?.targetEntityId ?? meta["targetEntityId"],
-        parameters: { ...meta["parameters"] ?? {}, ...cand?.parameters ?? {} },
+        targetEntityId: cand?.targetEntityId ?? meta2["targetEntityId"],
+        parameters: { ...meta2["parameters"] ?? {}, ...cand?.parameters ?? {} },
         status: "selected",
         deliberated: true,
         deliberatedVia: via
@@ -21310,10 +21480,10 @@ var DeliberationEngine = class {
     };
   }
   /** The deliberation focus body — the candidate actions the substrate surfaced. */
-  _buildFocusContent(state, candidates, meta) {
+  _buildFocusContent(state, candidates, meta2) {
     const lines = [];
-    const preemptedFrom = str3(meta["preemptedFrom"]);
-    const revokedBy = str3(meta["revokedBy"]);
+    const preemptedFrom = str4(meta2["preemptedFrom"]);
+    const revokedBy = str4(meta2["revokedBy"]);
     if (revokedBy)
       lines.push(`Something in my situation just shifted and I let go of what I was weighing ("${revokedBy}"). Decide afresh what to do now:`);
     else if (preemptedFrom)
@@ -21340,7 +21510,7 @@ function extractChosen(decision, candidates) {
   }
   return void 0;
 }
-function str3(v) {
+function str4(v) {
   return typeof v === "string" ? v : void 0;
 }
 
@@ -21354,7 +21524,7 @@ function modeOf(schema) {
 function enact(ctx) {
   const mode = modeOf(ctx.schema);
   if (mode === "communicate") {
-    const name = str4(ctx.parameters["targetEntityName"]) ?? ctx.targetEntityId ?? "them";
+    const name = str5(ctx.parameters["targetEntityName"]) ?? ctx.targetEntityId ?? "them";
     return {
       mode,
       success: true,
@@ -21393,7 +21563,7 @@ function syncStance(ctx) {
     case "express":
       return sync(0.6, 0.1, "My inner state becomes outwardly visible.");
     case "inspect": {
-      const focus = str4(parameters["focus"]) ?? "it";
+      const focus = str5(parameters["focus"]) ?? "it";
       return sync(0.65, 0.05, `I examine ${focus} closely; more of its detail resolves.`);
     }
     default:
@@ -21403,7 +21573,7 @@ function syncStance(ctx) {
 function sync(outcomeQuality, valence, description) {
   return { mode: "sync", success: true, outcomeQuality: clamp018(outcomeQuality), valence, description };
 }
-function str4(v) {
+function str5(v) {
   return typeof v === "string" ? v : void 0;
 }
 function clamp018(n) {
@@ -21506,25 +21676,25 @@ var MotorSchemaExecutor = class {
     const stress = state.metrics.get("stress.load") ?? 0;
     for (const [id, e] of state.entities) {
       if (e.type !== CONSEQUENCE_TYPE) continue;
-      if (tick >= num3(e.metadata?.["expiresAt"], 0)) del.push(id);
+      if (tick >= num4(e.metadata?.["expiresAt"], 0)) del.push(id);
     }
     del.push(...staleRevocationIds(state.entities, tick));
     const revoked = revokedIntentIds(state.entities, tick);
     if (revoked.size > 0)
       for (const [id, e] of state.entities) {
         if (e.type !== "agency.intent") continue;
-        const parentId = str5(e.metadata?.["parentIntentId"]);
+        const parentId = str6(e.metadata?.["parentIntentId"]);
         if (revoked.has(id)) del.push(id, revocationId(id));
         else if (parentId && revoked.has(parentId)) del.push(id);
       }
     const spokeThisTick = /* @__PURE__ */ new Set();
     for (const [id, e] of state.entities) {
-      if (e.type !== "agency.intent" || str5(e.metadata?.["status"]) !== "awaiting") continue;
+      if (e.type !== "agency.intent" || str6(e.metadata?.["status"]) !== "awaiting") continue;
       if (!this._authored.has(id)) continue;
       const intent = readIntent(id, e.metadata);
       const predicted = {
-        expectedReward: num3(e.metadata?.["predictedReward"], intent.expectedReward),
-        expectedValence: num3(e.metadata?.["predictedValence"], intent.expectedValence)
+        expectedReward: num4(e.metadata?.["predictedReward"], intent.expectedReward),
+        expectedValence: num4(e.metadata?.["predictedValence"], intent.expectedValence)
       };
       if (await this._deliver(id, intent, predicted, state, tick, set, del, metrics))
         spokeThisTick.add(id);
@@ -21532,24 +21702,24 @@ var MotorSchemaExecutor = class {
     for (const id of this._authored.keys())
       if (!state.entities.has(id)) this._authored.delete(id);
     for (const [id, e] of state.entities) {
-      if (e.type !== "agency.intent" || str5(e.metadata?.["status"]) !== "awaiting") continue;
+      if (e.type !== "agency.intent" || str6(e.metadata?.["status"]) !== "awaiting") continue;
       if (spokeThisTick.has(id)) continue;
       if (this._authoring.has(id)) continue;
       if (e.metadata?.["escalated"] === true) continue;
-      const dispatchedAt = num3(e.metadata?.["dispatchedAt"], tick);
+      const dispatchedAt = num4(e.metadata?.["dispatchedAt"], tick);
       const age = tick - dispatchedAt;
       if (age < 0) {
         del.push(id);
         logger.info(
-          `[motor] cleared "${str5(e.metadata?.["schema"]) ?? "intent"}" left awaiting across a restart (dispatched at tick ${dispatchedAt}, now ${tick})`
+          `[motor] cleared "${str6(e.metadata?.["schema"]) ?? "intent"}" left awaiting across a restart (dispatched at tick ${dispatchedAt}, now ${tick})`
         );
         continue;
       }
       if (age < AWAIT_TIMEOUT) continue;
       const intent = readIntent(id, e.metadata);
       const predicted = {
-        expectedReward: num3(e.metadata?.["predictedReward"], intent.expectedReward),
-        expectedValence: num3(e.metadata?.["predictedValence"], intent.expectedValence)
+        expectedReward: num4(e.metadata?.["predictedReward"], intent.expectedReward),
+        expectedValence: num4(e.metadata?.["predictedValence"], intent.expectedValence)
       };
       const timedOut = {
         mode: "sync",
@@ -21565,11 +21735,11 @@ var MotorSchemaExecutor = class {
         this._emitActionOutcome(intent, false, 0, 1, tick);
       logger.info(`[motor] \u23F1 "${intent.schema}" timed out after ${tick - dispatchedAt} ticks`);
     }
-    const selected = [...state.entities.entries()].filter(([, e]) => e.type === "agency.intent" && str5(e.metadata?.["status"]) === "selected").sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+    const selected = [...state.entities.entries()].filter(([, e]) => e.type === "agency.intent" && str6(e.metadata?.["status"]) === "selected").sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
     let enactedCount = 0;
     for (const [id, e] of selected) {
       if (revoked.has(id)) continue;
-      const parentOf = str5(e.metadata?.["parentIntentId"]);
+      const parentOf = str6(e.metadata?.["parentIntentId"]);
       if (parentOf && revoked.has(parentOf)) continue;
       const intent = readIntent(id, e.metadata);
       const schema = this._resolve(intent.schema);
@@ -21619,7 +21789,7 @@ var MotorSchemaExecutor = class {
               predictedValence: predicted.expectedValence
             }
           });
-          const awaitingText = enaction.mode === "communicate" ? str5(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]) : void 0;
+          const awaitingText = enaction.mode === "communicate" ? str6(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]) : void 0;
           set.push(consequenceEntity({
             intentId: id,
             schema: intent.schema,
@@ -21641,11 +21811,11 @@ var MotorSchemaExecutor = class {
   }
   // ── composite machinery ──────────────────────────────────────
   _expand(parentId, parentMeta, steps, intent, tick, set) {
-    const meta = parentMeta ?? {};
+    const meta2 = parentMeta ?? {};
     set.push({
       id: parentId,
       type: "agency.intent",
-      metadata: { ...meta, status: "expanding", steps, cursor: 0, accumQuality: 0, accumValence: 0, completed: 0 }
+      metadata: { ...meta2, status: "expanding", steps, cursor: 0, accumQuality: 0, accumValence: 0, completed: 0 }
     });
     set.push(this._subIntent(parentId, intent.targetEntityId, intent.parameters, steps[0], 0, tick));
     logger.info(`[motor] composite "${intent.schema}" \u2192 ${steps.length} steps`);
@@ -21658,9 +21828,9 @@ var MotorSchemaExecutor = class {
     }
     const pm = parent.metadata ?? {};
     const steps = Array.isArray(pm["steps"]) ? pm["steps"] : [];
-    const accumQuality = num3(pm["accumQuality"], 0) + enaction.outcomeQuality;
-    const accumValence = num3(pm["accumValence"], 0) + enaction.valence;
-    const completed = num3(pm["completed"], 0) + 1;
+    const accumQuality = num4(pm["accumQuality"], 0) + enaction.outcomeQuality;
+    const accumValence = num4(pm["accumValence"], 0) + enaction.valence;
+    const completed = num4(pm["completed"], 0) + 1;
     const nextK = (sub.stepIndex ?? 0) + 1;
     if (nextK < steps.length) {
       set.push({
@@ -21670,7 +21840,7 @@ var MotorSchemaExecutor = class {
       });
       set.push(this._subIntent(
         parentId,
-        str5(pm["targetEntityId"]),
+        str6(pm["targetEntityId"]),
         pm["parameters"] ?? {},
         steps[nextK],
         nextK,
@@ -21682,12 +21852,12 @@ var MotorSchemaExecutor = class {
     const avgValence = completed > 0 ? accumValence / completed : 0;
     const compIntent = {
       id: parentId,
-      schema: str5(pm["schema"]) ?? "composite",
-      affordanceId: str5(pm["affordanceId"]),
-      targetEntityId: str5(pm["targetEntityId"]),
+      schema: str6(pm["schema"]) ?? "composite",
+      affordanceId: str6(pm["affordanceId"]),
+      targetEntityId: str6(pm["targetEntityId"]),
       parameters: pm["parameters"] ?? {},
-      expectedReward: num3(pm["expectedReward"], 0.5),
-      expectedValence: num3(pm["expectedValence"], 0)
+      expectedReward: num4(pm["expectedReward"], 0.5),
+      expectedValence: num4(pm["expectedValence"], 0)
     };
     const compEnaction = {
       mode: "sync",
@@ -21761,7 +21931,7 @@ var MotorSchemaExecutor = class {
       metrics.push(["agency.communicate.blocked", 1]);
       return true;
     }
-    const authored = str5(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]);
+    const authored = str6(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]);
     let bubbles = authored ? [authored] : this._authored.get(id) ?? [];
     this._authored.delete(id);
     if (bubbles.length === 0) {
@@ -21824,9 +21994,9 @@ var MotorSchemaExecutor = class {
    */
   _requestAuthoring(id, intent) {
     if (!this._author || this._authoring.has(id)) return;
-    const name = str5(intent.parameters["targetEntityName"]) ?? intent.targetEntityId ?? "them";
+    const name = str6(intent.parameters["targetEntityName"]) ?? intent.targetEntityId ?? "them";
     this._authoring.add(id);
-    void this._author.authorOutreach(intent.targetEntityId ?? "", name, str5(intent.parameters["gist"])).then((bubbles) => {
+    void this._author.authorOutreach(intent.targetEntityId ?? "", name, str6(intent.parameters["gist"])).then((bubbles) => {
       if (bubbles.length > 0) this._authored.set(id, bubbles);
       else logger.warn(`[motor] outreach authoring returned nothing for "${intent.schema}"`);
     }).catch((err) => {
@@ -21929,28 +22099,28 @@ function outcomeEntity(tick, intent, enaction, predicted) {
   };
 }
 function readIntent(id, m) {
-  const meta = m ?? {};
+  const meta2 = m ?? {};
   return {
     id,
-    schema: str5(meta["schema"]) ?? "",
-    affordanceId: str5(meta["affordanceId"]),
-    targetEntityId: str5(meta["targetEntityId"]),
-    parameters: meta["parameters"] ?? {},
-    expectedReward: num3(meta["expectedReward"], 0.5),
-    expectedValence: num3(meta["expectedValence"], 0),
-    parentIntentId: str5(meta["parentIntentId"]),
-    stepIndex: typeof meta["stepIndex"] === "number" ? meta["stepIndex"] : void 0,
-    planId: str5(meta["planId"]),
-    planStepId: str5(meta["stepId"])
+    schema: str6(meta2["schema"]) ?? "",
+    affordanceId: str6(meta2["affordanceId"]),
+    targetEntityId: str6(meta2["targetEntityId"]),
+    parameters: meta2["parameters"] ?? {},
+    expectedReward: num4(meta2["expectedReward"], 0.5),
+    expectedValence: num4(meta2["expectedValence"], 0),
+    parentIntentId: str6(meta2["parentIntentId"]),
+    stepIndex: typeof meta2["stepIndex"] === "number" ? meta2["stepIndex"] : void 0,
+    planId: str6(meta2["planId"]),
+    planStepId: str6(meta2["stepId"])
   };
 }
-function str5(v) {
+function str6(v) {
   return typeof v === "string" ? v : void 0;
 }
 function firstMessage(v) {
   return Array.isArray(v) ? v.find((m) => typeof m === "string" && m.length > 0) : void 0;
 }
-function num3(v, fallback) {
+function num4(v, fallback) {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
 function clamp019(n) {
@@ -22222,21 +22392,21 @@ function schemaEntity(s) {
   };
 }
 function readSchema(m) {
-  const meta = m ?? {};
-  const id = typeof meta["id"] === "string" ? meta["id"] : void 0;
-  const kind = meta["kind"];
+  const meta2 = m ?? {};
+  const id = typeof meta2["id"] === "string" ? meta2["id"] : void 0;
+  const kind = meta2["kind"];
   if (!id || kind !== "composite" && kind !== "primitive") return void 0;
   return {
     id,
     kind,
-    source: meta["source"] ?? "repertoire",
-    cost: typeof meta["cost"] === "number" ? meta["cost"] : 0,
-    binds: meta["binds"] ?? "none",
-    preconditions: meta["preconditions"],
-    composedOf: Array.isArray(meta["composedOf"]) ? meta["composedOf"] : void 0,
-    baseValence: typeof meta["baseValence"] === "number" ? meta["baseValence"] : void 0,
-    description: typeof meta["description"] === "string" ? meta["description"] : void 0,
-    tags: Array.isArray(meta["tags"]) ? meta["tags"] : void 0
+    source: meta2["source"] ?? "repertoire",
+    cost: typeof meta2["cost"] === "number" ? meta2["cost"] : 0,
+    binds: meta2["binds"] ?? "none",
+    preconditions: meta2["preconditions"],
+    composedOf: Array.isArray(meta2["composedOf"]) ? meta2["composedOf"] : void 0,
+    baseValence: typeof meta2["baseValence"] === "number" ? meta2["baseValence"] : void 0,
+    description: typeof meta2["description"] === "string" ? meta2["description"] : void 0,
+    tags: Array.isArray(meta2["tags"]) ? meta2["tags"] : void 0
   };
 }
 
@@ -22264,7 +22434,12 @@ var ReafferenceEngine = class {
       // executor — so for a plan-tagged reconciled outcome this engine emits the
       // action.outcome the PlanningEngine advances on. (The executor is the emitter
       // for sync/timeout outcomes; this is its async counterpart — one emitter each.)
-      { type: "action.outcome", version: 1, validate: () => null }
+      { type: "action.outcome", version: 1, validate: () => null },
+      // Whether a person answers the mind when it speaks to them. Distinct from
+      // `interaction.occurred`, which reports something someone DID — a silence is
+      // not an act and so can never appear there, which is why "they never answer
+      // me" was unlearnable despite `socialStanding` being built to carry it.
+      { type: "social.responsiveness", version: 1, validate: () => null }
     ];
   }
   /** Creation seam: register a composite proposed by the executive/deliberation facet. */
@@ -22301,18 +22476,18 @@ var ReafferenceEngine = class {
       if (e.type !== "agency.outcome") continue;
       const m = e.metadata ?? {};
       outcomes.push({ id, meta: m, fromState: true });
-      const iid = str6(m["intentId"]);
+      const iid = str7(m["intentId"]);
       if (iid) gradedIntentIds.add(iid);
     }
     const awaiting = /* @__PURE__ */ new Map();
     for (const [id, e] of state.entities) {
-      if (e.type !== "agency.intent" || str6(e.metadata?.["status"]) !== "awaiting") continue;
+      if (e.type !== "agency.intent" || str7(e.metadata?.["status"]) !== "awaiting") continue;
       const m = e.metadata ?? {};
-      if (tick - num4(m["dispatchedAt"], tick) >= AWAIT_TIMEOUT) continue;
+      if (tick - num5(m["dispatchedAt"], tick) >= AWAIT_TIMEOUT) continue;
       awaiting.set(id, {
-        schema: str6(m["schema"]) ?? "",
-        predictedReward: num4(m["predictedReward"], 0.5),
-        predictedValence: num4(m["predictedValence"], 0)
+        schema: str7(m["schema"]) ?? "",
+        predictedReward: num5(m["predictedReward"], 0.5),
+        predictedValence: num5(m["predictedValence"], 0)
       });
     }
     let sensory = 0;
@@ -22320,8 +22495,8 @@ var ReafferenceEngine = class {
     for (const [, e] of state.entities) {
       if (e.type !== "percept") continue;
       const m = e.metadata ?? {};
-      if (str6(m["provenance"]) !== "reafferent") continue;
-      const iid = str6(m["sourceIntentId"]);
+      if (str7(m["provenance"]) !== "reafferent") continue;
+      const iid = str7(m["sourceIntentId"]);
       if (!iid || gradedIntentIds.has(iid) || sensedIntentIds.has(iid)) continue;
       const aw = awaiting.get(iid);
       if (!aw || !aw.schema) continue;
@@ -22329,7 +22504,7 @@ var ReafferenceEngine = class {
       sensory++;
       const feltRaw = m["valence"];
       const felt = typeof feltRaw === "number" && Number.isFinite(feltRaw) ? feltRaw : void 0;
-      const span = str6(m["valenceSource"]) === "entity" ? SENSORY_VALENCE_SPAN_ENTITY : SENSORY_VALENCE_SPAN_AMBIENT;
+      const span = str7(m["valenceSource"]) === "entity" ? SENSORY_VALENCE_SPAN_ENTITY : SENSORY_VALENCE_SPAN_AMBIENT;
       const quality = felt === void 0 ? SENSORY_SOFT_QUALITY : clamp0111(SENSORY_SOFT_QUALITY + Math.max(-1, Math.min(1, felt)) * span);
       outcomes.push({ id: `agency-outcome-${tick}-${iid}-sensory`, fromState: false, meta: {
         schema: aw.schema,
@@ -22343,7 +22518,7 @@ var ReafferenceEngine = class {
         mode: "external",
         reconciled: true,
         sensory: true,
-        ...felt !== void 0 ? { sensoryValence: felt, valenceSource: str6(m["valenceSource"]) } : {},
+        ...felt !== void 0 ? { sensoryValence: felt, valenceSource: str7(m["valenceSource"]) } : {},
         tick
       } });
     }
@@ -22351,7 +22526,7 @@ var ReafferenceEngine = class {
     let discovered = 0;
     let refused = 0;
     for (const { id, meta: m, fromState } of outcomes) {
-      const schema = str6(m["schema"]);
+      const schema = str7(m["schema"]);
       if (!schema) {
         if (fromState) del.push(id);
         continue;
@@ -22361,29 +22536,29 @@ var ReafferenceEngine = class {
         if (finality !== "context")
           this._repertoire.recordRefusal(schema, finality, tick);
         if (fromState) del.push(id);
-        const refusedIntent = str6(m["intentId"]);
+        const refusedIntent = str7(m["intentId"]);
         if (refusedIntent) del.push(refusedIntent);
-        const refusedPlan = str6(m["planId"]);
-        if (refusedPlan) this._emitPlanOutcome(refusedPlan, str6(m["stepId"]), schema, false, 0, 0, tick);
+        const refusedPlan = str7(m["planId"]);
+        if (refusedPlan) this._emitPlanOutcome(refusedPlan, str7(m["stepId"]), schema, false, 0, 0, tick);
         refused++;
         continue;
       }
       const { skill, proceduralized } = this._repertoire.recordOutcome({
         schema,
         success: m["success"] === true,
-        outcomeQuality: num4(m["outcomeQuality"], 0),
-        predictedReward: num4(m["predictedReward"], 0.5),
+        outcomeQuality: num5(m["outcomeQuality"], 0),
+        predictedReward: num5(m["predictedReward"], 0.5),
         params: m["params"] ?? void 0,
         tick
       });
       set.push(skillEntity(skill));
       if (fromState) del.push(id);
-      const intentId = str6(m["intentId"]);
+      const intentId = str7(m["intentId"]);
       if (intentId) del.push(intentId);
       updates++;
-      const planId = str6(m["planId"]);
+      const planId = str7(m["planId"]);
       if (planId)
-        this._emitPlanOutcome(planId, str6(m["stepId"]), schema, m["success"] === true, num4(m["outcomeQuality"], 0), num4(m["surprise"], 0), tick);
+        this._emitPlanOutcome(planId, str7(m["stepId"]), schema, m["success"] === true, num5(m["outcomeQuality"], 0), num5(m["surprise"], 0), tick);
       if (skill.enactments === 1) {
         discovered++;
         this._emitDiscovered(schema, tick);
@@ -22402,6 +22577,7 @@ var ReafferenceEngine = class {
       del.push(availabilityEntityId(id));
     for (const e of this._repertoire.compositeEntities()) set.push(e);
     for (const e of this._repertoire.availabilityEntities()) set.push(e);
+    const replied = this._resolveReplies(tick, state, set);
     const skills = this._repertoire.skills();
     const habitual = [...skills.values()].filter((s) => s.habitStrength >= PROC_THRESHOLD2).length;
     metrics.push(
@@ -22411,8 +22587,83 @@ var ReafferenceEngine = class {
       ["agency.habitual.count", habitual],
       ["agency.sensory.confirmed", sensory]
     );
+    if (replied.answered > 0) metrics.push(["social.answered.count", replied.answered]);
+    if (replied.unanswered > 0) metrics.push(["social.unanswered.count", replied.unanswered]);
     if (refused > 0) metrics.push(["agency.refused.count", refused]);
     return { commands: { set, delete: del, metrics } };
+  }
+  /**
+   * Latch each open turn's fate onto its own record and announce it once.
+   *
+   * Two rules earn their keep here:
+   *
+   *  • MERGE, never replace. `StateManager.setEntity` overwrites the whole entity,
+   *    and a `conversation.sent` carries `outboxMessageIds` — the sole key by which
+   *    a later delivery ack can find it. Rewriting the record with only the fields
+   *    this method cares about would sever that, silently, for every turn that got
+   *    an answer.
+   *
+   *  • Latch, don't recompute. `answeredAt`/`unansweredAt` persist, so the event
+   *    fires on the one tick the fact changed rather than every tick for the rest
+   *    of the session — which for an unanswered turn would be thousands of
+   *    identical reputation hits against one person for one silence.
+   */
+  _resolveReplies(tick, state, set) {
+    const window = Math.max(
+      1,
+      Math.round(
+        readEffectiveParams(state, "engine-config-action-selector").replyWindowTicks ?? DEFAULT_REPLY_WINDOW_TICKS
+      )
+    );
+    const { answered, unanswered } = resolveReplyExpectations(state.entities, tick, window);
+    if (answered.length === 0 && unanswered.length === 0) return { answered: 0, unanswered: 0 };
+    const merge = (id, patch) => {
+      const existing = state.entities.get(id);
+      if (!existing) return;
+      set.push({
+        id,
+        type: SENT_TYPE,
+        metadata: { ...existing.metadata ?? {}, ...patch }
+      });
+    };
+    for (const { turn, at } of answered) {
+      merge(turn.entityId, { answeredAt: at });
+      this._emitResponsiveness(turn.targetEntityId, true, at - turn.tick, tick);
+    }
+    for (const turn of unanswered) {
+      merge(turn.entityId, { unansweredAt: tick });
+      this._emitResponsiveness(turn.targetEntityId, false, tick - turn.tick, tick);
+      logger.info(
+        `[reafference] no answer from ${turn.targetEntityName ?? turn.targetEntityId} after ${tick - turn.tick} ticks \u2014 "${turn.preview.slice(0, 60)}"`
+      );
+    }
+    return { answered: answered.length, unanswered: unanswered.length };
+  }
+  /**
+   * Publish how a person responded to being spoken to.
+   *
+   * Deliberately NOT an `interaction.occurred`: that event means "someone did
+   * something toward us" and carries a valence for what they did. A silence is
+   * nobody doing anything, and forcing it through that channel would have the
+   * ReputationTracker book a hostile *act* where there was only an absence — the
+   * mind would come to think it was being rebuffed rather than simply not
+   * answered yet. Separate signal, separate meaning, one consumer decides what
+   * either is worth.
+   */
+  _emitResponsiveness(keid, answered, waitedTicks, tick) {
+    if (!this._bus) return;
+    try {
+      this._bus.publish({
+        type: "social.responsiveness",
+        version: 1,
+        sourceEngine: this.name,
+        // An answer is ordinary; being ignored is the one worth interrupting for.
+        salience: answered ? 0.3 : 0.55,
+        payload: { keid, answered, waitedTicks, tick }
+      });
+    } catch (err) {
+      logger.warn(`[reafference] responsiveness publish failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
   _emitProceduralized(skill, tick) {
     if (!this._bus) return;
@@ -22488,10 +22739,10 @@ function skillEntity(s) {
     }
   };
 }
-function str6(v) {
+function str7(v) {
   return typeof v === "string" ? v : void 0;
 }
-function num4(v, fallback) {
+function num5(v, fallback) {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
 function clamp0111(n) {
@@ -23986,10 +24237,10 @@ var DefaultVectorMemoryAdapter = class {
       if (!exists) return;
       if (await this._storage.exists(this._metaPath)) {
         try {
-          const meta = JSON.parse(await this._storage.read(this._metaPath));
-          if (meta.model !== this._embedder.modelName || meta.dimensions !== this._embedder.dimensions) {
+          const meta2 = JSON.parse(await this._storage.read(this._metaPath));
+          if (meta2.model !== this._embedder.modelName || meta2.dimensions !== this._embedder.dimensions) {
             logger.warn(
-              `[VectorMemoryAdapter] Persisted index was built with ${meta.model}/${meta.dimensions}d but current embedder is ${this._embedder.modelName}/${this._embedder.dimensions}d \u2014 discarding stale index (will rebuild from store).`
+              `[VectorMemoryAdapter] Persisted index was built with ${meta2.model}/${meta2.dimensions}d but current embedder is ${this._embedder.modelName}/${this._embedder.dimensions}d \u2014 discarding stale index (will rebuild from store).`
             );
             return;
           }
@@ -24158,8 +24409,8 @@ var MockEmbedder = class {
     this._seed = seed;
   }
   async embed(content, _fn = "recall") {
-    const str7 = typeof content === "string" ? content : JSON.stringify(content);
-    const hash = this._hashString(str7);
+    const str8 = typeof content === "string" ? content : JSON.stringify(content);
+    const hash = this._hashString(str8);
     const embedding = [];
     let state = hash;
     for (let i = 0; i < this.dimensions; i++) {
@@ -24178,10 +24429,10 @@ var MockEmbedder = class {
     }
     return true;
   }
-  _hashString(str7) {
+  _hashString(str8) {
     let hash = 2166136261;
-    for (let i = 0; i < str7.length; i++) {
-      hash ^= str7.charCodeAt(i);
+    for (let i = 0; i < str8.length; i++) {
+      hash ^= str8.charCodeAt(i);
       hash = Math.imul(hash, 16777619);
     }
     return hash >>> 0;
@@ -24599,18 +24850,18 @@ function externalSchemas(effectors) {
     if (INNATE_SCHEMA_BY_ID.has(name)) continue;
     if (seen.has(name)) continue;
     seen.add(name);
-    const meta = typeof decl === "string" ? null : decl;
-    const binds = meta?.binds === "entity" ? "entity" : meta?.binds === "object" ? "object" : "none";
-    const tags = [.../* @__PURE__ */ new Set([...meta?.tags ?? [], "external", "host"])];
+    const meta2 = typeof decl === "string" ? null : decl;
+    const binds = meta2?.binds === "entity" ? "entity" : meta2?.binds === "object" ? "object" : "none";
+    const tags = [.../* @__PURE__ */ new Set([...meta2?.tags ?? [], "external", "host"])];
     out.push({
       id: name,
       kind: "primitive",
       source: "external",
-      cost: typeof meta?.cost === "number" ? clamp(meta.cost, 0, 1) : DEFAULT_EXTERNAL_COST,
+      cost: typeof meta2?.cost === "number" ? clamp(meta2.cost, 0, 1) : DEFAULT_EXTERNAL_COST,
       binds,
-      baseValence: typeof meta?.valence === "number" ? clamp(meta.valence, -1, 1) : 0,
-      ...meta?.preconditions ? { preconditions: meta.preconditions } : {},
-      ...meta?.description ? { description: meta.description } : {},
+      baseValence: typeof meta2?.valence === "number" ? clamp(meta2.valence, -1, 1) : 0,
+      ...meta2?.preconditions ? { preconditions: meta2.preconditions } : {},
+      ...meta2?.description ? { description: meta2.description } : {},
       tags
     });
   }
@@ -24996,6 +25247,19 @@ function buildEngineConfigEntities(config, executiveInterval) {
         // before saying it again feels right" (a disposition). Same two traits as
         // repeatDamping move it — patience lengthens, persistence shortens.
         repeatWindowTicks: 60,
+        // Ticks before a silence starts to mean something — how long this mind
+        // gives someone to get back to it before it counts the turn unanswered
+        // and learns from that (conversation.aim / ReafferenceEngine).
+        //
+        // Lives beside repeatWindowTicks rather than in a config of its own
+        // because they are two readings of ONE disposition, and splitting them
+        // would let a mind tune itself into contradiction — coming back to
+        // something in 20 ticks while still calling the silence too fresh to
+        // count. Long relative to its neighbours by design: repeatWindowTicks
+        // asks "how long before saying it again feels right", this asks "how long
+        // before I take not hearing back as information", and at 1s/tick that is
+        // four minutes of a real person's time, not one.
+        replyWindowTicks: 240,
         // How much a learned read on someone biases acting toward them. SIGNED and
         // unclamped: a warm mind leans toward whoever answers, a dogged one chases
         // the silence. The container will not choose between those.
@@ -25833,11 +26097,11 @@ var ReplayController = class {
     mkdirSync(dir, { recursive: true });
     const path = join(dir, `${active.runId}.json`);
     await active.recorder.save(path);
-    const meta = active.recorder.getMetadata();
+    const meta2 = active.recorder.getMetadata();
     const key = `${id}:${active.runId}`;
-    this._completedReplays.set(key, meta);
+    this._completedReplays.set(key, meta2);
     this._replayPaths.set(key, path);
-    return meta;
+    return meta2;
   }
   getMeta(id, runId) {
     const active = this._activeRecorders.get(id);
@@ -25849,10 +26113,10 @@ var ReplayController = class {
     const path = join(dataDir, "wills", id, "replays", `${runId}.json`);
     if (!existsSync(path)) return null;
     try {
-      const meta = JSON.parse(readFileSync(path, "utf8")).metadata;
-      this._completedReplays.set(key, meta);
+      const meta2 = JSON.parse(readFileSync(path, "utf8")).metadata;
+      this._completedReplays.set(key, meta2);
       this._replayPaths.set(key, path);
-      return meta;
+      return meta2;
     } catch {
       return null;
     }
@@ -25862,8 +26126,8 @@ var ReplayController = class {
     const prefix = `${id}:`;
     const active = this._activeRecorders.get(id);
     if (active) results.push(active.recorder.getMetadata());
-    for (const [key, meta] of this._completedReplays)
-      if (key.startsWith(prefix)) results.push(meta);
+    for (const [key, meta2] of this._completedReplays)
+      if (key.startsWith(prefix)) results.push(meta2);
     const dataDir = process.env["WILL_DATA_DIR"] ?? "./data";
     const dir = join(dataDir, "wills", id, "replays");
     if (existsSync(dir)) {
@@ -25877,11 +26141,11 @@ var ReplayController = class {
         if (inMem.has(runId)) continue;
         try {
           const path = join(dir, file);
-          const meta = JSON.parse(readFileSync(path, "utf8")).metadata;
+          const meta2 = JSON.parse(readFileSync(path, "utf8")).metadata;
           const key = `${id}:${runId}`;
-          this._completedReplays.set(key, meta);
+          this._completedReplays.set(key, meta2);
           this._replayPaths.set(key, path);
-          results.push(meta);
+          results.push(meta2);
         } catch {
         }
       }
@@ -27698,10 +27962,10 @@ var effectorController = class {
   _clearEscalated(instance, intentId) {
     const intent = instance.simulation.stateManager.snapshot().entities.get(intentId);
     if (!intent || intent.type !== "agency.intent") return;
-    const meta = { ...intent.metadata ?? {} };
-    delete meta["escalated"];
-    delete meta["escalationExpiresAt"];
-    instance.simulation.stateManager.setEntity({ id: intent.id, type: intent.type, metadata: meta });
+    const meta2 = { ...intent.metadata ?? {} };
+    delete meta2["escalated"];
+    delete meta2["escalationExpiresAt"];
+    instance.simulation.stateManager.setEntity({ id: intent.id, type: intent.type, metadata: meta2 });
   }
   /** Voice the escalation as a first-person broadcast ask — once, at raise time. */
   _voiceEscalation(instance, esc) {
@@ -27762,8 +28026,8 @@ var effectorController = class {
     const m = intent.metadata ?? {};
     const schema = m["schema"] ?? "unknown";
     const predicted = {
-      reward: num5(m["predictedReward"], num5(m["expectedReward"], 0.5)),
-      valence: num5(m["predictedValence"], num5(m["expectedValence"], 0))
+      reward: num6(m["predictedReward"], num6(m["expectedReward"], 0.5)),
+      valence: num6(m["predictedValence"], num6(m["expectedValence"], 0))
     };
     const provenance = { planId: m["planId"], stepId: m["stepId"] };
     instance.simulation.stateManager.setEntity(
@@ -27788,7 +28052,7 @@ var effectorController = class {
     logger.info(`[effector] \u2713 reconciled ${result.success ? "success" : "failure"}: intent "${invocationId}" (${schema})`);
   }
 };
-function num5(v, fallback) {
+function num6(v, fallback) {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
 function escalationAsk(schema, reasonCode) {

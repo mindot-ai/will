@@ -147,6 +147,7 @@ const PRIOR_DESCRIPTIONS: Record<string, { lower: string; raise: string }> = {
   'engine-config-action-selector.noveltyWeight':      { lower: 'feeling less pull toward the untried',               raise: 'drawn more strongly to do the untried and unpracticed' },
   'engine-config-action-selector.repeatDamping':      { lower: 'following up sooner when I have had no answer',      raise: 'giving people room after I have said my piece' },
   'engine-config-action-selector.repeatWindowTicks':  { lower: 'coming back to something sooner after I have said it', raise: 'letting what I have said stand for longer before returning to it' },
+  'engine-config-action-selector.replyWindowTicks':   { lower: 'reading a silence as an answer sooner',               raise: 'giving someone longer before I take their quiet as telling me anything' },
   'engine-config-action-selector.socialWeight':       { lower: 'reaching for people regardless of whether they answer me', raise: 'drawn toward the people who actually answer me' },
   'engine-config-moral.eventThreshold':               { lower: 'holding myself to my principles more sharply',  raise: 'letting moral lapses weigh on me less' },
   'engine-config-frustration.decayRate':              { lower: 'staying frustrated for longer after a setback',  raise: 'shaking off frustration and bouncing back faster' },

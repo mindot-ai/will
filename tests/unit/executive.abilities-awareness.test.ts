@@ -55,7 +55,7 @@ describe('buildUserMessage — renders the abilities block', () => {
     worldState: { energyLevel: 80, sleepPressure: 10, stressLoad: 5, circadianPhase: 0.5, timeOfDay: 12, threatLevel: 0 },
     affect: { dominantEmotion: 'calm', valence: 0.1, arousal: 0.2, dominance: 0.5, blends: [] },
     goals: [], plans: [], relevantPlanIds: [], percepts: [], workingMemory: [], memories: [],
-    beliefs: [], beliefsOmitted: 0, recentActions: [],
+    beliefs: [], beliefsOmitted: 0, recentActions: [], spokenTurns: [],
   } as ExecutiveContext )
 
   const render = ( abilities?: ExecutiveContext['abilities'] ): string =>

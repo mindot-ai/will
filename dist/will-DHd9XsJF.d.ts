@@ -3803,6 +3803,19 @@ declare class GoalManager implements SimulationEngine, CognitiveEngine {
      * "learn" ↔ "learning").
      */
     private _nudgeActionGoals;
+    /**
+     * Somebody answered. Advance the action goals that were about reaching them.
+     *
+     * Linked the way every other goal→person link in the system is linked: the
+     * `keid:<id>` tag (selection.scoring's `collectGoalTargets` reads the same one
+     * to lift a reach-out's goal relevance) or `requestingEntityId`, set when a
+     * conversation escalation created the goal. Nothing here guesses from wording.
+     *
+     * Unmatched by design: a goal with no link to this person gets nothing, even if
+     * it is tagged 'communication'. Being answered by one person is not progress on
+     * wanting to talk to another.
+     */
+    private _nudgeAnsweredGoals;
     /** True when a metric completionCondition (e.g. "emotion.boredom < 40") is already met. */
     private _isConditionMet;
     private _evaluateMetricProgress;
@@ -6131,6 +6144,19 @@ interface Reputation {
     negativeInteractions: number;
     lastInteractionTick: Tick;
     confidence: number;
+    /**
+     * Everything the mind has OBSERVED about this person, acts and silences alike.
+     *
+     * `interactionCount` counts acts, and only acts — a silence must never inflate
+     * it or the mind remembers conversations that never happened. But confidence is
+     * about how much evidence a read rests on, and a silence is evidence. Counting
+     * only acts meant someone who never answers could never be confidently known as
+     * someone who never answers, which is precisely the read worth holding.
+     *
+     * Rises in lockstep with `interactionCount` on the interaction path, so a mind
+     * that has only ever been spoken to behaves exactly as it did before.
+     */
+    observations: number;
 }
 declare class ReputationTracker implements SimulationEngine, CognitiveEngine {
     readonly name = "reputation-tracker";
@@ -6142,6 +6168,8 @@ declare class ReputationTracker implements SimulationEngine, CognitiveEngine {
     /** True after reputations have been rehydrated from persisted state on first tick. */
     private _restored;
     private _pendingInteractions;
+    /** Whether someone answered when the mind spoke to them (ReafferenceEngine). */
+    private _pendingResponsiveness;
     private _bus;
     private readonly _model;
     constructor(config?: ReputationTrackerConfig);
@@ -7387,6 +7415,35 @@ declare class ReafferenceEngine implements CognitiveEngine {
     onCognitiveEvent(e: CognitiveEvent): void;
     snapshot(): Record<string, unknown>;
     react(_delta: Duration, tick: Tick, state: ReadonlySimulationState, _context: SimulationContext): Promise<EngineResult>;
+    /**
+     * Latch each open turn's fate onto its own record and announce it once.
+     *
+     * Two rules earn their keep here:
+     *
+     *  • MERGE, never replace. `StateManager.setEntity` overwrites the whole entity,
+     *    and a `conversation.sent` carries `outboxMessageIds` — the sole key by which
+     *    a later delivery ack can find it. Rewriting the record with only the fields
+     *    this method cares about would sever that, silently, for every turn that got
+     *    an answer.
+     *
+     *  • Latch, don't recompute. `answeredAt`/`unansweredAt` persist, so the event
+     *    fires on the one tick the fact changed rather than every tick for the rest
+     *    of the session — which for an unanswered turn would be thousands of
+     *    identical reputation hits against one person for one silence.
+     */
+    private _resolveReplies;
+    /**
+     * Publish how a person responded to being spoken to.
+     *
+     * Deliberately NOT an `interaction.occurred`: that event means "someone did
+     * something toward us" and carries a valence for what they did. A silence is
+     * nobody doing anything, and forcing it through that channel would have the
+     * ReputationTracker book a hostile *act* where there was only an absence — the
+     * mind would come to think it was being rebuffed rather than simply not
+     * answered yet. Separate signal, separate meaning, one consumer decides what
+     * either is worth.
+     */
+    private _emitResponsiveness;
     private _emitProceduralized;
     /**
      * Emit the `action.outcome{planId,stepId}` for an async (host-acked) plan-step

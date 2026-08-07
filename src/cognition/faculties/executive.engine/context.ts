@@ -10,6 +10,11 @@ import type { EpisodicConsolidator } from '#faculties/episodic.consolidator'
 import type { SemanticIntegrator } from '#faculties/semantic.engine/integrator'
 import { readEffectiveParams, summarizePersonaPrior } from '#cognition/persona.prior'
 import { readIdentityName } from '#cognition/identity.entity'
+import { readSpokenTurns } from '#agency/conversation.aim'
+
+/** How many of the mind's own recent utterances it is shown. Enough to notice a
+ *  repetition, few enough not to crowd out what is happening now. */
+const SPOKEN_TURNS_SHOWN = 6
 
 export interface ContextDependencies {
   workingMemory: WorkingMemory | null
@@ -278,6 +283,20 @@ export async function buildExecutiveContext(
   recentActions.sort( ( a, b ) => b.tick - a.tick )
   const recentActionsCapped = recentActions.slice( 0, 5 )
 
+  // What the mind has said to people lately, and who answered. Newest first,
+  // capped — this is a reminder, not a transcript; the conversation itself lives
+  // in memory and in "## In Conversation Now".
+  const spokenTurns: ExecutiveContext['spokenTurns'] = readSpokenTurns( state.entities )
+    .filter( t => !t.isAck )
+    .reverse()
+    .slice( 0, SPOKEN_TURNS_SHOWN )
+    .map( t => ({
+      target:   t.targetEntityName ?? t.targetEntityId,
+      preview:  t.preview,
+      age:      Math.max( 0, state.tick - t.tick ),
+      answered: t.answeredAt !== undefined,
+    }) )
+
   // Active/known plans — read persisted `plan` entities so the executive has
   // execution awareness: which plans exist per goal, their status + step
   // progress, enabling it to target a specific plan by id when managing several. (P4)
@@ -331,6 +350,7 @@ export async function buildExecutiveContext(
     beliefs,
     beliefsOmitted,
     recentActions: recentActionsCapped,
+    spokenTurns,
     behavioralDisposition,
     selfTuning,
     knownEntities: extractKnownEntities( state ),

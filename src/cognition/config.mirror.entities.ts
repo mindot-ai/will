@@ -397,6 +397,19 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
         // before saying it again feels right" (a disposition). Same two traits as
         // repeatDamping move it — patience lengthens, persistence shortens.
         repeatWindowTicks: 60,
+        // Ticks before a silence starts to mean something — how long this mind
+        // gives someone to get back to it before it counts the turn unanswered
+        // and learns from that (conversation.aim / ReafferenceEngine).
+        //
+        // Lives beside repeatWindowTicks rather than in a config of its own
+        // because they are two readings of ONE disposition, and splitting them
+        // would let a mind tune itself into contradiction — coming back to
+        // something in 20 ticks while still calling the silence too fresh to
+        // count. Long relative to its neighbours by design: repeatWindowTicks
+        // asks "how long before saying it again feels right", this asks "how long
+        // before I take not hearing back as information", and at 1s/tick that is
+        // four minutes of a real person's time, not one.
+        replyWindowTicks: 240,
         // How much a learned read on someone biases acting toward them. SIGNED and
         // unclamped: a warm mind leans toward whoever answers, a dogged one chases
         // the silence. The container will not choose between those.

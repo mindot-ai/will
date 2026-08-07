@@ -15356,9 +15356,20 @@ var FacetSupervisor = class {
   _idleTtlOverride;
   /** When the budget is full, evict the least-recently-active facet instead of refusing a spawn. */
   _evictLruOnPressure;
+  /** What a spawn constructs — see FacetFactory. */
+  _createFacet;
   constructor(opts = {}) {
     this._idleTtlOverride = opts.idleTtlTicks ?? null;
     this._evictLruOnPressure = opts.evictLruOnPressure ?? true;
+    this._createFacet = opts.createFacet ?? ((facetId, deps) => new ExecutiveFacet(
+      facetId,
+      deps.bus,
+      deps.llmDirector,
+      deps.contextDeps,
+      deps.promptDeps,
+      deps.willId,
+      deps.inbox ?? null
+    ));
   }
   /**
    * How long a quiet facet lives, in ticks.
@@ -15564,15 +15575,7 @@ var FacetSupervisor = class {
     }
     this._facetCounter++;
     const facetId = `facet-${this._facetCounter}`;
-    const facet = new ExecutiveFacet(
-      facetId,
-      deps.bus,
-      deps.llmDirector,
-      deps.contextDeps,
-      deps.promptDeps,
-      deps.willId,
-      deps.inbox ?? null
-    );
+    const facet = this._createFacet(facetId, deps);
     if (this._sessionLogger)
       facet.attachSessionLogger(this._sessionLogger);
     facet.setStateRef(deps.stateRef);

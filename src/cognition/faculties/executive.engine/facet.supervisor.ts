@@ -118,6 +118,22 @@ export interface FacetSpawnDeps {
 
 export type SpawnResult = { attention: 'available' | 'full', handle?: ExecutiveFacetHandle }
 
+/**
+ * How a facet gets built. Exists so a caller can stand something else in place of
+ * a real reasoning loop — chiefly a test that wants to observe the REGISTRY
+ * (keying, eviction, continuity) without paying for an LLM director.
+ *
+ * A seam rather than a module mock, deliberately. `mock.module` / `vi.mock` is
+ * process-global and permanent in Bun's runner: one file mocking this module
+ * replaced ExecutiveFacet for every file that loaded AFTER it, in the same
+ * process. That turned a green branch red — the audition reply tests sat waiting
+ * on a facet whose `pump()` was a no-op and timed out at 30s — and because the
+ * damage follows file order, the failing set differed between CI and a local run,
+ * which reads exactly like flake. Injection is scoped to the supervisor that asked
+ * for it and cannot reach anybody else.
+ */
+export type FacetFactory = ( facetId: string, deps: FacetSpawnDeps ) => ExecutiveFacet
+
 export class FacetSupervisor {
   private _facets = new Map<string, ExecutiveFacet>()
   private _facetCounter = 0
@@ -153,10 +169,24 @@ export class FacetSupervisor {
   private readonly _idleTtlOverride: number | null
   /** When the budget is full, evict the least-recently-active facet instead of refusing a spawn. */
   private readonly _evictLruOnPressure: boolean
+  /** What a spawn constructs — see FacetFactory. */
+  private readonly _createFacet: FacetFactory
 
-  constructor( opts: { idleTtlTicks?: number; evictLruOnPressure?: boolean } = {} ){
+  constructor( opts: { idleTtlTicks?: number; evictLruOnPressure?: boolean; createFacet?: FacetFactory } = {} ){
     this._idleTtlOverride    = opts.idleTtlTicks ?? null
     this._evictLruOnPressure = opts.evictLruOnPressure ?? true
+    // `spawn` throws on a missing bus / director / stateRef before it ever gets
+    // here, so the factory is only ever called with those present — the same
+    // reason `willId` was already asserted at this call.
+    this._createFacet        = opts.createFacet ?? ( ( facetId, deps ) => new ExecutiveFacet(
+      facetId,
+      deps.bus!,
+      deps.llmDirector!,
+      deps.contextDeps,
+      deps.promptDeps,
+      deps.willId!,
+      deps.inbox ?? null
+    ) )
   }
 
   /**
@@ -427,15 +457,7 @@ export class FacetSupervisor {
     this._facetCounter++
     const facetId = `facet-${this._facetCounter}`
 
-    const facet = new ExecutiveFacet(
-      facetId,
-      deps.bus,
-      deps.llmDirector,
-      deps.contextDeps,
-      deps.promptDeps,
-      deps.willId!,
-      deps.inbox ?? null
-    )
+    const facet = this._createFacet( facetId, deps )
 
     // Attach session logger if available
     if( this._sessionLogger )

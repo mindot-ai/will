@@ -1,6 +1,75 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 — 2026-08-07 · the mind learns said from answered, and who from where
+
+Two things a mind needs that this one did not have. The first: sending a message
+and being answered are different facts, and only the first was ever recorded — so
+a Will asked the same question eleven times in two and a half minutes and, from
+the inside, every one of them was the first. The second: a `keid` was minted by
+the transport, so identity *was* an address — one human met on two channels was
+two people, and "how should I reach them?" collapsed into a roster guess about
+where they were last seen.
+
+> **The pictures:** `docs/graphs/answered-loop.svg` and
+> `docs/graphs/identity-and-route.svg`.
+
+- **A message now learns whether anyone replied.** Delivery is a fact about the
+  channel; being answered is a fact about the world, and it arrives later. The
+  outbox accepting a message had been the whole of the evidence, so `reach-out`
+  sat at 28 enactments and 28 successes — habit and expected value climbing with
+  every repetition, against a satiation brake that is bounded and decays. A turn
+  now carries whether it was answered, **and what was said back**: the flag alone
+  proved worse than silence, because it invites the mind to act as though it has
+  the answer — live, that put a wrong meeting time in front of a third party.
+
+- **A silence is something the mind can learn from.** `socialStanding` was built
+  to carry "they never answer me" and never could: it learns from
+  `interaction.occurred`, which fires when somebody *does* something, and a
+  silence is nobody doing anything. A new `social.responsiveness` signal reaches
+  reputation as reliability — calibrated so that replying to two messages in
+  three holds steady — and reaches goals, where **being answered is the progress,
+  never the sending**. Nine unanswered messages used to complete a goal outright.
+
+- **A decision not to speak has somewhere to be written.** Silence was offered in
+  the prompt and implemented nowhere, and the prompt even warned against what
+  then happened: a facet concluded there was nothing new to say and wrote *that*
+  into the reply block, because it was the only block it had. `[NO_MESSAGE]` is
+  now real — parsed, honoured on both paths, recorded and never sent. On the
+  reply path it suppresses the words and nothing else, so choosing silence never
+  costs the mind what it learned from listening.
+
+- **An intention that has been acted on is finished.** Nothing ever retired an
+  `ideomotor.intent`; they were cleared only when the executive next ran and
+  declined to name the same action, so between cycles a willed reach-out stood in
+  state and competed every tick until it won — twice, byte-identical, 25 ticks
+  apart. Damping a permanent pull only delays it. The intention is now discharged
+  by being enacted, which is what an intention is.
+
+- **A someone is no longer an address.** An anchor (`ke:<opaque>`, minted
+  deterministically so replays match) is the referent; the addresses it was met
+  at become aliases, and the rooms it is reachable in become **handles** carrying
+  the circumstances — private or shared, and when it last answered there. That
+  last is evidence rather than configuration, so a mind prefers a DM because that
+  is where this person actually replies. Deliberately not social-only: a document,
+  a repo, a room each have a what and a where, and the where changes while the
+  what stays put. A shared room now earns a dossier of its own.
+
+- **An identity the mind cannot settle is a question, not a failure.** Recognition
+  will only absorb a thin handle into an established relationship — fusing two
+  real people who share a name would take one of them's whole history — so the
+  same human established on two channels stayed two people, permanently and
+  silently. The near-miss is now kept and shown, and the mind can settle it
+  itself; its verdict may fuse two established referents, because it has evidence
+  a name-match does not.
+
+- **A reply goes back to the room it was asked in.** `isDM` had been computed on
+  every Discord inbound since that bridge shipped and used only to pick a roster
+  field — the one fact that makes a room the right or wrong place to say
+  something, derived at the edge and discarded. It now travels as
+  `Stimulus.direct` into a handle's kind.
+
+Riding with it, from the same stretch of main: the other half of the gap between
+what a mind meant and what the world received.
 
 - **An action that names nothing now says so.** The executive's actions bias the
   agency competition rather than commanding it, so a `type` matching no schema was
@@ -73,6 +142,12 @@
   Every test stayed green, because the fake injected an array. Both shapes are
   normalised now, and the regression test uses the `Map` shape that actually
   ships: it fails against the old code, which is the only reason to trust it.
+
+Throughout: the quiet path is byte-identical. A Will that has spoken to nobody
+writes no responsiveness records and emits no metrics; determinism, replay
+equivalence, and snapshot/restore hold — the anchor is hashed from the first
+address seen rather than counted or clocked, precisely so a recorded run and its
+replay mint the same id.
 
 ## 0.8.0 — 2026-07-29 · the mind thinks at more than one depth
 

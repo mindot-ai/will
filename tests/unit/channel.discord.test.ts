@@ -31,8 +31,17 @@ class FakeClient implements DiscordLikeClient {
   dmByUser = new Map<string, FakeChannel>()
   destroyed = false
   private handlers: Array<( m: DiscordLikeMessage ) => void> = []
+  private reactionHandlers: Array<( r: never, u: never ) => void> = []
 
-  on( _e: 'messageCreate', fn: ( m: DiscordLikeMessage ) => void ){ this.handlers.push( fn ) }
+  on( e: 'messageCreate' | 'messageReactionAdd', fn: ( a: never, b: never ) => void ){
+    if( e === 'messageReactionAdd' ) this.reactionHandlers.push( fn )
+    else this.handlers.push( fn as unknown as ( m: DiscordLikeMessage ) => void )
+  }
+
+  /** Deliver a reaction. `partial` shapes exercise the fetch path Discord really uses. */
+  react( reaction: Record<string, unknown>, user: Record<string, unknown> ): void {
+    for( const fn of this.reactionHandlers ) fn( reaction as never, user as never )
+  }
   once( _e: string, _fn: () => void ){ /* pre-logged-in fake — never fires */ }
   async login(){ return 'token' }
   destroy(){ this.destroyed = true }
@@ -426,5 +435,119 @@ describe('discord env parsing', () => {
     expect( parseMentionOnly('') ).toBe( false )
     expect( parseMentionOnly( undefined ) ).toBe( false )
     expect( parseMentionOnly('c1, c2') ).toEqual( [ 'c1', 'c2' ] )
+  } )
+} )
+
+// ── reactions are answers ────────────────────────────────────────────────────
+
+/**
+ * A 👍 is the commonest acknowledgement on Discord and the mind read it as silence.
+ *
+ * `conversation.received` is written only from a text percept, so a reaction
+ * produced no record: the turn it answered stayed open, the reply window elapsed,
+ * and 0.9.0's machinery concluded — correctly, from what it could see — that the
+ * message had been ignored. That verdict reaches reputation as reliability and
+ * goals as absence of progress, so answering her with an emoji taught her that
+ * person does not respond.
+ */
+describe('discord bridge — a reaction is an answer', () => {
+  /** A reaction on one of the bot's own messages, with the shapes discord.js sends. */
+  const onOwnMessage = ( over: Record<string, unknown> = {} ) => ( {
+    emoji:   { name: '👍' },
+    message: {
+      channelId: 'c1', guildId: 'G', content: 'the meeting moved to 2pm',
+      author: { id: 'BOT' },
+      ...over,
+    },
+  } )
+
+  it('perceives a reaction to something the Will said', async () => {
+    const { client, will } = await bridgeUp()
+    client.react( onOwnMessage(), { id: 'U1', username: 'ada', displayName: 'Ada L.' } )
+    await flush()
+
+    expect( will.perceived ).toHaveLength( 1 )
+    const p = will.perceived[0]!
+    // Same id space and thread as a spoken turn — this is what lets the answered
+    // loop match it against the message it answers.
+    expect( p.from ).toBe('discord:U1')
+    expect( p.thread ).toBe('discord:c1')
+    expect( p.speaker ).toBe('Ada L.')
+  } )
+
+  it('arrives described, not spoken — and quotes what was reacted to', async () => {
+    const { client, will } = await bridgeUp()
+    client.react( onOwnMessage(), { id: 'U1', displayName: 'Ada L.' } )
+    await flush()
+
+    const text = will.perceived[0]!.text!
+    // Bracketed and first-person, the shape renderAttachments uses for a file:
+    // it reached the mind through the conversation, but nobody SAID it, and a
+    // percept that reads like speech invites answering words never spoken.
+    expect( text.startsWith('[') ).toBe( true )
+    expect( text ).toContain('reacted 👍')
+    // Which thing was agreed with — an answer without its content is worse than none.
+    expect( text ).toContain('the meeting moved to 2pm')
+  } )
+
+  it('ignores a reaction on somebody else\'s message — it answers nothing we said', async () => {
+    const { client, will } = await bridgeUp()
+    client.react( onOwnMessage( { author: { id: 'U2' } } ), { id: 'U1', username: 'ada' } )
+    await flush()
+    expect( will.perceived ).toHaveLength( 0 )
+  } )
+
+  it('ignores its own reaction, and other bots', async () => {
+    const { client, will } = await bridgeUp()
+    client.react( onOwnMessage(), { id: 'BOT', username: 'aria' } )
+    client.react( onOwnMessage(), { id: 'U9', username: 'webhook', bot: true } )
+    await flush()
+    expect( will.perceived ).toHaveLength( 0 )
+  } )
+
+  it('fetches a partial reaction and a partial message before reading them', async () => {
+    const { client, will } = await bridgeUp()
+    let fetchedReaction = false, fetchedMessage = false
+
+    // The NORMAL case for anything said before the last restart: Discord delivers
+    // the event with almost every field empty. Reading through the hole yields an
+    // author of `undefined`, which silently never matches the bot's own id — so
+    // every reaction to a long-running conversation would be dropped.
+    client.react( {
+      partial: true,
+      fetch: async () => {
+        fetchedReaction = true
+        return {
+          emoji: { name: '✅' },
+          message: {
+            partial: true,
+            fetch: async () => {
+              fetchedMessage = true
+              return { channelId: 'c1', guildId: 'G', content: 'shipped it', author: { id: 'BOT' } }
+            },
+          },
+        }
+      },
+    }, { id: 'U1', displayName: 'Ada L.' } )
+    await flush()
+
+    expect( fetchedReaction, 'a partial reaction must be fetched').toBe( true )
+    expect( fetchedMessage,  'a partial message must be fetched').toBe( true )
+    expect( will.perceived ).toHaveLength( 1 )
+    expect( will.perceived[0]!.text ).toContain('shipped it')
+  } )
+
+  it('carries `direct` so a DM reaction is not treated as public', async () => {
+    const { client, will } = await bridgeUp()
+    client.react( onOwnMessage( { guildId: null } ), { id: 'U1', displayName: 'Ada L.' } )
+    await flush()
+    expect( will.perceived[0]!.direct ).toBe( true )
+  } )
+
+  it('respects the channel allowlist', async () => {
+    const { client, will } = await bridgeUp( { channels: [ 'c9' ] } )
+    client.react( onOwnMessage(), { id: 'U1', username: 'ada' } )
+    await flush()
+    expect( will.perceived ).toHaveLength( 0 )
   } )
 } )

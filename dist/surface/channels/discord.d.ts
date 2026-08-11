@@ -40,6 +40,38 @@ interface DiscordLikeMessage {
      */
     attachments?: ReadonlyMap<string, DiscordLikeAttachment> | Iterable<DiscordLikeAttachment>;
 }
+/**
+ * A reaction, and the message it lands on.
+ *
+ * Both halves may be PARTIAL: Discord delivers a reaction on an uncached message
+ * with almost every field empty, which is the normal case for a message the bot
+ * sent before its current process started. `fetch()` fills it in, and the handler
+ * must call it rather than reading through the hole.
+ */
+interface DiscordLikeReaction {
+    emoji: {
+        name?: string | null;
+        id?: string | null;
+    };
+    message: DiscordLikeMessage & {
+        partial?: boolean;
+        author?: {
+            id: string;
+            bot?: boolean;
+            username?: string;
+            displayName?: string;
+        };
+        fetch?(): Promise<DiscordLikeReaction['message']>;
+    };
+    partial?: boolean;
+    fetch?(): Promise<DiscordLikeReaction>;
+}
+interface DiscordLikeReactor {
+    id: string;
+    bot?: boolean;
+    username?: string;
+    displayName?: string;
+}
 interface DiscordLikeClient {
     user: {
         id: string;
@@ -48,6 +80,7 @@ interface DiscordLikeClient {
     /** discord.js ≥14.22; polled so we needn't subscribe to the deprecated `ready`. */
     isReady?(): boolean;
     on(event: 'messageCreate', fn: (m: DiscordLikeMessage) => void): unknown;
+    on(event: 'messageReactionAdd', fn: (r: DiscordLikeReaction, u: DiscordLikeReactor) => void): unknown;
     once(event: string, fn: () => void): unknown;
     login(token: string): Promise<unknown>;
     destroy(): Promise<unknown> | void;
@@ -127,4 +160,4 @@ declare function parseMentionOnly(raw?: string): boolean | string[];
  */
 declare function parseChannels(raw?: string): string[] | undefined;
 
-export { type DiscordBridgeOptions, type DiscordLikeAttachment, type DiscordLikeChannel, type DiscordLikeClient, type DiscordLikeMessage, connectDiscord, parseChannels, parseMentionOnly };
+export { type DiscordBridgeOptions, type DiscordLikeAttachment, type DiscordLikeChannel, type DiscordLikeClient, type DiscordLikeMessage, type DiscordLikeReaction, type DiscordLikeReactor, connectDiscord, parseChannels, parseMentionOnly };

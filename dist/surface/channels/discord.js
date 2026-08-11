@@ -115,6 +115,7 @@ function chunkText(text, max) {
 var DISCORD_MESSAGE_LIMIT = 2e3;
 var DISCORD_CDN_HOSTS = /* @__PURE__ */ new Set(["cdn.discordapp.com", "media.discordapp.net"]);
 var MAX_FETCH_BYTES = 256 * 1024;
+var REACTION_QUOTE_CHARS = 140;
 async function connectDiscord(will, opts) {
   const log = opts.log ?? ((m) => console.error(`[will:discord] ${m}`));
   const roster = new ChannelRoster(opts.rosterPath ?? `.will/${will.id}.discord.json`);
@@ -126,6 +127,32 @@ async function connectDiscord(will, opts) {
   client.on("messageCreate", (message) => {
     void onMessage(message);
   });
+  client.on("messageReactionAdd", (reaction, user) => {
+    void onReaction(reaction, user);
+  });
+  async function onReaction(reaction, user) {
+    const self = client.user;
+    if (!self || user.id === self.id || user.bot) return;
+    const full = reaction.partial && reaction.fetch ? await reaction.fetch().catch(() => null) : reaction;
+    if (!full) return;
+    const msg = full.message.partial && full.message.fetch ? await full.message.fetch().catch(() => null) : full.message;
+    if (!msg?.author) return;
+    if (msg.author.id !== self.id) return;
+    const isDM = !msg.guildId;
+    if (!isDM && allowed && !allowed.has(msg.channelId)) return;
+    const emoji = full.emoji?.name ?? (full.emoji?.id ? ":custom:" : "");
+    if (!emoji) return;
+    const who = user.displayName ?? user.username;
+    const said = (msg.cleanContent || msg.content || "").trim().slice(0, REACTION_QUOTE_CHARS);
+    const text = said ? `[${who ?? "someone"} reacted ${emoji} to what I said: "${said}"]` : `[${who ?? "someone"} reacted ${emoji} to something I said]`;
+    await will.perceive({
+      text,
+      from: `discord:${user.id}`,
+      thread: `discord:${msg.channelId}`,
+      direct: isDM,
+      ...who ? { speaker: who } : {}
+    });
+  }
   async function onMessage(message) {
     const self = client.user;
     if (!self || message.author.id === self.id || message.author.bot) return;
@@ -275,10 +302,22 @@ async function createDiscordClient() {
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.MessageContent,
-      GatewayIntentBits.DirectMessages
+      GatewayIntentBits.DirectMessages,
+      // Neither is privileged, so this costs nothing to ask for — and without
+      // them an emoji answer never arrives and reads as being ignored.
+      GatewayIntentBits.GuildMessageReactions,
+      GatewayIntentBits.DirectMessageReactions
     ],
-    partials: [Partials.Channel]
-    // DMs arrive on uncached channels
+    partials: [
+      Partials.Channel,
+      // DMs arrive on uncached channels
+      // A reaction on a message this process did not cache — i.e. anything said
+      // before the last restart — is delivered partial, and without these the
+      // event is dropped before the handler sees it. That is precisely the
+      // long-running conversation the answered loop exists for.
+      Partials.Message,
+      Partials.Reaction
+    ]
   });
 }
 function parseMentionOnly(raw) {

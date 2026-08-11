@@ -41,6 +41,16 @@ const DISCORD_CDN_HOSTS = new Set( [ 'cdn.discordapp.com', 'media.discordapp.net
  *  bounds what is *kept*, this bounds what is fetched at all. */
 const MAX_FETCH_BYTES = 256 * 1024
 
+/**
+ * How much of her own message to quote back when someone reacts to it.
+ *
+ * Enough to identify WHICH thing was agreed with — a bare "someone reacted 👍"
+ * closes the answered loop but tells the mind nothing about what was affirmed,
+ * and 0.9.0 established that an answer without its content is worse than none:
+ * it invites acting on an answer never seen.
+ */
+const REACTION_QUOTE_CHARS = 140
+
 // ── The slice of discord.js the bridge actually uses (structural) ───────────
 
 export interface DiscordLikeChannel {
@@ -76,11 +86,38 @@ export interface DiscordLikeMessage {
   attachments?: ReadonlyMap<string, DiscordLikeAttachment> | Iterable<DiscordLikeAttachment>
 }
 
+/**
+ * A reaction, and the message it lands on.
+ *
+ * Both halves may be PARTIAL: Discord delivers a reaction on an uncached message
+ * with almost every field empty, which is the normal case for a message the bot
+ * sent before its current process started. `fetch()` fills it in, and the handler
+ * must call it rather than reading through the hole.
+ */
+export interface DiscordLikeReaction {
+  emoji:   { name?: string | null; id?: string | null }
+  message: DiscordLikeMessage & {
+    partial?: boolean
+    author?:  { id: string; bot?: boolean; username?: string; displayName?: string }
+    fetch?(): Promise<DiscordLikeReaction['message']>
+  }
+  partial?: boolean
+  fetch?(): Promise<DiscordLikeReaction>
+}
+
+export interface DiscordLikeReactor {
+  id:           string
+  bot?:         boolean
+  username?:    string
+  displayName?: string
+}
+
 export interface DiscordLikeClient {
   user: { id: string; setPresence?( p: unknown ): void } | null
   /** discord.js ≥14.22; polled so we needn't subscribe to the deprecated `ready`. */
   isReady?(): boolean
   on( event: 'messageCreate', fn: ( m: DiscordLikeMessage ) => void ): unknown
+  on( event: 'messageReactionAdd', fn: ( r: DiscordLikeReaction, u: DiscordLikeReactor ) => void ): unknown
   once( event: string, fn: () => void ): unknown
   login( token: string ): Promise<unknown>
   destroy(): Promise<unknown> | void
@@ -159,6 +196,64 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
 
   // ── inbound: platform message → stimulus ──────────────────────────────────
   client.on('messageCreate', message => { void onMessage( message ) } )
+  client.on('messageReactionAdd', ( reaction, user ) => { void onReaction( reaction, user ) } )
+
+  /**
+   * Someone reacted to something the Will said.
+   *
+   * A reaction IS an answer, and until this existed the mind read it as silence.
+   * `conversation.received` is written only from a text percept, so a 👍 — the
+   * commonest acknowledgement on Discord — produced no record at all: the turn it
+   * answered stayed open, the reply window elapsed, and the mind concluded it had
+   * been ignored. That conclusion is not inert. It reaches reputation as
+   * reliability (−0.06 per unanswered turn) and goals as absence of progress, so
+   * answering her with an emoji actively taught her that person does not respond.
+   *
+   * Only reactions on the Will's OWN messages are perceived. A reaction between
+   * two other people in a busy channel is real social information, but it is not
+   * an answer to anything the mind said, and routing it here would swamp the
+   * conversation record it is meant to correct.
+   */
+  async function onReaction( reaction: DiscordLikeReaction, user: DiscordLikeReactor ): Promise<void> {
+    const self = client.user
+    if( !self || user.id === self.id || user.bot ) return
+
+    // Both may arrive partial — a reaction on a message this process never cached
+    // is the NORMAL case for anything said before the last restart, which is
+    // exactly the long-lived conversation this is here to keep honest.
+    const full = reaction.partial && reaction.fetch ? await reaction.fetch().catch( () => null ) : reaction
+    if( !full ) return
+    const msg = full.message.partial && full.message.fetch
+      ? await full.message.fetch().catch( () => null )
+      : full.message
+    if( !msg?.author ) return
+
+    if( msg.author.id !== self.id ) return                       // not ours — not an answer to us
+    const isDM = !msg.guildId
+    if( !isDM && allowed && !allowed.has( msg.channelId ) ) return
+
+    const emoji = full.emoji?.name ?? ( full.emoji?.id ? ':custom:' : '' )
+    if( !emoji ) return
+
+    const who  = user.displayName ?? user.username
+    const said = ( msg.cleanContent || msg.content || '').trim().slice( 0, REACTION_QUOTE_CHARS )
+
+    // Described, bracketed, first person — the same shape `renderAttachments` uses
+    // for a file, and for the same reason: this reached the mind through the
+    // conversation but nobody SAID it, and a percept that reads like speech invites
+    // the mind to answer words that were never spoken.
+    const text = said
+      ? `[${ who ?? 'someone' } reacted ${ emoji } to what I said: "${ said }"]`
+      : `[${ who ?? 'someone' } reacted ${ emoji } to something I said]`
+
+    await will.perceive( {
+      text,
+      from:   `discord:${ user.id }`,
+      thread: `discord:${ msg.channelId }`,
+      direct: isDM,
+      ...( who ? { speaker: who } : {} ),
+    } )
+  }
 
   async function onMessage( message: DiscordLikeMessage ): Promise<void> {
     const self = client.user
@@ -352,8 +447,20 @@ async function createDiscordClient(): Promise<DiscordLikeClient> {
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.MessageContent,
       GatewayIntentBits.DirectMessages,
+      // Neither is privileged, so this costs nothing to ask for — and without
+      // them an emoji answer never arrives and reads as being ignored.
+      GatewayIntentBits.GuildMessageReactions,
+      GatewayIntentBits.DirectMessageReactions,
     ],
-    partials: [ Partials.Channel ],   // DMs arrive on uncached channels
+    partials: [
+      Partials.Channel,     // DMs arrive on uncached channels
+      // A reaction on a message this process did not cache — i.e. anything said
+      // before the last restart — is delivered partial, and without these the
+      // event is dropped before the handler sees it. That is precisely the
+      // long-running conversation the answered loop exists for.
+      Partials.Message,
+      Partials.Reaction,
+    ],
   } ) as unknown as DiscordLikeClient
 }
 

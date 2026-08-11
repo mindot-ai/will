@@ -141,8 +141,8 @@ out of scope.
 
 | | Phase | Delivers | Cost / risk |
 |---|---|---|---|
-| **P0** | The room stops being an id | channel name, topic, guild name/id, parent, is-thread on the payload → the place dossier gets a name | Low. No new intents. Unblocks every later phase |
-| **P1** | Reactions are answers | `messageReactionAdd` on her own messages → `conversation.received` | Low. Fixes the live 0.9.0 defect above |
+| **P0** ✅ | The room stops being an id | `threadName` → the place dossier gets a name | **Landed 2026-08-11.** Topic deferred — see below |
+| **P1** ✅ | Reactions are answers | `messageReactionAdd` on her own messages → `conversation.received` | **Landed 2026-08-11** |
 | **P2** | She meets people | count on the room; referents on encounter; `look-up-member` discharging curiosity | Dossier budget; needs `GUILD_MEMBERS` (privileged) |
 | **P3** | She has hands | ability declarations + deployer allowlist; README correction | Product surface change; policy wiring |
 | **P4** | She knows what she may do | permission bits → `availability`; denial → percept | Depends on P3 |
@@ -153,6 +153,19 @@ P0 and P1 are independent of everything and of each other. P4 depends on P3. P5 
 the one that can go wrong quietly.
 
 ---
+
+## Carried out of P0
+
+- **A channel's TOPIC has nowhere to live.** P0 delivered the room's *name* because
+  `KnownEntity` has a `name` and nothing else a description fits. "What is this
+  channel for" is the more useful half and needs a new dossier field, which
+  persists into the PMA — additive but not free. Worth doing as its own step
+  rather than smuggling into a naming change.
+- **Rooms and people share six slots.** `extractKnownEntities` sorts by recency and
+  caps at 6, and an active channel is always recent. Rooms were *already* competing
+  there (rendering as "something"), so P0 changed nothing about the pressure — but
+  it makes the pressure visible, and P2 will make it worse. Decide the split before
+  P2, not after.
 
 ## Open questions
 

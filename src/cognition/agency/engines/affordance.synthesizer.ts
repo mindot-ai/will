@@ -35,6 +35,7 @@ import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { Affordance, AffordanceSource, MotorSchema, LearnedSkill, SchemaPrecondition } from '#agency/types'
 import type { SchemaRepertoire } from '#agency/schemas/repertoire'
 import { INNATE_SCHEMAS } from '#agency/schemas/innate'
+import { CURIOUS_RESOLVED } from '#faculties/known.entity.tracker'
 import { collectGoalTargets } from '#agency/selection.scoring'
 import { readEffectiveParams } from '#cognition/persona.prior'
 import { liveConsequences, enactionFootprint, spokenAtByEntity, CONSEQUENCE_TTL_TICKS, type ConsequenceDescriptor } from '#agency/consequence'
@@ -191,15 +192,17 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     const personSchemas = schemas.filter( s => s.binds === 'entity')
     const objectSchemas = schemas.filter( s => s.binds === 'object')
 
-    if( personSchemas.length > 0 || objectSchemas.length > 0 )
-      for( const [ id, e ] of state.entities ){
+    // Not gated on there BEING a target-bound schema: `inspect` is offered from
+    // this same loop and belongs to the innate floor, so a mind with no `binds`
+    // schemas at all — which is every mind until a host declares one — must still
+    // reach it. Gating the loop skipped a room entirely, because the innate floor
+    // has no `binds: 'object'` schema for a thing to match.
+    for( const [ id, e ] of state.entities ){
         if( e.type !== 'known-entity') continue
 
         const m    = e.metadata
         const kind = str( m?.['kind'] )
         const applicable = kind === 'sentient' ? personSchemas : kind === 'thing' ? objectSchemas : null
-
-        if( !applicable || applicable.length === 0 ) continue
 
         const keid = str( m?.['keid'] ) ?? id
         const fam  = num( m?.['familiarity'], 0 )
@@ -208,7 +211,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
         const salience = fam * 0.6 + Math.max( 0, val ) * 0.3 + res * 0.1 + ( goalTargets.get( keid ) ?? 0 )
         const name     = str( m?.['name'] ) ?? keid
 
-        for( const schema of applicable )
+        for( const schema of applicable ?? [] )
           candidates.push({
             salience,
             affordance: this._build( schema, tick, state, valence, energyLow, skills, {
@@ -217,6 +220,38 @@ export class AffordanceSynthesizer implements CognitiveEngine {
               parameters:     { targetEntityName: name },
             } ),
           })
+
+        // ── looking at something I cannot place ──────────────────
+        //
+        // The wanting and the doing referenced different things. Curiosity is
+        // per-REFERENT — `drive.curiosity_resolve` rises with
+        // `familiarity × (1 − resolutionConfidence)`, and GoalManager turns it
+        // into a real goal that completes when that referent resolves. But the
+        // only `inspect` on offer bound to PERCEPTS, so a mind could want to know
+        // what a room was, hold a goal about it, and have no act that addressed
+        // it. The pull existed with nowhere to go.
+        //
+        // Offered here at the strength of the not-knowing itself, so the thing it
+        // most wants to place is the thing it is most drawn to look at — and the
+        // affordance appears BECAUSE something is unresolved rather than standing
+        // permanently on offer. A referent it can already place raises no
+        // candidate at all: there is nothing to find out.
+        //
+        // Alongside the percept-bound offering, not instead of it. Examining what
+        // is in front of you and looking up what you cannot place are both real,
+        // and they are not the same act.
+        if( perceptSchema && res < CURIOUS_RESOLVED ){
+          const wonder = fam * ( 1 - res )
+          if( wonder > 0 )
+            candidates.push({
+              salience: wonder + ( goalTargets.get( keid ) ?? 0 ),
+              affordance: this._build( perceptSchema, tick, state, valence, energyLow, skills, {
+                evokedBy:       id,
+                targetEntityId: keid,
+                parameters:     { focus: name, targetEntityName: name },
+              } ),
+            })
+        }
       }
 
     // ── ideomotor candidates: the executive's imagined actions, pre-activated ──

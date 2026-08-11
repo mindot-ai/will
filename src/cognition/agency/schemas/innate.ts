@@ -92,7 +92,32 @@ export const INNATE_SCHEMAS: MotorSchema[] = [
     cost:       0.06,
     preconditions: [ { metric: 'energy.level', op: 'gt', value: 8 } ],
     baseValence: 0.05,
-    tags:       [ 'perception', 'information' ],
+    /**
+     * `external` because looking is a question put to the WORLD, and only the
+     * world can answer it.
+     *
+     * Without the tag this resolved as a sync stance whose whole body was the
+     * sentence "I examine it closely; more of its detail resolves" — returned
+     * with success 0.65 and no detail resolving. Nothing was learned, no dossier
+     * moved, and `drive.curiosity_resolve` (which rises with
+     * `familiarity × (1 − resolutionConfidence)` and earns a goal of its own) was
+     * exactly as high afterwards. Worse, reafference scores what it is told: a
+     * mind that looked and learned nothing was taught that looking WORKS, so
+     * habit and value rose with every futile repetition.
+     *
+     * Tagged, it rides the path `reach-out` already rides — dispatched to the
+     * host, held `awaiting`, acked or timed out. The ack carries only
+     * `{success, description, metrics}`, so the host CANNOT hand facts back
+     * through it; an answer must arrive the one way anything reaches this mind,
+     * as a percept it perceives and judges for itself. That constraint is the
+     * feature. And an unanswered look now fails honestly at AWAIT_TIMEOUT, which
+     * is what teaches a mind to stop examining what will not resolve.
+     *
+     * Innate AND host-dependent is not a contradiction — `reach-out` is both, for
+     * the same reason: every mind can speak, but whether the words land depends on
+     * there being a world to land in.
+     */
+    tags:       [ 'perception', 'information', 'external' ],
   },
   {
     id:         'reach-out',

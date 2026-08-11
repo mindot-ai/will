@@ -8137,7 +8137,32 @@ var INNATE_SCHEMAS = [
     cost: 0.06,
     preconditions: [{ metric: "energy.level", op: "gt", value: 8 }],
     baseValence: 0.05,
-    tags: ["perception", "information"]
+    /**
+     * `external` because looking is a question put to the WORLD, and only the
+     * world can answer it.
+     *
+     * Without the tag this resolved as a sync stance whose whole body was the
+     * sentence "I examine it closely; more of its detail resolves" — returned
+     * with success 0.65 and no detail resolving. Nothing was learned, no dossier
+     * moved, and `drive.curiosity_resolve` (which rises with
+     * `familiarity × (1 − resolutionConfidence)` and earns a goal of its own) was
+     * exactly as high afterwards. Worse, reafference scores what it is told: a
+     * mind that looked and learned nothing was taught that looking WORKS, so
+     * habit and value rose with every futile repetition.
+     *
+     * Tagged, it rides the path `reach-out` already rides — dispatched to the
+     * host, held `awaiting`, acked or timed out. The ack carries only
+     * `{success, description, metrics}`, so the host CANNOT hand facts back
+     * through it; an answer must arrive the one way anything reaches this mind,
+     * as a percept it perceives and judges for itself. That constraint is the
+     * feature. And an unanswered look now fails honestly at AWAIT_TIMEOUT, which
+     * is what teaches a mind to stop examining what will not resolve.
+     *
+     * Innate AND host-dependent is not a contradiction — `reach-out` is both, for
+     * the same reason: every mind can speak, but whether the words land depends on
+     * there being a world to land in.
+     */
+    tags: ["perception", "information", "external"]
   },
   {
     id: "reach-out",
@@ -20903,29 +20928,39 @@ var AffordanceSynthesizer = class {
       }
     const personSchemas = schemas.filter((s) => s.binds === "entity");
     const objectSchemas = schemas.filter((s) => s.binds === "object");
-    if (personSchemas.length > 0 || objectSchemas.length > 0)
-      for (const [id, e] of state.entities) {
-        if (e.type !== "known-entity") continue;
-        const m = e.metadata;
-        const kind = str3(m?.["kind"]);
-        const applicable = kind === "sentient" ? personSchemas : kind === "thing" ? objectSchemas : null;
-        if (!applicable || applicable.length === 0) continue;
-        const keid = str3(m?.["keid"]) ?? id;
-        const fam = num2(m?.["familiarity"], 0);
-        const val = num2(m?.["valence"], 0);
-        const res = num2(m?.["resolutionConfidence"], 0);
-        const salience = fam * 0.6 + Math.max(0, val) * 0.3 + res * 0.1 + (goalTargets.get(keid) ?? 0);
-        const name = str3(m?.["name"]) ?? keid;
-        for (const schema of applicable)
+    for (const [id, e] of state.entities) {
+      if (e.type !== "known-entity") continue;
+      const m = e.metadata;
+      const kind = str3(m?.["kind"]);
+      const applicable = kind === "sentient" ? personSchemas : kind === "thing" ? objectSchemas : null;
+      const keid = str3(m?.["keid"]) ?? id;
+      const fam = num2(m?.["familiarity"], 0);
+      const val = num2(m?.["valence"], 0);
+      const res = num2(m?.["resolutionConfidence"], 0);
+      const salience = fam * 0.6 + Math.max(0, val) * 0.3 + res * 0.1 + (goalTargets.get(keid) ?? 0);
+      const name = str3(m?.["name"]) ?? keid;
+      for (const schema of applicable ?? [])
+        candidates.push({
+          salience,
+          affordance: this._build(schema, tick, state, valence, energyLow, skills, {
+            evokedBy: id,
+            targetEntityId: keid,
+            parameters: { targetEntityName: name }
+          })
+        });
+      if (perceptSchema && res < CURIOUS_RESOLVED) {
+        const wonder = fam * (1 - res);
+        if (wonder > 0)
           candidates.push({
-            salience,
-            affordance: this._build(schema, tick, state, valence, energyLow, skills, {
+            salience: wonder + (goalTargets.get(keid) ?? 0),
+            affordance: this._build(perceptSchema, tick, state, valence, energyLow, skills, {
               evokedBy: id,
               targetEntityId: keid,
-              parameters: { targetEntityName: name }
+              parameters: { focus: name, targetEntityName: name }
             })
           });
       }
+    }
     for (const [id, e] of state.entities) {
       if (e.type !== "ideomotor.intent") continue;
       const m = e.metadata;

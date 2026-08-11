@@ -251,3 +251,86 @@ describe('AffordanceSynthesizer — ideomotor parameters passthrough (executive 
     expect( aff?.metadata?.['parameters'] ).toEqual( { query: 'tick loop design' } )
   })
 })
+
+// ── looking at what I cannot place ───────────────────────────────────────────
+
+/**
+ * The wanting and the doing referenced different things.
+ *
+ * `drive.curiosity_resolve` is per-REFERENT — it rises with
+ * `familiarity × (1 − resolutionConfidence)` and GoalManager turns it into a real
+ * goal that completes when that referent resolves. But the only `inspect` on
+ * offer bound to PERCEPTS, so a mind could want to know what a room was, hold a
+ * goal about it, and have no act that addressed it. The pull existed with nowhere
+ * to go.
+ */
+describe('AffordanceSynthesizer — inspect reaches what curiosity is about', () => {
+  const room = ( over: Record<string, unknown> = {} ) => ({
+    id: 'ke-room', type: 'known-entity',
+    metadata: { keid: 'ke:room9', kind: 'thing', familiarity: 0.8, resolutionConfidence: 0.1, ...over },
+  })
+
+  const inspectsOf = ( set: EntityInput[] | undefined ) =>
+    affordances( set ).filter( e => e.metadata?.['schema'] === 'inspect')
+
+  it('offers a look at a familiar referent it cannot place', async () => {
+    const synth = new AffordanceSynthesizer()
+    const res = await synth.react( 0, 1, makeState({
+      metrics: { 'energy.level': 70 }, entities: [ room() ],
+    }), CTX )
+
+    const look = inspectsOf( res.commands?.set ).find( e => e.metadata?.['targetEntityId'] === 'ke:room9')
+    expect( look, 'a familiar-yet-unresolved referent must be inspectable').toBeDefined()
+  } )
+
+  it('offers none once the referent is resolved — there is nothing to find out', async () => {
+    const synth = new AffordanceSynthesizer()
+    const res = await synth.react( 0, 1, makeState({
+      metrics: { 'energy.level': 70 },
+      // Above CURIOUS_RESOLVED, the same threshold the curiosity GOAL completes at.
+      entities: [ room( { resolutionConfidence: 0.9 } ) ],
+    }), CTX )
+
+    expect( inspectsOf( res.commands?.set ).some( e => e.metadata?.['targetEntityId'] === 'ke:room9') ).toBe( false )
+  } )
+
+  it('offers none for something never encountered — unfamiliarity is not curiosity', async () => {
+    const synth = new AffordanceSynthesizer()
+    const res = await synth.react( 0, 1, makeState({
+      metrics: { 'energy.level': 70 }, entities: [ room( { familiarity: 0 } ) ],
+    }), CTX )
+
+    expect( inspectsOf( res.commands?.set ).some( e => e.metadata?.['targetEntityId'] === 'ke:room9') ).toBe( false )
+  } )
+
+  it('under a narrow attention it looks at what it knows least', async () => {
+    // The pull is expressed as evoke-salience, which budgets ATTENTION — it decides
+    // which candidates survive the cap, not what the affordance is worth once it is
+    // in the field (that is `expectedReward`, and it comes from the schema). So the
+    // honest test is what a narrow mind still finds room for.
+    const synth = new AffordanceSynthesizer( undefined, 1 )
+    const res = await synth.react( 0, 1, makeState({
+      metrics: { 'energy.level': 70 },
+      entities: [
+        { id: 'ke-clearer', type: 'known-entity',
+          metadata: { keid: 'ke:clearer', kind: 'thing', familiarity: 0.8, resolutionConfidence: 0.5 } },
+        room(),   // same familiarity, far less resolved
+      ],
+    }), CTX )
+
+    const targets = inspectsOf( res.commands?.set ).map( e => e.metadata?.['targetEntityId'] )
+    expect( targets, 'the thing it can place least is what it makes room to look at')
+      .toContain('ke:room9')
+    expect( targets ).not.toContain('ke:clearer')
+  } )
+
+  it('still offers a look at a salient percept — both kinds of looking are real', async () => {
+    const synth = new AffordanceSynthesizer()
+    const res = await synth.react( 0, 1, makeState({
+      metrics: { 'energy.level': 70 },
+      entities: [ { id: 'p1', type: 'percept', metadata: { salience: 0.8, summary: 'a sound outside' } } ],
+    }), CTX )
+
+    expect( inspectsOf( res.commands?.set ).length ).toBeGreaterThan( 0 )
+  } )
+} )

@@ -108,7 +108,16 @@ const SENTIENT_DOMAINS = new Set<string>([ 'audition' ])
 // specific "get to know them" pull; it subsides once resolution reaches RESOLVED.
 const CURIOUS_FAMILIARITY = 0.5
 const CURIOUS_RESOLUTION   = 0.4
-const CURIOUS_RESOLVED     = 0.6
+/**
+ * Resolved enough to stop wondering — the point the curiosity goal completes at.
+ *
+ * Exported because the AffordanceSynthesizer offers `inspect` against referents
+ * BELOW it. Two readers, one constant, deliberately: if the act that satisfies
+ * curiosity and the goal that measures it disagreed about when something is
+ * known, a mind could keep being offered a look at what it had already placed —
+ * or stop being offered one while the goal it holds is still open.
+ */
+export const CURIOUS_RESOLVED = 0.6
 
 // Forgetting (Phase 4). (Reliability rate is now a Channel-A developable field — analytical.)
 const FORGET_FLOOR     = 0.02    // below this familiarity, an unidentified blip is forgotten

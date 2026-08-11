@@ -39,6 +39,7 @@ import type { ActionRequest, ActionResult } from '#types'
 import { INNATE_SCHEMAS } from '#agency/schemas/innate'
 import { enact, type Enaction } from '#agency/execution.primitives'
 import { revokedIntentIds, revocationId, staleRevocationIds } from '#agency/revocation'
+import { addressesOf } from '#cognition/social.identity'
 import {
   CONSEQUENCE_TYPE, CONSEQUENCE_TTL_TICKS,
   consequenceEntity, fnv1a, paramsKey,
@@ -310,7 +311,15 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       }
 
       const enaction: Enaction = schema
-        ? enact({ schema, parameters: intent.parameters, targetEntityId: intent.targetEntityId, energy, stress })
+        ? enact({
+            schema, parameters: intent.parameters, targetEntityId: intent.targetEntityId, energy, stress,
+            // Whether the world knows where this is — what decides if `inspect`
+            // is a question put outward or a look inward. Resolved here because
+            // the alias table lives in state and `enact` is pure.
+            worldAddressable: intent.targetEntityId
+              ? addressesOf( state.entities as never, intent.targetEntityId ).length > 0
+              : false,
+          })
         : { mode: 'external', success: true, outcomeQuality: 0.5, valence: 0,
             description: `Unknown schema "${ intent.schema }" routed to the host.` }
 
@@ -368,7 +377,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
             paramsHash: fnv1a( paramsKey( intent.parameters ) ),
             expiresAt: tick + CONSEQUENCE_TTL_TICKS, tick,
           }) )
-          this._emitDispatch( intent, enaction.mode, tick )
+          this._emitDispatch( intent, enaction.mode, tick, state )
           metrics.push([ enaction.mode === 'communicate'
             ? 'agency.communicate.dispatched'
             : 'agency.invocation.dispatched', 1 ])
@@ -672,7 +681,10 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     catch( err ){ logger.warn(`[motor] action outcome publish failed: ${ errMsg( err ) }`) }
   }
 
-  private _emitDispatch( intent: Intent, mode: 'communicate' | 'external', tick: Tick ): void {
+  private _emitDispatch(
+    intent: Intent, mode: 'communicate' | 'external', tick: Tick,
+    state?: ReadonlySimulationState,
+  ): void {
     if( !this._bus ) return
     try {
       this._bus.publish({
@@ -683,6 +695,19 @@ export class MotorSchemaExecutor implements CognitiveEngine {
           targetEntityId: intent.targetEntityId, parameters: intent.parameters, tick,
           // The ability's declared meaning, carried to the host handler.
           description: this._resolve( intent.schema )?.description,
+          // Where in the world this referent is, so a host can act on it at all.
+          //
+          // The target is an ANCHOR (`ke:1sqlkux`) — 0.9.0 made identity opaque and
+          // separate from address on purpose. A bridge holds channel ids and knows
+          // nothing of anchors, so an invocation naming only the referent is one no
+          // surface can serve. The outbox hit this first and solved it the same way
+          // (mind.ts attachRouting): resolve inside, where the alias table lives.
+          //
+          // Outbound only. This is the mind telling the world which of its own
+          // handles it means — the reverse direction, a surface writing an address
+          // into the mind, is what perception is for.
+          ...( state && intent.targetEntityId
+            ? { targetAddresses: addressesOf( state.entities, intent.targetEntityId ) } : {} ),
         },
       })
     }

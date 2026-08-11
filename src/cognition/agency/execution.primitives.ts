@@ -40,6 +40,15 @@ export interface EnactionContext {
   targetEntityId?: string
   energy:          number   // 0..100
   stress:          number   // 0..100
+  /**
+   * True when the target is something the WORLD holds an address for.
+   *
+   * Set by the executor, which can see the alias table. It is what decides
+   * whether `inspect` is a question put outward or a look inward — see the note
+   * on the innate schema. Absent means "not externally addressable", which is the
+   * honest default: a mind examining something it only holds internally.
+   */
+  worldAddressable?: boolean
 }
 
 const COMM_SCHEMAS = new Set([ 'reach-out', 'talk', 'text', 'broadcast', 'gesture' ])
@@ -53,7 +62,12 @@ export function modeOf( schema: MotorSchema ): EnactionMode {
 
 /** Enact a primitive schema, producing a state-grounded outcome. */
 export function enact( ctx: EnactionContext ): Enaction {
-  const mode = modeOf( ctx.schema )
+  // `inspect` is the one act whose mode belongs to its OBJECT rather than to
+  // itself: looking at a room is a question for the world, looking at a memory is
+  // not. Everything else is classified by its tags alone.
+  const mode = ctx.schema.id === 'inspect' && ctx.worldAddressable
+    ? 'external'
+    : modeOf( ctx.schema )
 
   if( mode === 'communicate'){
     const name = str( ctx.parameters['targetEntityName'] ) ?? ctx.targetEntityId ?? 'them'
@@ -95,9 +109,22 @@ function syncStance( ctx: EnactionContext ): Enaction {
       return sync( 0.5, 0.0, 'I let time pass; regulatory processes continue their quiet work.')
     case 'express':
       return sync( 0.6, 0.1, 'My inner state becomes outwardly visible.')
+    // Looking inward — the target is something the mind holds, not something the
+    // world can be asked about. It reports what is actually there.
+    //
+    // The version this replaces returned success 0.65 with "more of its detail
+    // resolves" for EVERY inspect, and nothing ever resolved. Reafference scores
+    // what it is told, so a mind that looked and learned nothing was taught that
+    // looking works — habit and value climbing with each futile repetition. The
+    // failure arm below is the point of the fix, not an edge case: a mind must be
+    // able to find out that there is nothing more to find out.
     case 'inspect': {
-      const focus = str( parameters['focus'] ) ?? 'it'
-      return sync( 0.65, 0.05, `I examine ${ focus } closely; more of its detail resolves.`)
+      const focus = str( parameters['focus'] )
+      const held  = str( parameters['targetEntityName'] ) ?? focus
+      if( !held )
+        return { mode: 'sync', success: false, outcomeQuality: 0.1, valence: -0.05,
+          description: 'I go to examine something and find nothing named to examine.' }
+      return sync( 0.6, 0.05, `I turn my attention to ${ held } and take in what I already hold of it.`)
     }
     default:
       return sync( 0.5, 0.0, `I enact ${ schema.id }.`)

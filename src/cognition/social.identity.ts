@@ -233,6 +233,29 @@ export function handlesOf( entities: ReadonlyMap<string, EntityLike>, referentId
 }
 
 /**
+ * Every address the world knows this referent by.
+ *
+ * The inverse of the alias table: an anchor in, the transport ids that resolve to
+ * it out. An anchor is deliberately opaque and deliberately not an address —
+ * `ke:1sqlkux` is who someone IS — so anything that must actually reach them in
+ * the world has to come back through here.
+ *
+ * Two callers now, which is why it is a function and not inline: the outbox, so a
+ * message addressed to a referent can be delivered, and the agency's dispatch, so
+ * a host asked to act on a referent knows which of its own ids that is. Both are
+ * the mind reaching OUT; nothing here lets a surface name someone to the mind.
+ *
+ * Sorted, so a recorded run and its replay produce the same list (R2).
+ */
+export function addressesOf( entities: ReadonlyMap<string, EntityLike>, referentId: string ): string[] {
+  const aliases = readAliases( entities )
+  return [ ...aliases.entries() ]
+    .filter( ( [ , canonical ] ) => canonical === referentId )
+    .map( ( [ alias ] ) => alias )
+    .sort()
+}
+
+/**
  * The route to use when the mind has expressed no preference.
  *
  * A DEFAULT, not a decision. Which room to speak in is the mind's call, made

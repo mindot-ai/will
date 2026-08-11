@@ -24,10 +24,11 @@
 //   paramPriors    — last known-good parameters become defaults
 // ─────────────────────────────────────────────────────────────
 
+import { logger } from '#core/logger'
 import type { MotorSchema, LearnedSkill } from '#agency/types'
 import type { EntityInput, ReadonlySimulationState } from '#core/types'
 import type { DenialFinality } from '#stem/policy/arbiter'
-import { INNATE_SCHEMAS } from '#agency/schemas/innate'
+import { INNATE_SCHEMAS, INNATE_SCHEMA_BY_ID } from '#agency/schemas/innate'
 
 const VALUE_ALPHA       = 0.2   // value EMA rate
 const ERROR_BETA        = 0.2   // prediction-error EMA rate
@@ -99,6 +100,23 @@ export class SchemaRepertoire {
    * reafference then builds skill on. Idempotent; re-registering updates it.
    */
   registerExternal( schema: MotorSchema ): void {
+    // An innate schema is part of the body, not a slot a tenant may redefine.
+    //
+    // This sets by id, so a host registering a handler for a name the floor
+    // already uses would REPLACE the innate schema with a generated one —
+    // silently dropping its `binds`, cost, preconditions and tags. `inspect` is
+    // the live case: a Discord bridge answering inquiries would have overwritten
+    // the very schema whose `binds: 'percept'` is how inquiry finds its targets,
+    // and the mind would have lost the ability to look at what it cannot place in
+    // exchange for gaining an answerer.
+    //
+    // Registering the HANDLER is still what the host wanted and still happens —
+    // only the redeclaration is refused. The container supplies the mechanism; a
+    // tenant supplies what answers it.
+    if( INNATE_SCHEMA_BY_ID.has( schema.id ) ){
+      logger.debug(`[repertoire] "${ schema.id }" is innate — keeping the body's schema, binding the handler only`)
+      return
+    }
     this._templates.set( schema.id, schema )
   }
 

@@ -2232,7 +2232,22 @@ var INNATE_SCHEMAS = [
      * the same reason: every mind can speak, but whether the words land depends on
      * there being a world to land in.
      */
-    tags: ["perception", "information", "external"]
+    /**
+     * NOT tagged `external`, deliberately — and it was, briefly, which was wrong.
+     *
+     * Inspection is not a kind of act, it is an act applied to a kind of thing.
+     * Examining a memory, a feeling, or its own state is something a mind does
+     * alone; examining a room or a repo is a question only the world can answer.
+     * A fixed tag forces one of those onto both: tagged external, looking inward
+     * would go out to a host and time out; left sync, looking outward invents a
+     * detail nobody supplied — which is the version that shipped, narrating "more
+     * of its detail resolves" while nothing resolved.
+     *
+     * So the mode is decided per TARGET, at enaction: a referent the world knows
+     * an address for is dispatched and awaited; anything else resolves from what
+     * the mind already holds. See `enact` / EnactionContext.worldAddressable.
+     */
+    tags: ["perception", "information"]
   },
   {
     id: "reach-out",
@@ -4554,6 +4569,10 @@ var SchemaRepertoire = class {
    * reafference then builds skill on. Idempotent; re-registering updates it.
    */
   registerExternal(schema) {
+    if (INNATE_SCHEMA_BY_ID.has(schema.id)) {
+      logger.debug(`[repertoire] "${schema.id}" is innate \u2014 keeping the body's schema, binding the handler only`);
+      return;
+    }
     this._templates.set(schema.id, schema);
   }
   // ── skills ────────────────────────────────────────────────────
@@ -7176,6 +7195,10 @@ function handlesOf(entities, referentId) {
     return raw.filter((h) => h && typeof h.keid === "string").sort((a, b) => (b.lastAnsweredTick ?? -1) - (a.lastAnsweredTick ?? -1) || (b.lastUsedTick ?? -1) - (a.lastUsedTick ?? -1) || (a.keid < b.keid ? -1 : a.keid > b.keid ? 1 : 0));
   }
   return [];
+}
+function addressesOf(entities, referentId) {
+  const aliases = readAliases(entities);
+  return [...aliases.entries()].filter(([, canonical]) => canonical === referentId).map(([alias]) => alias).sort();
 }
 function defaultHandle(handles) {
   if (handles.length === 0) return void 0;
@@ -23310,7 +23333,7 @@ function modeOf(schema) {
   return "sync";
 }
 function enact(ctx) {
-  const mode = modeOf(ctx.schema);
+  const mode = ctx.schema.id === "inspect" && ctx.worldAddressable ? "external" : modeOf(ctx.schema);
   if (mode === "communicate") {
     const name = str6(ctx.parameters["targetEntityName"]) ?? ctx.targetEntityId ?? "them";
     return {
@@ -23350,9 +23373,27 @@ function syncStance(ctx) {
       return sync(0.5, 0, "I let time pass; regulatory processes continue their quiet work.");
     case "express":
       return sync(0.6, 0.1, "My inner state becomes outwardly visible.");
+    // Looking inward — the target is something the mind holds, not something the
+    // world can be asked about. It reports what is actually there.
+    //
+    // The version this replaces returned success 0.65 with "more of its detail
+    // resolves" for EVERY inspect, and nothing ever resolved. Reafference scores
+    // what it is told, so a mind that looked and learned nothing was taught that
+    // looking works — habit and value climbing with each futile repetition. The
+    // failure arm below is the point of the fix, not an edge case: a mind must be
+    // able to find out that there is nothing more to find out.
     case "inspect": {
-      const focus = str6(parameters["focus"]) ?? "it";
-      return sync(0.65, 0.05, `I examine ${focus} closely; more of its detail resolves.`);
+      const focus = str6(parameters["focus"]);
+      const held = str6(parameters["targetEntityName"]) ?? focus;
+      if (!held)
+        return {
+          mode: "sync",
+          success: false,
+          outcomeQuality: 0.1,
+          valence: -0.05,
+          description: "I go to examine something and find nothing named to examine."
+        };
+      return sync(0.6, 0.05, `I turn my attention to ${held} and take in what I already hold of it.`);
     }
     default:
       return sync(0.5, 0, `I enact ${schema.id}.`);
@@ -23539,7 +23580,17 @@ var MotorSchemaExecutor = class {
         expectedReward: intent.expectedReward,
         expectedValence: intent.expectedValence
       };
-      const enaction = schema ? enact({ schema, parameters: intent.parameters, targetEntityId: intent.targetEntityId, energy, stress }) : {
+      const enaction = schema ? enact({
+        schema,
+        parameters: intent.parameters,
+        targetEntityId: intent.targetEntityId,
+        energy,
+        stress,
+        // Whether the world knows where this is — what decides if `inspect`
+        // is a question put outward or a look inward. Resolved here because
+        // the alias table lives in state and `enact` is pure.
+        worldAddressable: intent.targetEntityId ? addressesOf(state.entities, intent.targetEntityId).length > 0 : false
+      }) : {
         mode: "external",
         success: true,
         outcomeQuality: 0.5,
@@ -23589,7 +23640,7 @@ var MotorSchemaExecutor = class {
             expiresAt: tick + CONSEQUENCE_TTL_TICKS,
             tick
           }));
-          this._emitDispatch(intent, enaction.mode, tick);
+          this._emitDispatch(intent, enaction.mode, tick, state);
           metrics.push([enaction.mode === "communicate" ? "agency.communicate.dispatched" : "agency.invocation.dispatched", 1]);
         }
       }
@@ -23873,7 +23924,7 @@ var MotorSchemaExecutor = class {
       logger.warn(`[motor] action outcome publish failed: ${errMsg(err)}`);
     }
   }
-  _emitDispatch(intent, mode, tick) {
+  _emitDispatch(intent, mode, tick, state) {
     if (!this._bus) return;
     try {
       this._bus.publish({
@@ -23888,7 +23939,19 @@ var MotorSchemaExecutor = class {
           parameters: intent.parameters,
           tick,
           // The ability's declared meaning, carried to the host handler.
-          description: this._resolve(intent.schema)?.description
+          description: this._resolve(intent.schema)?.description,
+          // Where in the world this referent is, so a host can act on it at all.
+          //
+          // The target is an ANCHOR (`ke:1sqlkux`) — 0.9.0 made identity opaque and
+          // separate from address on purpose. A bridge holds channel ids and knows
+          // nothing of anchors, so an invocation naming only the referent is one no
+          // surface can serve. The outbox hit this first and solved it the same way
+          // (mind.ts attachRouting): resolve inside, where the alias table lives.
+          //
+          // Outbound only. This is the mind telling the world which of its own
+          // handles it means — the reverse direction, a surface writing an address
+          // into the mind, is what perception is for.
+          ...state && intent.targetEntityId ? { targetAddresses: addressesOf(state.entities, intent.targetEntityId) } : {}
         }
       });
     } catch (err) {

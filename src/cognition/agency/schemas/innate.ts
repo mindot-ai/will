@@ -117,7 +117,22 @@ export const INNATE_SCHEMAS: MotorSchema[] = [
      * the same reason: every mind can speak, but whether the words land depends on
      * there being a world to land in.
      */
-    tags:       [ 'perception', 'information', 'external' ],
+    /**
+     * NOT tagged `external`, deliberately — and it was, briefly, which was wrong.
+     *
+     * Inspection is not a kind of act, it is an act applied to a kind of thing.
+     * Examining a memory, a feeling, or its own state is something a mind does
+     * alone; examining a room or a repo is a question only the world can answer.
+     * A fixed tag forces one of those onto both: tagged external, looking inward
+     * would go out to a host and time out; left sync, looking outward invents a
+     * detail nobody supplied — which is the version that shipped, narrating "more
+     * of its detail resolves" while nothing resolved.
+     *
+     * So the mode is decided per TARGET, at enaction: a referent the world knows
+     * an address for is dispatched and awaited; anything else resolves from what
+     * the mind already holds. See `enact` / EnactionContext.worldAddressable.
+     */
+    tags:       [ 'perception', 'information' ],
   },
   {
     id:         'reach-out',

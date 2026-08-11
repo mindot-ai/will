@@ -31,6 +31,7 @@ import type { CognitiveBus } from '#cognition/bus'
 import type { CognitiveEngine, EngineResult } from '#cognition/types'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import { revokedIntentIds, revocationId } from '#agency/revocation'
+import { nameOf, isReferentId } from '#cognition/social.identity'
 
 // ── Minimal structural view of the executive's facet machinery ───────────────
 // Kept structural (not an import of the executive engine) so the agency module
@@ -227,7 +228,35 @@ export class DeliberationEngine implements CognitiveEngine {
     else
       lines.push('My automatic action-selection was uncertain. Candidate actions:')
     candidates.forEach( ( c, i ) => {
-      const to   = c.targetEntityId ? ` toward ${ c.targetEntityId }` : ''
+      // What the target IS, never the id it is filed under.
+      //
+      // This printed `c.targetEntityId` raw, so a mind deliberating was offered
+      // "inspect toward agency-intent-30" and "inspect toward
+      // affordance-1-orient-orient" — engine bookkeeping ids, and by the time a
+      // facet reasons off-tick the affordance entities are already swept. Live,
+      // she said so herself: "the content of all three is opaque — I don't know
+      // what agency-intent-30 actually is", and chose at 0.3 confidence anyway
+      // because the instructions forbid inventing an action outside the list.
+      //
+      // The prompt factory already holds this line for "## People I Know"
+      // ("never leak the raw keid"); the deliberation focus is the one place that
+      // did not. Resolved through the same dossier lookup, so a `reach-out toward
+      // ke:1sqlkux` now reads as the person's name.
+      //
+      // Unresolvable ⇒ the clause is DROPPED rather than filled with an id. An
+      // option the mind cannot identify should look like what it is — a bare act
+      // — instead of borrowing authority from a number it cannot read.
+      const to = ( () => {
+        const id = c.targetEntityId
+        if( !id ) return ''
+        const named = nameOf( state.entities as never, id )
+        if( named ) return ` toward ${ named }`
+        // Unnamed: show it only if it means something to the MIND. A host-supplied
+        // target ("ada") does; an opaque anchor or a piece of engine bookkeeping
+        // does not, and printing those is what produced "inspect toward
+        // agency-intent-30" as a thing to choose.
+        return opaqueToTheMind( id ) ? '' : ` toward ${ id }`
+      } )()
       // The ability's meaning, so the facet weighs what each option IS FOR rather
       // than choosing among bare labels ("give" vs "attack" is a real difference).
       const what = c.description ? ` — ${ c.description }` : ''
@@ -257,4 +286,17 @@ function extractChosen( decision: unknown, candidates: Candidate[] ): string | u
 
 function str( v: unknown ): string | undefined {
   return typeof v === 'string' ? v : undefined
+}
+
+/**
+ * Ids the mind cannot read anything off.
+ *
+ * A `ke:` anchor is opaque BY DESIGN — 0.9.0 made identity deliberately
+ * meaningless as a string — and the rest are the engine's own bookkeeping
+ * entities, which exist for one tick and say nothing about the world. Neither
+ * belongs in a choice a mind has to make; a host-supplied target does.
+ */
+function opaqueToTheMind( id: string ): boolean {
+  return isReferentId( id )
+    || /^(affordance|agency-intent|agency-outcome|ideomotor|facet|percept)[-:]/.test( id )
 }

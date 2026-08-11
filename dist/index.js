@@ -21818,7 +21818,13 @@ var DeliberationEngine = class {
     else
       lines.push("My automatic action-selection was uncertain. Candidate actions:");
     candidates.forEach((c, i) => {
-      const to = c.targetEntityId ? ` toward ${c.targetEntityId}` : "";
+      const to = (() => {
+        const id = c.targetEntityId;
+        if (!id) return "";
+        const named = nameOf(state.entities, id);
+        if (named) return ` toward ${named}`;
+        return opaqueToTheMind(id) ? "" : ` toward ${id}`;
+      })();
       const what = c.description ? ` \u2014 ${c.description}` : "";
       const plan = c.fromPlan ? " (my current plan's next step)" : "";
       lines.push(`${i + 1}. ${c.schema}${to}${what}${plan}`);
@@ -21839,6 +21845,9 @@ function extractChosen(decision, candidates) {
 }
 function str5(v) {
   return typeof v === "string" ? v : void 0;
+}
+function opaqueToTheMind(id) {
+  return isReferentId(id) || /^(affordance|agency-intent|agency-outcome|ideomotor|facet|percept)[-:]/.test(id);
 }
 
 // src/cognition/agency/execution.primitives.ts

@@ -160,3 +160,65 @@ describe('DeliberationEngine — graceful System-1 degradation', () => {
     expect( intentOf( res.commands?.set ) ).toBeUndefined()
   })
 })
+
+// ── a choice the mind can actually read ──────────────────────────────────────
+
+/**
+ * Live, a fresh Will was asked to choose between "inspect toward
+ * agency-intent-30", "inspect toward affordance-1-orient-orient" and "inspect
+ * toward facet-attending-facet-1" — and said so itself:
+ *
+ *   "the content of all three is opaque — I don't know what agency-intent-30
+ *    actually is or what the affordance-32 nodes contain"
+ *
+ * It chose anyway, at 0.3 confidence, because the instructions forbid inventing
+ * an action outside the list. A choice between labels a mind cannot read is not a
+ * decision. The prompt factory already holds this line for "## People I Know";
+ * the deliberation focus was the one place that did not.
+ */
+describe('DeliberationEngine — the candidate list is legible', () => {
+  /** A deliberating intent plus whatever dossiers the lookup should find. */
+  const withDossier = ( meta: Record<string, unknown>, dossier?: Record<string, unknown> ): ReadonlySimulationState => {
+    const st = deliberating( meta )
+    if( dossier ) ( st.entities as Map<string, unknown> ).set( dossier['id'] as string, dossier )
+    return st
+  }
+
+  it('names a referent target instead of printing its anchor', async () => {
+    const eng = new DeliberationEngine()
+    const cap = capturingProvider('reach-out')
+    eng.attachExecutive( cap.provider )
+    await eng.react( 0, 1, withDossier(
+      { candidates: [ { schema: 'reach-out', targetEntityId: 'ke:1sqlkux' } ] },
+      { id: 'ke-ke:1sqlkux', type: 'known-entity', createdAt: 0, updatedAt: 0,
+        metadata: { keid: 'ke:1sqlkux', kind: 'sentient', name: 'Fabrice' } },
+    ), CTX )
+    expect( cap.focus() ).toContain('reach-out toward Fabrice')
+    expect( cap.focus(), 'an anchor is opaque by design').not.toContain('ke:1sqlkux')
+  } )
+
+  it('drops engine bookkeeping rather than offering it as a thing to choose', async () => {
+    const eng = new DeliberationEngine()
+    const cap = capturingProvider('inspect')
+    eng.attachExecutive( cap.provider )
+    await eng.react( 0, 1, deliberating({
+      candidates: [
+        { schema: 'inspect', targetEntityId: 'agency-intent-30' },
+        { schema: 'inspect', targetEntityId: 'affordance-1-orient-orient' },
+        { schema: 'inspect', targetEntityId: 'facet-attending-facet-1' },
+      ],
+    }), CTX )
+    for( const id of [ 'agency-intent-30', 'affordance-1-orient-orient', 'facet-attending-facet-1' ] )
+      expect( cap.focus(), `${ id } is the engine talking to itself`).not.toContain( id )
+  } )
+
+  it('keeps a host-supplied target — that one means something', async () => {
+    const eng = new DeliberationEngine()
+    const cap = capturingProvider('give')
+    eng.attachExecutive( cap.provider )
+    await eng.react( 0, 1, deliberating({
+      candidates: [ { schema: 'give', targetEntityId: 'ada' } ],
+    }), CTX )
+    expect( cap.focus() ).toContain('give toward ada')
+  } )
+} )

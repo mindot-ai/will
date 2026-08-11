@@ -116,6 +116,15 @@ var DISCORD_MESSAGE_LIMIT = 2e3;
 var DISCORD_CDN_HOSTS = /* @__PURE__ */ new Set(["cdn.discordapp.com", "media.discordapp.net"]);
 var MAX_FETCH_BYTES = 256 * 1024;
 var REACTION_QUOTE_CHARS = 140;
+function roomLabel(message) {
+  if (!message.guildId) return void 0;
+  const own = message.channel?.name;
+  if (!own) return void 0;
+  const parent = message.channel?.parent?.name;
+  const room = parent ? `#${parent} \u203A ${own}` : `#${own}`;
+  const guild = message.guild?.name;
+  return guild ? `${room} in ${guild}` : room;
+}
 async function connectDiscord(will, opts) {
   const log = opts.log ?? ((m) => console.error(`[will:discord] ${m}`));
   const roster = new ChannelRoster(opts.rosterPath ?? `.will/${will.id}.discord.json`);
@@ -150,6 +159,7 @@ async function connectDiscord(will, opts) {
       from: `discord:${user.id}`,
       thread: `discord:${msg.channelId}`,
       direct: isDM,
+      ...roomLabel(msg) ? { threadName: roomLabel(msg) } : {},
       ...who ? { speaker: who } : {}
     });
   }
@@ -189,6 +199,7 @@ async function connectDiscord(will, opts) {
       // the right or wrong place to say something, and the mind never saw it —
       // which is how a follow-up promised in a DM went out to #general.
       direct: isDM,
+      ...roomLabel(message) ? { threadName: roomLabel(message) } : {},
       ...speaker ? { speaker } : {}
     });
   }

@@ -551,3 +551,50 @@ describe('discord bridge — a reaction is an answer', () => {
     expect( will.perceived ).toHaveLength( 0 )
   } )
 } )
+
+// ── a room the mind can name ─────────────────────────────────────────────────
+
+/**
+ * A room has had a dossier since 0.9.0 and no way to be named, so every place the
+ * mind knew was the id it was reached at. It rendered as "something" — what the
+ * prompt says for a `thing` it cannot name — and a mind deciding WHERE to say
+ * something was choosing between two opaque numbers.
+ */
+describe('discord bridge — the room is not just an id', () => {
+  it('labels a guild channel by what a person calls it', async () => {
+    const { client, will } = await bridgeUp()
+    const channel = new FakeChannel(); ( channel as { name?: string } ).name = 'general'
+    client.channelsById.set('c1', channel )
+    client.emit( { content: 'hi', channelId: 'c1', guild: { name: 'Mindot' } } as never )
+    await flush()
+    expect( will.perceived[0]!.threadName ).toBe('#general in Mindot')
+  } )
+
+  it('reads a thread as its parent channel', async () => {
+    const { client, will } = await bridgeUp()
+    const channel = new FakeChannel()
+    Object.assign( channel, { name: 'release-cut', parent: { name: 'general' } } )
+    client.channelsById.set('c1', channel )
+    client.emit( { content: 'hi', channelId: 'c1', guild: { name: 'Mindot' } } as never )
+    await flush()
+    expect( will.perceived[0]!.threadName ).toBe('#general › release-cut in Mindot')
+  } )
+
+  it('names no room for a DM — a private thread is the person, not a place', async () => {
+    const { client, will } = await bridgeUp()
+    const channel = new FakeChannel(); ( channel as { name?: string } ).name = 'dm'
+    client.channelsById.set('d1', channel )
+    client.emit( { content: 'psst', channelId: 'd1', guildId: null } )
+    await flush()
+    expect( will.perceived[0]!.threadName ).toBeUndefined()
+  } )
+
+  it('omits the label rather than inventing one when the channel has no name', async () => {
+    const { client, will } = await bridgeUp()
+    client.emit( { content: 'hi', channelId: 'c1', guild: { name: 'Mindot' } } as never )
+    await flush()
+    // An unnamed room stays unnamed, the same way a person does — it is never
+    // labelled with its own id.
+    expect( will.perceived[0]!.threadName ).toBeUndefined()
+  } )
+} )

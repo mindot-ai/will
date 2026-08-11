@@ -20879,7 +20879,8 @@ var KnownEntityTracker = class {
     const name = typeof raw?.speakerName === "string" ? raw.speakerName : void 0;
     const thread = typeof raw?.threadId === "string" ? raw.threadId : void 0;
     const direct = typeof raw?.direct === "boolean" ? raw.direct : void 0;
-    this._pendingEncounters.push({ keid, domain: p.domain, name, thread, direct });
+    const threadName = typeof raw?.threadName === "string" ? raw.threadName : void 0;
+    this._pendingEncounters.push({ keid, domain: p.domain, name, thread, direct, threadName });
   }
   snapshot() {
     return { trackedEntities: this._dossiers.size };
@@ -20913,6 +20914,7 @@ var KnownEntityTracker = class {
           place.encounterCount += 1;
           place.familiarity = Math.min(1, place.familiarity + this._growthRate * (1 - place.familiarity));
           place.lastSeenTick = tick;
+          if (enc.threadName && !place.name) place.name = enc.threadName;
           place.resolutionConfidence = this._resolution(place);
         }
       }
@@ -29103,7 +29105,10 @@ var Will = class _Will {
       // conversation focus still falls back to the entity id for its Speaker line.)
       ...stimulus.speaker ? { speakerName: stimulus.speaker } : {},
       // Omitted rather than defaulted: an unknown room is not known to be public.
-      ...stimulus.direct !== void 0 ? { direct: stimulus.direct } : {}
+      ...stimulus.direct !== void 0 ? { direct: stimulus.direct } : {},
+      // Omitted when the channel does not know — a room with no name stays
+      // unnamed, the same way a person does, rather than being labelled with its id.
+      ...stimulus.threadName ? { threadName: stimulus.threadName } : {}
     });
   }
   /** Perceive from the default user. Sugar over `perceive`. */
@@ -29950,6 +29955,15 @@ var DISCORD_MESSAGE_LIMIT = 2e3;
 var DISCORD_CDN_HOSTS = /* @__PURE__ */ new Set(["cdn.discordapp.com", "media.discordapp.net"]);
 var MAX_FETCH_BYTES = 256 * 1024;
 var REACTION_QUOTE_CHARS = 140;
+function roomLabel(message) {
+  if (!message.guildId) return void 0;
+  const own = message.channel?.name;
+  if (!own) return void 0;
+  const parent = message.channel?.parent?.name;
+  const room = parent ? `#${parent} \u203A ${own}` : `#${own}`;
+  const guild = message.guild?.name;
+  return guild ? `${room} in ${guild}` : room;
+}
 async function connectDiscord(will, opts) {
   const log = opts.log ?? ((m) => console.error(`[will:discord] ${m}`));
   const roster = new ChannelRoster(opts.rosterPath ?? `.will/${will.id}.discord.json`);
@@ -29984,6 +29998,7 @@ async function connectDiscord(will, opts) {
       from: `discord:${user.id}`,
       thread: `discord:${msg.channelId}`,
       direct: isDM,
+      ...roomLabel(msg) ? { threadName: roomLabel(msg) } : {},
       ...who ? { speaker: who } : {}
     });
   }
@@ -30023,6 +30038,7 @@ async function connectDiscord(will, opts) {
       // the right or wrong place to say something, and the mind never saw it —
       // which is how a follow-up promised in a DM went out to #general.
       direct: isDM,
+      ...roomLabel(message) ? { threadName: roomLabel(message) } : {},
       ...speaker ? { speaker } : {}
     });
   }

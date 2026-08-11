@@ -51,11 +51,38 @@ const MAX_FETCH_BYTES = 256 * 1024
  */
 const REACTION_QUOTE_CHARS = 140
 
+/**
+ * What to call the room this was said in — `#general`, `#general › release-cut`,
+ * or `#general in Mindot` when the server is known.
+ *
+ * A LABEL, not an address. `discord:1531…` is how a message gets to the room;
+ * this is what a person calls it, and 0.9.0 established those are different
+ * facts. Without it a room had a dossier and no name, so it reached the mind as
+ * "something" — which is what the prompt says for a `thing` it cannot name — and
+ * a mind choosing where to speak was picking between two opaque numbers.
+ *
+ * Returns undefined for a DM: a private thread is not a place, it is the person,
+ * and the tracker deliberately gives it no dossier to name.
+ */
+function roomLabel( message: DiscordLikeMessage ): string | undefined {
+  if( !message.guildId ) return undefined
+  const own = message.channel?.name
+  if( !own ) return undefined
+  const parent = message.channel?.parent?.name
+  const room   = parent ? `#${ parent } › ${ own }` : `#${ own }`
+  const guild  = message.guild?.name
+  return guild ? `${ room } in ${ guild }` : room
+}
+
 // ── The slice of discord.js the bridge actually uses (structural) ───────────
 
 export interface DiscordLikeChannel {
   send( content: string ): Promise<unknown>
   sendTyping?(): Promise<unknown>
+  /** `general` for a text channel; absent on a DM, which has no name and is a person. */
+  name?: string | null
+  /** The thread's parent channel, so a thread reads as "#general › release-cut". */
+  parent?: { name?: string | null } | null
 }
 
 export interface DiscordLikeAttachment {
@@ -70,6 +97,8 @@ export interface DiscordLikeMessage {
   cleanContent?: string
   channelId: string
   guildId?: string | null
+  /** The server this was said in. Its NAME is what a person calls the place. */
+  guild?: { name?: string | null } | null
   author: { id: string; bot?: boolean; username?: string; displayName?: string }
   member?: { displayName?: string } | null
   mentions?: { has( userId: string ): boolean }
@@ -251,6 +280,7 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
       from:   `discord:${ user.id }`,
       thread: `discord:${ msg.channelId }`,
       direct: isDM,
+      ...( roomLabel( msg ) ? { threadName: roomLabel( msg ) } : {} ),
       ...( who ? { speaker: who } : {} ),
     } )
   }
@@ -305,6 +335,7 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
       // the right or wrong place to say something, and the mind never saw it —
       // which is how a follow-up promised in a DM went out to #general.
       direct: isDM,
+      ...( roomLabel( message ) ? { threadName: roomLabel( message ) } : {} ),
       ...( speaker ? { speaker } : {} ),
     } )
   }

@@ -154,6 +154,8 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     keid: string; domain: string; name?: string
     /** The room this encounter happened in, and whether it was a private one. */
     thread?: string; direct?: boolean
+    /** What that room is called, where the channel offered a label. */
+    threadName?: string
   }> = []
   // Buffered from known.entity.learned (the conscious / reasoning write-path, Phase 2.2).
   private _pendingConscious: Array<{
@@ -247,12 +249,15 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     // `direct` is the one bit the Discord edge computed (`isDM`) and threw away
     // before the mind could see it — the single fact that decides whether a room
     // is the right place for a given utterance.
-    const raw  = p?.raw as { speakerName?: unknown; threadId?: unknown; direct?: unknown } | undefined
+    const raw  = p?.raw as { speakerName?: unknown; threadId?: unknown; direct?: unknown; threadName?: unknown } | undefined
     const name = typeof raw?.speakerName === 'string' ? raw.speakerName : undefined
     const thread = typeof raw?.threadId === 'string' ? raw.threadId : undefined
     const direct = typeof raw?.direct === 'boolean' ? raw.direct : undefined
+    // What the room is CALLED. A place has had a dossier since 0.9.0 and no way
+    // to be named, so every room the mind knew rendered as "something".
+    const threadName = typeof raw?.threadName === 'string' ? raw.threadName : undefined
 
-    this._pendingEncounters.push({ keid, domain: p!.domain, name, thread, direct })
+    this._pendingEncounters.push({ keid, domain: p!.domain, name, thread, direct, threadName })
   }
 
   snapshot(): Record<string, unknown> {
@@ -319,6 +324,11 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
           place.encounterCount += 1
           place.familiarity     = Math.min( 1, place.familiarity + this._growthRate * ( 1 - place.familiarity ) )
           place.lastSeenTick    = tick
+          // A room learns its name the same way a person does — from what the
+          // channel offers, and only while it has none. Re-taken every encounter
+          // it would churn the cached prompt on a rename; more to the point, a
+          // name the mind already holds is the mind's, not the platform's.
+          if( enc.threadName && !place.name ) place.name = enc.threadName
           place.resolutionConfidence = this._resolution( place )
         }
       }

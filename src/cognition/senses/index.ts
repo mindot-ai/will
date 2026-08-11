@@ -75,6 +75,21 @@ export interface TextMessage {
    * false — an unknown room is not known to be public.
    */
   direct?: boolean
+  /**
+   * What this room is CALLED, where the channel knows.
+   *
+   * A room has had a dossier of its own since 0.9.0 and no way to be named, so
+   * every place the mind knew was the id it was reached at —
+   * `discord:1531261362838441996`. It rendered to the mind as "something", which
+   * is what the prompt says for a `thing` with no name, and left a mind deciding
+   * *where* to say something choosing between two opaque numbers.
+   *
+   * A display label, not an address: `#general` is what a person calls the room,
+   * `discord:1531…` is how a message gets there, and 0.9.0 established that those
+   * are different facts. The bridge composes it, because what a room is called is
+   * a platform's business and the mind should not learn Discord's spelling.
+   */
+  threadName?: string
 }
 
 export interface VoiceChunk {

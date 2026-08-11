@@ -58,6 +58,8 @@ export interface Stimulus {
   thread?: string
   /** True when `thread` is private — just this someone and the Will. See TextMessage.direct. */
   direct?: boolean
+  /** What the room is called, e.g. `#general`. A label, not an address. See TextMessage.threadName. */
+  threadName?: string
 }
 
 /** A message the Will emitted to someone. */
@@ -388,6 +390,9 @@ export class Will {
       ...( stimulus.speaker ? { speakerName: stimulus.speaker } : {} ),
       // Omitted rather than defaulted: an unknown room is not known to be public.
       ...( stimulus.direct !== undefined ? { direct: stimulus.direct } : {} ),
+      // Omitted when the channel does not know — a room with no name stays
+      // unnamed, the same way a person does, rather than being labelled with its id.
+      ...( stimulus.threadName ? { threadName: stimulus.threadName } : {} ),
     } )
   }
 

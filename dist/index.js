@@ -19377,7 +19377,8 @@ var KnownEntityTracker = class {
     const name = typeof raw?.speakerName === "string" ? raw.speakerName : void 0;
     const thread = typeof raw?.threadId === "string" ? raw.threadId : void 0;
     const direct = typeof raw?.direct === "boolean" ? raw.direct : void 0;
-    this._pendingEncounters.push({ keid, domain: p.domain, name, thread, direct });
+    const threadName = typeof raw?.threadName === "string" ? raw.threadName : void 0;
+    this._pendingEncounters.push({ keid, domain: p.domain, name, thread, direct, threadName });
   }
   snapshot() {
     return { trackedEntities: this._dossiers.size };
@@ -19411,6 +19412,7 @@ var KnownEntityTracker = class {
           place.encounterCount += 1;
           place.familiarity = Math.min(1, place.familiarity + this._growthRate * (1 - place.familiarity));
           place.lastSeenTick = tick;
+          if (enc.threadName && !place.name) place.name = enc.threadName;
           place.resolutionConfidence = this._resolution(place);
         }
       }
@@ -29813,7 +29815,10 @@ var Will = class _Will {
       // conversation focus still falls back to the entity id for its Speaker line.)
       ...stimulus.speaker ? { speakerName: stimulus.speaker } : {},
       // Omitted rather than defaulted: an unknown room is not known to be public.
-      ...stimulus.direct !== void 0 ? { direct: stimulus.direct } : {}
+      ...stimulus.direct !== void 0 ? { direct: stimulus.direct } : {},
+      // Omitted when the channel does not know — a room with no name stays
+      // unnamed, the same way a person does, rather than being labelled with its id.
+      ...stimulus.threadName ? { threadName: stimulus.threadName } : {}
     });
   }
   /** Perceive from the default user. Sugar over `perceive`. */

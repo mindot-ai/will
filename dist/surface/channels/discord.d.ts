@@ -1,9 +1,15 @@
-import { cN as Will } from '../../will-DWhSvRot.js';
+import { cN as Will } from '../../will-B3prc1EG.js';
 import { C as ChannelBridge } from '../../types-E9-HV-SW.js';
 
 interface DiscordLikeChannel {
     send(content: string): Promise<unknown>;
     sendTyping?(): Promise<unknown>;
+    /** `general` for a text channel; absent on a DM, which has no name and is a person. */
+    name?: string | null;
+    /** The thread's parent channel, so a thread reads as "#general › release-cut". */
+    parent?: {
+        name?: string | null;
+    } | null;
 }
 interface DiscordLikeAttachment {
     name?: string | null;
@@ -16,6 +22,10 @@ interface DiscordLikeMessage {
     cleanContent?: string;
     channelId: string;
     guildId?: string | null;
+    /** The server this was said in. Its NAME is what a person calls the place. */
+    guild?: {
+        name?: string | null;
+    } | null;
     author: {
         id: string;
         bot?: boolean;

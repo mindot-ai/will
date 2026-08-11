@@ -24,7 +24,7 @@
 
 import { logger } from '#core/logger'
 import type {
-  Duration, Tick, SimulationContext,
+  Duration, Tick, SimulationContext, SimulationEvent,
   ReadonlySimulationState, StateCommands, EntityInput,
 } from '#core/types'
 import type { CognitiveBus } from '#cognition/bus'
@@ -162,6 +162,10 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     const set: EntityInput[]        = []
     const del: string[]            = []
     const metrics: Array<[ string, number ]> = []
+    // Dispatch announcements bound for the SIMULATION bus — the only one the host
+    // hears. See _emitDispatch: the cognitive copy reaches the mind's own
+    // faculties and reaches no host at all.
+    const events: Array<Omit<SimulationEvent, 'id' | 'timestamp' | 'tick'>> = []
 
     const energy = state.metrics.get('energy.level') ?? 100
     const stress = state.metrics.get('stress.load'  ) ?? 0
@@ -369,7 +373,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
             paramsHash: fnv1a( paramsKey( intent.parameters ) ),
             expiresAt: tick + CONSEQUENCE_TTL_TICKS, tick,
           }) )
-          this._emitDispatch( intent, enaction.mode, tick, state )
+          events.push( ...this._emitDispatch( intent, enaction.mode, tick, state ) )
           metrics.push([ enaction.mode === 'communicate'
             ? 'agency.communicate.dispatched'
             : 'agency.invocation.dispatched', 1 ])
@@ -378,7 +382,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     }
 
     metrics.push([ 'agency.executor.enacted', enactedCount ])
-    return { commands: { set, delete: del, metrics } }
+    return { commands: { set, delete: del, metrics }, ...( events.length > 0 ? { events } : {} ) }
   }
 
   // ── composite machinery ──────────────────────────────────────
@@ -673,16 +677,49 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     catch( err ){ logger.warn(`[motor] action outcome publish failed: ${ errMsg( err ) }`) }
   }
 
+  /**
+   * Announce a dispatched act to its TWO audiences, which live on two buses.
+   *
+   * The mind's own faculties appraise it — affective.blender, stress.regulator
+   * and attention.allocator all subscribe to `agency.invocation` on the
+   * CognitiveBus, the internal fabric. But the act is host-owned, and the HOST
+   * hears only `simulation.eventBus`: `WillStem` buffers an invocation for
+   * delivery from `eventBus.subscribeAll`, and that is the sole path by which an
+   * external effector ever reaches a handler.
+   *
+   * Only the cognitive half was ever published. The two buses have no bridge, so
+   * `bufferInvocation` was subscribed to a bus that has never carried the event
+   * — measured on a live boot: `agency.invocation.dispatched` incremented,
+   * `pendingEffectorInvocations` stayed empty, the intent held `awaiting`, and
+   * fifteen ticks later `[motor] ⏱ "inspect" timed out`. **No host-owned
+   * effector invocation has ever been delivered.** Communication is unaffected —
+   * the outbox is a separate mechanism, which is why a Will could always speak.
+   *
+   * Both ends were unit-tested and the crossing was not: `policy.*.test.ts` calls
+   * `bufferInvocation` directly, which is true about the controller and silent
+   * about whether anything reaches it. Same shape as the affordance-field hop.
+   */
   private _emitDispatch(
     intent: Intent, mode: 'communicate' | 'external', tick: Tick,
     state?: ReadonlySimulationState,
-  ): void {
-    if( !this._bus ) return
-    try {
-      this._bus.publish({
-        type: mode === 'communicate' ? 'agency.communicate' : 'agency.invocation',
-        version: 1, sourceEngine: this.name, salience: 0.6,
-        payload: {
+  ): Array<Omit<SimulationEvent, 'id' | 'timestamp' | 'tick'>> {
+    const payload = this._dispatchPayload( intent, tick, state )
+    const type    = mode === 'communicate' ? 'agency.communicate' : 'agency.invocation'
+
+    if( this._bus )
+      try {
+        this._bus.publish({ type, version: 1, sourceEngine: this.name, salience: 0.6, payload })
+      }
+      catch( err ){ logger.warn(`[motor] dispatch publish failed: ${ errMsg( err ) }`) }
+
+    // The observable bus — where the host is listening.
+    return [ { type, source: this.name, payload } ]
+  }
+
+  private _dispatchPayload(
+    intent: Intent, tick: Tick, state?: ReadonlySimulationState,
+  ): Record<string, unknown> {
+    return {
           schema: intent.schema, intentId: intent.id,
           targetEntityId: intent.targetEntityId, parameters: intent.parameters, tick,
           // The ability's declared meaning, carried to the host handler.
@@ -700,10 +737,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
           // into the mind, is what perception is for.
           ...( state && intent.targetEntityId
             ? { targetAddresses: addressesOf( state.entities, intent.targetEntityId ) } : {} ),
-        },
-      })
     }
-    catch( err ){ logger.warn(`[motor] dispatch publish failed: ${ errMsg( err ) }`) }
   }
 }
 

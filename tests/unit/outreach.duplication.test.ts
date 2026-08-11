@@ -88,11 +88,11 @@ describe('authorOutreach — two intents toward one person are one message', () 
     // A second intent toward Fabrice lands while the first is still composing.
     const second = await engine.authorOutreach('fabrice', 'Fabrice', 'ask what is stalled')
 
-    expect( second, 'the duplicate must not produce words of its own').toEqual( [] )
+    expect( second.bubbles, 'the duplicate must not produce words of its own').toEqual( [] )
     expect( ctrl.spawns, 'and must not open a second authoring facet').toBe( 1 )
 
     ctrl.release[0]!( [ "What's currently in flight at Mindot?" ] )
-    expect( await first ).toEqual( [ "What's currently in flight at Mindot?" ] )
+    expect( ( await first ).bubbles ).toEqual( [ "What's currently in flight at Mindot?" ] )
   } )
 
   it('releases the guard once the pass lands, so the next one can proceed', async () => {
@@ -108,7 +108,7 @@ describe('authorOutreach — two intents toward one person are one message', () 
     const second = engine.authorOutreach('fabrice', 'Fabrice')
     await settle()
     ctrl.release[1]!( [ 'second' ] )
-    expect( await second ).toEqual( [ 'second' ] )
+    expect( ( await second ).bubbles ).toEqual( [ 'second' ] )
     expect( ctrl.spawns ).toBe( 2 )
   } )
 
@@ -124,8 +124,8 @@ describe('authorOutreach — two intents toward one person are one message', () 
 
     expect( ctrl.spawns ).toBe( 2 )
     ctrl.release[0]!( [ 'f' ] ); ctrl.release[1]!( [ 'a' ] )
-    expect( await toFabrice ).toEqual( [ 'f' ] )
-    expect( await toAda ).toEqual( [ 'a' ] )
+    expect( ( await toFabrice ).bubbles ).toEqual( [ 'f' ] )
+    expect( ( await toAda ).bubbles ).toEqual( [ 'a' ] )
   } )
 
   it('clears the guard even when the facet throws, so nobody becomes unreachable', async () => {
@@ -139,9 +139,9 @@ describe('authorOutreach — two intents toward one person are one message', () 
       } } ),
     } as never )
 
-    expect( await engine.authorOutreach('fabrice', 'Fabrice') ).toEqual( [] )
+    expect( ( await engine.authorOutreach('fabrice', 'Fabrice') ).bubbles ).toEqual( [] )
     // Second attempt must not be refused by a guard the failure left set.
-    expect( await engine.authorOutreach('fabrice', 'Fabrice') ).toEqual( [] )
+    expect( ( await engine.authorOutreach('fabrice', 'Fabrice') ).bubbles ).toEqual( [] )
   } )
 } )
 
@@ -241,7 +241,7 @@ describe('an unprompted message to someone I am already talking to', () => {
     expect( ctrl.reports[0]!.facetId ).toBe('facet-live')
 
     ctrl.release[0]!( [ 'Still nothing back from MindBurn.' ] )
-    expect( await words ).toEqual( [ 'Still nothing back from MindBurn.' ] )
+    expect( ( await words ).bubbles ).toEqual( [ 'Still nothing back from MindBurn.' ] )
   } )
 
   it('rides on the REPORT, leaving the conversation\'s standing focus untouched', async () => {
@@ -301,6 +301,6 @@ describe('an unprompted message to someone I am already talking to', () => {
     expect( settled, 'a reply decision must not settle the outreach').toBe( false )
 
     ctrl.release[0]!( [ 'the unprompted thing' ], 'outreach')
-    expect( await words ).toEqual( [ 'the unprompted thing' ] )
+    expect( ( await words ).bubbles ).toEqual( [ 'the unprompted thing' ] )
   } )
 } )

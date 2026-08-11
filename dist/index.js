@@ -11845,13 +11845,13 @@ function parseResponse(responseText, state, recentActionTypes) {
     const actionsStr = extractBalancedArray(fullText, "actions");
     if (!actionsStr) {
       logger.warn("[executive] No actions found in response \u2014 using fallback");
-      return buildFallbackOutput(state, recentActionTypes);
+      return buildFallbackOutput(state);
     }
     try {
       actions = JSON.parse(actionsStr);
     } catch {
       logger.warn("[executive] Failed to parse actions array \u2014 using fallback");
-      return buildFallbackOutput(state, recentActionTypes);
+      return buildFallbackOutput(state);
     }
     const confidenceMatch = fullText.match(/"confidence"\s*:\s*([\d.]+)/);
     confidence = confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.5;
@@ -12033,33 +12033,14 @@ function extractTextBlock(text, tag) {
   const content = closeIdx !== -1 ? text.slice(contentStart, closeIdx) : text.slice(contentStart);
   return content.trim() || null;
 }
-function buildFallbackOutput(state, recentActionTypes) {
+function buildFallbackOutput(state, _recentActionTypes) {
   const energy = state.metrics.get("energy.level") ?? 100;
   const sleepPressure = state.metrics.get("sleep.pressure") ?? 0;
   const stressLoad = state.metrics.get("stress.load") ?? 0;
-  let actionType = "observe";
-  let actionReason = "No urgent needs \u2014 observing surroundings.";
-  if (energy < 20) {
-    actionType = "replenish energy";
-    actionReason = "Energy critically low \u2014 attempting to rest.";
-  } else if (sleepPressure > 60) {
-    actionType = "enter deep rest to reduce fatigue";
-    actionReason = "Sleep pressure high \u2014 attempting to sleep.";
-  } else if (stressLoad > 70) {
-    actionType = "calm my mind and reduce tension";
-    actionReason = "Stress elevated \u2014 attempting to meditate.";
-  } else {
-    const monotonous = recentActionTypes.filter((t) => t === "reflect" || t === "observe").length >= 3;
-    if (monotonous) {
-      const alternatives = ["explore", "learn", "express_emotion", "rest"];
-      const tick = state.tick;
-      actionType = alternatives[tick % alternatives.length];
-      actionReason = "Breaking monotony \u2014 choosing a varied action during LLM fallback.";
-    }
-  }
+  const reflex = energy < 20 ? { type: "rest", reasoning: "Energy critically low \u2014 I let myself recover." } : sleepPressure > 60 ? { type: "rest", reasoning: "Sleep pressure high \u2014 I let myself recover." } : stressLoad > 70 ? { type: "withdraw", reasoning: "Stress elevated \u2014 I pull back from the press of things." } : null;
   return {
-    actions: [{ type: actionType, reasoning: actionReason, expectedOutcome: "State improves" }],
-    reasoning: `Heuristic fallback \u2014 LLM unavailable. ${actionReason}`,
+    actions: reflex ? [{ type: reflex.type, reasoning: reflex.reasoning, expectedOutcome: "The body settles" }] : [],
+    reasoning: reflex ? `Heuristic fallback \u2014 my reasoning did not come back. ${reflex.reasoning}` : "Heuristic fallback \u2014 my reasoning did not come back, and nothing about my state is pressing. I intend nothing in particular; my body goes on choosing.",
     confidence: 0.4
   };
 }
@@ -12431,7 +12412,7 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         latencyMs: wallClock() - llmStart,
         error: msg.slice(0, 300)
       });
-      output = buildFallbackOutput(currentState, []);
+      output = buildFallbackOutput(currentState);
     }
     this._sessionLogger?.write({
       type: "executive.facet.output",
@@ -20480,10 +20461,10 @@ var AuditionEngine = class extends BaseSenseEngine {
    * when no executive is attached or the facet budget is full (caller then awaits).
    */
   async authorOutreach(entityId, entityName, gist) {
-    if (!this._executiveEngine) return [];
+    if (!this._executiveEngine) return { bubbles: [] };
     if (this._outreachInFlight.has(entityId)) {
       logger.info(`[audition-engine] already composing an outreach to ${entityId} \u2014 not opening a second`);
-      return [];
+      return { bubbles: [] };
     }
     const openThread = this._executiveEngine.facetFor(`conversation:${entityId}`);
     const handle = openThread ?? (() => {
@@ -20494,7 +20475,7 @@ var AuditionEngine = class extends BaseSenseEngine {
       }
       return spawned.handle;
     })();
-    if (!handle) return [];
+    if (!handle) return { bubbles: [] };
     if (openThread)
       logger.info(`[audition-engine] composing outreach to ${entityId} inside the open conversation (${openThread.facetId})`);
     const digest = openThread ? this._digests.getDigest(this._inflightThread.get(entityId) ?? entityId) : "";
@@ -20524,7 +20505,7 @@ var AuditionEngine = class extends BaseSenseEngine {
         const output = raw;
         if (output.noMessage !== void 0) {
           logger.info(`[audition-engine] chose not to reach out to ${entityName}: ${output.noMessage.slice(0, 120)}`);
-          return { reply: "", replyBubbles: [], targetEntityId: entityId, requiresMasterAttention: false };
+          return { reply: "", replyBubbles: [], withheld: true, targetEntityId: entityId, requiresMasterAttention: false };
         }
         const rawReply = output.replyText?.trim() ?? "";
         const bubbles = rawReply.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
@@ -20533,40 +20514,41 @@ var AuditionEngine = class extends BaseSenseEngine {
     };
     this._outreachInFlight.add(entityId);
     try {
-      const bubbles = await new Promise((resolve) => {
+      const authored = await new Promise((resolve) => {
         let settled = false;
         let unsub = () => {
         };
         let timer;
-        const done = (b) => {
+        const done = (r) => {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
           unsub();
-          resolve(b);
+          resolve(r);
         };
         timer = setTimeout(
           () => {
             logger.warn(`[audition-engine] outreach authoring timed out for ${entityId}`);
-            done([]);
+            done({ bubbles: [] });
           },
           6e4
           // generous: the facet LLM authors in ~8–18s
         );
         unsub = handle.subscribe((d) => {
           if (d.respondingToType !== "outreach") return;
-          done(d.decision.replyBubbles ?? []);
+          const decision = d.decision;
+          done({ bubbles: decision.replyBubbles ?? [], withheld: decision.withheld === true });
         });
         Promise.resolve(handle.report({ type: "outreach", payload: { entityId, gist }, focus: outreachFocus })).catch((err) => {
           logger.warn(`[audition-engine] outreach report failed for ${entityId}: ${err.message}`);
-          done([]);
+          done({ bubbles: [] });
         });
       });
       if (!openThread) handle.destroy();
-      return bubbles;
+      return authored;
     } catch (err) {
       logger.warn(`[audition-engine] outreach authoring failed for ${entityId}: ${err.message}`);
-      return [];
+      return { bubbles: [] };
     } finally {
       this._outreachInFlight.delete(entityId);
     }
@@ -22061,6 +22043,21 @@ var MotorSchemaExecutor = class {
    */
   _authoring = /* @__PURE__ */ new Set();
   _authored = /* @__PURE__ */ new Map();
+  /**
+   * Intents whose facet considered speaking and chose NOT to.
+   *
+   * A declined outreach used to resolve by rotting: no words arrived, so the
+   * intent sat 'awaiting' until AWAIT_TIMEOUT abandoned it as a FAILURE — and
+   * reafference folded that into `reach-out`'s competence. The mind was learning
+   * it is bad at speaking from the times it decided not to speak. Live, a COO
+   * declining correctly ("nothing new to add — a sixth message would repeat")
+   * took a competence hit for the judgement.
+   *
+   * Silence is an ANSWER, not the absence of one. Held here so the sweep can
+   * resolve it as what it is: the intent is freed, and nothing is taught about
+   * an ability that was never in question.
+   */
+  _withheld = /* @__PURE__ */ new Set();
   constructor(schemas = INNATE_SCHEMAS) {
     for (const s of schemas) this._schemas.set(s.id, s);
   }
@@ -22151,10 +22148,34 @@ var MotorSchemaExecutor = class {
     }
     for (const id of this._authored.keys())
       if (!state.entities.has(id)) this._authored.delete(id);
+    for (const id of this._withheld)
+      if (!state.entities.has(id)) this._withheld.delete(id);
     for (const [id, e] of state.entities) {
       if (e.type !== "agency.intent" || str7(e.metadata?.["status"]) !== "awaiting") continue;
       if (spokeThisTick.has(id)) continue;
       if (this._authoring.has(id)) continue;
+      if (this._withheld.has(id)) {
+        const intent2 = readIntent(id, e.metadata);
+        set.push({
+          id: `agency-outcome-${tick}-${id}`,
+          type: "agency.outcome",
+          metadata: {
+            schema: intent2.schema,
+            intentId: id,
+            targetEntityId: intent2.targetEntityId,
+            withheld: true,
+            description: "I considered speaking and chose not to.",
+            mode: "communicate",
+            tick,
+            ...intent2.planId ? { planId: intent2.planId } : {},
+            ...intent2.planStepId ? { stepId: intent2.planStepId } : {}
+          }
+        });
+        del.push(id);
+        this._withheld.delete(id);
+        metrics.push(["agency.communicate.withheld", 1]);
+        continue;
+      }
       if (e.metadata?.["escalated"] === true) continue;
       const dispatchedAt = num4(e.metadata?.["dispatchedAt"], tick);
       const age = tick - dispatchedAt;
@@ -22447,9 +22468,19 @@ var MotorSchemaExecutor = class {
     if (!this._author || this._authoring.has(id)) return;
     const name = str7(intent.parameters["targetEntityName"]) ?? intent.targetEntityId ?? "them";
     this._authoring.add(id);
-    void this._author.authorOutreach(intent.targetEntityId ?? "", name, str7(intent.parameters["gist"])).then((bubbles) => {
-      if (bubbles.length > 0) this._authored.set(id, bubbles);
-      else logger.warn(`[motor] outreach authoring returned nothing for "${intent.schema}"`);
+    void this._author.authorOutreach(intent.targetEntityId ?? "", name, str7(intent.parameters["gist"])).then((result) => {
+      const bubbles = Array.isArray(result) ? result : result.bubbles;
+      const declared = !Array.isArray(result) && result.withheld === true;
+      if (bubbles.length > 0) {
+        this._authored.set(id, bubbles);
+        return;
+      }
+      if (declared) {
+        this._withheld.add(id);
+        logger.debug(`[motor] "${intent.schema}" withheld \u2014 the facet chose silence`);
+        return;
+      }
+      logger.warn(`[motor] outreach authoring returned nothing for "${intent.schema}"`);
     }).catch((err) => {
       logger.warn(`[motor] outreach authoring failed: ${errMsg(err)}`);
     }).finally(() => {
@@ -23046,10 +23077,20 @@ var ReafferenceEngine = class {
     let updates = 0;
     let discovered = 0;
     let refused = 0;
+    let withheld = 0;
     for (const { id, meta: m, fromState } of outcomes) {
       const schema = str8(m["schema"]);
       if (!schema) {
         if (fromState) del.push(id);
+        continue;
+      }
+      if (m["withheld"] === true) {
+        if (fromState) del.push(id);
+        const heldIntent = str8(m["intentId"]);
+        if (heldIntent) del.push(heldIntent);
+        const heldPlan = str8(m["planId"]);
+        if (heldPlan) this._emitPlanOutcome(heldPlan, str8(m["stepId"]), schema, false, 0, 0, tick);
+        withheld++;
         continue;
       }
       if (m["refused"] === true) {
@@ -23111,6 +23152,7 @@ var ReafferenceEngine = class {
     if (replied.answered > 0) metrics.push(["social.answered.count", replied.answered]);
     if (replied.unanswered > 0) metrics.push(["social.unanswered.count", replied.unanswered]);
     if (refused > 0) metrics.push(["agency.refused.count", refused]);
+    if (withheld > 0) metrics.push(["agency.withheld.count", withheld]);
     return { commands: { set, delete: del, metrics } };
   }
   /**

@@ -77,6 +77,7 @@ import type {
 } from '#senses/index'
 import { validateFacetHandoff, type HandoffBody } from '#faculties/executive.engine/escalation.buffer'
 import { fnv1a } from '#agency/consequence'
+import type { OutreachResult } from '#agency/engines/motor.schema.executor'
 
 // ── Internal types ─────────────────────────────────────────────
 
@@ -85,6 +86,15 @@ interface ConversationDecision {
   reply:                  string
   /** Individual reply bubbles for display (separate SSE chunks). */
   replyBubbles:           string[]
+  /**
+   * The mind DECLARED silence — it considered speaking and chose not to.
+   *
+   * Distinct from empty bubbles, which also happens when authoring timed out, the
+   * facet budget was full, or a second pass deferred to one already in flight.
+   * Only this one is an answer; the others are the absence of one, and the
+   * executor must keep holding those.
+   */
+  withheld?:              boolean
   targetEntityId:         string
   /**
    * Actions this facet aimed at someone OTHER than the person it is talking to.
@@ -845,8 +855,8 @@ export class AuditionEngine extends BaseSenseEngine {
    * (MotorSchemaExecutor) to deliver through the proactive communicate path; empty
    * when no executive is attached or the facet budget is full (caller then awaits).
    */
-  async authorOutreach( entityId: string, entityName: string, gist?: string ): Promise<string[]> {
-    if( !this._executiveEngine ) return []
+  async authorOutreach( entityId: string, entityName: string, gist?: string ): Promise<OutreachResult> {
+    if( !this._executiveEngine ) return { bubbles: [] }
 
     // One authoring pass per person at a time.
     //
@@ -862,7 +872,7 @@ export class AuditionEngine extends BaseSenseEngine {
     // had a chance to read it, which is the outcome we want anyway.
     if( this._outreachInFlight.has( entityId ) ){
       logger.info(`[audition-engine] already composing an outreach to ${ entityId } — not opening a second`)
-      return []
+      return { bubbles: [] }
     }
 
     // Already talking to them? Then this is not a second thread — it is a thing to
@@ -889,7 +899,7 @@ export class AuditionEngine extends BaseSenseEngine {
       return spawned.handle
     } )()
 
-    if( !handle ) return []
+    if( !handle ) return { bubbles: [] }
 
     if( openThread )
       logger.info(`[audition-engine] composing outreach to ${ entityId } inside the open conversation (${ openThread.facetId })`)
@@ -934,7 +944,7 @@ export class AuditionEngine extends BaseSenseEngine {
         // saying something — nobody is waiting on this.
         if( output.noMessage !== undefined ){
           logger.info(`[audition-engine] chose not to reach out to ${ entityName }: ${ output.noMessage.slice( 0, 120 ) }`)
-          return { reply: '', replyBubbles: [], targetEntityId: entityId, requiresMasterAttention: false }
+          return { reply: '', replyBubbles: [], withheld: true, targetEntityId: entityId, requiresMasterAttention: false }
         }
         const rawReply = output.replyText?.trim() ?? ''
         const bubbles  = rawReply.split( /\n{2,}/ ).map( b => b.trim() ).filter( Boolean )
@@ -947,13 +957,13 @@ export class AuditionEngine extends BaseSenseEngine {
     // a safety timeout, then tear the transient facet down.
     this._outreachInFlight.add( entityId )
     try {
-      const bubbles = await new Promise<string[]>( resolve => {
+      const authored = await new Promise<OutreachResult>( resolve => {
         let settled = false
         let unsub:  () => void = () => {}
         let timer:  ReturnType<typeof setTimeout>
-        const done = ( b: string[] ): void => { if( settled ) return; settled = true; clearTimeout( timer ); unsub(); resolve( b ) }
+        const done = ( r: OutreachResult ): void => { if( settled ) return; settled = true; clearTimeout( timer ); unsub(); resolve( r ) }
         timer = setTimeout(
-          () => { logger.warn(`[audition-engine] outreach authoring timed out for ${ entityId }`); done( [] ) },
+          () => { logger.warn(`[audition-engine] outreach authoring timed out for ${ entityId }`); done( { bubbles: [] } ) },
           60_000,   // generous: the facet LLM authors in ~8–18s
         )
         // ONLY this report's decision. Sharing a live conversation facet means its
@@ -962,20 +972,23 @@ export class AuditionEngine extends BaseSenseEngine {
         // composed it unprompted — and deliver it twice.
         unsub = handle.subscribe( d => {
           if( d.respondingToType !== 'outreach') return
-          done( ( d.decision as ConversationDecision ).replyBubbles ?? [] )
+          const decision = d.decision as ConversationDecision
+          // A declared silence is carried through as such. Empty bubbles alone
+          // are ambiguous — see ConversationDecision.withheld.
+          done( { bubbles: decision.replyBubbles ?? [], withheld: decision.withheld === true } )
         } )
         // The focus rides the REPORT, so a shared conversation facet keeps its own
         // standing focus and its next inbound turn resumes untouched.
         Promise.resolve( handle.report({ type: 'outreach', payload: { entityId, gist }, focus: outreachFocus }) ).catch( err => {
           logger.warn(`[audition-engine] outreach report failed for ${ entityId }: ${ ( err as Error ).message }`)
-          done( [] )
+          done( { bubbles: [] } )
         } )
       } )
 
       // Only tear down what we opened. Destroying a borrowed conversation facet
       // would end the conversation as a side effect of speaking in it.
       if( !openThread ) handle.destroy()
-      return bubbles
+      return authored
     }
     catch( err ){
       // A facet that throws is a pass that produced no words — the same outcome as
@@ -983,7 +996,7 @@ export class AuditionEngine extends BaseSenseEngine {
       // author". Letting it escape would reject inside MotorSchemaExecutor's
       // fire-and-forget authoring chain instead.
       logger.warn(`[audition-engine] outreach authoring failed for ${ entityId }: ${ ( err as Error ).message }`)
-      return []
+      return { bubbles: [] }
     }
     // finally{} on every path — the timeout resolves empty rather than throwing, but
     // a destroy() or report() that throws must not leave this person permanently

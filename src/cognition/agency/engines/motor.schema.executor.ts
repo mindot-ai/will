@@ -79,9 +79,24 @@ interface Intent {
   evokedBy?:       string
 }
 
+/**
+ * What an authoring pass produced.
+ *
+ * `bubbles` empty is AMBIGUOUS on its own — it is also what a timed-out facet, a
+ * full facet budget, and a pass deferring to one already in flight all return.
+ * `withheld` is the one case that is an ANSWER: the mind considered speaking and
+ * declared silence. Only that resolves the intent; the others keep holding, and
+ * the clock still abandons a genuinely dead author.
+ */
+export interface OutreachResult {
+  bubbles:   string[]
+  withheld?: boolean
+}
+
 /** Authors the words for a self-initiated communicate the agency selected (no inbound triggered it). */
 export interface OutreachAuthor {
-  authorOutreach( entityId: string, entityName: string, gist?: string ): Promise<string[]>
+  /** An array return is still honoured — it reads as "no words, and I am not saying why". */
+  authorOutreach( entityId: string, entityName: string, gist?: string ): Promise<string[] | OutreachResult>
 }
 
 export class MotorSchemaExecutor implements CognitiveEngine {
@@ -109,6 +124,21 @@ export class MotorSchemaExecutor implements CognitiveEngine {
    */
   private _authoring = new Set<string>()
   private _authored  = new Map<string, string[]>()
+  /**
+   * Intents whose facet considered speaking and chose NOT to.
+   *
+   * A declined outreach used to resolve by rotting: no words arrived, so the
+   * intent sat 'awaiting' until AWAIT_TIMEOUT abandoned it as a FAILURE — and
+   * reafference folded that into `reach-out`'s competence. The mind was learning
+   * it is bad at speaking from the times it decided not to speak. Live, a COO
+   * declining correctly ("nothing new to add — a sixth message would repeat")
+   * took a competence hit for the judgement.
+   *
+   * Silence is an ANSWER, not the absence of one. Held here so the sweep can
+   * resolve it as what it is: the intent is freed, and nothing is taught about
+   * an ability that was never in question.
+   */
+  private _withheld  = new Set<string>()
 
   constructor( schemas: MotorSchema[] = INNATE_SCHEMAS ){
     for( const s of schemas ) this._schemas.set( s.id, s )
@@ -222,6 +252,8 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     // that will never be said — drop them so the map cannot grow without bound.
     for( const id of this._authored.keys() )
       if( !state.entities.has( id ) ) this._authored.delete( id )
+    for( const id of this._withheld )
+      if( !state.entities.has( id ) ) this._withheld.delete( id )
 
     // ── Timeout stranded async intents ───────────────────────────
     // An 'awaiting' intent whose host/delivery never returned would block the
@@ -238,6 +270,28 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       // pause is bounded, not open-ended: `authorOutreach` always settles (its own 60s
       // timeout resolves empty), so `_authoring` always clears and the clock resumes.
       if( this._authoring.has( id ) ) continue
+      // The facet was asked and chose silence. Resolve it as that rather than
+      // letting the clock abandon it as a failure — see `_withheld`.
+      if( this._withheld.has( id ) ){
+        const intent = readIntent( id, e.metadata )
+        set.push({
+          id: `agency-outcome-${ tick }-${ id }`,
+          type: 'agency.outcome',
+          metadata: {
+            schema: intent.schema, intentId: id,
+            targetEntityId: intent.targetEntityId,
+            withheld: true,
+            description: 'I considered speaking and chose not to.',
+            mode: 'communicate', tick,
+            ...( intent.planId ? { planId: intent.planId } : {} ),
+            ...( intent.planStepId ? { stepId: intent.planStepId } : {} ),
+          },
+        })
+        del.push( id )
+        this._withheld.delete( id )
+        metrics.push([ 'agency.communicate.withheld', 1 ])
+        continue
+      }
       // POLICY_REAFFERENCE P4 — an escalated intent is HELD: the stem owns its
       // lifecycle (extended TTL → approve/deny/expire), so the executor must not
       // time it out at AWAIT_TIMEOUT and reconcile it as a phantom failure.
@@ -590,9 +644,23 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     this._authoring.add( id )
     void this._author
       .authorOutreach( intent.targetEntityId ?? '', name, str( intent.parameters['gist'] ) )
-      .then( bubbles => {
-        if( bubbles.length > 0 ) this._authored.set( id, bubbles )
-        else logger.warn(`[motor] outreach authoring returned nothing for "${ intent.schema }"`)
+      .then( result => {
+        const bubbles  = Array.isArray( result ) ? result : result.bubbles
+        const declared = !Array.isArray( result ) && result.withheld === true
+
+        if( bubbles.length > 0 ){ this._authored.set( id, bubbles ); return }
+
+        // Not a warning: the facet was asked and answered. Choosing not to speak
+        // is a decision the mind is entitled to make.
+        if( declared ){
+          this._withheld.add( id )
+          logger.debug(`[motor] "${ intent.schema }" withheld — the facet chose silence`)
+          return
+        }
+        // No words and no decision — a dead author, a full budget, or a pass
+        // deferring to one in flight. Keep holding: the clock is the right judge
+        // of those, and the deferring case wants to come back round.
+        logger.warn(`[motor] outreach authoring returned nothing for "${ intent.schema }"`)
       } )
       .catch( err => { logger.warn(`[motor] outreach authoring failed: ${ errMsg( err ) }`) } )
       .finally( () => { this._authoring.delete( id ) } )

@@ -27915,6 +27915,9 @@ var effectorController = class {
       effectorName: payload.schema ?? "",
       parameters: payload.parameters ?? {},
       targetEntityId: payload.targetEntityId,
+      // Without this a host receives an anchor it cannot resolve to anything in
+      // its own world — see effectorInvocation.targetAddresses.
+      ...Array.isArray(payload.targetAddresses) ? { targetAddresses: payload.targetAddresses } : {},
       reasoning: payload.reasoning ?? "",
       ...typeof payload.description === "string" ? { description: payload.description } : {},
       tick: payload.tick ?? 0,
@@ -29429,6 +29432,9 @@ var Will = class _Will {
       const raw = await handler(inv.parameters, {
         reasoning: inv.reasoning,
         targetEntityId: inv.targetEntityId,
+        // Which of the host's own ids that referent is — without it a handler
+        // gets an opaque anchor and nothing it can look up.
+        ...inv.targetAddresses?.length ? { targetAddresses: inv.targetAddresses } : {},
         ...inv.description ? { description: inv.description } : {}
       });
       const result = typeof raw === "string" ? { success: true, description: raw } : raw;
@@ -30177,6 +30183,31 @@ async function connectDiscord(will, opts) {
     }
     return (await res.text()).slice(0, MAX_FETCH_BYTES);
   }
+  will.effector("inspect", async (_args, ctx) => {
+    const address = (ctx.targetAddresses ?? []).find((a) => a.startsWith("discord:"));
+    if (!address) return { success: false, description: "Not something I can see on Discord." };
+    const id = address.slice("discord:".length);
+    const channel = await client.channels.fetch(id).catch(() => null);
+    if (!channel?.name) return { success: false, description: "There is nothing here I can look up." };
+    const facts = [];
+    if (channel.topic) facts.push(`it is for: ${channel.topic}`);
+    if (channel.parent?.name) facts.push(`it sits under #${channel.parent.name}`);
+    if (typeof channel.memberCount === "number")
+      facts.push(`${channel.memberCount} people are in it`);
+    if (facts.length === 0)
+      return { success: false, description: `#${channel.name} has nothing recorded about it.` };
+    const label = roomLabel({ guildId: "g", channel }) ?? `#${channel.name}`;
+    await will.perceive({
+      // Bracketed and first-person, like a shared file: it arrived because she
+      // went looking, and it is not something anybody said to her.
+      text: `[I looked into ${label}: ${facts.join("; ")}.]`,
+      from: address,
+      thread: address,
+      direct: false,
+      ...label ? { threadName: label } : {}
+    });
+    return { success: true, description: `Looked into ${label}.` };
+  });
   let closed = false;
   will.on("message", (m) => {
     if (!closed) void deliver(m);

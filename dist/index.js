@@ -28439,6 +28439,9 @@ var effectorController = class {
       effectorName: payload.schema ?? "",
       parameters: payload.parameters ?? {},
       targetEntityId: payload.targetEntityId,
+      // Without this a host receives an anchor it cannot resolve to anything in
+      // its own world — see effectorInvocation.targetAddresses.
+      ...Array.isArray(payload.targetAddresses) ? { targetAddresses: payload.targetAddresses } : {},
       reasoning: payload.reasoning ?? "",
       ...typeof payload.description === "string" ? { description: payload.description } : {},
       tick: payload.tick ?? 0,
@@ -30139,6 +30142,9 @@ var Will = class _Will {
       const raw = await handler(inv.parameters, {
         reasoning: inv.reasoning,
         targetEntityId: inv.targetEntityId,
+        // Which of the host's own ids that referent is — without it a handler
+        // gets an opaque anchor and nothing it can look up.
+        ...inv.targetAddresses?.length ? { targetAddresses: inv.targetAddresses } : {},
         ...inv.description ? { description: inv.description } : {}
       });
       const result = typeof raw === "string" ? { success: true, description: raw } : raw;

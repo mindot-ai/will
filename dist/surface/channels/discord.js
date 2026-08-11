@@ -240,6 +240,31 @@ async function connectDiscord(will, opts) {
     }
     return (await res.text()).slice(0, MAX_FETCH_BYTES);
   }
+  will.effector("inspect", async (_args, ctx) => {
+    const address = (ctx.targetAddresses ?? []).find((a) => a.startsWith("discord:"));
+    if (!address) return { success: false, description: "Not something I can see on Discord." };
+    const id = address.slice("discord:".length);
+    const channel = await client.channels.fetch(id).catch(() => null);
+    if (!channel?.name) return { success: false, description: "There is nothing here I can look up." };
+    const facts = [];
+    if (channel.topic) facts.push(`it is for: ${channel.topic}`);
+    if (channel.parent?.name) facts.push(`it sits under #${channel.parent.name}`);
+    if (typeof channel.memberCount === "number")
+      facts.push(`${channel.memberCount} people are in it`);
+    if (facts.length === 0)
+      return { success: false, description: `#${channel.name} has nothing recorded about it.` };
+    const label = roomLabel({ guildId: "g", channel }) ?? `#${channel.name}`;
+    await will.perceive({
+      // Bracketed and first-person, like a shared file: it arrived because she
+      // went looking, and it is not something anybody said to her.
+      text: `[I looked into ${label}: ${facts.join("; ")}.]`,
+      from: address,
+      thread: address,
+      direct: false,
+      ...label ? { threadName: label } : {}
+    });
+    return { success: true, description: `Looked into ${label}.` };
+  });
   let closed = false;
   will.on("message", (m) => {
     if (!closed) void deliver(m);

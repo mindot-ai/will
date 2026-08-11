@@ -6674,6 +6674,21 @@ interface effectorInvocation {
     effectorName: string;
     parameters: Record<string, unknown>;
     targetEntityId: string | undefined;
+    /**
+     * The addresses the world knows `targetEntityId` by.
+     *
+     * `targetEntityId` is an ANCHOR (`ke:1sqlkux`) — since 0.9.0 identity is opaque
+     * and deliberately not an address, because who someone is and where to find them
+     * are different facts. A host holds channel ids and knows nothing of anchors, so
+     * an invocation naming only the referent is one no surface can act on. Resolved
+     * inside, where the alias table lives, exactly as the outbox resolves a message
+     * addressed to a referent.
+     *
+     * Outbound only: this is the mind saying which of its own handles it means.
+     * Nothing here lets a surface name someone TO the mind — that is what perception
+     * is for.
+     */
+    targetAddresses?: readonly string[];
     reasoning: string;
     /** The ability's declared meaning (from its EffectorDeclaration), when present. */
     description?: string;
@@ -8988,6 +9003,12 @@ type EffectorResult = string | {
 type EffectorHandler = (args: Record<string, unknown>, ctx: {
     reasoning: string;
     targetEntityId?: string;
+    /**
+     * The addresses this host knows `targetEntityId` by — a channel id, a user id.
+     * `targetEntityId` itself is an opaque anchor (who something IS); these are
+     * where to find it. Resolved inside the Will, where the alias table lives.
+     */
+    targetAddresses?: readonly string[];
     description?: string;
 }) => EffectorResult | Promise<EffectorResult>;
 /**

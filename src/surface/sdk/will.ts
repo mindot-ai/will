@@ -122,7 +122,17 @@ export type EffectorResult = string | {
 /** Your implementation of an ability the Will can choose to use. */
 export type EffectorHandler = (
   args: Record<string, unknown>,
-  ctx: { reasoning: string; targetEntityId?: string; description?: string },
+  ctx: {
+    reasoning: string
+    targetEntityId?: string
+    /**
+     * The addresses this host knows `targetEntityId` by — a channel id, a user id.
+     * `targetEntityId` itself is an opaque anchor (who something IS); these are
+     * where to find it. Resolved inside the Will, where the alias table lives.
+     */
+    targetAddresses?: readonly string[]
+    description?: string
+  },
 ) => EffectorResult | Promise<EffectorResult>
 
 /**
@@ -637,6 +647,9 @@ export class Will {
       const raw = await handler( inv.parameters, {
         reasoning: inv.reasoning,
         targetEntityId: inv.targetEntityId,
+        // Which of the host's own ids that referent is — without it a handler
+        // gets an opaque anchor and nothing it can look up.
+        ...( inv.targetAddresses?.length ? { targetAddresses: inv.targetAddresses } : {} ),
         ...( inv.description ? { description: inv.description } : {} ),
       } )
       const result = typeof raw === 'string' ? { success: true, description: raw } : raw

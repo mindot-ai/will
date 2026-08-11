@@ -1,4 +1,4 @@
-import { cN as Will } from '../../will-B3prc1EG.js';
+import { cN as Will } from '../../will-DnGTokLI.js';
 import { C as ChannelBridge } from '../../types-E9-HV-SW.js';
 
 interface DiscordLikeChannel {
@@ -10,6 +10,10 @@ interface DiscordLikeChannel {
     parent?: {
         name?: string | null;
     } | null;
+    /** What the room is FOR, in the server's own words. Only read when asked. */
+    topic?: string | null;
+    /** How many are in it — a count, never a roster. */
+    memberCount?: number;
 }
 interface DiscordLikeAttachment {
     name?: string | null;

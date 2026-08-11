@@ -425,6 +425,10 @@ export class effectorController {
       effectorName:      ( payload.schema as string ) ?? '',
       parameters:       ( payload.parameters as Record<string, unknown> ) ?? {},
       targetEntityId:   payload.targetEntityId as string | undefined,
+      // Without this a host receives an anchor it cannot resolve to anything in
+      // its own world — see effectorInvocation.targetAddresses.
+      ...( Array.isArray( payload.targetAddresses )
+        ? { targetAddresses: payload.targetAddresses as string[] } : {} ),
       reasoning:        ( payload.reasoning as string ) ?? '',
       ...( typeof payload.description === 'string' ? { description: payload.description } : {} ),
       tick:             ( payload.tick as number ) ?? 0,

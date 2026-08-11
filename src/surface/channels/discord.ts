@@ -83,6 +83,10 @@ export interface DiscordLikeChannel {
   name?: string | null
   /** The thread's parent channel, so a thread reads as "#general › release-cut". */
   parent?: { name?: string | null } | null
+  /** What the room is FOR, in the server's own words. Only read when asked. */
+  topic?: string | null
+  /** How many are in it — a count, never a roster. */
+  memberCount?: number
 }
 
 export interface DiscordLikeAttachment {
@@ -387,6 +391,55 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
     }
     return ( await res.text() ).slice( 0, MAX_FETCH_BYTES )
   }
+
+  // ── the Will looks at something here, and Discord answers ─────────────────
+  //
+  // `inspect` is innate: every mind can look. What it finds depends on there
+  // being a world that can be asked, and this is Discord's answer.
+  //
+  // The answer is DELIVERED AS A PERCEPT, not returned. The ack this handler
+  // returns carries `{success, description}` and reaches reafference only — it
+  // says the looking happened, never what was found. Facts reach the mind the one
+  // way anything does, through perception, so it can weigh them, disbelieve them,
+  // or decide they do not matter. An earlier cut of this wrote the answer straight
+  // into her dossier and beliefs, which is a mind being told what it knows rather
+  // than a mind finding out.
+  will.effector('inspect', async ( _args, ctx ) => {
+    // The mind names a referent (`ke:1sqlkux`); we hold channel ids. The Will
+    // resolves the anchor to the addresses it was met at, and we take ours.
+    const address = ( ctx.targetAddresses ?? [] ).find( a => a.startsWith('discord:') )
+    if( !address ) return { success: false, description: 'Not something I can see on Discord.' }
+
+    const id = address.slice('discord:'.length )
+    const channel = await client.channels.fetch( id ).catch( () => null ) as DiscordLikeChannel | null
+    // A user id lands here too — a person is not a place, and Discord has nothing
+    // to say about them that watching them talk does not say better.
+    if( !channel?.name ) return { success: false, description: 'There is nothing here I can look up.' }
+
+    const facts: string[] = []
+    if( channel.topic )       facts.push(`it is for: ${ channel.topic }`)
+    if( channel.parent?.name ) facts.push(`it sits under #${ channel.parent.name }`)
+    if( typeof channel.memberCount === 'number')
+      // A COUNT, not a roster. Walking into a room you see that it is crowded long
+      // before you learn who anyone is; people become known by being met.
+      facts.push(`${ channel.memberCount } people are in it`)
+
+    if( facts.length === 0 )
+      return { success: false, description: `#${ channel.name } has nothing recorded about it.` }
+
+    const label = roomLabel( { channelId: id, guildId: 'g', channel } as DiscordLikeMessage ) ?? `#${ channel.name }`
+    await will.perceive( {
+      // Bracketed and first-person, like a shared file: it arrived because she
+      // went looking, and it is not something anybody said to her.
+      text:   `[I looked into ${ label }: ${ facts.join('; ') }.]`,
+      from:   address,
+      thread: address,
+      direct: false,
+      ...( label ? { threadName: label } : {} ),
+    } )
+
+    return { success: true, description: `Looked into ${ label }.` }
+  } )
 
   // ── outbound: projected utterance → the addressee ─────────────────────────
   // The facade has no off(); the bridge gates its handler on `closed` instead.

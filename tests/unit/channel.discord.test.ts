@@ -75,8 +75,13 @@ class FakeWill {
   name = 'Aria'
   perceived: Stimulus[] = []
   private messageHandlers: Array<( m: WillMessage ) => void> = []
+  /** Abilities the bridge registered — the mind's side is not exercised here. */
+  effectors = new Map<string, ( a: Record<string, unknown>, c: Record<string, unknown> ) => unknown>()
   async perceive( s: Stimulus ){ this.perceived.push( s ) }
   on( _e: 'message', fn: ( m: WillMessage ) => void ){ this.messageHandlers.push( fn ); return this }
+  effector( name: string, handler: ( a: Record<string, unknown>, c: Record<string, unknown> ) => unknown ){
+    this.effectors.set( name, handler ); return this
+  }
   utter( m: WillMessage ){ for( const fn of this.messageHandlers ) fn( m ) }
 }
 
@@ -596,5 +601,73 @@ describe('discord bridge — the room is not just an id', () => {
     // An unnamed room stays unnamed, the same way a person does — it is never
     // labelled with its own id.
     expect( will.perceived[0]!.threadName ).toBeUndefined()
+  } )
+} )
+
+// ── the world answers when she looks ─────────────────────────────────────────
+
+/**
+ * `inspect` is innate — every mind can look. Whether looking finds anything
+ * depends on there being a world that can be asked, and this is Discord's answer.
+ *
+ * The answer is DELIVERED AS A PERCEPT. The ack carries `{success, description}`
+ * and reaches reafference only: it says the looking happened, never what was
+ * found. Facts reach the mind the one way anything does — through perception — so
+ * it can weigh them, doubt them, or decide they do not matter.
+ */
+describe('discord bridge — answering an inquiry', () => {
+  /** Run the registered `inspect` handler the way the SDK would. */
+  const look = async ( will: FakeWill, ctx: Record<string, unknown> ) =>
+    await ( will as unknown as { effectors: Map<string, Function> } )
+      .effectors.get('inspect')!( {}, ctx )
+
+  it('answers with a percept, and the ack carries no facts', async () => {
+    const { client, will } = await bridgeUp()
+    const channel = new FakeChannel()
+    Object.assign( channel, { name: 'general', topic: 'shipping and arguing', memberCount: 47 } )
+    client.channelsById.set('c1', channel )
+
+    const ack = await look( will, { targetEntityId: 'ke:room9', targetAddresses: [ 'discord:c1' ] } )
+
+    // What was found came through perception...
+    expect( will.perceived ).toHaveLength( 1 )
+    const text = will.perceived[0]!.text!
+    expect( text ).toContain('shipping and arguing')
+    expect( text ).toContain('47 people')
+    expect( text.startsWith('[') ).toBe( true )
+
+    // ...and NOT through the ack, which only says the looking happened.
+    expect( ack.success ).toBe( true )
+    expect( JSON.stringify( ack ) ).not.toContain('shipping and arguing')
+  } )
+
+  it('reports a count, never a roster — people are met, not listed', async () => {
+    const { client, will } = await bridgeUp()
+    const channel = new FakeChannel()
+    Object.assign( channel, { name: 'general', memberCount: 3, members: [ 'ada', 'sam', 'kai' ] } )
+    client.channelsById.set('c1', channel )
+
+    await look( will, { targetEntityId: 'ke:room9', targetAddresses: [ 'discord:c1' ] } )
+    const text = will.perceived[0]!.text!
+    expect( text ).toContain('3 people')
+    for( const who of [ 'ada', 'sam', 'kai' ] ) expect( text ).not.toContain( who )
+  } )
+
+  it('fails honestly when it is not something Discord can see', async () => {
+    const { will } = await bridgeUp()
+    const ack = await look( will, { targetEntityId: 'ke:x', targetAddresses: [ 'whatsapp:123' ] } )
+    expect( ack.success ).toBe( false )
+    // A failed look teaches the mind to stop examining what will not resolve.
+    expect( will.perceived ).toHaveLength( 0 )
+  } )
+
+  it('fails honestly when the room has nothing recorded', async () => {
+    const { client, will } = await bridgeUp()
+    const channel = new FakeChannel(); Object.assign( channel, { name: 'quiet' } )
+    client.channelsById.set('c2', channel )
+
+    const ack = await look( will, { targetEntityId: 'ke:q', targetAddresses: [ 'discord:c2' ] } )
+    expect( ack.success ).toBe( false )
+    expect( will.perceived ).toHaveLength( 0 )
   } )
 } )

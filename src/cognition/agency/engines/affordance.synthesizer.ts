@@ -75,6 +75,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
 
   /** Tick of the last thing said to each entity — outlives the descriptor sweep. */
   private _spokenAt: ReadonlyMap<string, number> = new Map()
+  private _spokeAnywhereAt: number | undefined = undefined
   private _bus:         CognitiveBus | null = null
   private _defaultCap:  number
   private _lastFieldSize = 0
@@ -142,6 +143,11 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // satiation — the executor deletes them at their echo TTL, so any window
     // longer than that was a no-op.
     this._spokenAt = spokenAtByEntity( state.entities )
+    // When this mind last spoke to ANYONE — the satiation arm that is not about
+    // the listener. Computed once per tick rather than per candidate.
+    let last = -Infinity
+    for( const t of this._spokenAt.values() ) if( t > last ) last = t
+    this._spokeAnywhereAt = last > -Infinity ? last : undefined
 
     const set:    EntityInput[] = []
     const del:    string[]      = []
@@ -412,6 +418,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
       this._inFlight, schema.id, ctx.targetEntityId, tick, this._satiationWindow,
       speaks ? this._spokenAt : undefined,
       skill?.lastEnactedTick,
+      speaks ? this._spokeAnywhereAt : undefined,
     )
 
     const key    = ctx.targetEntityId ?? ctx.evokedBy ?? schema.id

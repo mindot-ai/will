@@ -224,6 +224,30 @@ export function enactionFootprint(
    * satiation window. `lastEnactedTick` is durable and snapshotted.
    */
   selfEnactedAt?: number,
+  /**
+   * Tick this mind last SPOKE — to anyone. Supplied only for a speaking act, and
+   * satiating over the shorter echo window rather than the full repeat window.
+   *
+   * Satiation was keyed entirely by listener, so "I have already said this" had
+   * no bearing once the listener changed. Live, a COO drafted one scoping
+   * outline and put substantially the same thing into three destinations inside
+   * three minutes — general, a DM, a second channel — with nothing damping it,
+   * because each was a different key. She could SEE it: `## What I've Said
+   * Lately` listed her own turns across all targets and she posted again 31
+   * seconds later. The record was there; the pull had no opposing force.
+   *
+   * Deliberately WEAKER than the per-person arm, via the shorter window: telling
+   * a second person something is legitimate and must stay cheap, while saying it
+   * again to someone who already heard it should not be. And deliberately from
+   * `conversation.sent` — what was actually SAID — not from the schema's
+   * `lastEnactedTick`, which also counts attempts that authored no words and
+   * would let a run of declined outreach satiate the mind into silence.
+   *
+   * Replies are unaffected: an answer to an inbound message is delivered by the
+   * audition facet through the outbox and never enters this competition. This
+   * damps only self-initiated outreach — which is exactly what broadcasting is.
+   */
+  spokeAnywhereAt?: number,
 ): number {
   if( windowTicks <= 0 ) return 0
 
@@ -238,6 +262,14 @@ export function enactionFootprint(
   const spoken = spokenAt?.get( targetEntityId )
   if( spoken !== undefined ){
     const remaining = ( windowTicks - ( tick - spoken ) ) / windowTicks
+    if( remaining > strongest ) strongest = remaining
+  }
+
+  // Having just spoken AT ALL — the arm that is not about the listener. Over the
+  // echo window, so it is real but short: a second person is cheap to tell, a
+  // third destination in ninety seconds is not. See `spokeAnywhereAt`.
+  if( spokeAnywhereAt !== undefined ){
+    const remaining = ( CONSEQUENCE_TTL_TICKS - ( tick - spokeAnywhereAt ) ) / CONSEQUENCE_TTL_TICKS
     if( remaining > strongest ) strongest = remaining
   }
 

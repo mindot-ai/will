@@ -4499,7 +4499,7 @@ function matchConsequenceText(descriptors, candidate) {
   }
   return null;
 }
-function enactionFootprint(descriptors, schema, targetEntityId, tick, windowTicks = CONSEQUENCE_TTL_TICKS, spokenAt, selfEnactedAt) {
+function enactionFootprint(descriptors, schema, targetEntityId, tick, windowTicks = CONSEQUENCE_TTL_TICKS, spokenAt, selfEnactedAt, spokeAnywhereAt) {
   if (windowTicks <= 0) return 0;
   if (!targetEntityId) {
     if (selfEnactedAt === void 0) return 0;
@@ -4510,6 +4510,10 @@ function enactionFootprint(descriptors, schema, targetEntityId, tick, windowTick
   const spoken = spokenAt?.get(targetEntityId);
   if (spoken !== void 0) {
     const remaining = (windowTicks - (tick - spoken)) / windowTicks;
+    if (remaining > strongest) strongest = remaining;
+  }
+  if (spokeAnywhereAt !== void 0) {
+    const remaining = (CONSEQUENCE_TTL_TICKS - (tick - spokeAnywhereAt)) / CONSEQUENCE_TTL_TICKS;
     if (remaining > strongest) strongest = remaining;
   }
   for (const d of descriptors) {
@@ -20939,6 +20943,7 @@ var AffordanceSynthesizer = class {
   _satiationWindow = CONSEQUENCE_TTL_TICKS;
   /** Tick of the last thing said to each entity — outlives the descriptor sweep. */
   _spokenAt = /* @__PURE__ */ new Map();
+  _spokeAnywhereAt = void 0;
   _bus = null;
   _defaultCap;
   _lastFieldSize = 0;
@@ -20989,6 +20994,9 @@ var AffordanceSynthesizer = class {
     this._inFlight = liveConsequences(state.entities, tick);
     this._satiationWindow = readEffectiveParams(state, "engine-config-action-selector").repeatWindowTicks ?? CONSEQUENCE_TTL_TICKS;
     this._spokenAt = spokenAtByEntity(state.entities);
+    let last = -Infinity;
+    for (const t of this._spokenAt.values()) if (t > last) last = t;
+    this._spokeAnywhereAt = last > -Infinity ? last : void 0;
     const set = [];
     const del = [];
     for (const [id, e] of state.entities)
@@ -21136,7 +21144,8 @@ var AffordanceSynthesizer = class {
       tick,
       this._satiationWindow,
       speaks ? this._spokenAt : void 0,
-      skill?.lastEnactedTick
+      skill?.lastEnactedTick,
+      speaks ? this._spokeAnywhereAt : void 0
     );
     const key = ctx.targetEntityId ?? ctx.evokedBy ?? schema.id;
     const source = ctx.source ?? schema.source;

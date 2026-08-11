@@ -7440,6 +7440,7 @@ declare class AffordanceSynthesizer implements CognitiveEngine {
     private _satiationWindow;
     /** Tick of the last thing said to each entity — outlives the descriptor sweep. */
     private _spokenAt;
+    private _spokeAnywhereAt;
     private _bus;
     private _defaultCap;
     private _lastFieldSize;

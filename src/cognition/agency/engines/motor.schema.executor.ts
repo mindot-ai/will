@@ -43,6 +43,7 @@ import { addressesOf } from '#cognition/social.identity'
 import {
   CONSEQUENCE_TYPE, CONSEQUENCE_TTL_TICKS,
   consequenceEntity, fnv1a, paramsKey,
+  liveConsequences, enactionFootprint, type ConsequenceDescriptor,
 } from '#agency/consequence'
 
 /** Ticks an async (communicate/external) intent may stay 'awaiting' before it is
@@ -319,6 +320,15 @@ export class MotorSchemaExecutor implements CognitiveEngine {
             worldAddressable: intent.targetEntityId
               ? addressesOf( state.entities as never, intent.targetEntityId ).length > 0
               : false,
+            // Whether the mind holds a record of this at all, and whether it has
+            // just looked. Both only matter to `inspect`, and both are why an
+            // inward look can now come back empty — see the note there. Computed
+            // only for inspect: each is a scan, and this runs per intent.
+            ...( intent.schema === 'inspect' ? {
+              heldDetail:    this._holdsRecordOf( state, intent.targetEntityId ),
+              alreadyLooked: enactionFootprint(
+                this._inFlightFor( state, tick ), 'inspect', intent.targetEntityId, tick ) > 0,
+            } : {} ),
           })
         : { mode: 'external', success: true, outcomeQuality: 0.5, valence: 0,
             description: `Unknown schema "${ intent.schema }" routed to the host.` }
@@ -649,6 +659,29 @@ export class MotorSchemaExecutor implements CognitiveEngine {
    * Satiation stays exactly as it was, and still earns its keep: it damps saying
    * the same thing again for reasons that did NOT come from a standing will.
    */
+  /**
+   * Does the mind hold a record of this — a dossier, or a belief about it?
+   *
+   * What separates looking inward at someone you know from looking inward at your
+   * own affordance entity, which is what a 22-tick-old Will actually did while
+   * being told it went well. No record means the look comes back empty.
+   */
+  private _holdsRecordOf( state: ReadonlySimulationState, target?: string ): boolean {
+    if( !target ) return false
+    const tag = `keid:${ target }`
+    for( const [ , e ] of state.entities ){
+      const m = e.metadata as Record<string, unknown> | undefined
+      if( e.type === 'known-entity' && m?.['keid'] === target ) return true
+      if( e.type === 'belief' && Array.isArray( m?.['tags'] ) && ( m['tags'] as string[] ).includes( tag ) ) return true
+    }
+    return false
+  }
+
+  /** This tick's live consequence descriptors — the mind's own acts still echoing. */
+  private _inFlightFor( state: ReadonlySimulationState, tick: Tick ): readonly ConsequenceDescriptor[] {
+    return liveConsequences( state.entities, tick )
+  }
+
   private _dischargeWill( intent: Intent, del: string[] ): void {
     const willId = intent.evokedBy
     if( !willId || !willId.startsWith('ideomotor-') ) return

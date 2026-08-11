@@ -49,6 +49,23 @@ export interface EnactionContext {
    * honest default: a mind examining something it only holds internally.
    */
   worldAddressable?: boolean
+  /**
+   * True when the mind actually holds a record of the target.
+   *
+   * Looking inward at something you have nothing about is not a quiet success,
+   * it is coming back empty. Live, a 22-tick-old Will inspected
+   * `affordance-1-orient-orient` — one of its OWN affordance entities — and was
+   * told it went well.
+   */
+  heldDetail?: boolean
+  /**
+   * True when this same target was inspected recently.
+   *
+   * The second look at an unchanged thing resolves nothing further, and saying
+   * otherwise is what let `inspect` proceduralize into a habit (0.64) fifteen
+   * ticks after birth, before anyone had spoken to her.
+   */
+  alreadyLooked?: boolean
 }
 
 const COMM_SCHEMAS = new Set([ 'reach-out', 'talk', 'text', 'broadcast', 'gesture' ])
@@ -118,17 +135,39 @@ function syncStance( ctx: EnactionContext ): Enaction {
     // looking works — habit and value climbing with each futile repetition. The
     // failure arm below is the point of the fix, not an edge case: a mind must be
     // able to find out that there is nothing more to find out.
+    // Looking inward, and able to come back empty — which is the whole point.
+    //
+    // Two versions of this shipped and both were the same lie. The first returned
+    // success 0.65 with "more of its detail resolves" for every inspect. The
+    // second required a name, which the percept binding always supplies, so it
+    // also always succeeded. Reafference rewards a reliably-successful act, so a
+    // fresh Will proceduralized `inspect` to habit 0.64 within fifteen ticks and
+    // spent five of its first eight decisions on it, examining its own affordance
+    // entities and learning nothing.
+    //
+    // The defect was never the condition, it was that an internal look had no way
+    // to FAIL. "Take in what I already hold" is always possible, so it was not an
+    // act with an outcome, it was a no-op that reported success. A mind must be
+    // able to find out that there is nothing to find out.
     case 'inspect': {
-      const focus = str( parameters['focus'] )
-      const held  = str( parameters['targetEntityName'] ) ?? focus
+      const held = str( parameters['targetEntityName'] ) ?? str( parameters['focus'] )
       if( !held )
-        return { mode: 'sync', success: false, outcomeQuality: 0.1, valence: -0.05,
-          description: 'I go to examine something and find nothing named to examine.' }
-      return sync( 0.6, 0.05, `I turn my attention to ${ held } and take in what I already hold of it.`)
+        return look( false, 'I go to examine something and find nothing named to examine.')
+      if( ctx.heldDetail === false )
+        return look( false, `I turn my attention to ${ held } and find I hold no record of it.`)
+      if( ctx.alreadyLooked )
+        return look( false, `I look at ${ held } again and find nothing I did not already have.`)
+      return sync( 0.6, 0.05, `I turn my attention to ${ held }; what I hold of it comes into view.`)
     }
     default:
       return sync( 0.5, 0.0, `I enact ${ schema.id }.`)
   }
+}
+
+/** A look that found nothing. Low quality and mildly negative, so reafference
+ *  erodes the habit instead of building it — an empty look must cost something. */
+function look( _found: false, description: string ): Enaction {
+  return { mode: 'sync', success: false, outcomeQuality: 0.15, valence: -0.05, description }
 }
 
 function sync( outcomeQuality: number, valence: number, description: string ): Enaction {

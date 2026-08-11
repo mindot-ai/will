@@ -7669,7 +7669,30 @@ declare class MotorSchemaExecutor implements CognitiveEngine {
      */
     private _dischargeWill;
     private _emitActionOutcome;
+    /**
+     * Announce a dispatched act to its TWO audiences, which live on two buses.
+     *
+     * The mind's own faculties appraise it — affective.blender, stress.regulator
+     * and attention.allocator all subscribe to `agency.invocation` on the
+     * CognitiveBus, the internal fabric. But the act is host-owned, and the HOST
+     * hears only `simulation.eventBus`: `WillStem` buffers an invocation for
+     * delivery from `eventBus.subscribeAll`, and that is the sole path by which an
+     * external effector ever reaches a handler.
+     *
+     * Only the cognitive half was ever published. The two buses have no bridge, so
+     * `bufferInvocation` was subscribed to a bus that has never carried the event
+     * — measured on a live boot: `agency.invocation.dispatched` incremented,
+     * `pendingEffectorInvocations` stayed empty, the intent held `awaiting`, and
+     * fifteen ticks later `[motor] ⏱ "inspect" timed out`. **No host-owned
+     * effector invocation has ever been delivered.** Communication is unaffected —
+     * the outbox is a separate mechanism, which is why a Will could always speak.
+     *
+     * Both ends were unit-tested and the crossing was not: `policy.*.test.ts` calls
+     * `bufferInvocation` directly, which is true about the controller and silent
+     * about whether anything reaches it. Same shape as the affordance-field hop.
+     */
     private _emitDispatch;
+    private _dispatchPayload;
 }
 
 declare class ReafferenceEngine implements CognitiveEngine {

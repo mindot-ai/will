@@ -32,10 +32,10 @@ import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import { GenerativeModel } from '#cognition/generative.model'
 import {
-  CONSEQUENCE_TYPE, ATTENUATION, CORRESPONDENCE_ATTENUATION,
+  ATTENUATION, CORRESPONDENCE_ATTENUATION,
   liveConsequences, matchConsequenceText, matchConsequenceEntity,
 } from '#agency/consequence'
-import { REVOCATION_TYPE } from '#agency/revocation'
+import { MIND_OWN_ENTITY_TYPES } from '#cognition/sense.boundary'
 
 export interface ExteroceptionConfig {
   /** Maximum percepts to produce per tick */
@@ -46,6 +46,16 @@ export interface ExteroceptionConfig {
   emitPerceptEvents?: boolean
   /** Entity types to always treat as high-salience */
   highPriorityTypes?: string[]
+  /**
+   * Where this mind ends — the entity types its own engines write about its own
+   * operation, which it therefore cannot encounter as world events. Live, so a
+   * host adding a cognitive engine after assembly is accounted for.
+   *
+   * Unwired (a bare harness, a unit test) it falls back to the shipped anatomy,
+   * which is right for every assembly that adds no cognitive engine of its own.
+   * See `#cognition/sense.boundary`.
+   */
+  endogenous?: () => ReadonlySet<string>
   bus?: CognitiveBus
 }
 
@@ -63,26 +73,6 @@ interface RawPercept {
   valenceSource?: 'entity' | 'ambient'
 }
 
-// Skip internal entities — they're not external percepts.
-// Percepts about percepts create a feedback loop that floods
-// working memory and episodic storage with noise.
-const internalTypes = new Set([
-  'percept', 'percept.social', 'working_memory.item',
-  'interoception', 'attention.focus', 'decision.record',
-  'task.focus', 'self_observation',
-  'goal', 'belief', 'plan', 'narrative_chapter',
-  'introspection', 'self_narrative', 'cognitive_bias',
-  'effector.created', 'empathic_state', 'attachment.bond',
-  'theory_of_mind', 'reputation', 'episodic_memory',
-  // Internal state entities written by our own engines — not external events
-  'affect.blends', 'executive.summary',
-  // The agency's own forward-model records (EXAFFERENCE P1/P2): perceiving our
-  // expected-consequence descriptors would be a self-noise loop.
-  CONSEQUENCE_TYPE,
-  // The agency's own revocation tombstones (EXAFFERENCE P4) — internal bookkeeping.
-  REVOCATION_TYPE,
-])
-
 export class Exteroception implements SimulationEngine, CognitiveEngine {
   readonly name     = 'exteroception'
   
@@ -90,15 +80,26 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
   private _defaultSalience: number
   private _emitPerceptEvents: boolean
   private _highPriorityTypes: Set<string>
-  private _previousEntityVersions = new Map<string, number>()  // entityId → updatedAt
+  /**
+   * entityId → what was last seen of it. The TYPE is remembered alongside the
+   * version because a removal has to answer the same question an appearance
+   * does — "was this mine?" — and by then the entity is gone. It used to be
+   * answered by a second, separately-drifting list of id prefixes.
+   */
+  private _previousEntityVersions = new Map<string, { at: Timestamp; type: string }>()
 
   private _bus: CognitiveBus | null = null
 
   private readonly _model    = new GenerativeModel()
 
+  /** Live sense boundary + a memo, so a 50-engine union isn't rebuilt per tick. */
+  private _boundary: ( () => ReadonlySet<string> ) | null
+  private _endogenousMemo: ReadonlySet<string> = MIND_OWN_ENTITY_TYPES
+
 
   constructor( config: ExteroceptionConfig = {} ){
     this._bus = config.bus ?? null
+    this._boundary = config.endogenous ?? null
     this._maxPerceptsPerTick = config.maxPerceptsPerTick ?? 50
     this._defaultSalience    = config.defaultSalience    ?? 0.3
     this._emitPerceptEvents  = config.emitPerceptEvents  ?? true
@@ -107,6 +108,26 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
     ])
   }
   attachBus( bus: CognitiveBus ): void { this._bus = bus }
+
+  /**
+   * Wire the live sense boundary. Separate from construction because the
+   * boundary is derived from the assembled engine list, and this sense is
+   * constructed before that list exists (same reason `attachBus` exists).
+   */
+  attachBoundary( resolve: () => ReadonlySet<string> ): void { this._boundary = resolve }
+
+  /**
+   * The types that are THIS mind rather than its world.
+   *
+   * Re-read each tick so a host engine registered after assembly still lands
+   * inside the boundary; the memo makes that a set-identity check in the common
+   * case, since `endogenousTypes` returns the shipped set unchanged when nothing
+   * extra is declared.
+   */
+  private _endogenous(): ReadonlySet<string> {
+    if( this._boundary ) this._endogenousMemo = this._boundary()
+    return this._endogenousMemo
+  }
 
   // ── Engine interface ─────────────────────────────────────
 
@@ -243,18 +264,19 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
 private _scanWorld( state: ReadonlySimulationState ): RawPercept[] {
     const percepts: RawPercept[] = []
     const currentIds = new Set<string>()
+    const mine       = this._endogenous()
 
     for( const [ id, entity ] of state.entities ){
       currentIds.add( id )
 
-      if( internalTypes.has( entity.type ) ){
-        // Still track the version so we don't get "appeared" events
-        // when these internal entities are first created
-        this._previousEntityVersions.set( id, entity.updatedAt )
+      if( mine.has( entity.type ) ){
+        // Still track it, so it never reads as "appeared" if the boundary later
+        // widens — but it is machinery, not world, and is not perceived.
+        this._previousEntityVersions.set( id, { at: entity.updatedAt, type: entity.type } )
         continue
       }
 
-      const previousVersion = this._previousEntityVersions.get( id )
+      const previousVersion = this._previousEntityVersions.get( id )?.at
 
       if( previousVersion === undefined ){
         percepts.push({
@@ -279,32 +301,27 @@ private _scanWorld( state: ReadonlySimulationState ): RawPercept[] {
         })
       }
 
-      this._previousEntityVersions.set( id, entity.updatedAt )
+      this._previousEntityVersions.set( id, { at: entity.updatedAt, type: entity.type } )
     }
 
-    // Detect removed entities (not internal types)
-    for( const [ id ] of this._previousEntityVersions ){
-      if( !currentIds.has( id ) ){
-        // Only report removal of meaningful entities
-        // We can't check the type here since the entity is gone,
-        // but we can infer from the ID prefix
-        if( !id.startsWith('percept-') 
-            && !id.startsWith('wm-')
-            && !id.startsWith('attention-')
-            && !id.startsWith('decision-')
-            && !id.startsWith('interoception-')
-            && !id.startsWith('task-')
-            && !id.startsWith('self-obs-') ){
-          percepts.push({
-            entityId: id,
-            changeType: 'removed',
-            salience: 0.4,
-            category: 'removed',
-            summary: `Entity removed: ${id}`,
-          })
-        }
-        this._previousEntityVersions.delete( id )
-      }
+    // Something that was there is gone. The same question as an appearance —
+    // was it mine or the world's? — and answerable now because the remembered
+    // type outlives the entity. It used to be guessed from a handful of id
+    // prefixes, which is why 17,802 of one quiet run's 36,721 percepts were the
+    // mind watching its own affordance field be torn down each tick.
+    for( const [ id, seen ] of this._previousEntityVersions ){
+      if( currentIds.has( id ) ) continue
+
+      if( !mine.has( seen.type ) )
+        percepts.push({
+          entityId: id,
+          changeType: 'removed',
+          salience: 0.4,
+          category: 'removed',
+          summary: `Entity removed: ${id}`,
+        })
+
+      this._previousEntityVersions.delete( id )
     }
 
     percepts.sort( ( a, b ) => b.salience - a.salience )

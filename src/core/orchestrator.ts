@@ -36,6 +36,19 @@ export interface SimulationEngine {
   readonly name: string
 
   /**
+   * Entity types this engine writes as part of the MIND'S OWN operation — its
+   * bookkeeping, not the world's furniture. Declared here, they fall inside the
+   * sense boundary and the outward senses stop re-perceiving them (see
+   * `#cognition/sense.boundary`).
+   *
+   * Optional and silent by default, because the default is the right one for a
+   * host engine: an engine that maintains rooms, documents or sensor readings
+   * wants those perceived. Declare only what the mind should not encounter as an
+   * event in its world.
+   */
+  readonly writes?: readonly string[]
+
+  /**
    * Called once per tick with a frozen read-only snapshot.
    * Engines must NOT mutate state directly — return commands instead.
    * Omit entirely on purely event-driven engines — the orchestrator skips them.

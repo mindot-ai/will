@@ -204,9 +204,34 @@ export function enactionFootprint(
    * that speaking happens to be schematised.
    */
   spokenAt?:      ReadonlyMap<string, number>,
+  /**
+   * Tick this schema was last enacted — `LearnedSkill.lastEnactedTick`, used for
+   * an act with NO OBJECT, where "I have just done this" is the whole of the fact
+   * and there is no target to key on.
+   *
+   * Without it the innate floor could not satiate at all. Every objectless stance
+   * returned here at the first line, so `repeat` — the largest damping weight in
+   * the competition at 0.30 — was structurally zero for `orient · attend · rest ·
+   * withdraw · reflect · wait · express`, while `habit` (+0.20) outweighed the
+   * novelty it spends (−0.10). A stance that won once therefore won harder next
+   * tick, forever. Measured: `express` at habit 1.0 taking 144 of 145 decisions
+   * across 300 quiet ticks, with nothing in the mind able to represent that it had
+   * just done it.
+   *
+   * The skill record is the right source for the same reason `conversation.sent`
+   * is for speaking: descriptors are swept at the echo TTL, and `agency.outcome`
+   * is consumed and deleted the tick after it is written, so neither survives a
+   * satiation window. `lastEnactedTick` is durable and snapshotted.
+   */
+  selfEnactedAt?: number,
 ): number {
-  if( !targetEntityId ) return 0
   if( windowTicks <= 0 ) return 0
+
+  if( !targetEntityId ){
+    if( selfEnactedAt === undefined ) return 0
+    const remaining = ( windowTicks - ( tick - selfEnactedAt ) ) / windowTicks
+    return remaining < 0 ? 0 : remaining > 1 ? 1 : remaining
+  }
 
   let strongest = 0
 

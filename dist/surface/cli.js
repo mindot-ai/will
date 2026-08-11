@@ -6501,9 +6501,13 @@ function matchConsequenceText(descriptors, candidate) {
   }
   return null;
 }
-function enactionFootprint(descriptors, schema, targetEntityId, tick, windowTicks = CONSEQUENCE_TTL_TICKS, spokenAt) {
-  if (!targetEntityId) return 0;
+function enactionFootprint(descriptors, schema, targetEntityId, tick, windowTicks = CONSEQUENCE_TTL_TICKS, spokenAt, selfEnactedAt) {
   if (windowTicks <= 0) return 0;
+  if (!targetEntityId) {
+    if (selfEnactedAt === void 0) return 0;
+    const remaining = (windowTicks - (tick - selfEnactedAt)) / windowTicks;
+    return remaining < 0 ? 0 : remaining > 1 ? 1 : remaining;
+  }
   let strongest = 0;
   const spoken = spokenAt?.get(targetEntityId);
   if (spoken !== void 0) {
@@ -22603,7 +22607,8 @@ var AffordanceSynthesizer = class {
       ctx.targetEntityId,
       tick,
       this._satiationWindow,
-      speaks ? this._spokenAt : void 0
+      speaks ? this._spokenAt : void 0,
+      skill?.lastEnactedTick
     );
     const key = ctx.targetEntityId ?? ctx.evokedBy ?? schema.id;
     const source = ctx.source ?? schema.source;
@@ -22651,6 +22656,11 @@ var AffordanceSynthesizer = class {
         description: a.description,
         ...a.availability !== void 0 ? { availability: a.availability } : {},
         ...a.socialPrior !== void 0 ? { socialPrior: a.socialPrior } : {},
+        // The act's own footprint. Omitted when 0 so a mind that has done nothing
+        // twice writes a byte-identical field — but WRITTEN when it is not, which
+        // it never was: this is the state hop between synthesis and the
+        // competition, and `justEnacted` did not cross it.
+        ...a.justEnacted !== void 0 ? { justEnacted: a.justEnacted } : {},
         planBias: a.planBias,
         willBias: a.willBias,
         planId: a.planId,
@@ -23211,6 +23221,9 @@ function readAffordance(id, m) {
     planBias: typeof meta3["planBias"] === "number" ? meta3["planBias"] : void 0,
     willBias: typeof meta3["willBias"] === "number" ? meta3["willBias"] : void 0,
     socialPrior: typeof meta3["socialPrior"] === "number" ? meta3["socialPrior"] : void 0,
+    justEnacted: typeof meta3["justEnacted"] === "number" ? meta3["justEnacted"] : void 0,
+    availability: typeof meta3["availability"] === "number" ? meta3["availability"] : void 0,
+    description: str4(meta3["description"]),
     planId: str4(meta3["planId"]),
     stepId: str4(meta3["stepId"]),
     tick: num3(meta3["tick"], 0)

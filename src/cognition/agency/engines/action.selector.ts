@@ -792,7 +792,27 @@ function buildBias( state: ReadonlySimulationState ): BiasContext {
 
 // ─── entity decoding ─────────────────────────────────────────────────────────
 
-function readAffordance( id: string, m: ReadonlyMap<string, unknown> | Record<string, unknown> | undefined ): Affordance {
+/**
+ * Decode an `affordance` entity back into the thing the competition scores.
+ *
+ * This is the ONE hop between synthesis and selection, and three fields did not
+ * cross it — each the payload of a mechanism that therefore never ran:
+ *
+ *   • `justEnacted` — `scoreAffordance` subtracts `w.repeat × justEnacted`, the
+ *     largest damping weight in the competition (0.30). Undefined here meant ×0
+ *     always, so no act has ever been damped for having just been done. EXAFFERENCE
+ *     P5 and the `spokenAt` durability fix both landed on a field nothing read.
+ *   • `availability` — POLICY_REAFFERENCE P2 damps a refused ability so it competes
+ *     weakly instead of vanishing. `a.availability ?? 1` read the fallback forever.
+ *   • `description` — the schema's MEANING. The selector snapshots it onto
+ *     `metadata.candidates` and the DeliberationEngine renders it as `— <what>`,
+ *     so the candidate list the mind reasons over listed acts with no meanings.
+ *
+ * Exported for the round-trip guard: what synthesis writes, selection must read.
+ * Four fields in this arc have been carried most of the way and lost at the last
+ * hop, so the property is pinned rather than re-checked by eye.
+ */
+export function readAffordance( id: string, m: ReadonlyMap<string, unknown> | Record<string, unknown> | undefined ): Affordance {
   const meta = ( m ?? {} ) as Record<string, unknown>
   return {
     id,
@@ -810,6 +830,9 @@ function readAffordance( id: string, m: ReadonlyMap<string, unknown> | Record<st
     planBias:        typeof meta['planBias'] === 'number' ? ( meta['planBias'] as number ) : undefined,
     willBias:        typeof meta['willBias'] === 'number' ? ( meta['willBias'] as number ) : undefined,
     socialPrior:     typeof meta['socialPrior'] === 'number' ? ( meta['socialPrior'] as number ) : undefined,
+    justEnacted:     typeof meta['justEnacted'] === 'number' ? ( meta['justEnacted'] as number ) : undefined,
+    availability:    typeof meta['availability'] === 'number' ? ( meta['availability'] as number ) : undefined,
+    description:     str( meta['description'] ),
     planId:          str( meta['planId'] ),
     stepId:          str( meta['stepId'] ),
     tick:            num( meta['tick'], 0 ),

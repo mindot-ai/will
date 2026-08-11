@@ -402,10 +402,16 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // Satiation only applies to acts aimed at someone the mind SPEAKS to — the
     // `conversation.sent` half is keyed by person, so it must not damp, say,
     // inspecting them.
+    //
+    // For an act with NO OBJECT the footprint is the act itself: there is no
+    // target to key on, and "I have just done this" is the whole of the fact.
+    // The innate floor is entirely objectless, so without this it could not
+    // satiate at all and whichever stance won once won harder each tick after.
     const speaks = schema.tags?.includes('communication') ?? false
     const justEnacted = enactionFootprint(
       this._inFlight, schema.id, ctx.targetEntityId, tick, this._satiationWindow,
       speaks ? this._spokenAt : undefined,
+      skill?.lastEnactedTick,
     )
 
     const key    = ctx.targetEntityId ?? ctx.evokedBy ?? schema.id
@@ -458,6 +464,11 @@ export class AffordanceSynthesizer implements CognitiveEngine {
         description:     a.description,
         ...( a.availability !== undefined ? { availability: a.availability } : {} ),
         ...( a.socialPrior !== undefined ? { socialPrior: a.socialPrior } : {} ),
+        // The act's own footprint. Omitted when 0 so a mind that has done nothing
+        // twice writes a byte-identical field — but WRITTEN when it is not, which
+        // it never was: this is the state hop between synthesis and the
+        // competition, and `justEnacted` did not cross it.
+        ...( a.justEnacted !== undefined ? { justEnacted: a.justEnacted } : {} ),
         planBias:        a.planBias,
         willBias:        a.willBias,
         planId:          a.planId,

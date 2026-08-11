@@ -333,6 +333,11 @@ export class FacetSupervisor {
       type:        'executive.facet.destroy',
       tick:        this._lastStateRef?.tick as unknown as number ?? 0,
       facetId,
+      // The key a reader needs to tell the two populations apart. A KEYED facet
+      // dying is a conversation ending; a keyless one dying is a deliberation
+      // finishing, which is what the executive does every time it thinks. Without
+      // it a churn metric counts both and reads engagement as damage.
+      ...( key ? { key } : {} ),
       reason,
       totalFacets: this._facets.size,
     } as any)
@@ -519,6 +524,11 @@ export class FacetSupervisor {
           type:      'executive.facet.destroy',
           tick:      this._lastStateRef?.tick as unknown as number ?? 0,
           facetId,
+          ...( key ? { key } : {} ),
+          // Named so the three ways a facet can end are distinguishable in a
+          // trace: its owner closed it, the TTL took a quiet one, or pressure
+          // evicted it. Only the last two are ever a symptom.
+          reason:    'explicit',
           totalFacets: this._facets.size,
         } as any)
       }

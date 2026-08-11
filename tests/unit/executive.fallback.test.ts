@@ -39,7 +39,7 @@ describe('the executive fallback', () => {
   it('never names an act the body cannot enact', () => {
     // Every branch, including the monotony path that used to cycle a hardcoded
     // list of invented verbs.
-    const bodies = [
+    const bodies: Array<Record<string, number>> = [
       {}, { 'energy.level': 5 }, { 'sleep.pressure': 80 }, { 'stress.load': 90 },
       { 'energy.level': 100, 'sleep.pressure': 0, 'stress.load': 0 },
     ]

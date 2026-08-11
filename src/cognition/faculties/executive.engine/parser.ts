@@ -354,47 +354,51 @@ function extractTextBlock( text: string, tag: string ): string | null {
 }
 
 /**
- * Build a heuristic fallback output when LLM response parsing fails.
- * Chooses actions based on current physiological state.
+ * What the executive intends when its own reasoning did not come back.
+ *
+ * Two things had to change here. Every action this produced was PROSE, not a
+ * schema: `observe`, `replenish energy`, `enter deep rest to reduce fatigue`,
+ * `calm my mind and reduce tension`, `explore`, `learn`, `express_emotion`.
+ * Only `rest` names anything the body can enact. The rest reach the agency, fail
+ * to resolve, and become an ideomotor push toward an act that does not exist —
+ * observed live as `master decided [observe] conf=0.4` four times across two
+ * boots, each one a decision that could go nowhere.
+ *
+ * And the "no urgent need" branch was INVENTION. The executive could not read
+ * its own thought, so it made one up and pushed it into the field as intention.
+ * That is the mind being told what it wants. The substrate does not need the
+ * help: the affordance field is always there, System 1 selects from it every
+ * tick without an executive, and it now carries real satiation — the monotony
+ * this used to break by cycling a hardcoded list is handled where monotony
+ * actually lives.
+ *
+ * So: reflexes stay, invention goes. Critically low energy, high sleep pressure
+ * or high stress still push a real regulatory stance, because a body in trouble
+ * should not depend on an LLM parsing correctly. Anything else yields NO action
+ * and lets the substrate decide, which is what it is for.
  */
 export function buildFallbackOutput(
   state: ReadonlySimulationState,
-  recentActionTypes: string[]
+  _recentActionTypes: string[]
 ): ExecutiveOutputFull {
-  const energy = state.metrics.get('energy.level') ?? 100
+  const energy        = state.metrics.get('energy.level')  ?? 100
   const sleepPressure = state.metrics.get('sleep.pressure') ?? 0
-  const stressLoad = state.metrics.get('stress.load') ?? 0
+  const stressLoad    = state.metrics.get('stress.load')    ?? 0
 
-  let actionType = 'observe'
-  let actionReason = 'No urgent needs — observing surroundings.'
-
-  if( energy < 20 ){
-    actionType = 'replenish energy'
-    actionReason = 'Energy critically low — attempting to rest.'
-  }
-  else if( sleepPressure > 60 ){
-    actionType = 'enter deep rest to reduce fatigue'
-    actionReason = 'Sleep pressure high — attempting to sleep.'
-  }
-  else if( stressLoad > 70 ){
-    actionType = 'calm my mind and reduce tension'
-    actionReason = 'Stress elevated — attempting to meditate.'
-  }
-  else {
-    // Vary the fallback when low-effort actions have dominated recently
-    const monotonous = recentActionTypes.filter( t => t === 'reflect' || t === 'observe').length >= 3
-    if( monotonous) {
-      const alternatives = ['explore', 'learn', 'express_emotion', 'rest']
-      const tick = state.tick as number
-
-      actionType = alternatives[ tick % alternatives.length ]!
-      actionReason = 'Breaking monotony — choosing a varied action during LLM fallback.'
-    }
-  }
+  // Innate stances only — what the body can actually enact.
+  const reflex: { type: string; reasoning: string } | null =
+      energy < 20        ? { type: 'rest',     reasoning: 'Energy critically low — I let myself recover.' }
+    : sleepPressure > 60 ? { type: 'rest',     reasoning: 'Sleep pressure high — I let myself recover.' }
+    : stressLoad > 70    ? { type: 'withdraw', reasoning: 'Stress elevated — I pull back from the press of things.' }
+    : null
 
   return {
-    actions: [{ type: actionType, reasoning: actionReason, expectedOutcome: 'State improves' }],
-    reasoning: `Heuristic fallback — LLM unavailable. ${actionReason}`,
+    actions: reflex
+      ? [ { type: reflex.type, reasoning: reflex.reasoning, expectedOutcome: 'The body settles' } ]
+      : [],
+    reasoning: reflex
+      ? `Heuristic fallback — my reasoning did not come back. ${ reflex.reasoning }`
+      : 'Heuristic fallback — my reasoning did not come back, and nothing about my state is pressing. I intend nothing in particular; my body goes on choosing.',
     confidence: 0.4
   }
 }

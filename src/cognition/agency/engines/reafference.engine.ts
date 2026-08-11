@@ -201,6 +201,7 @@ export class ReafferenceEngine implements CognitiveEngine {
     let updates    = 0
     let discovered = 0
     let refused    = 0
+    let withheld   = 0
     for( const { id, meta: m, fromState } of outcomes ){
       const schema = str( m['schema'] )
       if( !schema ){ if( fromState ) del.push( id ); continue }
@@ -210,6 +211,25 @@ export class ReafferenceEngine implements CognitiveEngine {
       // habit, param priors), or the Will learns it is unskilled at something it
       // is merely forbidden to do. The awaiting intent is still freed, and a
       // refused plan step is signalled unsuccessful so the plan doesn't hang.
+      // Chosen silence. The mind considered speaking and decided not to, which
+      // is a decision — not a failure, and not a refusal either: nothing forbade
+      // it, so availability must not be dented and `recordRefusal` must not run.
+      // Free the intent, signal any plan step, and teach NOTHING: the question
+      // was never whether it can speak.
+      //
+      // Before this, a declined outreach timed out at AWAIT_TIMEOUT and folded
+      // into `reach-out`'s competence as a failure — the mind learning it is bad
+      // at speaking from the times it chose not to speak.
+      if( m['withheld'] === true ){
+        if( fromState ) del.push( id )
+        const heldIntent = str( m['intentId'] )
+        if( heldIntent ) del.push( heldIntent )
+        const heldPlan = str( m['planId'] )
+        if( heldPlan ) this._emitPlanOutcome( heldPlan, str( m['stepId'] ), schema, false, 0, 0, tick )
+        withheld++
+        continue
+      }
+
       if( m['refused'] === true ){
         const finality = asFinality( m['finality'] )
 
@@ -320,6 +340,10 @@ export class ReafferenceEngine implements CognitiveEngine {
     // Only emit the refusal metric when it fired — a never-refused Will writes
     // nothing here, preserving the byte-identical quiet path (cf. EXAFFERENCE P3).
     if( refused > 0 ) metrics.push([ 'agency.refused.count', refused ])
+    // Counted separately from refusals on purpose: one is the world saying no,
+    // the other is the mind saying not now. Collapsing them would read as a
+    // policy problem in the telemetry when nothing was forbidden.
+    if( withheld > 0 ) metrics.push([ 'agency.withheld.count', withheld ])
 
     return { commands: { set, delete: del, metrics } }
   }

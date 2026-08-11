@@ -7106,6 +7106,187 @@ declare abstract class ShellSenseEngine extends BaseSenseEngine {
     protected _perceive(_input: SensoryInput): Promise<void>;
 }
 
+interface ProactiveCommunicatorOptions {
+    /** Shared outbox producer — owns the row shape; the executor delegates pushes. */
+    writer: OutboxWriter;
+    willId?: string;
+}
+declare class ProactiveCommunicator {
+    private _writer;
+    private _willId;
+    private _sessionLogger;
+    constructor(options: ProactiveCommunicatorOptions);
+    attachSessionLogger(logger: SessionLogger | null): void;
+    executeAction(request: ActionRequest, _state: ReadonlySimulationState): Promise<ActionResult>;
+    private _handleListen;
+    private _handleGesture;
+    private _handleBroadcast;
+    private _handleOutboundMessage;
+}
+
+/**
+ * What an authoring pass produced.
+ *
+ * `bubbles` empty is AMBIGUOUS on its own — it is also what a timed-out facet, a
+ * full facet budget, and a pass deferring to one already in flight all return.
+ * `withheld` is the one case that is an ANSWER: the mind considered speaking and
+ * declared silence. Only that resolves the intent; the others keep holding, and
+ * the clock still abandons a genuinely dead author.
+ */
+interface OutreachResult {
+    bubbles: string[];
+    withheld?: boolean;
+}
+/** Authors the words for a self-initiated communicate the agency selected (no inbound triggered it). */
+interface OutreachAuthor {
+    /** An array return is still honoured — it reads as "no words, and I am not saying why". */
+    authorOutreach(entityId: string, entityName: string, gist?: string): Promise<string[] | OutreachResult>;
+}
+declare class MotorSchemaExecutor implements CognitiveEngine {
+    readonly name = "motor-schema-executor";
+    private _schemas;
+    private _repertoire;
+    private _comms;
+    private _author;
+    private _grants;
+    private _bus;
+    /**
+     * Two-phase outreach authoring. A facet cannot be awaited from inside a tick:
+     * `ExecutiveFacet.report()` only QUEUES in tick-discipline mode and the reasoning
+     * launches from `pump()`, which the ExecutiveEngine calls once per tick — so an
+     * in-tick `await` blocks the very loop that would produce the answer. Observed
+     * live: a 61s freeze of the whole mind inside one tick, then an empty result.
+     * (It passes unit tests because bare facets have no inbox and author inline.)
+     *
+     * So `_deliver` REQUESTS words and returns false (the intent holds 'awaiting'),
+     * the facet answers off-tick, and a later tick delivers. Process-local by design:
+     * an authoring call in flight cannot survive a restart, and the intent would
+     * simply re-request.
+     */
+    private _authoring;
+    private _authored;
+    /**
+     * Intents whose facet considered speaking and chose NOT to.
+     *
+     * A declined outreach used to resolve by rotting: no words arrived, so the
+     * intent sat 'awaiting' until AWAIT_TIMEOUT abandoned it as a FAILURE — and
+     * reafference folded that into `reach-out`'s competence. The mind was learning
+     * it is bad at speaking from the times it decided not to speak. Live, a COO
+     * declining correctly ("nothing new to add — a sixth message would repeat")
+     * took a competence hit for the judgement.
+     *
+     * Silence is an ANSWER, not the absence of one. Held here so the sweep can
+     * resolve it as what it is: the intent is freed, and nothing is taught about
+     * an ability that was never in question.
+     */
+    private _withheld;
+    constructor(schemas?: MotorSchema[]);
+    attachBus(bus: CognitiveBus): void;
+    /** Resolve schemas (incl. learned composites) from the live repertoire first. */
+    attachRepertoire(repertoire: SchemaRepertoire): void;
+    /** Inject the communicate-enaction handler (owned here; the only caller). */
+    attachProactiveCommunicator(c: ProactiveCommunicator): void;
+    /** Inject the outreach author — words for a self-initiated communicate are authored on selection. */
+    attachOutreachAuthor(a: OutreachAuthor): void;
+    /** Forward the session logger to the owned ProactiveCommunicator (it audits outbound). */
+    attachSessionLogger(logger: SessionLogger | null): void;
+    /** Inject the permission gate so outbound communication is grant-checked. */
+    attachGrants(g: AccessGrants): void;
+    registerSchema(schema: MotorSchema): void;
+    /** Repertoire-first schema resolution, falling back to the local seed set. */
+    private _resolve;
+    publishes(): CognitiveEventSchema[];
+    subscribes(): string[];
+    /**
+     * The executor is plan-agnostic. A plan does NOT dispatch steps here — it biases
+     * the affordance competition (see PLANNING_AS_PRIOR_TODO.md), so a plan-driven
+     * action reaches the executor as an ordinary committed `agency.intent` the
+     * selector won. That intent already carries planId/stepId provenance (stamped by
+     * the selector from the winning affordance); `_emitActionOutcome` threads it back
+     * out, which is how the PlanningEngine advances. Nothing plan-specific here.
+     */
+    onCognitiveEvent(): void;
+    snapshot(): Record<string, unknown>;
+    react(_delta: Duration, tick: Tick, state: ReadonlySimulationState, _context: SimulationContext): Promise<EngineResult>;
+    private _expand;
+    private _advance;
+    private _subIntent;
+    /**
+     * Deliver a communicate intent through the shared ProactiveCommunicator, gated by
+     * AccessGrants. Returns true when it handled the intent (delivered + outcome written),
+     * false when it cannot (no delivery layer / no authored content) so the caller holds
+     * the intent 'awaiting'. Message *content* is authored upstream (the deliberation /
+     * conversation facet); this is the single enaction → delivery path.
+     */
+    private _deliver;
+    /**
+     * Ask a facet for the words, off-tick. Fire-and-forget on purpose: awaiting this
+     * from inside `react()` deadlocks the tick loop against the facet pump. Idempotent
+     * per intent — a request already in flight is not duplicated, so the intent may sit
+     * 'awaiting' across many ticks with exactly one LLM call behind it.
+     */
+    private _requestAuthoring;
+    private _emitEnacted;
+    /**
+     * Publish `action.outcome` for EVERY enaction — the shared metacognitive/affective
+     * sink. The PlanningEngine consumes it (when planId/stepId are present) to advance
+     * a plan; the ConfidenceCalibrator calibrates predicted-vs-actual from it; the
+     * RewardEvaluator reads it as a reward signal. `confidence` carries the agency's
+     * own forward-model prior so calibration has a real prediction to score.
+     */
+    /**
+     * Retire the `ideomotor.intent` that produced this act.
+     *
+     * Nothing deleted these. They were cleared only when the executive next ran and
+     * declined to name the same action again — and the executive runs on an interval,
+     * so between cycles a willed reach-out STOOD in state, was rebuilt into an
+     * affordance every single tick, and competed every single tick. Observed as
+     * dozens of identical lines:
+     *
+     *   [selector] willed reach-out → … NOT selected: 0.297 < inspect… 0.340
+     *
+     * losing by four thousandths, over and over, until it won — twice. Fabrice got
+     * the same message byte-for-byte 25 ticks apart, two outbox ids.
+     *
+     * `justEnacted` was built to hold this line and cannot: it is a DECAYING
+     * quantity, capped at `repeatDamping` (0.30), and a standing intent outlasts it
+     * by construction. Damping a permanent pull only ever delays it. So the intention
+     * is discharged by being acted on, which is what an intention is — you meant to
+     * tell someone something, you told them, and it is finished. If the mind still
+     * wants to say more, the next executive cycle forms a new one, now seeing "I said
+     * this 25 ticks ago and have had no answer" in front of it.
+     *
+     * Satiation stays exactly as it was, and still earns its keep: it damps saying
+     * the same thing again for reasons that did NOT come from a standing will.
+     */
+    private _dischargeWill;
+    private _emitActionOutcome;
+    /**
+     * Announce a dispatched act to its TWO audiences, which live on two buses.
+     *
+     * The mind's own faculties appraise it — affective.blender, stress.regulator
+     * and attention.allocator all subscribe to `agency.invocation` on the
+     * CognitiveBus, the internal fabric. But the act is host-owned, and the HOST
+     * hears only `simulation.eventBus`: `WillStem` buffers an invocation for
+     * delivery from `eventBus.subscribeAll`, and that is the sole path by which an
+     * external effector ever reaches a handler.
+     *
+     * Only the cognitive half was ever published. The two buses have no bridge, so
+     * `bufferInvocation` was subscribed to a bus that has never carried the event
+     * — measured on a live boot: `agency.invocation.dispatched` incremented,
+     * `pendingEffectorInvocations` stayed empty, the intent held `awaiting`, and
+     * fifteen ticks later `[motor] ⏱ "inspect" timed out`. **No host-owned
+     * effector invocation has ever been delivered.** Communication is unaffected —
+     * the outbox is a separate mechanism, which is why a Will could always speak.
+     *
+     * Both ends were unit-tested and the crossing was not: `policy.*.test.ts` calls
+     * `bufferInvocation` directly, which is true about the controller and silent
+     * about whether anything reaches it. Same shape as the affordance-field hop.
+     */
+    private _emitDispatch;
+    private _dispatchPayload;
+}
+
 /** Minimal write-side entity shape accepted by `stateManager.setEntity`. */
 interface MemoryEntity {
     id: string;
@@ -7283,7 +7464,7 @@ declare class AuditionEngine extends BaseSenseEngine {
      * (MotorSchemaExecutor) to deliver through the proactive communicate path; empty
      * when no executive is attached or the facet budget is full (caller then awaits).
      */
-    authorOutreach(entityId: string, entityName: string, gist?: string): Promise<string[]>;
+    authorOutreach(entityId: string, entityName: string, gist?: string): Promise<OutreachResult>;
     /**
      * Persist one completed exchange (inbound + reply) as a `working_memory.item`
      * state entity so the EpisodicConsolidator consolidates it on its next tick.
@@ -7542,158 +7723,6 @@ declare class DeliberationEngine implements CognitiveEngine {
     private _commit;
     /** The deliberation focus body — the candidate actions the substrate surfaced. */
     private _buildFocusContent;
-}
-
-interface ProactiveCommunicatorOptions {
-    /** Shared outbox producer — owns the row shape; the executor delegates pushes. */
-    writer: OutboxWriter;
-    willId?: string;
-}
-declare class ProactiveCommunicator {
-    private _writer;
-    private _willId;
-    private _sessionLogger;
-    constructor(options: ProactiveCommunicatorOptions);
-    attachSessionLogger(logger: SessionLogger | null): void;
-    executeAction(request: ActionRequest, _state: ReadonlySimulationState): Promise<ActionResult>;
-    private _handleListen;
-    private _handleGesture;
-    private _handleBroadcast;
-    private _handleOutboundMessage;
-}
-
-/** Authors the words for a self-initiated communicate the agency selected (no inbound triggered it). */
-interface OutreachAuthor {
-    authorOutreach(entityId: string, entityName: string, gist?: string): Promise<string[]>;
-}
-declare class MotorSchemaExecutor implements CognitiveEngine {
-    readonly name = "motor-schema-executor";
-    private _schemas;
-    private _repertoire;
-    private _comms;
-    private _author;
-    private _grants;
-    private _bus;
-    /**
-     * Two-phase outreach authoring. A facet cannot be awaited from inside a tick:
-     * `ExecutiveFacet.report()` only QUEUES in tick-discipline mode and the reasoning
-     * launches from `pump()`, which the ExecutiveEngine calls once per tick — so an
-     * in-tick `await` blocks the very loop that would produce the answer. Observed
-     * live: a 61s freeze of the whole mind inside one tick, then an empty result.
-     * (It passes unit tests because bare facets have no inbox and author inline.)
-     *
-     * So `_deliver` REQUESTS words and returns false (the intent holds 'awaiting'),
-     * the facet answers off-tick, and a later tick delivers. Process-local by design:
-     * an authoring call in flight cannot survive a restart, and the intent would
-     * simply re-request.
-     */
-    private _authoring;
-    private _authored;
-    constructor(schemas?: MotorSchema[]);
-    attachBus(bus: CognitiveBus): void;
-    /** Resolve schemas (incl. learned composites) from the live repertoire first. */
-    attachRepertoire(repertoire: SchemaRepertoire): void;
-    /** Inject the communicate-enaction handler (owned here; the only caller). */
-    attachProactiveCommunicator(c: ProactiveCommunicator): void;
-    /** Inject the outreach author — words for a self-initiated communicate are authored on selection. */
-    attachOutreachAuthor(a: OutreachAuthor): void;
-    /** Forward the session logger to the owned ProactiveCommunicator (it audits outbound). */
-    attachSessionLogger(logger: SessionLogger | null): void;
-    /** Inject the permission gate so outbound communication is grant-checked. */
-    attachGrants(g: AccessGrants): void;
-    registerSchema(schema: MotorSchema): void;
-    /** Repertoire-first schema resolution, falling back to the local seed set. */
-    private _resolve;
-    publishes(): CognitiveEventSchema[];
-    subscribes(): string[];
-    /**
-     * The executor is plan-agnostic. A plan does NOT dispatch steps here — it biases
-     * the affordance competition (see PLANNING_AS_PRIOR_TODO.md), so a plan-driven
-     * action reaches the executor as an ordinary committed `agency.intent` the
-     * selector won. That intent already carries planId/stepId provenance (stamped by
-     * the selector from the winning affordance); `_emitActionOutcome` threads it back
-     * out, which is how the PlanningEngine advances. Nothing plan-specific here.
-     */
-    onCognitiveEvent(): void;
-    snapshot(): Record<string, unknown>;
-    react(_delta: Duration, tick: Tick, state: ReadonlySimulationState, _context: SimulationContext): Promise<EngineResult>;
-    private _expand;
-    private _advance;
-    private _subIntent;
-    /**
-     * Deliver a communicate intent through the shared ProactiveCommunicator, gated by
-     * AccessGrants. Returns true when it handled the intent (delivered + outcome written),
-     * false when it cannot (no delivery layer / no authored content) so the caller holds
-     * the intent 'awaiting'. Message *content* is authored upstream (the deliberation /
-     * conversation facet); this is the single enaction → delivery path.
-     */
-    private _deliver;
-    /**
-     * Ask a facet for the words, off-tick. Fire-and-forget on purpose: awaiting this
-     * from inside `react()` deadlocks the tick loop against the facet pump. Idempotent
-     * per intent — a request already in flight is not duplicated, so the intent may sit
-     * 'awaiting' across many ticks with exactly one LLM call behind it.
-     */
-    private _requestAuthoring;
-    private _emitEnacted;
-    /**
-     * Publish `action.outcome` for EVERY enaction — the shared metacognitive/affective
-     * sink. The PlanningEngine consumes it (when planId/stepId are present) to advance
-     * a plan; the ConfidenceCalibrator calibrates predicted-vs-actual from it; the
-     * RewardEvaluator reads it as a reward signal. `confidence` carries the agency's
-     * own forward-model prior so calibration has a real prediction to score.
-     */
-    /**
-     * Retire the `ideomotor.intent` that produced this act.
-     *
-     * Nothing deleted these. They were cleared only when the executive next ran and
-     * declined to name the same action again — and the executive runs on an interval,
-     * so between cycles a willed reach-out STOOD in state, was rebuilt into an
-     * affordance every single tick, and competed every single tick. Observed as
-     * dozens of identical lines:
-     *
-     *   [selector] willed reach-out → … NOT selected: 0.297 < inspect… 0.340
-     *
-     * losing by four thousandths, over and over, until it won — twice. Fabrice got
-     * the same message byte-for-byte 25 ticks apart, two outbox ids.
-     *
-     * `justEnacted` was built to hold this line and cannot: it is a DECAYING
-     * quantity, capped at `repeatDamping` (0.30), and a standing intent outlasts it
-     * by construction. Damping a permanent pull only ever delays it. So the intention
-     * is discharged by being acted on, which is what an intention is — you meant to
-     * tell someone something, you told them, and it is finished. If the mind still
-     * wants to say more, the next executive cycle forms a new one, now seeing "I said
-     * this 25 ticks ago and have had no answer" in front of it.
-     *
-     * Satiation stays exactly as it was, and still earns its keep: it damps saying
-     * the same thing again for reasons that did NOT come from a standing will.
-     */
-    private _dischargeWill;
-    private _emitActionOutcome;
-    /**
-     * Announce a dispatched act to its TWO audiences, which live on two buses.
-     *
-     * The mind's own faculties appraise it — affective.blender, stress.regulator
-     * and attention.allocator all subscribe to `agency.invocation` on the
-     * CognitiveBus, the internal fabric. But the act is host-owned, and the HOST
-     * hears only `simulation.eventBus`: `WillStem` buffers an invocation for
-     * delivery from `eventBus.subscribeAll`, and that is the sole path by which an
-     * external effector ever reaches a handler.
-     *
-     * Only the cognitive half was ever published. The two buses have no bridge, so
-     * `bufferInvocation` was subscribed to a bus that has never carried the event
-     * — measured on a live boot: `agency.invocation.dispatched` incremented,
-     * `pendingEffectorInvocations` stayed empty, the intent held `awaiting`, and
-     * fifteen ticks later `[motor] ⏱ "inspect" timed out`. **No host-owned
-     * effector invocation has ever been delivered.** Communication is unaffected —
-     * the outbox is a separate mechanism, which is why a Will could always speak.
-     *
-     * Both ends were unit-tested and the crossing was not: `policy.*.test.ts` calls
-     * `bufferInvocation` directly, which is true about the controller and silent
-     * about whether anything reaches it. Same shape as the affordance-field hop.
-     */
-    private _emitDispatch;
-    private _dispatchPayload;
 }
 
 declare class ReafferenceEngine implements CognitiveEngine {

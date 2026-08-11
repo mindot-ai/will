@@ -93,46 +93,34 @@ export const INNATE_SCHEMAS: MotorSchema[] = [
     preconditions: [ { metric: 'energy.level', op: 'gt', value: 8 } ],
     baseValence: 0.05,
     /**
-     * `external` because looking is a question put to the WORLD, and only the
-     * world can answer it.
+     * Outward only — a question put to the world, which is the only thing that
+     * can answer it.
      *
-     * Without the tag this resolved as a sync stance whose whole body was the
-     * sentence "I examine it closely; more of its detail resolves" — returned
-     * with success 0.65 and no detail resolving. Nothing was learned, no dossier
-     * moved, and `drive.curiosity_resolve` (which rises with
-     * `familiarity × (1 − resolutionConfidence)` and earns a goal of its own) was
-     * exactly as high afterwards. Worse, reafference scores what it is told: a
-     * mind that looked and learned nothing was taught that looking WORKS, so
-     * habit and value rose with every futile repetition.
+     * Turning attention inward already has three names on this very floor:
+     * `orient` sweeps the situation, `attend` mobilises attention, `reflect`
+     * turns inward and lets patterns settle. `inspect` naming that too was a
+     * second name for an act that already had one.
      *
-     * Tagged, it rides the path `reach-out` already rides — dispatched to the
-     * host, held `awaiting`, acked or timed out. The ack carries only
-     * `{success, description, metrics}`, so the host CANNOT hand facts back
-     * through it; an answer must arrive the one way anything reaches this mind,
-     * as a percept it perceives and judges for itself. That constraint is the
-     * feature. And an unanswered look now fails honestly at AWAIT_TIMEOUT, which
-     * is what teaches a mind to stop examining what will not resolve.
+     * The collision was not stylistic. The two readings have DIFFERENT failure
+     * modes — "I hold no record of it" versus "the world did not answer" — so one
+     * verb covering both forced three disambiguation flags into a pure function,
+     * and left the inward reading unable to fail at all. Live, a fresh Will
+     * proceduralized this to habit 0.64 within fifteen ticks of birth and spent
+     * five of its first eight decisions on it, examining its own affordance
+     * entities and being told each time that it went well.
      *
-     * Innate AND host-dependent is not a contradiction — `reach-out` is both, for
-     * the same reason: every mind can speak, but whether the words land depends on
-     * there being a world to land in.
+     * Tagged external it rides the path `reach-out` already rides: dispatched to
+     * the host, held awaiting, acked or timed out. The ack carries only
+     * `{success, description, metrics}`, so a host CANNOT hand facts back through
+     * it — an answer must arrive the one way anything reaches this mind, as a
+     * percept it judges for itself. An unanswered look fails at AWAIT_TIMEOUT,
+     * which is what teaches a mind to stop examining what will not resolve.
+     *
+     * Innate AND host-dependent is not a contradiction; `reach-out` is both.
+     * Every mind can look, but whether looking finds anything depends on there
+     * being a world.
      */
-    /**
-     * NOT tagged `external`, deliberately — and it was, briefly, which was wrong.
-     *
-     * Inspection is not a kind of act, it is an act applied to a kind of thing.
-     * Examining a memory, a feeling, or its own state is something a mind does
-     * alone; examining a room or a repo is a question only the world can answer.
-     * A fixed tag forces one of those onto both: tagged external, looking inward
-     * would go out to a host and time out; left sync, looking outward invents a
-     * detail nobody supplied — which is the version that shipped, narrating "more
-     * of its detail resolves" while nothing resolved.
-     *
-     * So the mode is decided per TARGET, at enaction: a referent the world knows
-     * an address for is dispatched and awaited; anything else resolves from what
-     * the mind already holds. See `enact` / EnactionContext.worldAddressable.
-     */
-    tags:       [ 'perception', 'information' ],
+    tags:       [ 'perception', 'information', 'external' ],
   },
   {
     id:         'reach-out',

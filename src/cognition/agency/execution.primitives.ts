@@ -40,32 +40,6 @@ export interface EnactionContext {
   targetEntityId?: string
   energy:          number   // 0..100
   stress:          number   // 0..100
-  /**
-   * True when the target is something the WORLD holds an address for.
-   *
-   * Set by the executor, which can see the alias table. It is what decides
-   * whether `inspect` is a question put outward or a look inward — see the note
-   * on the innate schema. Absent means "not externally addressable", which is the
-   * honest default: a mind examining something it only holds internally.
-   */
-  worldAddressable?: boolean
-  /**
-   * True when the mind actually holds a record of the target.
-   *
-   * Looking inward at something you have nothing about is not a quiet success,
-   * it is coming back empty. Live, a 22-tick-old Will inspected
-   * `affordance-1-orient-orient` — one of its OWN affordance entities — and was
-   * told it went well.
-   */
-  heldDetail?: boolean
-  /**
-   * True when this same target was inspected recently.
-   *
-   * The second look at an unchanged thing resolves nothing further, and saying
-   * otherwise is what let `inspect` proceduralize into a habit (0.64) fifteen
-   * ticks after birth, before anyone had spoken to her.
-   */
-  alreadyLooked?: boolean
 }
 
 const COMM_SCHEMAS = new Set([ 'reach-out', 'talk', 'text', 'broadcast', 'gesture' ])
@@ -79,12 +53,7 @@ export function modeOf( schema: MotorSchema ): EnactionMode {
 
 /** Enact a primitive schema, producing a state-grounded outcome. */
 export function enact( ctx: EnactionContext ): Enaction {
-  // `inspect` is the one act whose mode belongs to its OBJECT rather than to
-  // itself: looking at a room is a question for the world, looking at a memory is
-  // not. Everything else is classified by its tags alone.
-  const mode = ctx.schema.id === 'inspect' && ctx.worldAddressable
-    ? 'external'
-    : modeOf( ctx.schema )
+  const mode = modeOf( ctx.schema )
 
   if( mode === 'communicate'){
     const name = str( ctx.parameters['targetEntityName'] ) ?? ctx.targetEntityId ?? 'them'
@@ -126,48 +95,26 @@ function syncStance( ctx: EnactionContext ): Enaction {
       return sync( 0.5, 0.0, 'I let time pass; regulatory processes continue their quiet work.')
     case 'express':
       return sync( 0.6, 0.1, 'My inner state becomes outwardly visible.')
-    // Looking inward — the target is something the mind holds, not something the
-    // world can be asked about. It reports what is actually there.
+    // No `inspect` case, deliberately.
     //
-    // The version this replaces returned success 0.65 with "more of its detail
-    // resolves" for EVERY inspect, and nothing ever resolved. Reafference scores
-    // what it is told, so a mind that looked and learned nothing was taught that
-    // looking works — habit and value climbing with each futile repetition. The
-    // failure arm below is the point of the fix, not an edge case: a mind must be
-    // able to find out that there is nothing more to find out.
-    // Looking inward, and able to come back empty — which is the whole point.
+    // Looking is now outward ONLY — a question put to the world, tagged external
+    // and dispatched. Turning attention inward already has three names on this
+    // very floor: `orient` sweeps the situation, `attend` mobilises attention,
+    // `reflect` turns inward and lets patterns settle. `inspect` naming that too
+    // was a second name for an act that already had one.
     //
-    // Two versions of this shipped and both were the same lie. The first returned
-    // success 0.65 with "more of its detail resolves" for every inspect. The
-    // second required a name, which the percept binding always supplies, so it
-    // also always succeeded. Reafference rewards a reliably-successful act, so a
-    // fresh Will proceduralized `inspect` to habit 0.64 within fifteen ticks and
-    // spent five of its first eight decisions on it, examining its own affordance
-    // entities and learning nothing.
+    // The cost of the collision was not stylistic. The two readings have
+    // DIFFERENT failure modes — "I hold no record of it" versus "the world did not
+    // answer" — and one verb covering both meant a pure function needed three
+    // flags passed in to tell which it was. Live, the inward reading could not
+    // fail at all: a fresh Will proceduralized inspect to habit 0.64 in fifteen
+    // ticks, examining its own affordance entities and being told it went well.
     //
-    // The defect was never the condition, it was that an internal look had no way
-    // to FAIL. "Take in what I already hold" is always possible, so it was not an
-    // act with an outcome, it was a no-op that reported success. A mind must be
-    // able to find out that there is nothing to find out.
-    case 'inspect': {
-      const held = str( parameters['targetEntityName'] ) ?? str( parameters['focus'] )
-      if( !held )
-        return look( false, 'I go to examine something and find nothing named to examine.')
-      if( ctx.heldDetail === false )
-        return look( false, `I turn my attention to ${ held } and find I hold no record of it.`)
-      if( ctx.alreadyLooked )
-        return look( false, `I look at ${ held } again and find nothing I did not already have.`)
-      return sync( 0.6, 0.05, `I turn my attention to ${ held }; what I hold of it comes into view.`)
-    }
+    // Outward-only, that is structurally impossible rather than conditionally
+    // caught. An unanswered look fails because nothing answered.
     default:
       return sync( 0.5, 0.0, `I enact ${ schema.id }.`)
   }
-}
-
-/** A look that found nothing. Low quality and mildly negative, so reafference
- *  erodes the habit instead of building it — an empty look must cost something. */
-function look( _found: false, description: string ): Enaction {
-  return { mode: 'sync', success: false, outcomeQuality: 0.15, valence: -0.05, description }
 }
 
 function sync( outcomeQuality: number, valence: number, description: string ): Enaction {

@@ -8142,46 +8142,34 @@ var INNATE_SCHEMAS = [
     preconditions: [{ metric: "energy.level", op: "gt", value: 8 }],
     baseValence: 0.05,
     /**
-     * `external` because looking is a question put to the WORLD, and only the
-     * world can answer it.
+     * Outward only — a question put to the world, which is the only thing that
+     * can answer it.
      *
-     * Without the tag this resolved as a sync stance whose whole body was the
-     * sentence "I examine it closely; more of its detail resolves" — returned
-     * with success 0.65 and no detail resolving. Nothing was learned, no dossier
-     * moved, and `drive.curiosity_resolve` (which rises with
-     * `familiarity × (1 − resolutionConfidence)` and earns a goal of its own) was
-     * exactly as high afterwards. Worse, reafference scores what it is told: a
-     * mind that looked and learned nothing was taught that looking WORKS, so
-     * habit and value rose with every futile repetition.
+     * Turning attention inward already has three names on this very floor:
+     * `orient` sweeps the situation, `attend` mobilises attention, `reflect`
+     * turns inward and lets patterns settle. `inspect` naming that too was a
+     * second name for an act that already had one.
      *
-     * Tagged, it rides the path `reach-out` already rides — dispatched to the
-     * host, held `awaiting`, acked or timed out. The ack carries only
-     * `{success, description, metrics}`, so the host CANNOT hand facts back
-     * through it; an answer must arrive the one way anything reaches this mind,
-     * as a percept it perceives and judges for itself. That constraint is the
-     * feature. And an unanswered look now fails honestly at AWAIT_TIMEOUT, which
-     * is what teaches a mind to stop examining what will not resolve.
+     * The collision was not stylistic. The two readings have DIFFERENT failure
+     * modes — "I hold no record of it" versus "the world did not answer" — so one
+     * verb covering both forced three disambiguation flags into a pure function,
+     * and left the inward reading unable to fail at all. Live, a fresh Will
+     * proceduralized this to habit 0.64 within fifteen ticks of birth and spent
+     * five of its first eight decisions on it, examining its own affordance
+     * entities and being told each time that it went well.
      *
-     * Innate AND host-dependent is not a contradiction — `reach-out` is both, for
-     * the same reason: every mind can speak, but whether the words land depends on
-     * there being a world to land in.
+     * Tagged external it rides the path `reach-out` already rides: dispatched to
+     * the host, held awaiting, acked or timed out. The ack carries only
+     * `{success, description, metrics}`, so a host CANNOT hand facts back through
+     * it — an answer must arrive the one way anything reaches this mind, as a
+     * percept it judges for itself. An unanswered look fails at AWAIT_TIMEOUT,
+     * which is what teaches a mind to stop examining what will not resolve.
+     *
+     * Innate AND host-dependent is not a contradiction; `reach-out` is both.
+     * Every mind can look, but whether looking finds anything depends on there
+     * being a world.
      */
-    /**
-     * NOT tagged `external`, deliberately — and it was, briefly, which was wrong.
-     *
-     * Inspection is not a kind of act, it is an act applied to a kind of thing.
-     * Examining a memory, a feeling, or its own state is something a mind does
-     * alone; examining a room or a repo is a question only the world can answer.
-     * A fixed tag forces one of those onto both: tagged external, looking inward
-     * would go out to a host and time out; left sync, looking outward invents a
-     * detail nobody supplied — which is the version that shipped, narrating "more
-     * of its detail resolves" while nothing resolved.
-     *
-     * So the mode is decided per TARGET, at enaction: a referent the world knows
-     * an address for is dispatched and awaited; anything else resolves from what
-     * the mind already holds. See `enact` / EnactionContext.worldAddressable.
-     */
-    tags: ["perception", "information"]
+    tags: ["perception", "information", "external"]
   },
   {
     id: "reach-out",
@@ -21861,7 +21849,7 @@ function modeOf(schema) {
   return "sync";
 }
 function enact(ctx) {
-  const mode = ctx.schema.id === "inspect" && ctx.worldAddressable ? "external" : modeOf(ctx.schema);
+  const mode = modeOf(ctx.schema);
   if (mode === "communicate") {
     const name = str6(ctx.parameters["targetEntityName"]) ?? ctx.targetEntityId ?? "them";
     return {
@@ -21883,7 +21871,7 @@ function enact(ctx) {
   return syncStance(ctx);
 }
 function syncStance(ctx) {
-  const { schema, parameters, energy, stress } = ctx;
+  const { schema, energy, stress } = ctx;
   const e01 = clamp018(energy / 100);
   const s01 = clamp018(stress / 100);
   switch (schema.id) {
@@ -21901,28 +21889,23 @@ function syncStance(ctx) {
       return sync(0.5, 0, "I let time pass; regulatory processes continue their quiet work.");
     case "express":
       return sync(0.6, 0.1, "My inner state becomes outwardly visible.");
-    // Looking inward — the target is something the mind holds, not something the
-    // world can be asked about. It reports what is actually there.
+    // No `inspect` case, deliberately.
     //
-    // The version this replaces returned success 0.65 with "more of its detail
-    // resolves" for EVERY inspect, and nothing ever resolved. Reafference scores
-    // what it is told, so a mind that looked and learned nothing was taught that
-    // looking works — habit and value climbing with each futile repetition. The
-    // failure arm below is the point of the fix, not an edge case: a mind must be
-    // able to find out that there is nothing more to find out.
-    case "inspect": {
-      const focus = str6(parameters["focus"]);
-      const held = str6(parameters["targetEntityName"]) ?? focus;
-      if (!held)
-        return {
-          mode: "sync",
-          success: false,
-          outcomeQuality: 0.1,
-          valence: -0.05,
-          description: "I go to examine something and find nothing named to examine."
-        };
-      return sync(0.6, 0.05, `I turn my attention to ${held} and take in what I already hold of it.`);
-    }
+    // Looking is now outward ONLY — a question put to the world, tagged external
+    // and dispatched. Turning attention inward already has three names on this
+    // very floor: `orient` sweeps the situation, `attend` mobilises attention,
+    // `reflect` turns inward and lets patterns settle. `inspect` naming that too
+    // was a second name for an act that already had one.
+    //
+    // The cost of the collision was not stylistic. The two readings have
+    // DIFFERENT failure modes — "I hold no record of it" versus "the world did not
+    // answer" — and one verb covering both meant a pure function needed three
+    // flags passed in to tell which it was. Live, the inward reading could not
+    // fail at all: a fresh Will proceduralized inspect to habit 0.64 in fifteen
+    // ticks, examining its own affordance entities and being told it went well.
+    //
+    // Outward-only, that is structurally impossible rather than conditionally
+    // caught. An unanswered look fails because nothing answered.
     default:
       return sync(0.5, 0, `I enact ${schema.id}.`);
   }
@@ -22108,17 +22091,7 @@ var MotorSchemaExecutor = class {
         expectedReward: intent.expectedReward,
         expectedValence: intent.expectedValence
       };
-      const enaction = schema ? enact({
-        schema,
-        parameters: intent.parameters,
-        targetEntityId: intent.targetEntityId,
-        energy,
-        stress,
-        // Whether the world knows where this is — what decides if `inspect`
-        // is a question put outward or a look inward. Resolved here because
-        // the alias table lives in state and `enact` is pure.
-        worldAddressable: intent.targetEntityId ? addressesOf(state.entities, intent.targetEntityId).length > 0 : false
-      }) : {
+      const enaction = schema ? enact({ schema, parameters: intent.parameters, targetEntityId: intent.targetEntityId, energy, stress }) : {
         mode: "external",
         success: true,
         outcomeQuality: 0.5,

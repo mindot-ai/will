@@ -13,8 +13,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import type { Will, Stimulus, WillMessage } from '#sdk/will'
-import { connectDiscord, parseChannels, parseMentionOnly, type DiscordLikeClient, type DiscordLikeMessage } from '#channels/discord'
+import type { Will, Stimulus, WillMessage } from '#surface/sdk/will'
+import { connectDiscord, parseChannels, parseMentionOnly, type DiscordLikeClient, type DiscordLikeMessage } from '#surface/channels/discord'
 
 // ── fakes ────────────────────────────────────────────────────────────────────
 

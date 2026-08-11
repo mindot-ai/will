@@ -7,24 +7,17 @@
 		"noUncheckedIndexedAccess": true,
 		"skipLibCheck": true,
 		"paths": {
-			"#cognition/*": ["src/cognition/*"],
 			"#faculties/*": ["src/cognition/faculties/*"],
 			"#agency/*": ["src/cognition/agency/*"],
 			"#senses/*": ["src/cognition/senses/*"],
 			"#memory/*": ["src/cognition/memory/*"],
-			"#extensions/*": ["src/extensions/*"],
-			"#effectors/*": ["src/effectors/*"],
-			"#sandboxes/*": ["src/sandboxes/*"],
-			"#channels/*": ["src/channels/*"],
-			"#profiles/*": ["src/profiles/*"],
-			"#runners/*": ["src/runners/*"],
+			"#cognition/*": ["src/cognition/*"],
+			"#surface/*": ["src/surface/*"],
 			"#core/*": ["src/core/*"],
 			"#stem/*": ["src/stem/*"],
 			"#llm/*": ["src/llm/*"],
 			"#pma/*": ["src/pma/*"],
-			"#sdk/*": ["src/sdk/*"],
-			"#types": ["src/types"],
-			"#root/*": ["src/*"]
+			"#types": ["src/types"]
 		},
 		"baseUrl": "."
 	},

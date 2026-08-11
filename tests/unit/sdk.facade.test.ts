@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, afterAll } from 'vitest'
-import { Will } from '#sdk/will'
+import { Will } from '#surface/sdk/will'
 import { setLogger, resetLogger } from '#core/logger'
 
 setLogger( { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } )

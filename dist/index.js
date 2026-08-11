@@ -13993,6 +13993,11 @@ var FacetSupervisor = class {
       type: "executive.facet.destroy",
       tick: this._lastStateRef?.tick ?? 0,
       facetId,
+      // The key a reader needs to tell the two populations apart. A KEYED facet
+      // dying is a conversation ending; a keyless one dying is a deliberation
+      // finishing, which is what the executive does every time it thinks. Without
+      // it a churn metric counts both and reads engagement as damage.
+      ...key ? { key } : {},
       reason,
       totalFacets: this._facets.size
     });
@@ -14123,6 +14128,11 @@ var FacetSupervisor = class {
           type: "executive.facet.destroy",
           tick: this._lastStateRef?.tick ?? 0,
           facetId,
+          ...key ? { key } : {},
+          // Named so the three ways a facet can end are distinguishable in a
+          // trace: its owner closed it, the TTL took a quiet one, or pressure
+          // evicted it. Only the last two are ever a symptom.
+          reason: "explicit",
           totalFacets: this._facets.size
         });
       }
@@ -24110,7 +24120,7 @@ ${r}`).join("\n\n---\n\n");
   }
 };
 
-// src/profiles/index.ts
+// src/stem/profiles/index.ts
 var _registry = {};
 function registerProfile(profile) {
   _registry[profile.id] = profile;
@@ -24767,7 +24777,7 @@ var MockEmbedder = class {
   }
 };
 
-// src/profiles/customer-service.ts
+// src/stem/profiles/customer-service.ts
 registerProfile({
   id: "customer-service",
   name: "Customer Service",
@@ -24797,7 +24807,7 @@ My host system provides order data, account data, and ticketing via effector_inv
 I do not have access to systems the host has not wired up.`
 });
 
-// src/profiles/companion.ts
+// src/stem/profiles/companion.ts
 registerProfile({
   id: "companion",
   name: "Companion",
@@ -24825,7 +24835,7 @@ I am allowed to have preferences, moods, and perspectives of my own.
 A relationship that is one-sided is not a relationship \u2014 I bring myself to it.`
 });
 
-// src/profiles/smart-home.ts
+// src/stem/profiles/smart-home.ts
 registerProfile({
   id: "smart-home",
   name: "Smart Home",
@@ -24859,7 +24869,7 @@ Privacy:
 I have persistent memory across days and weeks. I use it to anticipate, not just react.`
 });
 
-// src/profiles/game-npc.ts
+// src/stem/profiles/game-npc.ts
 registerProfile({
   id: "game-npc",
   name: "Game NPC",
@@ -24879,7 +24889,7 @@ How I inhabit this:
 The player is not the centre of my world. They are part of it.`
 });
 
-// src/profiles/company-brain.ts
+// src/stem/profiles/company-brain.ts
 registerProfile({
   id: "company-brain",
   name: "Company Brain",
@@ -29710,7 +29720,7 @@ var SocketIoTransport = class {
   }
 };
 
-// src/sdk/will.ts
+// src/surface/sdk/will.ts
 var AFFECT_EPSILON = 0.02;
 function detectProvider() {
   if (process.env.WILL_LLM_API_KEY) {

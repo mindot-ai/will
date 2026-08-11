@@ -7,7 +7,7 @@
     "url": "git+https://github.com/mindot-ai/will.git"
   },
   "bin": {
-    "will": "dist/cli.js"
+    "will": "dist/surface/cli.js"
   },
   "main": "./dist/index.js",
   "devDependencies": {
@@ -32,16 +32,16 @@
       "types": "./dist/index.d.ts"
     },
     "./mcp": {
-      "import": "./dist/mcp/effectors.js",
-      "types": "./dist/mcp/effectors.d.ts"
+      "import": "./dist/surface/mcp/effectors.js",
+      "types": "./dist/surface/mcp/effectors.d.ts"
     },
     "./discord": {
-      "import": "./dist/channels/discord.js",
-      "types": "./dist/channels/discord.d.ts"
+      "import": "./dist/surface/channels/discord.js",
+      "types": "./dist/surface/channels/discord.d.ts"
     },
     "./whatsapp": {
-      "import": "./dist/channels/whatsapp.js",
-      "types": "./dist/channels/whatsapp.d.ts"
+      "import": "./dist/surface/channels/whatsapp.js",
+      "types": "./dist/surface/channels/whatsapp.d.ts"
     }
   },
   "bugs": {
@@ -78,11 +78,10 @@
   "scripts": {
     "build": "tsup",
     "build:types": "tsc --project tsconfig.build.json",
-    "dev": "bun --env-file=.env run src/runners/thin-shim.runner.ts",
+    "dev": "bun --env-file=.env run examples/thin-shim.ts",
     "dev:build": "tsup --watch",
-    "run:social": "bun --env-file=.env run src/runners/social.runner.ts",
-    "run:outreach": "bun --env-file=.env run src/runners/outreach.runner.ts",
-    "start": "bun --env-file=.env run src/runners/thin-shim.runner.ts",
+    "run:social": "bun --env-file=.env run examples/social.ts",
+    "run:outreach": "bun --env-file=.env run examples/outreach.ts",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "prepublishOnly": "bun run typecheck && bun test && bun run build",

@@ -13,8 +13,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import type { Will, Stimulus, WillMessage } from '#sdk/will'
-import { connectWhatsApp, type WaLikeSocket, type WaLikeMessage } from '#channels/whatsapp'
+import type { Will, Stimulus, WillMessage } from '#surface/sdk/will'
+import { connectWhatsApp, type WaLikeSocket, type WaLikeMessage } from '#surface/channels/whatsapp'
 
 // ── fakes ────────────────────────────────────────────────────────────────────
 

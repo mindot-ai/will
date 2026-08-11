@@ -232,18 +232,18 @@ describe('the room a message was addressed in survives the edge', () => {
     // Computed on every inbound since this bridge shipped, used only to pick a
     // roster field. It is the one fact that makes a room the right or wrong place
     // to say something — and a follow-up promised in a DM went out to #general.
-    expect( read('channels/discord.ts') ).toMatch( /direct: isDM/ )
+    expect( read('surface/channels/discord.ts') ).toMatch( /direct: isDM/ )
   } )
 
   it('WhatsApp distinguishes a group from a one-to-one chat', () => {
-    expect( read('channels/whatsapp.ts') ).toMatch( /@g\.us/ )
+    expect( read('surface/channels/whatsapp.ts') ).toMatch( /@g\.us/ )
   } )
 
   it('carries it through the SDK boundary without inventing a default', () => {
     // Undefined is honestly different from false: an unknown room is not known to
     // be public, and defaulting would have the mind treat every unlabelled thread
     // as safe to speak in.
-    const sdk = read('sdk/will.ts')
+    const sdk = read('surface/sdk/will.ts')
     expect( sdk ).toMatch( /direct\?: boolean/ )
     expect( sdk ).toMatch( /stimulus\.direct !== undefined/ )
   } )

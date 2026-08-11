@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry:            [ 'src/index.ts', 'src/cli.ts', 'src/mcp/effectors.ts', 'src/channels/discord.ts', 'src/channels/whatsapp.ts' ],
+  entry:            [ 'src/index.ts', 'src/surface/cli.ts', 'src/surface/mcp/effectors.ts', 'src/surface/channels/discord.ts', 'src/surface/channels/whatsapp.ts' ],
   outDir:           'dist',
   format:           [ 'esm' ],
   target:           'esnext',
@@ -19,22 +19,15 @@ export default defineConfig({
   esbuildOptions( opts ){
     opts.alias = {
       '#core':        './src/core',
-      '#deployment':  './src/deployment',
-      '#effectors':   './src/effectors',
       '#cognition':   './src/cognition',
       '#faculties':   './src/cognition/faculties',
       '#agency':      './src/cognition/agency',
       '#senses':      './src/cognition/senses',
       '#memory':      './src/cognition/memory',
-      '#channels':    './src/channels',
-      '#profiles':    './src/profiles',
-      '#runners':     './src/runners',
+      '#surface':    './src/surface',
       '#llm':         './src/llm',
       '#pma':         './src/pma',
-      '#extensions':  './src/extensions',
-      '#sandboxes':   './src/sandboxes',
-      '#types':       './src/types',
-      '#root':        './src',
+      '#types':       './src/types'
     }
   },
   // Runtime deps (package.json dependencies) are external by default — the MCP

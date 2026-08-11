@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { ChannelRoster } from '#channels/roster'
+import { ChannelRoster } from '#surface/channels/roster'
 
 let dir: string
 beforeEach( () => { dir = mkdtempSync( join( tmpdir(), 'will-roster-') ) } )

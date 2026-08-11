@@ -34,20 +34,20 @@ const code = ( p: string ): string => read( p )
 
 describe('the thread survives the projection boundary', () => {
   it('WillMessage carries the thread it is answering', () => {
-    expect( code('sdk/will.ts') ).toMatch( /interface WillMessage[\s\S]*?thread\?: string/ )
+    expect( code('surface/sdk/will.ts') ).toMatch( /interface WillMessage[\s\S]*?thread\?: string/ )
   } )
 
   it('the tick listener forwards the outbox message\'s threadId onto it', () => {
     // The engine always knew this; only the projection dropped it.
-    const emit = code('sdk/will.ts')
+    const emit = code('surface/sdk/will.ts')
     expect( emit ).toMatch( /thread: msg\.threadId/ )
   } )
 } )
 
 describe('every bridge answers into the room it was addressed in', () => {
   const bridges = [
-    { file: 'channels/discord.ts',  prefix: 'discord:',  list: 'channelIds' },
-    { file: 'channels/whatsapp.ts', prefix: 'whatsapp:', list: 'targets' },
+    { file: 'surface/channels/discord.ts',  prefix: 'discord:',  list: 'channelIds' },
+    { file: 'surface/channels/whatsapp.ts', prefix: 'whatsapp:', list: 'targets' },
   ]
 
   for( const b of bridges ){
@@ -76,7 +76,7 @@ describe('an unprompted utterance still falls through to the roster', () => {
     // A self-initiated message answers nothing, so it genuinely has no thread.
     // Dropping the roster fallbacks would have made the Will unable to speak
     // first at all — a worse failure than the one being fixed.
-    for( const f of [ 'channels/discord.ts', 'channels/whatsapp.ts' ] ){
+    for( const f of [ 'surface/channels/discord.ts', 'surface/channels/whatsapp.ts' ] ){
       const src = code( f )
       expect( src ).toMatch( /peer\?\.lastChannelId/ )
       expect( src ).toMatch( /peer\?\.dmChannelId/ )
@@ -86,7 +86,7 @@ describe('an unprompted utterance still falls through to the roster', () => {
 
 describe('a woken mind is not warned about the placeholder it was built with', () => {
   it('Will.wake declares its identity deferred to the artifact', () => {
-    expect( code('sdk/will.ts') ).toContain('config.identityFromArtifact = true')
+    expect( code('surface/sdk/will.ts') ).toContain('config.identityFromArtifact = true')
   } )
 
   it('assembleMind suppresses only the WARNINGS, never the errors', () => {

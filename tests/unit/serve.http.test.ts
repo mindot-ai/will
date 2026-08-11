@@ -15,8 +15,8 @@ import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Server } from 'node:http'
-import { Will } from '#sdk/will'
-import { buildWillHttpServer } from '#root/serve/server'
+import { Will } from '#surface/sdk/will'
+import { buildWillHttpServer } from '#surface/serve/server'
 import { setLogger, resetLogger } from '#core/logger'
 
 setLogger( { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } )

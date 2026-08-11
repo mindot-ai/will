@@ -14,8 +14,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
-import { Will } from '#sdk/will'
-import { buildWillMcpServer } from '#root/mcp/server'
+import { Will } from '#surface/sdk/will'
+import { buildWillMcpServer } from '#surface/mcp/server'
 import { setLogger, resetLogger } from '#core/logger'
 
 setLogger( { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } )

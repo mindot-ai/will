@@ -15,8 +15,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { z } from 'zod'
-import { Will } from '#sdk/will'
-import { connectMcpEffectors, describeMcpTool, buildMcpHandler, type McpToolInfo } from '#root/mcp/effectors'
+import { Will } from '#surface/sdk/will'
+import { connectMcpEffectors, describeMcpTool, buildMcpHandler, type McpToolInfo } from '#surface/mcp/effectors'
 import { setLogger, resetLogger } from '#core/logger'
 
 setLogger( { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } )

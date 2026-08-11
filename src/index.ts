@@ -87,8 +87,8 @@ export {
 } from '#cognition/memory/index'
 
 // Profile registry — built-in profiles are auto-registered when this package is imported
-// (mind.ts imports '#profiles/built-in' as a side effect).
-export { resolveProfile, listProfiles, type WorldProfile } from '#profiles/index'
+// (mind.ts imports '#stem/profiles/built-in' as a side effect).
+export { resolveProfile, listProfiles, type WorldProfile } from '#stem/profiles/index'
 
 // PMA (Personal Mind Archive) snapshot types
 export type {
@@ -116,7 +116,7 @@ export type { TextMessage, VoiceChunk, SensoryInput } from '#senses/index'
 // `Will.create()` wraps WillStem in the shape a developer expects: on('message'),
 // effector(name, handler), say(), state(), hibernate()/wake(). Drop to `.stem`
 // for the full contract. See src/sdk/will.ts + examples/effectors.ts.
-export { Will } from '#sdk/will'
+export { Will } from '#surface/sdk/will'
 export type {
   CreateWillOptions,
   Stimulus,
@@ -128,5 +128,5 @@ export type {
   EffectorResult,
   EffectorSpec,
   EffectorEntry,
-} from '#sdk/will'
+} from '#surface/sdk/will'
 export type { SchemaPrecondition, EffectorDeclaration } from '#agency/types'

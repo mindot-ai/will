@@ -15,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { pingRequest, resolveLlmMode } from '#root/host/boot'
+import { pingRequest, resolveLlmMode } from '#surface/host/boot'
 import { knownWireFor, PROVIDER_KEY_ENV } from '#llm/index'
 
 describe('preflight ping — spoken in the provider\'s own dialect', () => {

@@ -434,6 +434,18 @@ interface EngineResult {
 interface SimulationEngine {
     readonly name: string;
     /**
+     * Entity types this engine writes as part of the MIND'S OWN operation — its
+     * bookkeeping, not the world's furniture. Declared here, they fall inside the
+     * sense boundary and the outward senses stop re-perceiving them (see
+     * `#cognition/sense.boundary`).
+     *
+     * Optional and silent by default, because the default is the right one for a
+     * host engine: an engine that maintains rooms, documents or sensor readings
+     * wants those perceived. Declare only what the mind should not encounter as an
+     * event in its world.
+     */
+    readonly writes?: readonly string[];
+    /**
      * Called once per tick with a frozen read-only snapshot.
      * Engines must NOT mutate state directly — return commands instead.
      * Omit entirely on purely event-driven engines — the orchestrator skips them.
@@ -2426,6 +2438,16 @@ interface ExteroceptionConfig {
     emitPerceptEvents?: boolean;
     /** Entity types to always treat as high-salience */
     highPriorityTypes?: string[];
+    /**
+     * Where this mind ends — the entity types its own engines write about its own
+     * operation, which it therefore cannot encounter as world events. Live, so a
+     * host adding a cognitive engine after assembly is accounted for.
+     *
+     * Unwired (a bare harness, a unit test) it falls back to the shipped anatomy,
+     * which is right for every assembly that adds no cognitive engine of its own.
+     * See `#cognition/sense.boundary`.
+     */
+    endogenous?: () => ReadonlySet<string>;
     bus?: CognitiveBus;
 }
 declare class Exteroception implements SimulationEngine, CognitiveEngine {
@@ -2434,11 +2456,35 @@ declare class Exteroception implements SimulationEngine, CognitiveEngine {
     private _defaultSalience;
     private _emitPerceptEvents;
     private _highPriorityTypes;
+    /**
+     * entityId → what was last seen of it. The TYPE is remembered alongside the
+     * version because a removal has to answer the same question an appearance
+     * does — "was this mine?" — and by then the entity is gone. It used to be
+     * answered by a second, separately-drifting list of id prefixes.
+     */
     private _previousEntityVersions;
     private _bus;
     private readonly _model;
+    /** Live sense boundary + a memo, so a 50-engine union isn't rebuilt per tick. */
+    private _boundary;
+    private _endogenousMemo;
     constructor(config?: ExteroceptionConfig);
     attachBus(bus: CognitiveBus): void;
+    /**
+     * Wire the live sense boundary. Separate from construction because the
+     * boundary is derived from the assembled engine list, and this sense is
+     * constructed before that list exists (same reason `attachBus` exists).
+     */
+    attachBoundary(resolve: () => ReadonlySet<string>): void;
+    /**
+     * The types that are THIS mind rather than its world.
+     *
+     * Re-read each tick so a host engine registered after assembly still lands
+     * inside the boundary; the memo makes that a set-identity check in the common
+     * case, since `endogenousTypes` returns the shipped set unchanged when nothing
+     * extra is declared.
+     */
+    private _endogenous;
     subscribes(): string[];
     publishes(): CognitiveEventSchema[];
     onCognitiveEvent(e: CognitiveEvent): StateCommands | void;

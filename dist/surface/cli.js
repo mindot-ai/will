@@ -6574,50 +6574,109 @@ function staleRevocationIds(entities, tick) {
   return stale;
 }
 
-// src/cognition/faculties/exteroception.ts
-var internalTypes = /* @__PURE__ */ new Set([
+// src/cognition/sense.boundary.ts
+var MIND_OWN_ENTITY_TYPES = /* @__PURE__ */ new Set([
+  // ── perception ────────────────────────────────────────────────
+  // Percepts about percepts are the original feedback loop this guarded.
   "percept",
   "percept.social",
-  "working_memory.item",
+  // ── attention, interoception, control ─────────────────────────
   "interoception",
   "attention.focus",
-  "decision.record",
+  "attention.demand",
   "task.focus",
+  "decision.record",
   "self_observation",
-  "goal",
+  // ── memory ────────────────────────────────────────────────────
+  "working_memory.item",
+  "episodic_memory",
+  "spaced_repetition_record",
   "belief",
+  "belief.integrate",
+  // ── deliberative structure ────────────────────────────────────
+  "goal",
   "plan",
+  "plan.prior",
+  // ── narrative + metacognition ─────────────────────────────────
   "narrative_chapter",
   "introspection",
   "self_narrative",
   "cognitive_bias",
-  "effector.created",
+  "calibration.state",
+  "executive.summary",
+  "executive.cache",
+  // ── affect + social models ────────────────────────────────────
+  // A dossier is the mind's record OF someone, not the someone. The person
+  // arrives through audition and social perception; the dossier is what the
+  // mind then holds about them, and re-perceiving it double-counts.
+  "affect.blends",
   "empathic_state",
   "attachment.bond",
   "theory_of_mind",
   "reputation",
-  "episodic_memory",
-  // Internal state entities written by our own engines — not external events
-  "affect.blends",
-  "executive.summary",
-  // The agency's own forward-model records (EXAFFERENCE P1/P2): perceiving our
-  // expected-consequence descriptors would be a self-noise loop.
+  "known-entity",
+  "known-entity-alias",
+  // ── conversation records ──────────────────────────────────────
+  // SocialPerception is the sense that owns these (it reads
+  // `conversation.received` and emits `percept.social` from it, then sweeps it).
+  // Exteroception perceiving them too was the same turn counted twice.
+  "conversation.received",
+  "conversation.sent",
+  // ── agency ────────────────────────────────────────────────────
+  // The whole pipeline: the field it synthesizes, what it committed to, what
+  // came back, what it learned, and what it merely imagined.
+  "affordance",
+  "agency.intent",
+  "agency.outcome",
+  "agency.skill",
+  "agency.schema",
+  "ideomotor.intent",
+  "action.unresolved",
+  "action.unaddressed",
   CONSEQUENCE_TYPE,
-  // The agency's own revocation tombstones (EXAFFERENCE P4) — internal bookkeeping.
-  REVOCATION_TYPE
+  // forward-model records  (EXAFFERENCE P1/P2)
+  REVOCATION_TYPE,
+  // commitment tombstones  (EXAFFERENCE P4)
+  // ── substrate ─────────────────────────────────────────────────
+  // Its configuration and its identity are constitutive of it, not events in
+  // its world. It had been perceiving both.
+  "engine.config",
+  "will.identity",
+  "effector.created",
+  "dream.activity"
 ]);
+function endogenousTypes(engines) {
+  let extra = null;
+  for (const e of engines)
+    for (const t of e.writes ?? [])
+      if (!MIND_OWN_ENTITY_TYPES.has(t))
+        (extra ??= /* @__PURE__ */ new Set()).add(t);
+  if (!extra) return MIND_OWN_ENTITY_TYPES;
+  return /* @__PURE__ */ new Set([...MIND_OWN_ENTITY_TYPES, ...extra]);
+}
+
+// src/cognition/faculties/exteroception.ts
 var Exteroception = class {
   name = "exteroception";
   _maxPerceptsPerTick;
   _defaultSalience;
   _emitPerceptEvents;
   _highPriorityTypes;
+  /**
+   * entityId → what was last seen of it. The TYPE is remembered alongside the
+   * version because a removal has to answer the same question an appearance
+   * does — "was this mine?" — and by then the entity is gone. It used to be
+   * answered by a second, separately-drifting list of id prefixes.
+   */
   _previousEntityVersions = /* @__PURE__ */ new Map();
-  // entityId → updatedAt
   _bus = null;
   _model = new GenerativeModel();
+  /** Live sense boundary + a memo, so a 50-engine union isn't rebuilt per tick. */
+  _boundary;
+  _endogenousMemo = MIND_OWN_ENTITY_TYPES;
   constructor(config = {}) {
     this._bus = config.bus ?? null;
+    this._boundary = config.endogenous ?? null;
     this._maxPerceptsPerTick = config.maxPerceptsPerTick ?? 50;
     this._defaultSalience = config.defaultSalience ?? 0.3;
     this._emitPerceptEvents = config.emitPerceptEvents ?? true;
@@ -6631,6 +6690,26 @@ var Exteroception = class {
   }
   attachBus(bus) {
     this._bus = bus;
+  }
+  /**
+   * Wire the live sense boundary. Separate from construction because the
+   * boundary is derived from the assembled engine list, and this sense is
+   * constructed before that list exists (same reason `attachBus` exists).
+   */
+  attachBoundary(resolve2) {
+    this._boundary = resolve2;
+  }
+  /**
+   * The types that are THIS mind rather than its world.
+   *
+   * Re-read each tick so a host engine registered after assembly still lands
+   * inside the boundary; the memo makes that a set-identity check in the common
+   * case, since `endogenousTypes` returns the shipped set unchanged when nothing
+   * extra is declared.
+   */
+  _endogenous() {
+    if (this._boundary) this._endogenousMemo = this._boundary();
+    return this._endogenousMemo;
   }
   // ── Engine interface ─────────────────────────────────────
   subscribes() {
@@ -6719,13 +6798,14 @@ var Exteroception = class {
   _scanWorld(state) {
     const percepts = [];
     const currentIds = /* @__PURE__ */ new Set();
+    const mine = this._endogenous();
     for (const [id, entity] of state.entities) {
       currentIds.add(id);
-      if (internalTypes.has(entity.type)) {
-        this._previousEntityVersions.set(id, entity.updatedAt);
+      if (mine.has(entity.type)) {
+        this._previousEntityVersions.set(id, { at: entity.updatedAt, type: entity.type });
         continue;
       }
-      const previousVersion = this._previousEntityVersions.get(id);
+      const previousVersion = this._previousEntityVersions.get(id)?.at;
       if (previousVersion === void 0) {
         percepts.push({
           entityId: id,
@@ -6747,21 +6827,19 @@ var Exteroception = class {
           ...this._valenceOf(id, state)
         });
       }
-      this._previousEntityVersions.set(id, entity.updatedAt);
+      this._previousEntityVersions.set(id, { at: entity.updatedAt, type: entity.type });
     }
-    for (const [id] of this._previousEntityVersions) {
-      if (!currentIds.has(id)) {
-        if (!id.startsWith("percept-") && !id.startsWith("wm-") && !id.startsWith("attention-") && !id.startsWith("decision-") && !id.startsWith("interoception-") && !id.startsWith("task-") && !id.startsWith("self-obs-")) {
-          percepts.push({
-            entityId: id,
-            changeType: "removed",
-            salience: 0.4,
-            category: "removed",
-            summary: `Entity removed: ${id}`
-          });
-        }
-        this._previousEntityVersions.delete(id);
-      }
+    for (const [id, seen] of this._previousEntityVersions) {
+      if (currentIds.has(id)) continue;
+      if (!mine.has(seen.type))
+        percepts.push({
+          entityId: id,
+          changeType: "removed",
+          salience: 0.4,
+          category: "removed",
+          summary: `Entity removed: ${id}`
+        });
+      this._previousEntityVersions.delete(id);
     }
     percepts.sort((a, b) => b.salience - a.salience);
     return percepts;
@@ -25313,6 +25391,9 @@ function _registerEngines(simulation, cognition, anatomy) {
     ...agencyEngines
   ];
   activeEngines.sort((a, b) => a.priority - b.priority).forEach((e) => simulation.addEngine(e));
+  cognition.exteroception.attachBoundary(
+    () => endogenousTypes(simulation.orchestrator.engines)
+  );
 }
 function _seedIdentity(simulation, config, profile) {
   const identity = config.identity ?? DEFAULT_IDENTITY;

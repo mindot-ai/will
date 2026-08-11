@@ -100,6 +100,7 @@ import {
   GustationEngine
 } from '#cognition/index'
 import { buildEngineConfigEntities, mergeEngineConfig, EngineConfigEntity } from '#cognition/config.mirror.entities'
+import { endogenousTypes } from '#cognition/sense.boundary'
 import { mergeIdentity, composeIdentityPrompt, WILL_CORE_PREAMBLE } from '#cognition/identity.entity'
 import {
   isReferentId, readAliases, handlesOf, defaultHandle,
@@ -1307,6 +1308,12 @@ function _registerEngines( simulation: DefaultSimulation, cognition: Cognition, 
   activeEngines
     .sort( ( a: any, b: any ) => a.priority - b.priority )
     .forEach( e => simulation.addEngine( e ) )
+
+  // Where this mind ends. Read from the LIVE engine list, not a copy, so an
+  // engine a host registers after assembly is inside the boundary too — its
+  // declared `writes` are machinery, and machinery is not perceived.
+  cognition.exteroception.attachBoundary(
+    () => endogenousTypes( simulation.orchestrator.engines ) )
 }
 
 /**

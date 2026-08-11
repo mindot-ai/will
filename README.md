@@ -36,7 +36,7 @@ Embed it six ways — [**SDK facade**](#the-will-sdk-facade--recommended) (Node/
 | Personality: a prompt string | Five-factor trait model that *develops* — traits self-tune from experience and carry a learned baseline across restarts |
 | No self-improvement | A closing metacognition loop — introspection writes back into the engine apparatus (accommodation), bounded and surprise-gated |
 | Token blowout at tick 600 | Context windowing — rolling summariser + isolated conversation threads |
-| Fire-and-forget actions | Bidirectional effector ack loop — the host confirms execution; the result feeds back as a percept |
+| Fire-and-forget actions | Bidirectional effector ack loop — the host confirms execution; the result feeds back through reafference |
 | Fixed effector catalog | Learning agency pipeline — actions are *found in the situation*, enacted, and proceduralised into composite skills via reafference |
 | No identity across restarts | A portable, eval-verified mind artifact (PMA) — psychology **and** learned competence, with a measured reconstruction-fidelity score |
 
@@ -331,6 +331,8 @@ A plan does **not** dispatch steps to an executor down a parallel channel. It pr
 
 A Will does not own a catalog of effectors it looks up. Capability is a **relation between a body-in-a-state and a world-as-perceived**, not a row in a table. So the Will **finds actions in the situation**: perception synthesises a field of *affordances*, a biased competition selects one, the executor enacts it, and the outcome (reafference) updates competence.
 
+Which is why there is a **sense boundary**. Cognition and world share one entity map, so the outward senses have to be told where the mind ends — otherwise it perceives its own bookkeeping as world events and the situation it finds actions in is made of itself. The mind's own types are enumerable (it knows its anatomy); the world's are not, so everything undeclared is world by default and a host can introduce anything. An engine that writes about the mind says so with `writes`; see [`src/cognition/sense.boundary.ts`](src/cognition/sense.boundary.ts).
+
 ```
 senses → percepts
   → AffordanceSynthesizer        affordance field            (no LLM · attention-gated)
@@ -371,7 +373,7 @@ manager.addTickListener(willId, (snap, tick, outbox, invocations) => {
 })
 ```
 
-The acked outcome returns as an `effector.result` percept and feeds the agency learning loop — so the Will gets *better* at your effectors over time, and that learned competence travels in the PMA. (Today external effectors are objectless: the host resolves the target. Per-effector cost/preconditions and entity-targeting are on the roadmap.)
+The acked outcome returns as an `action.outcome` the ReafferenceEngine reconciles against what the Will expected, and feeds the agency learning loop — so the Will gets *better* at your effectors over time, and that learned competence travels in the PMA. (Today external effectors are objectless: the host resolves the target. Per-effector cost/preconditions and entity-targeting are on the roadmap.)
 
 ### Senses
 
@@ -400,7 +402,7 @@ When a Will decides to communicate or invoke an external effector, the result go
 - **`outbox`** — `OutboxMessage[]` — text/speech bubbles to deliver. Each has `deliveryStatus: 'pending' | 'delivered' | 'failed'`.
 - **`pendingEffectorInvocations`** — `EffectorInvocation[]` — structured action requests, each carrying a correlation handle.
 
-The host closes the reafference loop by confirming back — which writes an `effector.result` percept into Exteroception, so the Will *learns what happened*:
+The host closes the reafference loop by confirming back — which writes an `action.outcome` the ReafferenceEngine reconciles, so the Will *learns what happened*:
 
 ```typescript
 manager.confirmMessageDelivery(willId, messageId, true)

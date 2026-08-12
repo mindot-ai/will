@@ -39,6 +39,7 @@ import { CURIOUS_RESOLVED } from '#faculties/known.entity.tracker'
 import { collectGoalTargets } from '#agency/selection.scoring'
 import { readEffectiveParams } from '#cognition/persona.prior'
 import { liveConsequences, enactionFootprint, spokenAtByEntity, CONSEQUENCE_TTL_TICKS, type ConsequenceDescriptor } from '#agency/consequence'
+import { liveSettlements, settlementForce, type SettlementDescriptor } from '#agency/settlement'
 
 /** Default field width for non-innate affordances when no attention metric exists. */
 const DEFAULT_ATTENTION_CAP = 5
@@ -72,6 +73,10 @@ export class AffordanceSynthesizer implements CognitiveEngine {
 
   /** Ticks an act stays satiating (engine-config-action-selector.repeatWindowTicks). */
   private _satiationWindow: number = CONSEQUENCE_TTL_TICKS
+  /** Verdicts System 2 has already reached and that have not yet aged out.
+   *  Collected once per tick for the same reason `_inFlight` is — `_build` runs
+   *  per candidate and this is a full-entity scan. */
+  private _settled: SettlementDescriptor[] = []
 
   /** Tick of the last thing said to each entity — outlives the descriptor sweep. */
   private _spokenAt: ReadonlyMap<string, number> = new Map()
@@ -134,6 +139,9 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // candidate whose (schema, target) matches one of these carries a decaying
     // `justEnacted`, so having just done a thing damps doing it again.
     this._inFlight = liveConsequences( state.entities, tick )
+    // What the mind has already decided. Read here so a verdict reaches the
+    // competition as a force in the field rather than a fact about one intent.
+    this._settled = liveSettlements( state.entities, tick )
     // How long this mind sits with something it has already done before doing it
     // again — the tenant's, not the container's. Falls back to the echo TTL only
     // when unseeded, so a bare harness behaves as before.
@@ -421,6 +429,11 @@ export class AffordanceSynthesizer implements CognitiveEngine {
       speaks ? this._spokeAnywhereAt : undefined,
     )
 
+    // The mirror of satiation: having thought this through holds the choice for
+    // a while, and fades. Keyed exactly as `justEnacted` is, so an objectless
+    // verdict cannot leak onto an act that has an object.
+    const settled = settlementForce( this._settled, schema.id, ctx.targetEntityId, tick )
+
     const key    = ctx.targetEntityId ?? ctx.evokedBy ?? schema.id
     const source = ctx.source ?? schema.source
     // A non-default-source candidate (ideomotor) gets a distinct id so it can coexist
@@ -444,6 +457,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
       ...( availability < 1 ? { availability } : {} ),
       ...( socialPrior !== 0 ? { socialPrior } : {} ),
       ...( justEnacted > 0 ? { justEnacted } : {} ),
+      ...( settled > 0 ? { settled } : {} ),
       planBias:        ctx.planBias,
       willBias:        ctx.willBias,
       planId:          ctx.planId,
@@ -476,6 +490,10 @@ export class AffordanceSynthesizer implements CognitiveEngine {
         // it never was: this is the state hop between synthesis and the
         // competition, and `justEnacted` did not cross it.
         ...( a.justEnacted !== undefined ? { justEnacted: a.justEnacted } : {} ),
+        // The verdict's standing weight — same hop, same rule. A field the
+        // synthesizer computes and the entity does not carry is a field the
+        // competition never sees, which is how `justEnacted` stayed dormant.
+        ...( a.settled !== undefined ? { settled: a.settled } : {} ),
         planBias:        a.planBias,
         willBias:        a.willBias,
         planId:          a.planId,

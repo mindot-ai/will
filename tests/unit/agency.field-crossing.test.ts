@@ -22,6 +22,9 @@
  *     `metadata.candidates` and rendered by the DeliberationEngine as `— <what>`.
  *     The candidate list the mind reasons over listed acts with no meanings.
  *
+ * `settled` is the fourth, and the first to arrive with its decoder already
+ * written rather than months after the mechanism shipped dark.
+ *
  * They survived because the units were tested and the SEAM was not:
  * `agency.repetition.test.ts` builds Affordance literals in memory and calls
  * `scoreAffordance` directly, which is a true statement about the scorer and
@@ -35,6 +38,7 @@ import { AffordanceSynthesizer } from '#agency/engines/affordance.synthesizer'
 import { readAffordance } from '#agency/engines/action.selector'
 import { scoreAffordance, DEFAULT_WEIGHTS } from '#agency/selection.scoring'
 import type { BiasContext } from '#agency/selection.scoring'
+import { settlementId, SETTLEMENT_TYPE, SETTLEMENT_TTL_TICKS } from '#agency/settlement'
 
 const CTX = {} as unknown as SimulationContext
 
@@ -147,6 +151,55 @@ describe('the hop between synthesis and selection', () => {
 
     expect( readAffordance( entity.id, entity.metadata ).description )
       .toBe('give the plants water')
+  })
+
+  it('carries a settled verdict across, so System 2 is not re-recruited for an answered question', async () => {
+    // The fourth field to make this crossing, added WITH its decoder rather than
+    // after someone notices the mechanism has been dark for months. A live COO
+    // deliberated 149 times in 7 hours, median 17s apart, because a verdict left
+    // no trace in the field it was called in to resolve.
+    const synth = new AffordanceSynthesizer()
+    const state = makeState({
+      tick: 110,
+      metrics: { 'energy.level': 60 },
+      entities: [ {
+        id: settlementId('express'), type: SETTLEMENT_TYPE,
+        metadata: { schema: 'express', tick: 100, expiresAt: 100 + SETTLEMENT_TTL_TICKS },
+      } ],
+    })
+
+    const entity = bySchema( ( await synth.react( 0, 110, state, CTX ) ).commands?.set, 'express')!
+
+    expect( entity.metadata?.['settled'], 'the verdict must be WRITTEN onto the affordance')
+      .toBeGreaterThan( 0 )
+    expect( readAffordance( entity.id, entity.metadata ).settled, 'and READ back')
+      .toBeGreaterThan( 0 )
+
+    // And it must actually move the score, or the margin never widens and the
+    // selector recruits System 2 again on the next identical tick.
+    const undecided = bySchema(
+      ( await new AffordanceSynthesizer().react(
+        0, 110, makeState({ tick: 110, metrics: { 'energy.level': 60 } }), CTX ) ).commands?.set,
+      'express')!
+
+    const scoreOf = ( e: EntityInput ) =>
+      scoreAffordance( readAffordance( e.id, e.metadata ), bias(), DEFAULT_WEIGHTS )
+
+    expect( scoreOf( entity ) - scoreOf( undecided ) ).toBeGreaterThan( 0.06 )
+  })
+
+  it('a verdict that has aged out leaves no trace — the question is open again', async () => {
+    const synth = new AffordanceSynthesizer()
+    const res = await synth.react( 0, 200, makeState({
+      tick: 200,
+      metrics: { 'energy.level': 60 },
+      entities: [ {
+        id: settlementId('express'), type: SETTLEMENT_TYPE,
+        metadata: { schema: 'express', tick: 100, expiresAt: 100 + SETTLEMENT_TTL_TICKS },
+      } ],
+    }), CTX )
+
+    expect( bySchema( res.commands?.set, 'express')?.metadata?.['settled'] ).toBeUndefined()
   })
 
   it('carries policy availability across, so a refused ability competes weakly', () => {

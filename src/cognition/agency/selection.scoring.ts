@@ -77,6 +77,20 @@ export interface ScoreWeights {
    * pressing reason to speak again still wins.
    */
   repeat:  number
+  /**
+   * How strongly a verdict System 2 already reached holds the competition.
+   *
+   * Peer of `will` and `repeat` in magnitude, and for the same reason each of
+   * those is: having thought a choice through should weigh about what willing it
+   * does, and no more. Large enough that the settled option clears the
+   * selector's ambiguity gate (0.06) for most of the settlement's life, so the
+   * same question is not re-deliberated every few ticks; small enough that a
+   * genuinely pressing affordance — threat, a person waiting, a drive gone
+   * urgent — still out-competes a standing verdict.
+   *
+   * Decays to 0 with the settlement, so the question re-opens on its own.
+   */
+  settled: number
 }
 
 export const DEFAULT_WEIGHTS: ScoreWeights = {
@@ -92,6 +106,7 @@ export const DEFAULT_WEIGHTS: ScoreWeights = {
   inhib:   0.30,
   risk:    0.20,
   repeat:  0.30,
+  settled: 0.30,
 }
 
 /**
@@ -190,6 +205,7 @@ export function scoreAffordance(
     - w.inhib   * bias.inhibition
     - w.risk    * risk( a, bias )
     - w.repeat  * ( a.justEnacted ?? 0 )
+    + w.settled * ( a.settled ?? 0 )
   )
   // POLICY_REAFFERENCE P2 — policy availability damps a POSITIVE activation only,
   // never flipping its sign: a refused ability competes weakly (so it is rarely

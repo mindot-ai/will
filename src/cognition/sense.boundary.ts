@@ -63,6 +63,7 @@
 
 import { CONSEQUENCE_TYPE } from '#agency/consequence'
 import { REVOCATION_TYPE }  from '#agency/revocation'
+import { SETTLEMENT_TYPE }  from '#agency/settlement'
 
 /**
  * Entity types that ARE the mind — written by its own engines about its own
@@ -114,6 +115,7 @@ export const MIND_OWN_ENTITY_TYPES: ReadonlySet<string> = new Set([
   'action.unresolved', 'action.unaddressed',
   CONSEQUENCE_TYPE,   // forward-model records  (EXAFFERENCE P1/P2)
   REVOCATION_TYPE,    // commitment tombstones  (EXAFFERENCE P4)
+  SETTLEMENT_TYPE,    // verdicts System 2 reached — having thought about it
 
   // ── substrate ─────────────────────────────────────────────────
   // Its configuration and its identity are constitutive of it, not events in

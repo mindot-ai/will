@@ -147,8 +147,7 @@ describe('deciding not to speak', () => {
 
   it('a bare array return keeps the old contract — no words, no reason given', async () => {
     const s = freshState()
-    const exec = new MotorSchemaExecutor()
-    exec.attachOutreachAuthor( author( [] ) )          // legacy shape
+    const exec = executor( [] )                        // legacy shape
     reachOut( s, 'intent-1')
 
     const outcomes = await run( s, exec, AWAIT_TIMEOUT + 3 )

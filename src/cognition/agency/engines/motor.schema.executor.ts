@@ -42,8 +42,7 @@ import { revokedIntentIds, revocationId, staleRevocationIds } from '#agency/revo
 import { addressesOf } from '#cognition/social.identity'
 import {
   CONSEQUENCE_TYPE, CONSEQUENCE_TTL_TICKS,
-  consequenceEntity, fnv1a, paramsKey,
-} from '#agency/consequence'
+  consequenceEntity, fnv1a, paramsKey, spokenAtByEntity } from '#agency/consequence'
 
 /** Ticks an async (communicate/external) intent may stay 'awaiting' before it is
  *  abandoned. Exported: the ReafferenceEngine's sensory-confirmation path (P5)
@@ -138,7 +137,16 @@ export class MotorSchemaExecutor implements CognitiveEngine {
    * resolve it as what it is: the intent is freed, and nothing is taught about
    * an ability that was never in question.
    */
-  private _withheld  = new Set<string>()
+  private _withheld  = new Map<string, string>()
+
+  /**
+   * The tick at which each held intent's words were REQUESTED from a facet.
+   *
+   * Authoring is off-tick and can take 10–30s of real time. In that window the
+   * situation the words were composed for can move — and until now nothing
+   * looked. See `situationMoved`.
+   */
+  private _composedAt = new Map<string, Tick>()
 
   constructor( schemas: MotorSchema[] = INNATE_SCHEMAS ){
     for( const s of schemas ) this._schemas.set( s.id, s )
@@ -252,8 +260,10 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     // that will never be said — drop them so the map cannot grow without bound.
     for( const id of this._authored.keys() )
       if( !state.entities.has( id ) ) this._authored.delete( id )
-    for( const id of this._withheld )
+    for( const id of this._withheld.keys() )
       if( !state.entities.has( id ) ) this._withheld.delete( id )
+    for( const id of this._composedAt.keys() )
+      if( !state.entities.has( id ) ) this._composedAt.delete( id )
 
     // ── Timeout stranded async intents ───────────────────────────
     // An 'awaiting' intent whose host/delivery never returned would block the
@@ -274,6 +284,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       // letting the clock abandon it as a failure — see `_withheld`.
       if( this._withheld.has( id ) ){
         const intent = readIntent( id, e.metadata )
+        const why    = this._withheld.get( id ) ?? 'I considered speaking and chose not to.'
         set.push({
           id: `agency-outcome-${ tick }-${ id }`,
           type: 'agency.outcome',
@@ -281,7 +292,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
             schema: intent.schema, intentId: id,
             targetEntityId: intent.targetEntityId,
             withheld: true,
-            description: 'I considered speaking and chose not to.',
+            description: why,
             mode: 'communicate', tick,
             ...( intent.planId ? { planId: intent.planId } : {} ),
             ...( intent.planStepId ? { stepId: intent.planStepId } : {} ),
@@ -586,12 +597,43 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     // authored off-tick and landed since a previous tick asked for them. Neither ⇒
     // request authoring (never awaited here — see `_authoring`) and hold 'awaiting'.
     const authored = str( intent.parameters['content'] ) ?? firstMessage( intent.parameters['messages'] )
+    const fromFacet = !authored
     let bubbles: string[] = authored ? [ authored ] : ( this._authored.get( id ) ?? [] )
     this._authored.delete( id )
     if( bubbles.length === 0 ){
-      this._requestAuthoring( id, intent )
+      this._requestAuthoring( id, intent, tick )
       return false   // nothing to send yet → await
     }
+
+    // ── Is this still what I want to say? ─────────────────────────
+    // Words a facet composed off-tick were formed against the situation as it
+    // stood when they were asked for. Delivering them into a situation that has
+    // since moved is not the act that was decided on — it is an older act
+    // arriving late wearing the present's clothes.
+    //
+    // Live: a COO committed to outreach, was told "I need my full attention on
+    // that right now, will brief you later", acknowledged that correctly — and
+    // 41 seconds later delivered the three-bubble message composed beforehand,
+    // asking for a brain-dump. Same shape at 3am with a colleague who had just
+    // said goodnight: "Night. Talk soon." followed one second later by two
+    // unprompted messages. Satiation cannot damp either, because satiation gates
+    // SELECTION and these were already selected. Nothing looked at the door.
+    //
+    // Only facet-composed words are checked. Content supplied upstream
+    // (`parameters.content`) came from the host or a host-facet with the present
+    // situation in hand, and a reply never reaches this path at all — it is
+    // delivered by the audition facet through the outbox.
+    const moved = fromFacet
+      ? situationMoved( state, intent.targetEntityId, this._composedAt.get( id ) )
+      : null
+    if( moved ){
+      this._withheld.set( id, moved )
+      this._composedAt.delete( id )
+      logger.debug(`[motor] "${ intent.schema }" withheld — ${ moved }`)
+      metrics.push([ 'agency.communicate.stale', 1 ])
+      return false   // resolved as withheld by the sweep: freed, and nothing taught
+    }
+    this._composedAt.delete( id )
 
     const request: ActionRequest = {
       effector,
@@ -644,11 +686,12 @@ export class MotorSchemaExecutor implements CognitiveEngine {
    * per intent — a request already in flight is not duplicated, so the intent may sit
    * 'awaiting' across many ticks with exactly one LLM call behind it.
    */
-  private _requestAuthoring( id: string, intent: Intent ): void {
+  private _requestAuthoring( id: string, intent: Intent, tick: Tick ): void {
     if( !this._author || this._authoring.has( id ) ) return
 
     const name = str( intent.parameters['targetEntityName'] ) ?? intent.targetEntityId ?? 'them'
     this._authoring.add( id )
+    this._composedAt.set( id, tick )
     void this._author
       .authorOutreach( intent.targetEntityId ?? '', name, str( intent.parameters['gist'] ) )
       .then( result => {
@@ -660,7 +703,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         // Not a warning: the facet was asked and answered. Choosing not to speak
         // is a decision the mind is entitled to make.
         if( declared ){
-          this._withheld.add( id )
+          this._withheld.set( id, 'I considered speaking and chose not to.')
           logger.debug(`[motor] "${ intent.schema }" withheld — the facet chose silence`)
           return
         }
@@ -875,4 +918,41 @@ function clamp01( n: number ): number {
 }
 function errMsg( err: unknown ): string {
   return err instanceof Error ? err.message : String( err )
+}
+
+/**
+ * Has the situation these words were composed for moved on?
+ *
+ * Returns the mind's own account of what changed, or null if the moment still
+ * stands. The account is what the withheld outcome records, so the mind's
+ * history says why it did not speak rather than merely that it didn't.
+ *
+ * The evidence is `conversation.sent` — the durable record of having spoken,
+ * written by every path that speaks (ProactiveCommunicator, the audition facet,
+ * the outbox). If I have said something to this person SINCE these words were
+ * asked for, then these are not my current words to them: I have already
+ * responded to whatever moved in between, and this is an older turn arriving on
+ * top of a newer one.
+ *
+ * Deliberately not "did they speak since" — `conversation.received` is a
+ * one-shot entity swept on the tick it is scanned, so there is nothing durable
+ * to look back at, and a signal that cannot be read at delivery time is a cog
+ * that ships dark. In practice the two coincide: both live incidents this fixes
+ * had the mind reply first ("Understood. I'm here when you're ready.", "Night.
+ * Talk soon.") and then deliver the stale composition on top of its own answer.
+ *
+ * A missing `composedAt` means the words were never requested through
+ * `_requestAuthoring` — nothing is known about when they were formed, so nothing
+ * is claimed and they go out. Silence beats a guess here: withholding on absent
+ * evidence would mute a mind for reasons it could not name.
+ */
+export function situationMoved(
+  state:          ReadonlySimulationState,
+  targetEntityId: string | undefined,
+  composedAt:     Tick | undefined,
+): string | null {
+  if( composedAt === undefined || !targetEntityId ) return null
+  const spoke = spokenAtByEntity( state.entities as never ).get( targetEntityId )
+  if( spoke === undefined || spoke <= composedAt ) return null
+  return 'I had already spoken to them since composing this, so it was no longer what I had to say.'
 }

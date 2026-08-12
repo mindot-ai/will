@@ -265,6 +265,48 @@ export interface LLMCallResult {
 }
 
 /**
+ * The usage block on an Anthropic-wire SSE event. Every field is optional
+ * because which of them a host populates — and on which event — varies: see
+ * `takeUsage` in `_callAnthropicStream`.
+ */
+export interface StreamUsage {
+  input_tokens?:                 number
+  output_tokens?:                number
+  cache_read_input_tokens?:      number
+  cache_creation_input_tokens?:  number
+}
+
+/** Running token totals accumulated across a stream's usage events. */
+export interface StreamTokens {
+  inputTok:      number
+  outputTok:     number
+  cacheReadTok:  number
+  cacheWriteTok: number
+}
+
+/**
+ * Fold one SSE usage block into the running totals.
+ *
+ * Which event carries the real numbers is host-specific. Real Anthropic puts
+ * the input side on `message_start` and only `output_tokens` on `message_delta`.
+ * Z.ai (glm) sends `message_start` with every field zeroed and reports input,
+ * output and cache together on the final `message_delta`. Reading input from
+ * `message_start` alone recorded 0 input and 0 cache for every GLM call ever
+ * made — 441,896 output tokens against 0 input across one 7-hour COO run.
+ *
+ * So: fold from wherever it arrives, and let a later non-zero reading win. A
+ * zero never overwrites a figure already in hand, and a real figure always
+ * replaces a placeholder — which makes the fold correct under either ordering.
+ */
+export function foldStreamUsage( acc: StreamTokens, u: StreamUsage ): StreamTokens {
+  if( u.input_tokens )                 acc.inputTok      = u.input_tokens
+  if( u.output_tokens )                acc.outputTok     = u.output_tokens
+  if( u.cache_read_input_tokens )      acc.cacheReadTok  = u.cache_read_input_tokens
+  if( u.cache_creation_input_tokens )  acc.cacheWriteTok = u.cache_creation_input_tokens
+  return acc
+}
+
+/**
  * Cost-attribution metadata for a single LLM call. The same director instance is
  * shared by the master executive, every facet (conversation/planning/outreach),
  * the summarizer, and the ideation/propose pass — so the *call site* tags itself
@@ -740,11 +782,9 @@ export class LLMDirector {
     const reader  = res.body!.getReader()
     const decoder = new TextDecoder()
     let   buffer  = ''
-    let   fullText    = ''
-    let   inputTok    = 0
-    let   outputTok   = 0
-    let   cacheReadTok  = 0
-    let   cacheWriteTok = 0
+    let   fullText  = ''
+    const tokens: StreamTokens = {
+      inputTok: 0, outputTok: 0, cacheReadTok: 0, cacheWriteTok: 0 }
 
     try {
       while( true ){
@@ -764,22 +804,32 @@ export class LLMDirector {
             const ev = JSON.parse( raw ) as {
               type: string
               delta?: { type: string; text?: string; stop_reason?: string }
-              message?: { usage?: { input_tokens: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
-              usage?:   { output_tokens: number }
+              message?: { usage?: StreamUsage }
+              usage?:   StreamUsage
             }
 
-            if( ev.type === 'message_start' && ev.message?.usage ){
-              inputTok      = ev.message.usage.input_tokens
-              cacheReadTok  = ev.message.usage.cache_read_input_tokens     ?? 0
-              cacheWriteTok = ev.message.usage.cache_creation_input_tokens ?? 0
-            }
+            // Usage arrives in different events depending on the host. Real
+            // Anthropic reports the input side up front on `message_start` and
+            // only `output_tokens` on `message_delta`. Anthropic-WIRE hosts do
+            // not all follow that: Z.ai (glm) sends `message_start` with zeroed
+            // placeholders and puts the true figures — input, output AND cache —
+            // on the final `message_delta`. Reading the input side from
+            // `message_start` alone therefore recorded 0 input and 0 cache for
+            // every GLM call ever made, while output logged correctly: 441,896
+            // output tokens against 0 input across one 7-hour COO run, which is
+            // not a possible shape for a conversation.
+            //
+            // So take usage wherever it appears and let a later non-zero reading
+            // win — a zero never overwrites a figure already in hand, and a real
+            // figure always replaces a placeholder.
+            if( ev.type === 'message_start' && ev.message?.usage )
+              foldStreamUsage( tokens, ev.message.usage )
             else if( ev.type === 'content_block_delta' && ev.delta?.text ){
               fullText += ev.delta.text
               onChunk( ev.delta.text )
             }
-            else if( ev.type === 'message_delta' && ev.usage?.output_tokens ){
-              outputTok = ev.usage.output_tokens
-            }
+            else if( ev.type === 'message_delta' && ev.usage )
+              foldStreamUsage( tokens, ev.usage )
           }
           catch { /* ignore malformed events */ }
         }
@@ -789,7 +839,7 @@ export class LLMDirector {
       reader.releaseLock()
     }
 
-    return { text: fullText, inputTok, outputTok, cacheReadTok, cacheWriteTok }
+    return { text: fullText, ...tokens }
   }
 
   /**

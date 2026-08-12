@@ -19,11 +19,14 @@
  *
  * Configured via env vars:
  *   WILL_LLM_CONCURRENCY    max simultaneous LLM calls (default 2)
+ *   WILL_LLM_RESPONSIVE_CONCURRENCY  slots reserved for calls someone outside
+ *                           the mind is waiting on (default 1)
  *   WILL_LLM_MAX_RETRIES    retries before giving up on a 429 (default 4)
  *   WILL_LLM_RETRY_BASE_MS  first retry wait, doubles each attempt (default 2000)
  */
 
 import { logger } from '#core/logger'
+import type { LLMCallFunction } from '#cognition/utilities/token.tracker'
 
 const MAX_CONCURRENT = parseInt( process.env.WILL_LLM_CONCURRENCY ?? '2')
 
@@ -75,6 +78,51 @@ export class LLMSemaphore {
 }
 
 export const llmGate = new LLMSemaphore( MAX_CONCURRENT )
+
+// ── The responsive lane ───────────────────────────────────────
+
+/**
+ * A second gate, for calls someone OUTSIDE the mind is waiting on.
+ *
+ * `WILL_LLM_CONCURRENCY` ships with the comment "the minimum is 3: orbital,
+ * conversation, summary" — an intended allocation that one shared semaphore
+ * cannot enforce. Three slots means any three callers, and a mind deliberating
+ * at ~1,100 output tokens a call keeps all three warm indefinitely.
+ *
+ * Measured on a live COO over 7 hours: 29 of 45 replies began at or past the
+ * limit, and the worst spent 117 of its 131 seconds waiting for a slot rather
+ * than generating — 545 tokens at 4.2 tok/s against a provider that does ~39.
+ * From outside, that is a mind that read your message and said nothing.
+ *
+ * The distinction drawn here is NOT that conversation matters more. It is that
+ * something outside the mind is blocked on this call — a property of the call
+ * itself, which is why the predicate is named for the property and not for a
+ * list of blessed functions. Rumination can wait its turn. A person waiting for
+ * an answer cannot tell a mind that is thinking from one that is gone.
+ */
+const RESPONSIVE_CONCURRENCY = parseInt( process.env.WILL_LLM_RESPONSIVE_CONCURRENCY ?? '1')
+
+export const responsiveGate = new LLMSemaphore( RESPONSIVE_CONCURRENCY )
+
+/**
+ * The cognitive functions something outside the mind is blocked on.
+ *
+ * `outreach` is deliberately absent: the mind started that one, and nobody is
+ * sitting on the other end waiting. Only work that a waiting party is already
+ * owed belongs in the reserved lane — widen this and the reservation stops
+ * meaning anything.
+ */
+const AWAITED_OUTSIDE: ReadonlySet<LLMCallFunction> = new Set([ 'conversation' ])
+
+/** Whether someone outside the mind is blocked on a call of this function. */
+export function isAwaitedOutside( fn: LLMCallFunction | undefined ): boolean {
+  return fn !== undefined && AWAITED_OUTSIDE.has( fn )
+}
+
+/** The lane a call of this function belongs in. */
+export function gateFor( fn: LLMCallFunction | undefined ): LLMSemaphore {
+  return isAwaitedOutside( fn ) ? responsiveGate : llmGate
+}
 
 // ── Rate-limit detection ──────────────────────────────────────
 

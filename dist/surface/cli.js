@@ -6477,6 +6477,9 @@ function readConsequence(m) {
     textHash: typeof meta3["textHash"] === "number" ? meta3["textHash"] : void 0,
     text: typeof meta3["text"] === "string" ? meta3["text"] : void 0,
     paramsHash: typeof meta3["paramsHash"] === "number" ? meta3["paramsHash"] : void 0,
+    // Decoded, not just written — a field only one side knows about is the shape
+    // of defect this codebase has hit five times now.
+    pending: meta3["pending"] === true ? true : void 0,
     expiresAt: typeof meta3["expiresAt"] === "number" ? meta3["expiresAt"] : 0,
     tick: typeof meta3["tick"] === "number" ? meta3["tick"] : 0
   };
@@ -6520,6 +6523,7 @@ function enactionFootprint(descriptors, schema, targetEntityId, tick, windowTick
   }
   for (const d of descriptors) {
     if (d.schema !== schema || d.targetEntityId !== targetEntityId) continue;
+    if (d.pending) continue;
     const elapsed = tick - d.tick;
     const remaining = (windowTicks - elapsed) / windowTicks;
     if (remaining > strongest) strongest = remaining;
@@ -23737,6 +23741,13 @@ var MotorSchemaExecutor = class {
             intentId: id,
             schema: intent.schema,
             mode: enaction.mode === "communicate" ? "communicate" : "external",
+            // A communicate with no words yet has not happened. The footprint is
+            // still written (P1/P2 want it the moment the words land), but it must
+            // not satiate — attempting to speak is not speaking. See
+            // ConsequenceDescriptor.pending. An EXTERNAL dispatch IS the act: the
+            // host is doing it now, and not asking twice while waiting is exactly
+            // what satiation is for.
+            ...enaction.mode === "communicate" && !awaitingText ? { pending: true } : {},
             ...enaction.mode === "communicate" ? { effector: COMM_SCHEMA_TO_EFFECTOR[intent.schema] ?? intent.schema } : {},
             ...intent.targetEntityId ? { targetEntityId: intent.targetEntityId } : {},
             ...awaitingText ? { text: awaitingText, textHash: fnv1a(awaitingText) } : {},

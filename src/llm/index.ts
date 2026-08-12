@@ -13,7 +13,7 @@ import type {
 import { type ModelRouter, isNullRouter } from '#llm/routing'
 import { getCompletionRecorder, getCompletionSource } from '#core/completion.recorder'
 import type { LLMCompletionRecord } from '#core/completion.recorder'
-import { withGate } from '#llm/gate'
+import { withGate, gateFor } from '#llm/gate'
 import { matchConversationFocus, wrapReplyText } from '#llm/wire.contracts'
 
 /**
@@ -881,7 +881,10 @@ export class LLMDirector {
       () => ep.wire === 'anthropic'
         ? this._callAnthropicStream( ep, systemPrompt, userMessage, () => {}, temperature )
         : this._callProvider( ep, systemPrompt, userMessage, temperature ),
-      'executive/direct',
+      `executive/direct:${ meta.function }`,
+      // A reply to a waiting person takes the reserved lane; everything the
+      // mind is doing for itself shares the general one. See `gateFor`.
+      gateFor( meta.function ),
     )
 
     // Record token usage + cost into this Will's injected tracker (R4), tagged

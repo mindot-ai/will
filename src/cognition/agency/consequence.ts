@@ -52,6 +52,26 @@ export interface ConsequenceDescriptor {
   text?:           string
   /** FNV-1a over the canonicalized parameters (async dispatch). */
   paramsHash?:     number
+  /**
+   * Dispatched but NOT YET PERFORMED — a communicate held awaiting words that do
+   * not exist yet.
+   *
+   * The footprint is written when an intent goes to the async hold, which for an
+   * EXTERNAL effector is the act itself (the host is doing it now, and asking
+   * twice while waiting is the thing satiation should prevent). For a communicate
+   * it is not: the facet has not authored anything, and the mind has said nothing.
+   *
+   * Counting it as satiation meant ATTEMPTING to speak silenced the mind exactly
+   * as hard as speaking. Dormant until `justEnacted` first reached the
+   * competition, then immediately visible: a live COO willed `reach-out` 63 times
+   * in four minutes, delivered NOTHING, and 18 of those lost to `justEnacted`
+   * readings of 0.93–0.98 against a mind that had not spoken once that run. Each
+   * attempt wrote a fresh footprint, so the damping never decayed.
+   *
+   * P2's echo matching is unaffected — a pending descriptor carries no text to
+   * match on, which is the same fact from the other side.
+   */
+  pending?:        boolean
   expiresAt:       Tick
   tick:            Tick
 }
@@ -106,6 +126,9 @@ export function readConsequence(
     textHash:       typeof meta['textHash']       === 'number' ? meta['textHash']       as number : undefined,
     text:           typeof meta['text']           === 'string' ? meta['text']           as string : undefined,
     paramsHash:     typeof meta['paramsHash']     === 'number' ? meta['paramsHash']     as number : undefined,
+    // Decoded, not just written — a field only one side knows about is the shape
+    // of defect this codebase has hit five times now.
+    pending:        meta['pending'] === true ? true : undefined,
     expiresAt:      typeof meta['expiresAt']      === 'number' ? meta['expiresAt']      as number : 0,
     tick:           typeof meta['tick']           === 'number' ? meta['tick']           as number : 0,
   }
@@ -275,6 +298,8 @@ export function enactionFootprint(
 
   for( const d of descriptors ){
     if( d.schema !== schema || d.targetEntityId !== targetEntityId ) continue
+    // You cannot be satiated by something you have not done. See `pending`.
+    if( d.pending ) continue
     // Measured from when the act happened, against the SATIATION window — not from
     // the descriptor's own expiry, which is the echo window and a different
     // question. Conflating them meant "how long before I say this again" was

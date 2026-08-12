@@ -419,6 +419,13 @@ export class MotorSchemaExecutor implements CognitiveEngine {
           set.push( consequenceEntity({
             intentId: id, schema: intent.schema,
             mode: enaction.mode === 'communicate' ? 'communicate' : 'external',
+            // A communicate with no words yet has not happened. The footprint is
+            // still written (P1/P2 want it the moment the words land), but it must
+            // not satiate — attempting to speak is not speaking. See
+            // ConsequenceDescriptor.pending. An EXTERNAL dispatch IS the act: the
+            // host is doing it now, and not asking twice while waiting is exactly
+            // what satiation is for.
+            ...( enaction.mode === 'communicate' && !awaitingText ? { pending: true } : {} ),
             ...( enaction.mode === 'communicate'
               ? { effector: COMM_SCHEMA_TO_EFFECTOR[ intent.schema ] ?? intent.schema }
               : {} ),

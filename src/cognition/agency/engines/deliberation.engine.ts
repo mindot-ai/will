@@ -31,6 +31,7 @@ import type { CognitiveBus } from '#cognition/bus'
 import type { CognitiveEngine, EngineResult } from '#cognition/types'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import { revokedIntentIds, revocationId } from '#agency/revocation'
+import { settlementEntity, expiredSettlementIds, SETTLEMENT_TTL_TICKS } from '#agency/settlement'
 import { nameOf, isReferentId } from '#cognition/social.identity'
 
 // ── Minimal structural view of the executive's facet machinery ───────────────
@@ -99,7 +100,10 @@ export class DeliberationEngine implements CognitiveEngine {
     // to let go of it — and the tombstone with it. We never deliberate a
     // revoked intent.
     const revoked = revokedIntentIds( state.entities, tick )
-    const del: string[] = []
+    // Aged-out verdicts go with them. Nothing else owns settlements, and a
+    // question whose settlement has expired must be genuinely open again — not
+    // merely inert-but-present, which would leave the state growing forever.
+    const del: string[] = expiredSettlementIds( state.entities, tick )
 
     // One deliberation per tick (the serial bottleneck).
     let target: { id: string; meta: Record<string, unknown> } | null = null
@@ -137,7 +141,15 @@ export class DeliberationEngine implements CognitiveEngine {
 
     return {
       commands: {
-        set:     [ this._commit( id, meta, chosen, candidates, 'facet') ],
+        set: [
+          this._commit( id, meta, chosen, candidates, 'facet'),
+          // The verdict's trace in the field it was called in to resolve.
+          // Written ONLY here, on the path where System 2 actually thought —
+          // the no-executive path below confirms the substrate's winner without
+          // reaching a conclusion, and a mind should not be held to a verdict it
+          // never formed.
+          this._settle( chosen, candidates, tick ),
+        ],
         ...( del.length > 0 ? { delete: del } : {} ),
         metrics: [ [ 'agency.deliberation.count', 1 ] ],
       },
@@ -185,6 +197,25 @@ export class DeliberationEngine implements CognitiveEngine {
       logger.warn(`[deliberation] facet unavailable, confirming winner: ${ err instanceof Error ? err.message : String( err ) }`)
       return provisional
     }
+  }
+
+  /**
+   * Record that this contest was weighed and settled.
+   *
+   * Keyed on what WON, not on the rival set, so a slightly differently-framed
+   * contest still meets a verdict the mind has already reached — the rivals ride
+   * along as the introspectable reason rather than as a matching key.
+   */
+  private _settle( chosen: string, candidates: Candidate[], tick: Tick ): EntityInput {
+    const cand = candidates.find( c => c.schema === chosen )
+    const over = candidates.filter( c => c.schema !== chosen ).map( c => c.schema )
+    return settlementEntity({
+      schema:         chosen,
+      targetEntityId: cand?.targetEntityId,
+      ...( over.length > 0 ? { over } : {} ),
+      tick,
+      expiresAt:      tick + SETTLEMENT_TTL_TICKS,
+    })
   }
 
   /** Write the deliberating intent back as 'selected' with the chosen action. */

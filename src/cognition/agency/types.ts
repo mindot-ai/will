@@ -184,6 +184,26 @@ export interface Affordance {
    * each time as though it were the first.
    */
   justEnacted?:    number
+  /**
+   * How much of a DELIBERATED verdict on this act is still standing, 1 → 0.
+   *
+   * The mirror of `justEnacted`: that one is the fading pull not to repeat
+   * something done, this is the fading weight of having already chosen. Set
+   * when System 2 resolved a contest in this act's favour and the settlement
+   * has not yet aged out.
+   *
+   * It does two things with one quantity, which is why it is a quantity and not
+   * a flag. The verdict gets force, so System 1 does not coin-flip its way to a
+   * different answer on the next tick of the same flat field; and the margin to
+   * the runner-up widens past the selector's gate, so System 2 is not recruited
+   * for a question it has already answered. Flatness is what summons
+   * deliberation — the verdict is what gives the field the shape it lacked.
+   *
+   * Without it, a live COO deliberated 149 times in 7 hours, median 17s apart,
+   * re-reaching the same conclusion about an externally-blocked goal until she
+   * wrote "this is a fact, not a diagnosis I need to reach again".
+   */
+  settled?:        number
   /** Provenance: the plan whose frontier step projected this affordance. */
   planId?:         string
   /** Provenance: the frontier step id — flows through to action.outcome so the plan advances. */

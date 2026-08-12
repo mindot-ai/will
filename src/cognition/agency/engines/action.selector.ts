@@ -37,6 +37,7 @@ import {
 } from '#agency/selection.scoring'
 import { readEffectiveParams, readPersonaPrior } from '#cognition/persona.prior'
 import { RUPTURE_REVOKE_GATE, revocationEntity } from '#agency/revocation'
+import { liveSettlements, settlementId } from '#agency/settlement'
 import { liveConsequences, matchConsequenceText } from '#agency/consequence'
 import { asFinality } from '#stem/policy/arbiter'
 
@@ -285,8 +286,23 @@ export class ActionSelector implements CognitiveEngine {
       catch( err ){ logger.warn(`[selector] rupture publish failed: ${ err instanceof Error ? err.message : String( err ) }`) }
     }
 
+    // A verdict is held only while the situation that produced it stands. A hard
+    // rupture means the world just contradicted the premises the mind decided
+    // on, so every standing settlement lapses and those questions are genuinely
+    // open again — the same reasoning that revokes a commitment still being
+    // weighed, applied to the ones already settled.
+    //
+    // Deliberately NOT conditioned on something being deliberated right now: the
+    // entire point of a settlement is that it outlives the intent that formed
+    // it, so it has to be able to lapse without one.
+    const settlementDrops = rupture >= RUPTURE_REVOKE_GATE
+      ? liveSettlements( state.entities, tick ).map( s => settlementId( s.schema, s.targetEntityId ) )
+      : []
+    const dropSettled = settlementDrops.length > 0 ? { delete: settlementDrops } : {}
+
     const busy = ( n: number ): EngineResult => ({
       commands: {
+        ...dropSettled,
         metrics: [
           [ 'agency.field.eligible', n ],
           [ 'agency.selection.busy', 1 ],
@@ -323,6 +339,7 @@ export class ActionSelector implements CognitiveEngine {
       return {
         commands: {
           set: [ revocationEntity( deliberating.id, deliberating.schema, revRupture, tick ) ],
+          ...dropSettled,
           metrics: [
             [ 'agency.field.eligible', eligible.length ],
             [ 'agency.selection.busy', 1 ],
@@ -340,6 +357,7 @@ export class ActionSelector implements CognitiveEngine {
     if( eligible.length === 0 )
       return {
         commands: {
+          ...dropSettled,
           metrics: [
             [ 'agency.field.eligible', 0 ],
             [ 'agency.selection.busy',( awaiting || composite ) ? 1 : 0 ],
@@ -628,7 +646,9 @@ export class ActionSelector implements CognitiveEngine {
       set: compositeTombstone
         ? [ intent, revocationEntity( compositeTombstone, compositeFrom ?? '', rupture, tick ) ]
         : [ intent ],
-      ...( preemptDelete ? { delete: [ preemptDelete ] } : {} ),
+      ...( preemptDelete || settlementDrops.length > 0
+        ? { delete: [ ...( preemptDelete ? [ preemptDelete ] : [] ), ...settlementDrops ] }
+        : {} ),
       metrics: [
         [ 'agency.field.eligible',       eligible.length ],
         [ 'agency.selection.busy',       0 ],
@@ -804,6 +824,10 @@ function buildBias( state: ReadonlySimulationState ): BiasContext {
  *     P5 and the `spokenAt` durability fix both landed on a field nothing read.
  *   • `availability` — POLICY_REAFFERENCE P2 damps a refused ability so it competes
  *     weakly instead of vanishing. `a.availability ?? 1` read the fallback forever.
+ *   • `settled` — a verdict System 2 already reached. Same weight class as
+ *     `justEnacted` and the same failure if dropped: the mind re-deliberates a
+ *     question it has answered, forever. Added WITH its decoder rather than
+ *     after someone notices the mechanism is dark.
  *   • `description` — the schema's MEANING. The selector snapshots it onto
  *     `metadata.candidates` and the DeliberationEngine renders it as `— <what>`,
  *     so the candidate list the mind reasons over listed acts with no meanings.
@@ -831,6 +855,7 @@ export function readAffordance( id: string, m: ReadonlyMap<string, unknown> | Re
     willBias:        typeof meta['willBias'] === 'number' ? ( meta['willBias'] as number ) : undefined,
     socialPrior:     typeof meta['socialPrior'] === 'number' ? ( meta['socialPrior'] as number ) : undefined,
     justEnacted:     typeof meta['justEnacted'] === 'number' ? ( meta['justEnacted'] as number ) : undefined,
+    settled:         typeof meta['settled'] === 'number' ? ( meta['settled'] as number ) : undefined,
     availability:    typeof meta['availability'] === 'number' ? ( meta['availability'] as number ) : undefined,
     description:     str( meta['description'] ),
     planId:          str( meta['planId'] ),

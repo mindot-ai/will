@@ -1114,6 +1114,9 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
     const STATUS_BADGE: Record<string, string> = {
       completed:    '✓',
       failed:       '✗',
+      // Not a failure. I formed it and chose not to complete it — reading that
+      // back as ✗ is how a mind learns it is bad at something it decided against.
+      withheld:     '⊘ chose not to',
       awaiting_host: '⏳',
       timed_out:    '⏱ TIMED OUT',
     }
@@ -1126,12 +1129,19 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
       return `- ${badge} **${a.type}** (tick ${a.tick}, ${age} ticks ago${planCtx})${outcome}`
     } )
 
-    const hasTimeout = recentActions.some( a => a.status === 'timed_out')
-    const timeoutNote = hasTimeout
-      ? '\n⚠️ **One or more actions timed out** — my body dispatched them but received no confirmation. Check if the external handler is working, or choose a different approach.'
+    // A note that can actually fire. The one here before keyed on a `timed_out`
+    // status nothing produces — and it sat inside a section that had never
+    // rendered at all, so neither could ever have been seen.
+    const failed = recentActions.filter( a => a.status === 'failed').length
+    const didNotLand = failed > 0
+      ? `\n⚠️ **${ failed } of these did not land** — my body attempted them and they did not complete.`
       : ''
+    // Invariant, and identical on every branch: this is the sentence that makes
+    // the section load-bearing rather than decorative, and a mind must not get a
+    // differently-worded version of it depending on how its week went.
+    const note = `${ didNotLand }\nThis is what I HAVE done, not what I meant to do. If something I intended is not on this list, it did not happen.`
 
-    return `## Recent Action Outcomes\n${lines.join('\n')}${timeoutNote}\n\n`
+    return `## Recent Action Outcomes\n${lines.join('\n')}${note}\n\n`
   }
 
   /**

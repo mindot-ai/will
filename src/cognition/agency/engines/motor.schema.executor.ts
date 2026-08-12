@@ -175,6 +175,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       { type: 'agency.enacted',    version: 1, validate: () => null },
       { type: 'agency.invocation', version: 1, validate: () => null },
       { type: 'agency.communicate', version: 1, validate: () => null },
+      { type: 'action.withheld',    version: 1, validate: () => null },
     ]
   }
   subscribes(): string[] { return [] }
@@ -301,6 +302,25 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         del.push( id )
         this._withheld.delete( id )
         metrics.push([ 'agency.communicate.withheld', 1 ])
+        // A DISTINCT event, never `action.outcome`: six faculties learn from that
+        // one's `success`, and a withheld turn published as `success: false`
+        // teaches the mind it is bad at speaking from the times it decided not to
+        // speak — the exact regression #123 exists to prevent. This one is read
+        // only by the executive's record of what it did.
+        if( this._bus ){
+          try {
+            this._bus.publish({
+              type: 'action.withheld', version: 1, sourceEngine: this.name,
+              salience: 0.4,
+              payload: {
+                actionType: intent.schema, targetEntityId: intent.targetEntityId,
+                description: why, tick,
+                ...( intent.planId ? { planId: intent.planId } : {} ),
+              },
+            })
+          }
+          catch { /* unregistered schema is telemetry-only */ }
+        }
         continue
       }
       // POLICY_REAFFERENCE P4 — an escalated intent is HELD: the stem owns its

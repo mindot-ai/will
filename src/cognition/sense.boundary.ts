@@ -64,6 +64,7 @@
 import { CONSEQUENCE_TYPE } from '#agency/consequence'
 import { REVOCATION_TYPE }  from '#agency/revocation'
 import { SETTLEMENT_TYPE }  from '#agency/settlement'
+import { ACTION_RECORD_TYPE } from '#faculties/executive.engine/action.record'
 
 /**
  * Entity types that ARE the mind — written by its own engines about its own
@@ -81,6 +82,9 @@ export const MIND_OWN_ENTITY_TYPES: ReadonlySet<string> = new Set([
   // ── attention, interoception, control ─────────────────────────
   'interoception', 'attention.focus', 'attention.demand',
   'task.focus', 'decision.record', 'self_observation',
+  // What became of what it did. Undeclared, a mind perceives its own history as
+  // events in the world — which is how #127 was caught, recursively.
+  ACTION_RECORD_TYPE,
 
   // ── memory ────────────────────────────────────────────────────
   'working_memory.item', 'episodic_memory', 'spaced_repetition_record',

@@ -290,15 +290,21 @@ export interface ExecutiveContext {
   /** How many beliefs exist but were not included due to the relevance cap. */
   beliefsOmitted: number
   /**
-   * Recent action outcomes — shows the executive what it already tried and whether it
-   * landed.  Built from `decision.record` entities with an `actionStatus` set.
-   * Surfaces the Act→Confirm→Perceive feedback loop into the executive's reasoning.
+   * What became of what it did — the Act→Confirm→Perceive loop, surfaced.
+   *
+   * Built from `action.record` entities the executive writes from the
+   * `action.outcome` / `action.withheld` events it already receives. It used to
+   * be built from `decision.record` entities carrying an `actionStatus`, a field
+   * read in one place and written in none — so this was empty in every prompt a
+   * live mind ever received, and it could see what it had SAID but never what it
+   * had DONE. See `action.record.ts`.
    */
   recentActions: Array<{
     /** Effector name that was invoked */
     type: string
-    /** Lifecycle status set by ActionExecutor */
-    status: 'completed' | 'failed' | 'awaiting_host' | 'timed_out'
+    /** How it resolved. `withheld` is distinct from `failed` on purpose: the
+     *  mind formed the act and chose not to complete it. */
+    status: 'completed' | 'failed' | 'withheld'
     /** Tick the action was executed or dispatched */
     tick: number
     /** Short outcome description — truncated to 120 chars */

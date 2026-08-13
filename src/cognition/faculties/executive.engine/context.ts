@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { recentActionRecords } from '#faculties/executive.engine/action.record'
+import { AFFECT_STATE_ID } from '#faculties/affective.blender'
 import type { ReadonlySimulationState } from '#core/types'
 import type { GoalManager } from '#faculties/goal.manager'
 import type { WorkingMemory } from '#faculties/working.memory'
@@ -655,12 +656,14 @@ function extractAffect( state: ReadonlySimulationState ): ExecutiveContext['affe
   const arousal   = state.metrics.get('affect.arousal')   ?? 0.5
   const dominance = state.metrics.get('affect.dominance') ?? 0.5
 
-  // Non-numeric affect data — read from the affective-state entity.
-  // AffectiveBlender writes this entity each tick with dominantEmotion and blends.
+  // Non-numeric affect data — read from the entity AffectiveBlender writes each
+  // tick. The id comes from the writer rather than being spelled again here: this
+  // read used to look for 'affective-state', which nothing has ever written, so
+  // both values silently took their fallbacks in every prompt ever rendered.
   let dominantEmotion = 'neutral'
   let blends: string[] = []
 
-  const affectEntity = state.entities.get('affective-state')
+  const affectEntity = state.entities.get( AFFECT_STATE_ID )
   if( affectEntity ){
     dominantEmotion = (affectEntity.metadata?.dominantEmotion as string) ?? 'neutral'
     blends = (affectEntity.metadata?.blends as string[]) ?? []

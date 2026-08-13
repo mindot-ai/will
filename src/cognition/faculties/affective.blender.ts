@@ -47,6 +47,21 @@ const ACP_CONFIDENCE     = 0.4
  * Numeric encoding for dominant emotion metric.
  * Consumers decode using DOMINANT_EMOTION_LABELS[code].
  */
+/**
+ * The entity carrying the non-numeric side of affect — what the mind is feeling,
+ * by name.
+ *
+ * Exported as a CONSTANT because the id is a contract between two files and it
+ * silently broke: `context.ts` read `state.entities.get('affective-state')`, an
+ * id nothing has ever written, so `dominantEmotion` fell back to 'neutral' in
+ * every prompt ever rendered. Measured live: a COO sitting at frustration 1.000
+ * and boredom 1.000 was told "Dominant emotion: neutral".
+ *
+ * Two string literals in two files cannot disagree if there is only one.
+ */
+export const AFFECT_STATE_ID   = 'affect-blends'
+export const AFFECT_STATE_TYPE = 'affect.blends'
+
 const DOMINANT_EMOTION_CODES: Record<string, number> = {
   'neutral':       0,
   'fear':          1,
@@ -381,11 +396,13 @@ export class AffectiveBlender implements SimulationEngine, CognitiveEngine {
     const dominantCode = DOMINANT_EMOTION_CODES[ dominant ?? 'neutral' ] ?? 0
     commands.metrics!.push([ 'affect.dominant_emotion', dominantCode ])
 
-    // Persist active blends as a state entity so the executive bridge can read them
+    // The mind's own read on what it is feeling, as an entity the executive can
+    // render. `dominantEmotion` is written as the LABEL, not the code: the code
+    // goes to metrics for telemetry, and a prompt cannot say "I feel 20".
     commands.set!.push({
-      id: 'affect-blends',
-      type:     'affect.blends',
-      metadata: { blends },
+      id:   AFFECT_STATE_ID,
+      type: AFFECT_STATE_TYPE,
+      metadata: { dominantEmotion: dominant ?? 'neutral', blends },
     })
 
     // 8. Track emotion history for blending detection

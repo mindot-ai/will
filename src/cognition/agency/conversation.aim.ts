@@ -187,6 +187,38 @@ export function lastHeardByEntity( entities: ReadonlyMap<string, EntityLike> ): 
 /** When someone last spoke to us, AND what they said. */
 export interface Heard { tick: Tick; preview: string }
 
+/**
+ * When each person last spoke to the mind — the DURABLE version.
+ *
+ * `lastHeardByEntity` reads `conversation.received`, which lives exactly one
+ * tick: SocialPerception sweeps it as a one-shot event. So it answers "did
+ * someone speak to me THIS tick", never "when did they last speak to me".
+ *
+ * `answeredAt` is the durable half of the same fact, folded onto the mind's own
+ * `conversation.sent` turns by `resolveReplyExpectations` — it is what renders
+ * "they answered" in the prompt, and it survives snapshots.
+ *
+ * Written for the delivery-time re-check (`situationMoved`). That check first
+ * shipped keyed only on the mind having SPOKEN since composing, on the argument
+ * that nothing durable recorded the other direction. That was wrong — this is
+ * it — and the gap was the common case: live, a COO delivered a pre-composed
+ * agenda message two seconds after the person changed the subject, having said
+ * nothing in between, so the stale words arrived BEFORE her real reply and
+ * nothing was looking.
+ */
+export function lastAnsweredByEntity( entities: ReadonlyMap<string, EntityLike> ): Map<string, Tick> {
+  const out = new Map<string, Tick>()
+  for( const [ , e ] of entities ){
+    if( e.type !== SENT_TYPE ) continue
+    const m      = meta( e )
+    const target = str( m['targetEntityId'] )
+    const at     = num( m['answeredAt'] )
+    if( !target || at === undefined ) continue
+    if( at > ( out.get( target ) ?? -Infinity ) ) out.set( target, at as Tick )
+  }
+  return out
+}
+
 /** A turn still in the air: said, not acknowledged-only, and not yet answered. */
 export function isOpen( t: SpokenTurn ): boolean {
   return !t.isAck && t.answeredAt === undefined

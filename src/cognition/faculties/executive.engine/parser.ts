@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { logger } from '#core/logger'
-import { REPLY_TEXT_TAG, NO_MESSAGE_TAG, NO_MESSAGE_OPEN } from '#llm/wire.contracts'
+import { REPLY_TEXT_TAG, NO_MESSAGE_TAG, NO_MESSAGE_OPEN, stripProtocolMarkers } from '#llm/wire.contracts'
 import type { ReadonlySimulationState } from '#core/types'
 import type { ExecutiveOutputFull, ExecutiveOutputMinimal, IdeationCandidate, IdeationOutput } from '#faculties/executive.engine/types'
 
@@ -339,7 +339,15 @@ function extractBlock( text: string, tag: string ): string | null {
  * Used for [REPLY_TEXT] — content is streamed directly to the client,
  * so it must be clean prose, not a JSON payload.
  */
-function extractTextBlock( text: string, tag: string ): string | null {
+/**
+ * Pull one plain-text block out of a response.
+ *
+ * Exported for the guard: this slice is where a stray marker survives into
+ * content, and the seam is the thing worth testing. `parseResponse` needs a full
+ * well-formed response around it, which is exactly the setup that hides a defect
+ * living in one line of string handling.
+ */
+export function extractTextBlock( text: string, tag: string ): string | null {
   const open  = `[${tag}]`
   const close = `[/${tag}]`
   const openIdx  = text.indexOf( open )
@@ -350,7 +358,12 @@ function extractTextBlock( text: string, tag: string ): string | null {
     ? text.slice( contentStart, closeIdx )
     : text.slice( contentStart )   // unclosed block — take everything after the open marker
 
-  return content.trim() || null
+  // A stray marker INSIDE the body survives this slice — the block runs from the
+  // first open to the first close after it, and anything between is content by
+  // construction. Live, a reply went out as four substantive bubbles and a fifth
+  // reading exactly `[REPLY_TEXT]`: the person received a message whose whole
+  // content was the name of the slot it should have filled.
+  return stripProtocolMarkers( content ) || null
 }
 
 /**

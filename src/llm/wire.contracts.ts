@@ -58,6 +58,44 @@ export function wrapReplyText( body: string ): string {
   return [ REPLY_TEXT_OPEN, body, REPLY_TEXT_CLOSE ].join('\n')
 }
 
+/**
+ * Every marker that is PROTOCOL rather than content.
+ *
+ * Named explicitly rather than matched as `[ANYTHING]`, because bracketed text is
+ * ordinary in real messages — "[1]", "[see §4.4]", "[REDACTED]" are things a mind
+ * may legitimately say, and a greedy strip would eat them.
+ */
+export const PROTOCOL_TAGS: readonly string[] = [
+  REPLY_TEXT_TAG, NO_MESSAGE_TAG, 'INTROSPECTION', 'NARRATIVE', 'SELF_OBS',
+]
+
+/**
+ * Remove any protocol marker that survived inside extracted content.
+ *
+ * `extractTextBlock` slices from the first `[TAG]` to the first `[/TAG]` after
+ * it, so a STRAY second opener inside the body is carried out as content — and
+ * the bubble splitter, seeing a line of its own, delivers it as a message.
+ *
+ * Live: a COO's reply to a technical document went out as four substantive
+ * bubbles followed by a fifth reading exactly `[REPLY_TEXT]`. The person got a
+ * message whose entire content was the name of the slot it should have filled.
+ *
+ * These tokens can never be legitimate content — they are the wire, not the
+ * words — so stripping them is not censorship of anything the mind meant. A line
+ * left empty by the removal is dropped so it cannot become an empty bubble.
+ */
+export function stripProtocolMarkers( text: string ): string {
+  let out = text
+  for( const tag of PROTOCOL_TAGS )
+    out = out.split(`[${ tag }]`).join('').split(`[/${ tag }]`).join('')
+
+  return out
+    .split('\n')
+    .filter( ( line, i, all ) => line.trim() !== '' || ( i > 0 && i < all.length - 1 && all[ i - 1 ]?.trim() !== '') )
+    .join('\n')
+    .trim()
+}
+
 // ── Conversation-facet focus — render ↔ match pair ────────────
 // The AuditionEngine RENDERS these lines into the facet focus; the mock LLM
 // MATCHES them to detect "this call is a conversation turn" and synthesize a

@@ -77,9 +77,24 @@ export type LLMCallFunction =
 export type TokenLedgerRecord = Record<string, unknown>
 export type TokenRecordListener = ( record: TokenLedgerRecord ) => void
 
-// ── Prompt-cache pricing (Anthropic) ──────────────────────
+// ── Prompt-cache pricing ──────────────────────────────────
 // `input_tokens` in the API usage already EXCLUDES cached tokens, so the full
-// input cost is: fresh input ×1 + cache reads ×0.1 + cache writes ×1.25.
+// input cost is: fresh input ×1 + cache reads + cache writes.
+//
+// These two ratios are ANTHROPIC's, and they are the last prices this engine
+// ships. That is the inconsistency they encode: the module refuses to bake in
+// an input or output rate on the explicit grounds that "prices belong to the
+// host — they change on a vendor's schedule, differ per account, and are ~0 for
+// a self-hosted model", and then hardcodes two more prices because they happen
+// to be expressible as a ratio.
+//
+// They are wrong the moment a host is not on Anthropic. Z.ai charges $0.26/M
+// for cached input against $1.40/M fresh — a ratio of 0.186, not 0.10 — so a
+// COO's cache line came out 46% under. Its cache WRITES are free outright,
+// which 1.25 cannot express at all.
+//
+// So they are now a FALLBACK, used only when the host's `ModelPrice` does not
+// state the real rate. A host that says nothing gets exactly the old numbers.
 const CACHE_READ_MULT  = 0.1
 const CACHE_WRITE_MULT = 1.25
 
@@ -98,7 +113,21 @@ function normalizeModelKey( model: string ): string {
   return m.replace( /[-@]\d{6,8}$/, '')         // drop trailing -YYYYMMDD date stamp
 }
 /** USD per 1M tokens for one model. */
-export interface ModelPrice { input: number; output: number }
+export interface ModelPrice {
+  input:  number
+  output: number
+  /**
+   * USD per 1M cache-READ tokens. Absent ⇒ `input × 0.1` (Anthropic's ratio).
+   *
+   * State it whenever the host is not Anthropic. `0` is meaningful and honoured
+   * — some providers do not charge for cache reads at all — so this is read as
+   * "absent", not "falsy".
+   */
+  cachedInput?: number
+  /** USD per 1M cache-WRITE tokens. Absent ⇒ `input × 1.25`. `0` is honoured:
+   *  Z.ai's cache storage is free, which no multiple of input can express. */
+  cacheWrite?:  number
+}
 
 /**
  * Host-supplied prices, keyed by model id. Matching is exact first, then
@@ -334,8 +363,10 @@ export class TokenTracker implements SimulationEngine {
     const costUsd = pricing
       ? ( usage.promptTokens     / 1_000_000 ) * pricing.input  +
         ( usage.completionTokens / 1_000_000 ) * pricing.output +
-        ( cacheRead              / 1_000_000 ) * pricing.input * CACHE_READ_MULT  +
-        ( cacheWrite             / 1_000_000 ) * pricing.input * CACHE_WRITE_MULT
+        // `?? fallback` rather than `||`: a stated 0 is a real rate (free cache
+        // reads / free storage) and must not silently become the Anthropic ratio.
+        ( cacheRead              / 1_000_000 ) * ( pricing.cachedInput ?? pricing.input * CACHE_READ_MULT  ) +
+        ( cacheWrite             / 1_000_000 ) * ( pricing.cacheWrite  ?? pricing.input * CACHE_WRITE_MULT )
       : 0
 
     const full: TokenUsage = {

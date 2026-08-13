@@ -94,11 +94,35 @@ describe('TokenTracker — cost accounting', () => {
     expect( t.totalCostUsd ).toBeCloseTo( 1.00, 6 )
   } )
 
-  it('prices cache reads at 0.1× input and cache writes at 1.25× input', () => {
+  it('falls back to 0.1× / 1.25× input when the host states no cache rate', () => {
     const t = priced()
     // Sonnet input $3/MTok: read 1M → $0.30, write 1M → $3.75
     t.recordUsage( usage( { model: 'claude-sonnet-4-5', cacheReadTokens: 1_000_000, cacheWriteTokens: 1_000_000 } ) )
     expect( t.totalCostUsd ).toBeCloseTo( 0.30 + 3.75, 6 )
+  } )
+
+  it('uses the host\'s stated cache rates over the Anthropic ratio', () => {
+    // The ratio is Anthropic's and is wrong off Anthropic. Z.ai charges $0.26/M
+    // cached against $1.40/M fresh — 0.186×, not 0.10× — which put a measured
+    // COO cache line 46% under.
+    const t = new TokenTracker({ prices: {
+      'glm-5.2': { input: 1.40, output: 4.40, cachedInput: 0.26, cacheWrite: 0 } } } as never )
+    t.recordUsage( usage( { model: 'glm-5.2', promptTokens: 0, completionTokens: 0,
+      cacheReadTokens: 1_000_000, cacheWriteTokens: 1_000_000 } ) )
+
+    expect( t.totalCostUsd, 'stated rates must win, and free storage must cost nothing')
+      .toBeCloseTo( 0.26, 6 )
+  } )
+
+  it('honours a stated rate of 0 rather than reading it as absent', () => {
+    // `?? fallback`, not `|| fallback`. Free cache reads are a real offer and
+    // must not silently become 0.1× input.
+    const t = new TokenTracker({ prices: {
+      'free-cache': { input: 10, output: 0, cachedInput: 0 } } } as never )
+    t.recordUsage( usage( { model: 'free-cache', promptTokens: 0, completionTokens: 0,
+      cacheReadTokens: 1_000_000 } ) )
+
+    expect( t.totalCostUsd ).toBe( 0 )
   } )
 
   it('prices embeddings as input-only at the embedding rate', () => {

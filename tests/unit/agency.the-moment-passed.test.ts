@@ -30,12 +30,15 @@ import { describe, it, expect } from 'vitest'
 import type { ReadonlySimulationState } from '#core/types'
 import { situationMoved } from '#agency/engines/motor.schema.executor'
 
-function state( sent: Array<{ target: string; tick: number }> ): ReadonlySimulationState {
+function state( sent: Array<{ target: string; tick: number; answeredAt?: number }> ): ReadonlySimulationState {
   const entities = new Map<string, unknown>()
   sent.forEach( ( s, i ) => entities.set( `conversation-sent-${ i }`, {
     id: `conversation-sent-${ i }`, type: 'conversation.sent',
     createdAt: 0, updatedAt: 0,
-    metadata: { targetEntityId: s.target, tick: s.tick },
+    metadata: {
+      targetEntityId: s.target, tick: s.tick,
+      ...( s.answeredAt !== undefined ? { answeredAt: s.answeredAt } : {} ),
+    },
   }) )
   return { tick: 100, time: 0, entities, metrics: new Map() } as unknown as ReadonlySimulationState
 }
@@ -72,6 +75,45 @@ describe('words composed for a moment that has passed', () => {
 
   it('go out when there is nobody in particular to be stale toward', () => {
     expect( situationMoved( state([ { target: 'ke:fabrice', tick: 90 } ]), undefined, 50 ) ).toBeNull()
+  })
+
+  it('are withheld when THEY spoke since composing — even if the mind has not', () => {
+    // The gap the first cut missed, and it was the common case rather than an
+    // edge. Live: a COO delivered a pre-composed agenda message two seconds after
+    // the person changed the subject, having said nothing in between —
+    //
+    //   21:40:27  Fabrice: "I need some meeting with FKEM first"
+    //   21:40:29  Lora:    "Fabrice — I need a list of what's actively in flight…"
+    //   21:40:38  Lora:    "Sure. I'll be around."
+    //
+    // so the stale words arrived BEFORE her real reply and the spoken-since arm
+    // had not fired yet. Whoever moved the situation, it moved.
+    const moved = situationMoved(
+      state([ { target: 'ke:fabrice', tick: 20, answeredAt: 60 } ]), 'ke:fabrice', 50 )
+
+    expect( moved, 'they changed the subject and the pre-composed words went out anyway')
+      .not.toBeNull()
+    expect( moved ).toMatch( /said something after I composed this/ )
+  })
+
+  it('go out when their last word predates the composition', () => {
+    // Them having spoken BEFORE is the ordinary case — usually it is what
+    // prompted the outreach.
+    expect( situationMoved(
+      state([ { target: 'ke:fabrice', tick: 20, answeredAt: 40 } ]), 'ke:fabrice', 50 ) ).toBeNull()
+  })
+
+  it('is not confused by someone else answering', () => {
+    expect( situationMoved(
+      state([ { target: 'ke:fkem', tick: 20, answeredAt: 90 } ]), 'ke:fabrice', 50 ) ).toBeNull()
+  })
+
+  it('reports THEIR turn when both arms are live — it is the more recent truth', () => {
+    // Both fired: she spoke at 55, they spoke at 60. The account the mind records
+    // should be the one that actually left the words stranded.
+    expect( situationMoved(
+      state([ { target: 'ke:fabrice', tick: 55, answeredAt: 60 } ]), 'ke:fabrice', 50 ) )
+      .toMatch( /said something after I composed this/ )
   })
 
   it('names what changed, in the mind\'s own voice', () => {

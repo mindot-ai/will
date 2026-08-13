@@ -40,6 +40,7 @@ import { INNATE_SCHEMAS } from '#agency/schemas/innate'
 import { enact, type Enaction } from '#agency/execution.primitives'
 import { revokedIntentIds, revocationId, staleRevocationIds } from '#agency/revocation'
 import { addressesOf } from '#cognition/social.identity'
+import { lastAnsweredByEntity } from '#agency/conversation.aim'
 import {
   CONSEQUENCE_TYPE, CONSEQUENCE_TTL_TICKS,
   consequenceEntity, fnv1a, paramsKey, spokenAtByEntity } from '#agency/consequence'
@@ -954,12 +955,18 @@ function errMsg( err: unknown ): string {
  * responded to whatever moved in between, and this is an older turn arriving on
  * top of a newer one.
  *
- * Deliberately not "did they speak since" — `conversation.received` is a
- * one-shot entity swept on the tick it is scanned, so there is nothing durable
- * to look back at, and a signal that cannot be read at delivery time is a cog
- * that ships dark. In practice the two coincide: both live incidents this fixes
- * had the mind reply first ("Understood. I'm here when you're ready.", "Night.
- * Talk soon.") and then deliver the stale composition on top of its own answer.
+ * And `answeredAt` — when they last spoke to ME. This arm was missing at first,
+ * excluded on the argument that `conversation.received` is a one-shot entity
+ * swept on the tick it is scanned so nothing durable records the other
+ * direction. That was wrong: `answeredAt` is the durable half, folded onto the
+ * mind's own sent turns, and it is what renders "they answered" in the prompt.
+ *
+ * The gap was the COMMON case, not an edge. Live, a COO delivered a pre-composed
+ * agenda message ("I need a list of what's actively in flight…") two seconds
+ * after the person changed the subject, having said nothing in between — so the
+ * stale words arrived BEFORE her real reply and the spoken-since arm had not
+ * fired yet. The two signals were assumed to coincide and do not: whoever moved
+ * the situation, it moved.
  *
  * A missing `composedAt` means the words were never requested through
  * `_requestAuthoring` — nothing is known about when they were formed, so nothing
@@ -972,7 +979,14 @@ export function situationMoved(
   composedAt:     Tick | undefined,
 ): string | null {
   if( composedAt === undefined || !targetEntityId ) return null
+
+  const heard = lastAnsweredByEntity( state.entities as never ).get( targetEntityId )
+  if( heard !== undefined && heard > composedAt )
+    return 'They said something after I composed this, so it is an answer to a moment that has passed.'
+
   const spoke = spokenAtByEntity( state.entities as never ).get( targetEntityId )
-  if( spoke === undefined || spoke <= composedAt ) return null
-  return 'I had already spoken to them since composing this, so it was no longer what I had to say.'
+  if( spoke !== undefined && spoke > composedAt )
+    return 'I had already spoken to them since composing this, so it was no longer what I had to say.'
+
+  return null
 }

@@ -2,6 +2,7 @@
 // src/cognition/faculties/executive.engine/context.ts
 // ─────────────────────────────────────────────────────────────
 
+import { recentActionRecords } from '#faculties/executive.engine/action.record'
 import type { ReadonlySimulationState } from '#core/types'
 import type { GoalManager } from '#faculties/goal.manager'
 import type { WorkingMemory } from '#faculties/working.memory'
@@ -256,33 +257,15 @@ export async function buildExecutiveContext(
     impulsivity:     execParams.impulsivity     ?? 0.3,
   } : undefined
 
-  // Recent action outcomes — scan decision.record entities that have been processed
-  // (actionStatus is set) and return the last 5 most recent, newest first.
-  // This closes the Act → Confirm → Perceive loop: the executive can see what it
-  // tried, whether it landed, and whether an external dispatch went unanswered.
-  const recentActions: Array<{
-    type: string; status: 'completed' | 'failed' | 'awaiting_host' | 'timed_out'
-    tick: number; outcome: string; planId?: string
-  }> = []
-
-  for( const entity of state.entities.values() ){
-    if( entity.type !== 'decision.record') continue
-    const actionStatus = entity.metadata?.actionStatus as string | undefined
-    if( !actionStatus ) continue
-    if( !( [ 'completed', 'failed', 'awaiting_host', 'timed_out' ] as string[] ).includes( actionStatus ) ) continue
-
-    recentActions.push({
-      type:   ( entity.metadata?.actionType as string )    ?? 'unknown',
-      status: actionStatus as 'completed' | 'failed' | 'awaiting_host' | 'timed_out',
-      tick:   ( entity.metadata?.executionTick as number ) ?? ( entity.metadata?.dispatchedAt as number ) ?? 0,
-      outcome: String( entity.metadata?.outcome ?? '').slice( 0, 120 ),
-      planId: entity.metadata?.planId as string | undefined,
-    })
-  }
-
-  // Sort newest-first, cap at 5
-  recentActions.sort( ( a, b ) => b.tick - a.tick )
-  const recentActionsCapped = recentActions.slice( 0, 5 )
+  // What became of what I did — this is what closes the Act → Confirm → Perceive
+  // loop the prompt's `## Recent Action Outcomes` section was written for.
+  //
+  // It used to scan `decision.record` for an `actionStatus`, a field READ here
+  // and written nowhere in the engine. The section therefore rendered zero times
+  // across every prompt a live COO ever received, while `## What I've Said
+  // Lately` rendered in all of them — the mind could see what it had said and
+  // never what it had done. See `action.record.ts` for what that cost.
+  const recentActionsCapped = recentActionRecords( state.entities as never )
 
   // Current best name for a person, from the known-entity roster.
   const nameOf = ( keid: string ): string | undefined => {

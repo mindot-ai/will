@@ -28,6 +28,9 @@ import type {
   EntityInput
 } from '#core/types'
 import { AsyncEngine } from '#core/async.engine'
+import {
+  actionRecordEntity, staleActionRecordIds, type ActionStatus,
+} from '#faculties/executive.engine/action.record'
 import type { IntermediateStream } from '#core/async.engine'
 import type { WorkingMemory } from '#faculties/working.memory'
 import type { GoalManager, GoalState } from '#faculties/goal.manager'
@@ -477,6 +480,39 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   subscribes(): string[] { return [ '*' ] }
   publishes(): CognitiveEventSchema[] { return [] }
 
+  /**
+   * Fold one resolved act into the mind's record of its own doing.
+   *
+   * `withheld` is kept distinct from `failed` deliberately: the mind formed the
+   * act and chose not to complete it, which is a judgement, not an inability.
+   * Collapsing them is the #123 mistake — a COO learning it was bad at speaking
+   * from the times it decided not to speak.
+   */
+  private _recordAction( event: CognitiveEvent ): StateCommands | void {
+    const p = event.payload as {
+      actionType?: unknown; success?: unknown; targetEntityId?: unknown
+      description?: unknown; planId?: unknown; tick?: unknown
+    } | undefined
+    const type = typeof p?.actionType === 'string' ? p.actionType : undefined
+    if( !type ) return
+
+    const status: ActionStatus = event.type === 'action.withheld' ? 'withheld'
+      : p?.success === false ? 'failed'
+      : 'completed'
+
+    const record = actionRecordEntity({
+      type, status,
+      tick: typeof p?.tick === 'number' ? p.tick : 0,
+      ...( typeof p?.targetEntityId === 'string' ? { targetEntityId: p.targetEntityId } : {} ),
+      outcome: typeof p?.description === 'string' ? p.description.slice( 0, 120 ) : '',
+      ...( typeof p?.planId === 'string' ? { planId: p.planId } : {} ),
+    })
+
+    // Pruning happens in `react`, which has frozen state to prune against; an
+    // event handler sees only the event.
+    return { set: [ record ] }
+  }
+
   snapshot(): Record<string, unknown> {
     return {
       bufferSize: this._gatingState.salienceBuffer.length,
@@ -487,6 +523,24 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
   onCognitiveEvent( event: CognitiveEvent ): StateCommands | void {
     if( event.sourceEngine === this.name ) return
+
+    // What became of what I did.
+    //
+    // `## Recent Action Outcomes` has existed — section, builder and type —
+    // since it was written, fed by `context.ts` scanning `decision.record` for
+    // an `actionStatus` that nothing in the engine has ever set. It rendered 0
+    // times across every prompt a live COO received. So the mind could see what
+    // it had SAID and never what it had DONE, and its only other record of
+    // acting is `## Recent Actions`, which is built from the executive's own
+    // DECISIONS. A record of acting that contains only intentions cannot
+    // distinguish an intention from an act — and one did not, reporting a spec
+    // as drafted and sent when it had no effectors and had sent nothing.
+    //
+    // Written here because these events already arrive here (`subscribes()` is
+    // `['*']`) and the returned commands are drained onto state by the
+    // orchestrator. See `action.record.ts`.
+    if( event.type === 'action.outcome' || event.type === 'action.withheld')
+      return this._recordAction( event )
 
     // Spare attention scales the facet allowance within the persona's ceiling.
     if( event.type === 'attention.state.changed'){
@@ -551,6 +605,14 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       result.commands ??= {}
       result.commands.set    = [ ...( result.commands.set    ?? [] ), ...focus.set ]
       result.commands.delete = [ ...( result.commands.delete ?? [] ), ...focus.delete ]
+    }
+
+    // Hold as many acts as the prompt shows and no more. Done here rather than
+    // in the event handler because pruning needs frozen state to prune against.
+    const stale = staleActionRecordIds( state.entities as never )
+    if( stale.length > 0 ){
+      result.commands ??= {}
+      result.commands.delete = [ ...( result.commands.delete ?? [] ), ...stale ]
     }
 
     return result

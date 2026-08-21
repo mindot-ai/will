@@ -1483,6 +1483,17 @@ type TokenRecordListener = (record: TokenLedgerRecord) => void;
 interface ModelPrice {
     input: number;
     output: number;
+    /**
+     * USD per 1M cache-READ tokens. Absent ⇒ `input × 0.1` (Anthropic's ratio).
+     *
+     * State it whenever the host is not Anthropic. `0` is meaningful and honoured
+     * — some providers do not charge for cache reads at all — so this is read as
+     * "absent", not "falsy".
+     */
+    cachedInput?: number;
+    /** USD per 1M cache-WRITE tokens. Absent ⇒ `input × 1.25`. `0` is honoured:
+     *  Z.ai's cache storage is free, which no multiple of input can express. */
+    cacheWrite?: number;
 }
 /**
  * Host-supplied prices, keyed by model id. Matching is exact first, then
@@ -3827,6 +3838,32 @@ declare class GoalManager implements SimulationEngine, CognitiveEngine {
      * task-persistence commitment boost. 0 when the goal has no plan or an empty one.
      */
     private _focusedPlanProgress;
+    /**
+     * Reconcile the active set to capacity — in BOTH directions.
+     *
+     * Demotion alone made `pending` a one-way door, and a mind fell through it.
+     * Nothing in this file promoted a goal back (the only other write of `'active'`
+     * is `pending_verification`'s, a different status), so a goal demoted for
+     * capacity was demoted for good. Worse, `pending` is excluded from every other
+     * mechanism that could have retired it: it is not in `getActiveGoals()`, not
+     * progress-updated, not reachable by the patience/grit sweep (which skips any
+     * status but `'active'`) — yet it IS re-persisted every tick and rehydrated on
+     * every restore. Inert and immortal at once.
+     *
+     * Measured on a live COO: 96 goal entities, of which **83 pending, 0 active**,
+     * and 92 of the 96 the same drive-spawned goal. `activeGoalCount` sat at 0, so
+     * `goalless_crisis` fired every 20 ticks forever while she carried 83 goals —
+     * and the `goal` term, the joint-largest weight in the affordance competition,
+     * contributed nothing to any choice she made.
+     *
+     * Promotion also restores GC reachability, which is the quieter half of the
+     * fix: an over-patient stale goal can only be abandoned while it is active.
+     *
+     * `activatedAt` is deliberately NOT refreshed on promotion. Refreshing it would
+     * let a goal cycle demote→promote and reset its own patience each time, making
+     * it unretirable — the immortality this fix exists to end, reintroduced by the
+     * back door. A goal's age is when it was taken up, not when it last got a slot.
+     */
     private _resolveConflicts;
     private _updateProgress;
     /**
@@ -5142,6 +5179,15 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     facetFor(key: string): ExecutiveFacetHandle | undefined;
     subscribes(): string[];
     publishes(): CognitiveEventSchema[];
+    /**
+     * Fold one resolved act into the mind's record of its own doing.
+     *
+     * `withheld` is kept distinct from `failed` deliberately: the mind formed the
+     * act and chose not to complete it, which is a judgement, not an inability.
+     * Collapsing them is the #123 mistake — a COO learning it was bad at speaking
+     * from the times it decided not to speak.
+     */
+    private _recordAction;
     snapshot(): Record<string, unknown>;
     onCognitiveEvent(event: CognitiveEvent): StateCommands | void;
     /**
@@ -6557,6 +6603,8 @@ interface LearnedSkill {
     lastEnactedTick: number;
 }
 
+/** What the boundary decided about a proposed effect. */
+type PolicyDecision = 'allow' | 'deny' | 'escalate';
 /**
  * WHY this denial is final — the distinction that makes a refusal learnable
  * rather than a wall to re-probe forever. Each value selects a different
@@ -6580,6 +6628,110 @@ interface LearnedSkill {
  * translates; this interface stays vendor-neutral.
  */
 type DenialFinality = 'class' | 'parameter' | 'context';
+/**
+ * The nearest allowed envelope — what WOULD have been permitted. Structured so
+ * a learner can consume it; `field` names the constraint that bit.
+ *
+ * Every denial branch of a policy evaluator already computes this and usually
+ * discards it. We keep it.
+ */
+interface PolicyCounterfactual {
+    /** The constrained field, e.g. 'ttl_days', 'target', 'amount'. */
+    field: string;
+    /** What the Will asked for. */
+    requested?: unknown;
+    /** The bound or permitted set, e.g. 30, or [ 'a', 'b' ]. */
+    allowed?: unknown;
+}
+/** A boundary decision about one proposed invocation. */
+interface Verdict {
+    decision: PolicyDecision;
+    /** Stable machine-readable code, e.g. 'TARGET_NOT_ALLOWED'. Never prose. */
+    reasonCode?: string;
+    /** Meaningful on 'deny' only. Absent ⇒ treat as 'parameter' — see
+     *  `asFinality` for why that, and not 'context', is the safe default. */
+    finality?: DenialFinality;
+    counterfactual?: PolicyCounterfactual;
+    /** Free-text for logs and host UX. NEVER parsed by cognition. */
+    detail?: string;
+}
+/**
+ * The proposed effect, as the stem sees it. Mirrors the `agency.invocation`
+ * bus payload the MotorSchemaExecutor emits — no cognitive internals cross
+ * this boundary, only the act itself.
+ */
+interface PolicyInvocation {
+    willId: string;
+    /** The awaiting `agency.intent` id — the correlation handle, end to end. */
+    intentId: string;
+    /** The motor schema id, i.e. the ability being enacted. */
+    schema: string;
+    parameters: Record<string, unknown>;
+    targetEntityId?: string;
+    /**
+     * The addresses this host knows `targetEntityId` by (e.g. `discord:123…`) —
+     * the same enrichment a host effector handler already receives on `ctx`
+     * (`EffectorHandler`'s `ctx.targetAddresses`, `surface/sdk/will.ts`). The
+     * arbiter sits at the identical boundary, one step earlier in the same flow,
+     * so withholding it here bought no extra privacy — a handler downstream of an
+     * ALLOW already sees it. Absent when the invocation binds no target or the
+     * entity has no known address.
+     */
+    targetAddresses?: readonly string[];
+    /** The ability's declared meaning, as given by the host at wiring time. */
+    description?: string;
+    tick: number;
+}
+/**
+ * A Policy Decision Point. Implementations must be PURE with respect to the
+ * Will: an arbiter may read its own policy and the invocation, and nothing
+ * else. It must not reach into simulation state.
+ *
+ * DETERMINISM CONTRACT: an arbiter is an external oracle, exactly like the LLM.
+ * Its verdicts are recorded on the tape and replayed back — replay never
+ * re-consults an arbiter (see P1). Implementations therefore need not be
+ * deterministic themselves, but MUST be free of side effects on the Will.
+ */
+interface PolicyArbiter {
+    /** Stable identifier, recorded alongside the verdict for audit. */
+    readonly name: string;
+    evaluate(invocation: PolicyInvocation): Verdict | Promise<Verdict>;
+}
+/**
+ * The default. Allows everything, allocates nothing, logs nothing.
+ *
+ * A Will running this must be byte-identical to one built before the policy
+ * seam existed — that property is asserted by test, and it is what lets this
+ * ship dark.
+ */
+declare const NULL_ARBITER: PolicyArbiter;
+/** True when the arbiter is the no-op default (used to skip the seam entirely). */
+declare function isNullArbiter(arbiter: PolicyArbiter | null | undefined): boolean;
+/** Normalize a denial's finality. Absent ⇒ 'parameter' (see `asFinality`). */
+declare function finalityOf(verdict: Verdict): DenialFinality;
+/**
+ * Normalize an UNTYPED finality — one read back off entity metadata, a verdict
+ * tape, or a host ack, where the type system cannot help.
+ *
+ * Every such read goes through here rather than comparing string literals at
+ * the call site: the enum is a moving target (it widened once for the HELM
+ * joint RFC and may again), and a hand-written `=== 'class'` scattered through
+ * cognition is a mis-route that still typechecks.
+ *
+ * THE DEFAULT IS 'parameter', AND NEVER 'context'. The intuitive reading — an
+ * unlabelled denial should do the LEAST, so default to the fate that touches
+ * nothing — is wrong, and dangerously so. 'context' means *the mind learns
+ * nothing from this denial*, so it re-probes the same wall forever: the exact
+ * failure this whole epoch exists to fix, silently re-enabled for any provider
+ * that doesn't tag its refusals. 'context' is a claim only a provider that
+ * actually knows can make — it must be ASSERTED, never defaulted to.
+ * 'parameter' narrows without deleting, which is the honest conservative
+ * reading and preserves pre-P5 behaviour for an untagged denial exactly.
+ *
+ * Legacy 'instance' (the pre-P5 spelling) normalizes to 'parameter' by the same
+ * fallback, so tapes and snapshots written before the split replay unchanged.
+ */
+declare function asFinality(raw: unknown): DenialFinality;
 
 interface OutcomeObservation {
     schema: string;
@@ -7180,6 +7332,14 @@ declare class MotorSchemaExecutor implements CognitiveEngine {
      * an ability that was never in question.
      */
     private _withheld;
+    /**
+     * The tick at which each held intent's words were REQUESTED from a facet.
+     *
+     * Authoring is off-tick and can take 10–30s of real time. In that window the
+     * situation the words were composed for can move — and until now nothing
+     * looked. See `situationMoved`.
+     */
+    private _composedAt;
     constructor(schemas?: MotorSchema[]);
     attachBus(bus: CognitiveBus): void;
     /** Resolve schemas (incl. learned composites) from the live repertoire first. */
@@ -7617,8 +7777,15 @@ declare class AffordanceSynthesizer implements CognitiveEngine {
      * because `_build` runs per candidate and reading them is a full-entity scan.
      */
     private _inFlight;
+    /** Durable "when did I last do this TO them" — the entity-bound peer of
+     *  `_spokenAt`, collected once per tick for the same reason `_inFlight` is. */
+    private _enactedAt;
     /** Ticks an act stays satiating (engine-config-action-selector.repeatWindowTicks). */
     private _satiationWindow;
+    /** Verdicts System 2 has already reached and that have not yet aged out.
+     *  Collected once per tick for the same reason `_inFlight` is — `_build` runs
+     *  per candidate and this is a full-entity scan. */
+    private _settled;
     /** Tick of the last thing said to each entity — outlives the descriptor sweep. */
     private _spokenAt;
     private _spokeAnywhereAt;
@@ -7719,6 +7886,14 @@ declare class DeliberationEngine implements CognitiveEngine {
     react(_delta: Duration, tick: Tick, state: ReadonlySimulationState, _context: SimulationContext): Promise<EngineResult>;
     /** Run one unified-inference deliberation. Returns the chosen schema (or the provisional winner on any failure). */
     private _deliberate;
+    /**
+     * Record that this contest was weighed and settled.
+     *
+     * Keyed on what WON, not on the rival set, so a slightly differently-framed
+     * contest still meets a verdict the mind has already reached — the rivals ride
+     * along as the introspectable reason rather than as a matching key.
+     */
+    private _settle;
     /** Write the deliberating intent back as 'selected' with the chosen action. */
     private _commit;
     /** The deliberation focus body — the candidate actions the substrate surfaced. */
@@ -8946,6 +9121,24 @@ declare class WillStem {
      */
     resolveEscalation(id: string, invocationId: string, approved: boolean): void;
     /**
+     * Install the Policy Decision Point consulted before every host-owned
+     * effector invocation is handed to the world (POLICY_REAFFERENCE P0).
+     * Passing `null` restores the no-op default — a stem with no arbiter
+     * installed runs byte-identical to one built before the policy seam existed.
+     *
+     * SCOPE: one arbiter per `WillStem`, not per Will — `effectorController` is a
+     * single instance shared by every Will this stem hosts (`setAllowed`,
+     * `resolveEscalation` etc. take a resolved instance; this does not, because
+     * there is only one). `Will.create()` / `Will.wake()` each allocate a fresh
+     * `WillStem`, so on that (recommended) path this is per-Will in practice. A
+     * host running several Wills on ONE shared `WillStem` — e.g. a multi-tenant
+     * service holding many users' Wills in one process — installs ONE arbiter
+     * for all of them; branch on `invocation.willId` inside `evaluate()` if
+     * that's your host, the same way `PolicyVerdictRecord`/`PolicyVerdictSource`
+     * are already keyed per-Will for recording and replay.
+     */
+    setArbiter(arbiter: PolicyArbiter | null): void;
+    /**
      * Confirm a message was received by the target entity. Writes a
      * message.delivery percept ("ear hears the word you spoke") and updates the
      * conversation.sent entity that tracks the outbox message.
@@ -9311,6 +9504,14 @@ declare class Will {
     pause(): void;
     resume(): void;
     /**
+     * Install the Policy Decision Point consulted before every effector
+     * invocation this Will hands to the host (POLICY_REAFFERENCE P0). `null`
+     * restores the no-op default. See `WillStem.setArbiter` for the one scoping
+     * caveat (per-stem, not per-Will id) — irrelevant here since `Will.create()`
+     * gives this instance its own dedicated stem.
+     */
+    setArbiter(arbiter: PolicyArbiter | null): this;
+    /**
      * Checkpoint the living mind into a portable PMA artifact — NON-destructive.
      * The Will keeps ticking; the snapshot is a point-in-time copy you can archive
      * or wake elsewhere. Use this for periodic saves; use `hibernate()` to sleep.
@@ -9335,4 +9536,4 @@ declare class Will {
     private _emitError;
 }
 
-export { type DeltaSnapshot as $, type AckEnvelope as A, BACKGROUND_DEMAND as B, type ChunkEnvelope as C, CircadianOscillator as D, type ClockConfig as E, type Cognition as F, type CognitiveHealth as G, ConfidenceCalibrator as H, type ConfidenceCalibratorConfig as I, type ConflictReport as J, type ConflictResolution as K, type ConflictStrategy as L, type Coordinates as M, type CreateWillOptions as N, DefaultEventBus as O, DefaultMetricCollector as P, DefaultOrchestrator as Q, DefaultReplayRecorder as R, DefaultReplaySession as S, DefaultScenario as T, DefaultSerializer as U, DefaultSimulation as V, DefaultSimulationClock as W, DefaultStateManager as X, DefaultVectorMemoryAdapter as Y, DeliberationEngine as Z, DeltaEncoder as _, type AckResult as a, type ModelRouter as a$, DreamSimulator as a0, type DreamSimulatorConfig as a1, type Duration as a2, ESCALATION_DEMAND as a3, type EffectorDeclaration as a4, type EffectorEntry as a5, type EffectorHandler as a6, type EffectorResult as a7, type EffectorSpec as a8, type EmbeddingProvider as a9, type InboundEnvelope as aA, type InboundMessageEnvelope as aB, type InboundPerceptEnvelope as aC, InhibitionController as aD, type InhibitionControllerConfig as aE, Interoception as aF, type InteroceptionConfig as aG, IntrospectionEngine as aH, type IntrospectionEngineConfig as aI, KNOWN_PROVIDERS as aJ, KnownEntityTracker as aK, type KnownEntityTrackerConfig as aL, type KnownProvider as aM, type LLMCallMeta as aN, type LLMCompletionRecord as aO, type LLMCompletionSink as aP, type LLMProvider as aQ, type LLMWire as aR, LossEvaluator as aS, type LossEvaluatorConfig as aT, type MessageEnvelope as aU, type MetricCollector as aV, type MetricPoint as aW, type MinimalContext as aX, MockEmbedder as aY, type ModelPrice as aZ, type ModelRoute as a_, EmpathySimulator as aa, type EmpathySimulatorConfig as ab, EnergyRegulator as ac, type EnergyRegulatorConfig as ad, type EngineRegistry as ae, type EngineResult as af, type Envelope as ag, EpisodicConsolidator as ah, type EpisodicConsolidatorConfig as ai, type EventBus as aj, type EventBusConfig as ak, type EventFilter as al, type EventHandler as am, type EventPayload as an, ExecutiveEngine as ao, type ExecutiveEngineConfig$1 as ap, type ExternalTransport as aq, Exteroception as ar, type ExteroceptionConfig as as, ForgettingCurve as at, type ForgettingCurveConfig as au, FrustrationEvaluator as av, type FrustrationEvaluatorConfig as aw, GoalManager as ax, type GoalManagerConfig as ay, GustationEngine as az, type ActionRequest as b, type SessionLogEnvelope as b$, MoralEvaluator as b0, type MoralEvaluatorConfig as b1, MotorSchemaExecutor as b2, NULL_ROUTER as b3, NoveltyDetector as b4, type NoveltyDetectorConfig as b5, OlfactionEngine as b6, OpenAICompatibleEmbedder as b7, type Orchestrator as b8, type OrchestratorConfig as b9, ReplayManager as bA, type ReplayMetadata as bB, type ReplayRecord as bC, type ReplayRecorder as bD, type ReplaySession as bE, type ReplyEnvelope as bF, ReputationTracker as bG, type ReputationTrackerConfig as bH, type RestoreOptions as bI, RewardEvaluator as bJ, type RewardEvaluatorConfig as bK, type RoutingRule as bL, type Scenario as bM, type ScenarioConfig as bN, type ScenarioValidationResult as bO, type SchemaPrecondition as bP, type SeededPRNG as bQ, SelfModelUpdater as bR, type SelfModelUpdaterConfig as bS, SemanticIntegrator as bT, type SemanticIntegratorConfig as bU, type SensoryInput as bV, type SerializationConfig as bW, type SerializationFormat as bX, type SerializedEntity as bY, type SerializedState as bZ, type Serializer as b_, type OutboundEnvelope as ba, type OutboxMessage as bb, type PMABehavioral as bc, type PMABelief as bd, type PMAEmotionalBaseline as be, PMAEvalHarness as bf, type PMAGoal as bg, type PMAIdentity as bh, type PMAProbe as bi, type PMASnapshot as bj, type PerceptEnvelope as bk, PersonaConsolidator as bl, type PersonaConsolidatorConfig as bm, PlanningEngine as bn, type PlanningEngineConfig as bo, type PriceTable as bp, type ProviderCredential as bq, type ReadonlySimulationState as br, ReafferenceEngine as bs, type ReasoningFootprint as bt, type ReconstructionFidelityReport as bu, type ReconstructionFidelityScores as bv, type RecordUsageInput as bw, type ReplayComparison as bx, type ReplayConfig as by, type ReplayDifference as bz, type ActionResult as c, assembleMind as c$, type Simulation as c0, type SimulationClock as c1, type SimulationConfig as c2, type SimulationContext as c3, type SimulationEngine as c4, type SimulationEntity as c5, type SimulationEvent as c6, type SimulationEventBase as c7, type SimulationEventListener as c8, type SimulationState as c9, type TokenReportEnvelope as cA, TokenTracker as cB, type TokenTrackerConfig as cC, type TokenUsage as cD, type TransportStatus as cE, type VectorIndex as cF, type VectorMemoryAdapter as cG, type VectorMemoryConfig as cH, type VectorQueryFilter as cI, type VectorQueryResult as cJ, type VectorRecord as cK, VisionEngine as cL, type VoiceChunk as cM, Will as cN, type WillAffect as cO, type WillConfig as cP, type WillEffectorAct as cQ, type WillInstance as cR, type WillMessage as cS, type WillStateSummary as cT, type WillStatus as cU, WillStem as cV, type WillSummary as cW, WorkingMemory as cX, type WorkingMemoryConfig as cY, type WorldEntity as cZ, type WorldInterface as c_, type SleepPressureConfig as ca, SleepPressureRegulator as cb, SocialPerception as cc, type SocialPerceptionConfig as cd, SomatosensationEngine as ce, SpacedRepetition as cf, type SpacedRepetitionConfig as cg, type StateCommands as ch, type StateManager as ci, type StateSnapshot as cj, type Stimulus as ck, type StorageAdapter as cl, StressRegulator as cm, type StressRegulatorConfig as cn, TableRouter as co, TaskSwitcher as cp, type TaskSwitcherConfig as cq, type TextMessage as cr, TheoryOfMind as cs, type TheoryOfMindConfig as ct, ThreatEvaluator as cu, type ThreatEvaluatorConfig as cv, type Tick as cw, type TickListener as cx, type Timestamp as cy, type TokenLedgerRecord as cz, ActionSelector as d, chainRouters as d0, clearCompletionRecorder as d1, defaultBaseFor as d2, type effectorInvocation as d3, type effectorInvocationEnvelope as d4, getCompletionRecorder as d5, isNullRouter as d6, knownWireFor as d7, resolvePricing as d8, setCompletionRecorder as d9, type ActivityEnvelope as e, type ActivityEvent as f, type ActivityEventHandler as g, AestheticEvaluator as h, type AestheticEvaluatorConfig as i, AffectiveBlender as j, type AffectiveBlenderConfig as k, AffordanceSynthesizer as l, AsyncEngine as m, type AsyncEngineConfig as n, AttachmentEvaluator as o, type AttachmentEvaluatorConfig as p, AttentionAllocator as q, type AttentionAllocatorConfig as r, AuditionEngine as s, AutobiographicalNarrator as t, type AutobiographicalNarratorConfig as u, type BehavioralProbeResult as v, BiasDetector as w, type BiasDetectorConfig as x, BunStorageAdapter as y, type CircadianConfig as z };
+export { type DeltaSnapshot as $, type AckEnvelope as A, BACKGROUND_DEMAND as B, type ChunkEnvelope as C, CircadianOscillator as D, type ClockConfig as E, type Cognition as F, type CognitiveHealth as G, ConfidenceCalibrator as H, type ConfidenceCalibratorConfig as I, type ConflictReport as J, type ConflictResolution as K, type ConflictStrategy as L, type Coordinates as M, type CreateWillOptions as N, DefaultEventBus as O, DefaultMetricCollector as P, DefaultOrchestrator as Q, DefaultReplayRecorder as R, DefaultReplaySession as S, DefaultScenario as T, DefaultSerializer as U, DefaultSimulation as V, DefaultSimulationClock as W, DefaultStateManager as X, DefaultVectorMemoryAdapter as Y, DeliberationEngine as Z, DeltaEncoder as _, type AckResult as a, type ModelRoute as a$, type DenialFinality as a0, DreamSimulator as a1, type DreamSimulatorConfig as a2, type Duration as a3, ESCALATION_DEMAND as a4, type EffectorDeclaration as a5, type EffectorEntry as a6, type EffectorHandler as a7, type EffectorResult as a8, type EffectorSpec as a9, GustationEngine as aA, type InboundEnvelope as aB, type InboundMessageEnvelope as aC, type InboundPerceptEnvelope as aD, InhibitionController as aE, type InhibitionControllerConfig as aF, Interoception as aG, type InteroceptionConfig as aH, IntrospectionEngine as aI, type IntrospectionEngineConfig as aJ, KNOWN_PROVIDERS as aK, KnownEntityTracker as aL, type KnownEntityTrackerConfig as aM, type KnownProvider as aN, type LLMCallMeta as aO, type LLMCompletionRecord as aP, type LLMCompletionSink as aQ, type LLMProvider as aR, type LLMWire as aS, LossEvaluator as aT, type LossEvaluatorConfig as aU, type MessageEnvelope as aV, type MetricCollector as aW, type MetricPoint as aX, type MinimalContext as aY, MockEmbedder as aZ, type ModelPrice as a_, type EmbeddingProvider as aa, EmpathySimulator as ab, type EmpathySimulatorConfig as ac, EnergyRegulator as ad, type EnergyRegulatorConfig as ae, type EngineRegistry as af, type EngineResult as ag, type Envelope as ah, EpisodicConsolidator as ai, type EpisodicConsolidatorConfig as aj, type EventBus as ak, type EventBusConfig as al, type EventFilter as am, type EventHandler as an, type EventPayload as ao, ExecutiveEngine as ap, type ExecutiveEngineConfig$1 as aq, type ExternalTransport as ar, Exteroception as as, type ExteroceptionConfig as at, ForgettingCurve as au, type ForgettingCurveConfig as av, FrustrationEvaluator as aw, type FrustrationEvaluatorConfig as ax, GoalManager as ay, type GoalManagerConfig as az, type ActionRequest as b, type SensoryInput as b$, type ModelRouter as b0, MoralEvaluator as b1, type MoralEvaluatorConfig as b2, MotorSchemaExecutor as b3, NULL_ARBITER as b4, NULL_ROUTER as b5, NoveltyDetector as b6, type NoveltyDetectorConfig as b7, OlfactionEngine as b8, OpenAICompatibleEmbedder as b9, type ReconstructionFidelityReport as bA, type ReconstructionFidelityScores as bB, type RecordUsageInput as bC, type ReplayComparison as bD, type ReplayConfig as bE, type ReplayDifference as bF, ReplayManager as bG, type ReplayMetadata as bH, type ReplayRecord as bI, type ReplayRecorder as bJ, type ReplaySession as bK, type ReplyEnvelope as bL, ReputationTracker as bM, type ReputationTrackerConfig as bN, type RestoreOptions as bO, RewardEvaluator as bP, type RewardEvaluatorConfig as bQ, type RoutingRule as bR, type Scenario as bS, type ScenarioConfig as bT, type ScenarioValidationResult as bU, type SchemaPrecondition as bV, type SeededPRNG as bW, SelfModelUpdater as bX, type SelfModelUpdaterConfig as bY, SemanticIntegrator as bZ, type SemanticIntegratorConfig as b_, type Orchestrator as ba, type OrchestratorConfig as bb, type OutboundEnvelope as bc, type OutboxMessage as bd, type PMABehavioral as be, type PMABelief as bf, type PMAEmotionalBaseline as bg, PMAEvalHarness as bh, type PMAGoal as bi, type PMAIdentity as bj, type PMAProbe as bk, type PMASnapshot as bl, type PerceptEnvelope as bm, PersonaConsolidator as bn, type PersonaConsolidatorConfig as bo, PlanningEngine as bp, type PlanningEngineConfig as bq, type PolicyArbiter as br, type PolicyCounterfactual as bs, type PolicyDecision as bt, type PolicyInvocation as bu, type PriceTable as bv, type ProviderCredential as bw, type ReadonlySimulationState as bx, ReafferenceEngine as by, type ReasoningFootprint as bz, type ActionResult as c, type WillStatus as c$, type SerializationConfig as c0, type SerializationFormat as c1, type SerializedEntity as c2, type SerializedState as c3, type Serializer as c4, type SessionLogEnvelope as c5, type Simulation as c6, type SimulationClock as c7, type SimulationConfig as c8, type SimulationContext as c9, ThreatEvaluator as cA, type ThreatEvaluatorConfig as cB, type Tick as cC, type TickListener as cD, type Timestamp as cE, type TokenLedgerRecord as cF, type TokenReportEnvelope as cG, TokenTracker as cH, type TokenTrackerConfig as cI, type TokenUsage as cJ, type TransportStatus as cK, type VectorIndex as cL, type VectorMemoryAdapter as cM, type VectorMemoryConfig as cN, type VectorQueryFilter as cO, type VectorQueryResult as cP, type VectorRecord as cQ, type Verdict as cR, VisionEngine as cS, type VoiceChunk as cT, Will as cU, type WillAffect as cV, type WillConfig as cW, type WillEffectorAct as cX, type WillInstance as cY, type WillMessage as cZ, type WillStateSummary as c_, type SimulationEngine as ca, type SimulationEntity as cb, type SimulationEvent as cc, type SimulationEventBase as cd, type SimulationEventListener as ce, type SimulationState as cf, type SleepPressureConfig as cg, SleepPressureRegulator as ch, SocialPerception as ci, type SocialPerceptionConfig as cj, SomatosensationEngine as ck, SpacedRepetition as cl, type SpacedRepetitionConfig as cm, type StateCommands as cn, type StateManager as co, type StateSnapshot as cp, type Stimulus as cq, type StorageAdapter as cr, StressRegulator as cs, type StressRegulatorConfig as ct, TableRouter as cu, TaskSwitcher as cv, type TaskSwitcherConfig as cw, type TextMessage as cx, TheoryOfMind as cy, type TheoryOfMindConfig as cz, ActionSelector as d, WillStem as d0, type WillSummary as d1, WorkingMemory as d2, type WorkingMemoryConfig as d3, type WorldEntity as d4, type WorldInterface as d5, asFinality as d6, assembleMind as d7, chainRouters as d8, clearCompletionRecorder as d9, defaultBaseFor as da, type effectorInvocation as db, type effectorInvocationEnvelope as dc, finalityOf as dd, getCompletionRecorder as de, isNullArbiter as df, isNullRouter as dg, knownWireFor as dh, resolvePricing as di, setCompletionRecorder as dj, type ActivityEnvelope as e, type ActivityEvent as f, type ActivityEventHandler as g, AestheticEvaluator as h, type AestheticEvaluatorConfig as i, AffectiveBlender as j, type AffectiveBlenderConfig as k, AffordanceSynthesizer as l, AsyncEngine as m, type AsyncEngineConfig as n, AttachmentEvaluator as o, type AttachmentEvaluatorConfig as p, AttentionAllocator as q, type AttentionAllocatorConfig as r, AuditionEngine as s, AutobiographicalNarrator as t, type AutobiographicalNarratorConfig as u, type BehavioralProbeResult as v, BiasDetector as w, type BiasDetectorConfig as x, BunStorageAdapter as y, type CircadianConfig as z };

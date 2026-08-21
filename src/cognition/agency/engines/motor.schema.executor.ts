@@ -42,8 +42,18 @@ import { revokedIntentIds, revocationId, staleRevocationIds } from '#agency/revo
 import { addressesOf } from '#cognition/social.identity'
 import { lastAnsweredByEntity } from '#agency/conversation.aim'
 import {
-  CONSEQUENCE_TYPE, CONSEQUENCE_TTL_TICKS,
-  consequenceEntity, fnv1a, paramsKey, spokenAtByEntity } from '#agency/consequence'
+  CONSEQUENCE_TYPE, CONSEQUENCE_TTL_TICKS, ENACTED_TYPE,
+  consequenceEntity, enactedEntity, fnv1a, paramsKey, spokenAtByEntity } from '#agency/consequence'
+
+/**
+ * How long a durable enaction record is kept. Generous against the satiation
+ * window (`repeatWindowTicks`, 60 by default) rather than equal to it, because
+ * the window is persona-tunable and read in the synthesizer, not here — a
+ * retention shorter than some tenant's window would silently reintroduce the
+ * very gap this record exists to close. Past this the satiation term is 0
+ * regardless, so keeping it longer buys nothing.
+ */
+const ENACTED_RETENTION_TICKS = 600
 
 /** Ticks an async (communicate/external) intent may stay 'awaiting' before it is
  *  abandoned. Exported: the ReafferenceEngine's sensory-confirmation path (P5)
@@ -216,6 +226,22 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     for( const [ id, e ] of state.entities ){
       if( e.type !== CONSEQUENCE_TYPE ) continue
       if( tick >= num( e.metadata?.['expiresAt'], 0 ) ) del.push( id )
+    }
+
+    // ── Expire durable enaction records ──────────────────────────
+    // One per (schema, target), refreshed in place, so the live set is bounded
+    // by pairs actually enacted rather than by enactions — but a Will that meets
+    // many people would still accrete one per person per schema forever, and the
+    // soak test asserts entities plateau. Dropped once no satiation window could
+    // still be reading them: past ENACTED_RETENTION_TICKS the term is 0 anyway,
+    // so the record is indistinguishable from its own absence.
+    for( const [ id, e ] of state.entities ){
+      if( e.type !== ENACTED_TYPE ) continue
+      const at = num( e.metadata?.['tick'], 0 )
+      // A record stamped later than now is a restored one from a previous
+      // session (the tick counter restarts on wake) — same trap `liveConsequences`
+      // documents. Drop it rather than let it read as "just now" all session.
+      if( at > tick || tick - at > ENACTED_RETENTION_TICKS ) del.push( id )
     }
 
     // ── Revocation tombstones (EXAFFERENCE P4) ───────────────────
@@ -466,6 +492,15 @@ export class MotorSchemaExecutor implements CognitiveEngine {
             paramsHash: fnv1a( paramsKey( intent.parameters ) ),
             expiresAt: tick + CONSEQUENCE_TTL_TICKS, tick,
           }) )
+          // The durable half, for an act with an object that is not speech.
+          // Speech has `conversation.sent` and objectless acts have
+          // `LearnedSkill.lastEnactedTick`; this is the peer those two left out,
+          // and without it satiation expired with the descriptor at the ECHO
+          // window rather than lasting the satiation window. Written at the same
+          // moment as the descriptor — the dispatch IS the act for an external
+          // effector — and keyed per (schema, target) so it refreshes in place.
+          if( intent.targetEntityId && enaction.mode !== 'communicate')
+            set.push( enactedEntity( intent.schema, intent.targetEntityId, tick ) )
           events.push( ...this._emitDispatch( intent, enaction.mode, tick, state ) )
           metrics.push([ enaction.mode === 'communicate'
             ? 'agency.communicate.dispatched'

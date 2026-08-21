@@ -38,7 +38,7 @@ import { INNATE_SCHEMAS } from '#agency/schemas/innate'
 import { CURIOUS_RESOLVED } from '#faculties/known.entity.tracker'
 import { collectGoalTargets } from '#agency/selection.scoring'
 import { readEffectiveParams } from '#cognition/persona.prior'
-import { liveConsequences, enactionFootprint, spokenAtByEntity, CONSEQUENCE_TTL_TICKS, type ConsequenceDescriptor } from '#agency/consequence'
+import { liveConsequences, enactionFootprint, spokenAtByEntity, enactedAtBySchemaTarget, CONSEQUENCE_TTL_TICKS, type ConsequenceDescriptor } from '#agency/consequence'
 import { liveSettlements, settlementForce, type SettlementDescriptor } from '#agency/settlement'
 
 /** Default field width for non-innate affordances when no attention metric exists. */
@@ -70,6 +70,9 @@ export class AffordanceSynthesizer implements CognitiveEngine {
    * because `_build` runs per candidate and reading them is a full-entity scan.
    */
   private _inFlight: readonly ConsequenceDescriptor[] = []
+  /** Durable "when did I last do this TO them" — the entity-bound peer of
+   *  `_spokenAt`, collected once per tick for the same reason `_inFlight` is. */
+  private _enactedAt: ReadonlyMap<string, number> = new Map()
 
   /** Ticks an act stays satiating (engine-config-action-selector.repeatWindowTicks). */
   private _satiationWindow: number = CONSEQUENCE_TTL_TICKS
@@ -139,6 +142,10 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // candidate whose (schema, target) matches one of these carries a decaying
     // `justEnacted`, so having just done a thing damps doing it again.
     this._inFlight = liveConsequences( state.entities, tick )
+    // Durable per-(schema, target) enaction. Descriptors alone expire at the ECHO
+    // window, so without this the back half of the satiation window damped
+    // nothing for any act with an object that is not speech.
+    this._enactedAt = enactedAtBySchemaTarget( state.entities )
     // What the mind has already decided. Read here so a verdict reaches the
     // competition as a force in the field rather than a fact about one intent.
     this._settled = liveSettlements( state.entities, tick )
@@ -427,6 +434,9 @@ export class AffordanceSynthesizer implements CognitiveEngine {
       speaks ? this._spokenAt : undefined,
       skill?.lastEnactedTick,
       speaks ? this._spokeAnywhereAt : undefined,
+      // Not gated on `speaks`: this is exactly the arm speech does NOT need
+      // (it has `spokenAt`) and every other entity-bound act was missing.
+      this._enactedAt,
     )
 
     // The mirror of satiation: having thought this through holds the choice for

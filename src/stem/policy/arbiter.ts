@@ -98,6 +98,16 @@ export interface PolicyInvocation {
   schema:          string
   parameters:      Record<string, unknown>
   targetEntityId?: string
+  /**
+   * The addresses this host knows `targetEntityId` by (e.g. `discord:123…`) —
+   * the same enrichment a host effector handler already receives on `ctx`
+   * (`EffectorHandler`'s `ctx.targetAddresses`, `surface/sdk/will.ts`). The
+   * arbiter sits at the identical boundary, one step earlier in the same flow,
+   * so withholding it here bought no extra privacy — a handler downstream of an
+   * ALLOW already sees it. Absent when the invocation binds no target or the
+   * entity has no known address.
+   */
+  targetAddresses?: readonly string[]
   /** The ability's declared meaning, as given by the host at wiring time. */
   description?:    string
   tick:            number

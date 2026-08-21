@@ -130,3 +130,31 @@ export type {
   EffectorEntry,
 } from '#surface/sdk/will'
 export type { SchemaPrecondition, EffectorDeclaration } from '#agency/types'
+
+// ── Policy — the PDP/PEP boundary (POLICY_REAFFERENCE) ──────────────────
+// A host installs a PolicyArbiter via `WillStem.setArbiter()` / `Will.setArbiter()`
+// to gate host-owned effector invocations before they reach the world: allow,
+// deny (with `finality` — class/parameter/context, see arbiter.ts), or escalate
+// (hold the intent, voice the ask, resolve via `resolveEscalation()`). No arbiter
+// installed ⇒ byte-identical to a Will with no policy layer. `RuleTableArbiter`
+// is the local reference PDP — pure and declarative, sufficient for static
+// schema/target/parameter rules; a host needing live world state (session/DB
+// lookups) implements `PolicyArbiter` directly instead.
+export {
+  NULL_ARBITER,
+  isNullArbiter,
+  finalityOf,
+  asFinality,
+  type PolicyArbiter,
+  type PolicyDecision,
+  type DenialFinality,
+  type PolicyCounterfactual,
+  type Verdict,
+  type PolicyInvocation,
+} from '#stem/policy/arbiter'
+export {
+  RuleTableArbiter,
+  type PolicyRule,
+  type ParamConstraint,
+  type RuleTableOptions,
+} from '#stem/policy/rule.table'

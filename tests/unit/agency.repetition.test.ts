@@ -26,6 +26,7 @@ import { describe, it, expect } from 'vitest'
 import {
   enactionFootprint, consequenceEntity, readConsequence, liveConsequences,
   spokenAtByEntity, CONSEQUENCE_TTL_TICKS,
+  enactedAtBySchemaTarget, enactedId, ENACTED_TYPE,
 } from '#agency/consequence'
 import { scoreAffordance, DEFAULT_WEIGHTS, type BiasContext } from '#agency/selection.scoring'
 import type { Affordance } from '#agency/types'
@@ -322,5 +323,82 @@ describe('justEnacted in the competition — satiation, not a lock', () => {
 
     expect( scoreAffordance( reachOut( FABRICE, 1 ), urgent, DEFAULT_WEIGHTS ) )
       .toBeGreaterThan( 0 )
+  } )
+} )
+
+// ── the durable per-(schema, target) enaction record ──────────
+/**
+ * The gap the two earlier fixes left behind.
+ *
+ * Satiation had three carriers and only two of them were durable: speech got
+ * `conversation.sent` and objectless acts got `LearnedSkill.lastEnactedTick`,
+ * while an act WITH an object that is NOT speech — `inspect`, and every
+ * entity-bound host effector — had nothing but the consequence descriptor. That
+ * is swept at the ECHO window (30) while satiation runs on `repeatWindowTicks`
+ * (60), so the back half of the window damped nothing at all.
+ *
+ * Measured on a live COO: entity-bound acts carried satiation in 40–46% of
+ * competitions against 100% for objectless ones, and she re-enacted
+ * `discord_lookup_member` toward the same person 33 times in seven minutes.
+ */
+describe('enactedAt — satiation for an act with an object that is not speech', () => {
+  const LOOKUP = 'discord_lookup_member'
+  const WINDOW = 60
+
+  it('damps past the echo window, where the descriptor alone went silent', () => {
+    // 45 ticks on: the descriptor is long swept (TTL 30) and there is no
+    // `spokenAt` because looking someone up is not speaking to them.
+    const enactedAt = enactedAtBySchemaTarget( new Map( [ [
+      enactedId( LOOKUP, FABRICE ),
+      { type: ENACTED_TYPE, metadata: { schema: LOOKUP, targetEntityId: FABRICE, tick: 100 } },
+    ] ] ) )
+
+    const withRecord = enactionFootprint( [], LOOKUP, FABRICE, 145, WINDOW, undefined, undefined, undefined, enactedAt )
+    const without    = enactionFootprint( [], LOOKUP, FABRICE, 145, WINDOW )
+
+    expect( without ).toBe( 0 )              // the bug
+    expect( withRecord ).toBeCloseTo( 0.25 ) // (60 − 45) / 60
+  } )
+
+  it('is keyed by PAIR — damping one person leaves the same act toward another untouched', () => {
+    const enactedAt = enactedAtBySchemaTarget( new Map( [ [
+      enactedId( LOOKUP, FABRICE ),
+      { type: ENACTED_TYPE, metadata: { schema: LOOKUP, targetEntityId: FABRICE, tick: 100 } },
+    ] ] ) )
+
+    expect( enactionFootprint( [], LOOKUP, FABRICE, 101, WINDOW, undefined, undefined, undefined, enactedAt ) ).toBeGreaterThan( 0.9 )
+    // This is why `lastEnactedTick` (per-schema) cannot serve the entity-bound
+    // branch: it would damp looking up someone the mind has never looked up.
+    expect( enactionFootprint( [], LOOKUP, FKEM, 101, WINDOW, undefined, undefined, undefined, enactedAt ) ).toBe( 0 )
+  } )
+
+  it('decays to nothing, so a genuinely repeatable act comes back on its own', () => {
+    const enactedAt = enactedAtBySchemaTarget( new Map( [ [
+      enactedId( LOOKUP, FABRICE ),
+      { type: ENACTED_TYPE, metadata: { schema: LOOKUP, targetEntityId: FABRICE, tick: 100 } },
+    ] ] ) )
+    expect( enactionFootprint( [], LOOKUP, FABRICE, 160, WINDOW, undefined, undefined, undefined, enactedAt ) ).toBe( 0 )
+  } )
+
+  /**
+   * THE INVARIANT THAT MATTERS: this is a refractory period, not a lock.
+   *
+   * Satiation is one weighted term (`repeat`, 0.30) in a competition, so an act
+   * the mind genuinely needs to repeat still wins — it just has to actually be
+   * pressing rather than merely available. A mind may always repeat itself; it
+   * should not do so because nothing in it could represent having just acted.
+   */
+  it('never blocks a repeat — a pressing act out-competes maximum damping', () => {
+    const idle    = { ...reachOut( FABRICE, 1 ) }                       // damped, nothing pressing
+    const pressing = { ...reachOut( FABRICE, 1 ), expectedReward: 1, willBias: 1 } as Affordance
+
+    const urgent: BiasContext = { ...bias(), goalTargets: new Set( [ FABRICE ] ), maxGoalPriority: 1 } as BiasContext
+
+    const idleScore    = scoreAffordance( idle as Affordance, bias(),  DEFAULT_WEIGHTS )
+    const pressingScore = scoreAffordance( pressing,          urgent,  DEFAULT_WEIGHTS )
+
+    // Same maximum damping applied to both; the pressing one still comes out on top.
+    expect( pressingScore ).toBeGreaterThan( idleScore )
+    expect( pressingScore ).toBeGreaterThan( 0 )
   } )
 } )

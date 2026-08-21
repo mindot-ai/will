@@ -2647,6 +2647,15 @@ var LLMSemaphore = class {
   }
 };
 var llmGate = new LLMSemaphore(MAX_CONCURRENT);
+var RESPONSIVE_CONCURRENCY = parseInt(process.env.WILL_LLM_RESPONSIVE_CONCURRENCY ?? "1");
+var responsiveGate = new LLMSemaphore(RESPONSIVE_CONCURRENCY);
+var AWAITED_OUTSIDE = /* @__PURE__ */ new Set(["conversation"]);
+function isAwaitedOutside(fn) {
+  return fn !== void 0 && AWAITED_OUTSIDE.has(fn);
+}
+function gateFor(fn) {
+  return isAwaitedOutside(fn) ? responsiveGate : llmGate;
+}
 function isRateLimitError(err) {
   if (!(err instanceof Error)) return false;
   const msg = err.message;
@@ -2687,6 +2696,19 @@ var NO_MESSAGE_TAG = "NO_MESSAGE";
 var NO_MESSAGE_OPEN = `[${NO_MESSAGE_TAG}]`;
 function wrapReplyText(body) {
   return [REPLY_TEXT_OPEN, body, REPLY_TEXT_CLOSE].join("\n");
+}
+var PROTOCOL_TAGS = [
+  REPLY_TEXT_TAG,
+  NO_MESSAGE_TAG,
+  "INTROSPECTION",
+  "NARRATIVE",
+  "SELF_OBS"
+];
+function stripProtocolMarkers(text) {
+  let out = text;
+  for (const tag of PROTOCOL_TAGS)
+    out = out.split(`[${tag}]`).join("").split(`[/${tag}]`).join("");
+  return out.split("\n").filter((line, i, all) => line.trim() !== "" || i > 0 && i < all.length - 1 && all[i - 1]?.trim() !== "").join("\n").trim();
 }
 function renderSpeakerLine(speakerName, speakerEntityId) {
   return `Speaker: ${speakerName} (id: ${speakerEntityId})`;
@@ -2764,6 +2786,13 @@ function anthropicWireHeaders(provider, apiKey) {
     "x-api-key": apiKey,
     ...provider === "anthropic" ? {} : { Authorization: `Bearer ${apiKey}` }
   };
+}
+function foldStreamUsage(acc, u) {
+  if (u.input_tokens) acc.inputTok = u.input_tokens;
+  if (u.output_tokens) acc.outputTok = u.output_tokens;
+  if (u.cache_read_input_tokens) acc.cacheReadTok = u.cache_read_input_tokens;
+  if (u.cache_creation_input_tokens) acc.cacheWriteTok = u.cache_creation_input_tokens;
+  return acc;
 }
 var BACKGROUND_DEMAND = 0.1;
 var DEFAULT_CALL_META = { category: "executive", attribute: "master", process: "decision", function: "-" };
@@ -3071,10 +3100,12 @@ var LLMDirector = class {
     const decoder = new TextDecoder();
     let buffer = "";
     let fullText = "";
-    let inputTok = 0;
-    let outputTok = 0;
-    let cacheReadTok = 0;
-    let cacheWriteTok = 0;
+    const tokens = {
+      inputTok: 0,
+      outputTok: 0,
+      cacheReadTok: 0,
+      cacheWriteTok: 0
+    };
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -3088,16 +3119,13 @@ var LLMDirector = class {
           if (raw === "[DONE]") break;
           try {
             const ev = JSON.parse(raw);
-            if (ev.type === "message_start" && ev.message?.usage) {
-              inputTok = ev.message.usage.input_tokens;
-              cacheReadTok = ev.message.usage.cache_read_input_tokens ?? 0;
-              cacheWriteTok = ev.message.usage.cache_creation_input_tokens ?? 0;
-            } else if (ev.type === "content_block_delta" && ev.delta?.text) {
+            if (ev.type === "message_start" && ev.message?.usage)
+              foldStreamUsage(tokens, ev.message.usage);
+            else if (ev.type === "content_block_delta" && ev.delta?.text) {
               fullText += ev.delta.text;
               onChunk(ev.delta.text);
-            } else if (ev.type === "message_delta" && ev.usage?.output_tokens) {
-              outputTok = ev.usage.output_tokens;
-            }
+            } else if (ev.type === "message_delta" && ev.usage)
+              foldStreamUsage(tokens, ev.usage);
           } catch {
           }
         }
@@ -3105,7 +3133,7 @@ var LLMDirector = class {
     } finally {
       reader.releaseLock();
     }
-    return { text: fullText, inputTok, outputTok, cacheReadTok, cacheWriteTok };
+    return { text: fullText, ...tokens };
   }
   /**
    * Call the LLM directly via fetch — no SDK, no middleware.
@@ -3125,7 +3153,10 @@ var LLMDirector = class {
     const result = await withGate(
       () => ep.wire === "anthropic" ? this._callAnthropicStream(ep, systemPrompt, userMessage, () => {
       }, temperature) : this._callProvider(ep, systemPrompt, userMessage, temperature),
-      "executive/direct"
+      `executive/direct:${meta3.function}`,
+      // A reply to a waiting person takes the reserved lane; everything the
+      // mind is doing for itself shares the general one. See `gateFor`.
+      gateFor(meta3.function)
     );
     this._track(result, meta3, tick, Date.now() - llmStart, this._estPromptTokens(systemPrompt, userMessage), ep);
     this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - llmStart, false, ep);
@@ -4914,7 +4945,9 @@ var TokenTracker = class {
         `[tokens] no price for "${usage.model}" \u2014 reporting cost 0 for it. Supply one via llm.providers.<provider>.prices to get cost telemetry.`
       );
     }
-    const costUsd = pricing ? usage.promptTokens / 1e6 * pricing.input + usage.completionTokens / 1e6 * pricing.output + cacheRead / 1e6 * pricing.input * CACHE_READ_MULT + cacheWrite / 1e6 * pricing.input * CACHE_WRITE_MULT : 0;
+    const costUsd = pricing ? usage.promptTokens / 1e6 * pricing.input + usage.completionTokens / 1e6 * pricing.output + // `?? fallback` rather than `||`: a stated 0 is a real rate (free cache
+    // reads / free storage) and must not silently become the Anthropic ratio.
+    cacheRead / 1e6 * (pricing.cachedInput ?? pricing.input * CACHE_READ_MULT) + cacheWrite / 1e6 * (pricing.cacheWrite ?? pricing.input * CACHE_WRITE_MULT) : 0;
     const full = {
       ...usage,
       label: usage.label ?? composeLabel(usage),
@@ -6462,6 +6495,33 @@ function consequenceEntity(d) {
     metadata: { ...d }
   };
 }
+var ENACTED_TYPE = "agency.enacted";
+function enactedId(schema, targetEntityId) {
+  return `agency-enacted-${schema}-${targetEntityId}`;
+}
+function enactedEntity(schema, targetEntityId, tick) {
+  return {
+    id: enactedId(schema, targetEntityId),
+    type: ENACTED_TYPE,
+    metadata: { schema, targetEntityId, tick }
+  };
+}
+function enactedAtBySchemaTarget(entities) {
+  const out = /* @__PURE__ */ new Map();
+  for (const [, e] of entities) {
+    if (e.type !== ENACTED_TYPE) continue;
+    const meta3 = e.metadata ?? {};
+    const schema = typeof meta3["schema"] === "string" ? meta3["schema"] : void 0;
+    const target = typeof meta3["targetEntityId"] === "string" ? meta3["targetEntityId"] : void 0;
+    const tick = typeof meta3["tick"] === "number" ? meta3["tick"] : void 0;
+    if (!schema || !target || tick === void 0) continue;
+    out.set(enactedKey(schema, target), tick);
+  }
+  return out;
+}
+function enactedKey(schema, targetEntityId) {
+  return `${schema}\0${targetEntityId}`;
+}
 function readConsequence(m) {
   const meta3 = m ?? {};
   const intentId = typeof meta3["intentId"] === "string" ? meta3["intentId"] : void 0;
@@ -6504,7 +6564,7 @@ function matchConsequenceText(descriptors, candidate) {
   }
   return null;
 }
-function enactionFootprint(descriptors, schema, targetEntityId, tick, windowTicks = CONSEQUENCE_TTL_TICKS, spokenAt, selfEnactedAt, spokeAnywhereAt) {
+function enactionFootprint(descriptors, schema, targetEntityId, tick, windowTicks = CONSEQUENCE_TTL_TICKS, spokenAt, selfEnactedAt, spokeAnywhereAt, enactedAt) {
   if (windowTicks <= 0) return 0;
   if (!targetEntityId) {
     if (selfEnactedAt === void 0) return 0;
@@ -6512,6 +6572,11 @@ function enactionFootprint(descriptors, schema, targetEntityId, tick, windowTick
     return remaining < 0 ? 0 : remaining > 1 ? 1 : remaining;
   }
   let strongest = 0;
+  const enacted = enactedAt?.get(enactedKey(schema, targetEntityId));
+  if (enacted !== void 0) {
+    const remaining = (windowTicks - (tick - enacted)) / windowTicks;
+    if (remaining > strongest) strongest = remaining;
+  }
   const spoken = spokenAt?.get(targetEntityId);
   if (spoken !== void 0) {
     const remaining = (windowTicks - (tick - spoken)) / windowTicks;
@@ -6586,6 +6651,111 @@ function staleRevocationIds(entities, tick) {
   return stale;
 }
 
+// src/cognition/agency/settlement.ts
+var SETTLEMENT_TYPE = "agency.settlement";
+var SETTLEMENT_TTL_TICKS = 60;
+function settlementId(schema, targetEntityId) {
+  return `agency-settlement-${schema}${targetEntityId ? `-${targetEntityId}` : ""}`;
+}
+function settlementEntity(d) {
+  return {
+    id: settlementId(d.schema, d.targetEntityId),
+    type: SETTLEMENT_TYPE,
+    metadata: { ...d, ...d.over ? { over: [...d.over] } : {} }
+  };
+}
+function readSettlement(m) {
+  const meta3 = m instanceof Map ? Object.fromEntries(m) : m ?? {};
+  const schema = typeof meta3["schema"] === "string" ? meta3["schema"] : void 0;
+  if (!schema) return null;
+  const over = Array.isArray(meta3["over"]) ? meta3["over"].filter((x) => typeof x === "string") : void 0;
+  return {
+    schema,
+    targetEntityId: typeof meta3["targetEntityId"] === "string" ? meta3["targetEntityId"] : void 0,
+    ...over && over.length > 0 ? { over } : {},
+    tick: typeof meta3["tick"] === "number" ? meta3["tick"] : 0,
+    expiresAt: typeof meta3["expiresAt"] === "number" ? meta3["expiresAt"] : 0
+  };
+}
+function liveSettlements(entities, tick) {
+  const out = [];
+  for (const [id, e] of entities) {
+    if (e.type !== SETTLEMENT_TYPE) continue;
+    const d = readSettlement(e.metadata);
+    if (!d) continue;
+    if (d.tick > tick) continue;
+    if (tick < d.expiresAt) out.push({ id, d });
+  }
+  return out.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0).map((x) => x.d);
+}
+function expiredSettlementIds(entities, tick) {
+  const out = [];
+  for (const [id, e] of entities) {
+    if (e.type !== SETTLEMENT_TYPE) continue;
+    const d = readSettlement(e.metadata);
+    if (d && tick >= d.expiresAt) out.push(id);
+  }
+  return out;
+}
+function settlementForce(settlements, schema, targetEntityId, tick, windowTicks = SETTLEMENT_TTL_TICKS) {
+  if (windowTicks <= 0) return 0;
+  let strongest = 0;
+  for (const s of settlements) {
+    if (s.schema !== schema || s.targetEntityId !== targetEntityId) continue;
+    const remaining = (windowTicks - (tick - s.tick)) / windowTicks;
+    if (remaining > strongest) strongest = remaining;
+  }
+  return strongest < 0 ? 0 : strongest > 1 ? 1 : strongest;
+}
+
+// src/cognition/faculties/executive.engine/action.record.ts
+var ACTION_RECORD_TYPE = "action.record";
+var ACTION_RECORD_KEEP = 6;
+function actionRecordId(tick, type, targetEntityId) {
+  return `action-record-${tick}-${type}${targetEntityId ? `-${targetEntityId}` : ""}`;
+}
+function actionRecordEntity(r) {
+  return {
+    id: actionRecordId(r.tick, r.type, r.targetEntityId),
+    type: ACTION_RECORD_TYPE,
+    metadata: { ...r }
+  };
+}
+function readActionRecord(m) {
+  const meta3 = m instanceof Map ? Object.fromEntries(m) : m ?? {};
+  const type = typeof meta3["type"] === "string" ? meta3["type"] : void 0;
+  const status = meta3["status"];
+  if (!type || status !== "completed" && status !== "failed" && status !== "withheld") return null;
+  return {
+    type,
+    status,
+    tick: typeof meta3["tick"] === "number" ? meta3["tick"] : 0,
+    targetEntityId: typeof meta3["targetEntityId"] === "string" ? meta3["targetEntityId"] : void 0,
+    outcome: typeof meta3["outcome"] === "string" ? meta3["outcome"] : "",
+    planId: typeof meta3["planId"] === "string" ? meta3["planId"] : void 0
+  };
+}
+function recentActionRecords(entities, keep = ACTION_RECORD_KEEP) {
+  const out = [];
+  for (const [, e] of entities) {
+    if (e.type !== ACTION_RECORD_TYPE) continue;
+    const r = readActionRecord(e.metadata);
+    if (r) out.push(r);
+  }
+  out.sort((a, b) => b.tick - a.tick || (a.type < b.type ? -1 : a.type > b.type ? 1 : 0));
+  return out.slice(0, keep);
+}
+function staleActionRecordIds(entities, keep = ACTION_RECORD_KEEP) {
+  const all = [];
+  for (const [id, e] of entities) {
+    if (e.type !== ACTION_RECORD_TYPE) continue;
+    const r = readActionRecord(e.metadata);
+    if (r) all.push({ id, r });
+  }
+  all.sort((a, b) => b.r.tick - a.r.tick || (a.r.type < b.r.type ? -1 : a.r.type > b.r.type ? 1 : 0));
+  return all.slice(keep).map((x) => x.id);
+}
+
 // src/cognition/sense.boundary.ts
 var MIND_OWN_ENTITY_TYPES = /* @__PURE__ */ new Set([
   // ── perception ────────────────────────────────────────────────
@@ -6599,6 +6769,9 @@ var MIND_OWN_ENTITY_TYPES = /* @__PURE__ */ new Set([
   "task.focus",
   "decision.record",
   "self_observation",
+  // What became of what it did. Undeclared, a mind perceives its own history as
+  // events in the world — which is how #127 was caught, recursively.
+  ACTION_RECORD_TYPE,
   // ── memory ────────────────────────────────────────────────────
   "working_memory.item",
   "episodic_memory",
@@ -6649,6 +6822,8 @@ var MIND_OWN_ENTITY_TYPES = /* @__PURE__ */ new Set([
   // forward-model records  (EXAFFERENCE P1/P2)
   REVOCATION_TYPE,
   // commitment tombstones  (EXAFFERENCE P4)
+  SETTLEMENT_TYPE,
+  // verdicts System 2 reached — having thought about it
   // ── substrate ─────────────────────────────────────────────────
   // Its configuration and its identity are constitutive of it, not events in
   // its world. It had been perceiving both.
@@ -9001,6 +9176,8 @@ var MoralEvaluator = class {
 // src/cognition/faculties/affective.blender.ts
 var ACP_AROUSAL_UPLIFT = 0.1;
 var ACP_CONFIDENCE2 = 0.4;
+var AFFECT_STATE_ID = "affect-blends";
+var AFFECT_STATE_TYPE = "affect.blends";
 var DOMINANT_EMOTION_CODES = {
   "neutral": 0,
   "fear": 1,
@@ -9237,9 +9414,9 @@ var AffectiveBlender = class {
     const dominantCode = DOMINANT_EMOTION_CODES[dominant ?? "neutral"] ?? 0;
     commands.metrics.push(["affect.dominant_emotion", dominantCode]);
     commands.set.push({
-      id: "affect-blends",
-      type: "affect.blends",
-      metadata: { blends }
+      id: AFFECT_STATE_ID,
+      type: AFFECT_STATE_TYPE,
+      metadata: { dominantEmotion: dominant ?? "neutral", blends }
     });
     this._updateHistory(emotionIntensities);
     const prevPAD = this._previousPAD;
@@ -12201,7 +12378,7 @@ var GoalManager = class {
       const driveIntensity = state.metrics.get(mapping.drive) ?? 0;
       if (driveIntensity < mapping.threshold) continue;
       const existing = Array.from(this._goals.values()).find((g) => {
-        return g.tags.includes(mapping.tags[0]) && g.tags.includes(mapping.tags[1]) && g.status === "active";
+        return g.tags.includes(mapping.tags[0]) && g.tags.includes(mapping.tags[1]) && (g.status === "active" || g.status === "pending");
       });
       if (!existing && !this._isConditionMet(mapping.completionCondition, state))
         this.addGoal(mapping.goalDesc, mapping.priority, mapping.tags, void 0, void 0, mapping.completionType ?? "metric", mapping.completionCondition);
@@ -12216,7 +12393,10 @@ var GoalManager = class {
         const cType = m.goalCompletionType ?? "action";
         const cCond = m.goalCompletionCondition;
         const keidTag = tags.find((t) => t.startsWith("keid:"));
-        const existing = Array.from(this._goals.values()).find((g) => g.status === "active" && (keidTag ? g.tags.includes(keidTag) : g.description === desc));
+        const existing = Array.from(this._goals.values()).find((g) => (
+          // Same rule as the drive path: a waiting goal still exists.
+          (g.status === "active" || g.status === "pending") && (keidTag ? g.tags.includes(keidTag) : g.description === desc)
+        ));
         if (!existing && !this._isConditionMet(cCond, state))
           this.addGoal(desc, m.goalPriority ?? 0.5, tags, void 0, void 0, cType, cCond);
       }
@@ -12274,11 +12454,44 @@ var GoalManager = class {
     }
     return 0;
   }
+  /**
+   * Reconcile the active set to capacity — in BOTH directions.
+   *
+   * Demotion alone made `pending` a one-way door, and a mind fell through it.
+   * Nothing in this file promoted a goal back (the only other write of `'active'`
+   * is `pending_verification`'s, a different status), so a goal demoted for
+   * capacity was demoted for good. Worse, `pending` is excluded from every other
+   * mechanism that could have retired it: it is not in `getActiveGoals()`, not
+   * progress-updated, not reachable by the patience/grit sweep (which skips any
+   * status but `'active'`) — yet it IS re-persisted every tick and rehydrated on
+   * every restore. Inert and immortal at once.
+   *
+   * Measured on a live COO: 96 goal entities, of which **83 pending, 0 active**,
+   * and 92 of the 96 the same drive-spawned goal. `activeGoalCount` sat at 0, so
+   * `goalless_crisis` fired every 20 ticks forever while she carried 83 goals —
+   * and the `goal` term, the joint-largest weight in the affordance competition,
+   * contributed nothing to any choice she made.
+   *
+   * Promotion also restores GC reachability, which is the quieter half of the
+   * fix: an over-patient stale goal can only be abandoned while it is active.
+   *
+   * `activatedAt` is deliberately NOT refreshed on promotion. Refreshing it would
+   * let a goal cycle demote→promote and reset its own patience each time, making
+   * it unretirable — the immortality this fix exists to end, reintroduced by the
+   * back door. A goal's age is when it was taken up, not when it last got a slot.
+   */
   _resolveConflicts() {
     const active = this.getActiveGoals();
     while (active.length > this._maxActiveGoals) {
       const lowest = active.pop();
       if (lowest) lowest.status = "pending";
+    }
+    if (active.length >= this._maxActiveGoals) return;
+    const waiting = Array.from(this._goals.values()).filter((g) => g.status === "pending").sort((a, b) => b.priority - a.priority);
+    for (const goal of waiting) {
+      if (active.length >= this._maxActiveGoals) break;
+      goal.status = "active";
+      active.push(goal);
     }
   }
   // ── Internal: progress ───────────────────────────────────
@@ -12977,6 +13190,18 @@ function lastHeardByEntity(entities) {
   }
   return out;
 }
+function lastAnsweredByEntity(entities) {
+  const out = /* @__PURE__ */ new Map();
+  for (const [, e] of entities) {
+    if (e.type !== SENT_TYPE) continue;
+    const m = meta2(e);
+    const target = str2(m["targetEntityId"]);
+    const at = num(m["answeredAt"]);
+    if (!target || at === void 0) continue;
+    if (at > (out.get(target) ?? -Infinity)) out.set(target, at);
+  }
+  return out;
+}
 function resolveReplyExpectations(entities, tick, windowTicks = DEFAULT_REPLY_WINDOW_TICKS) {
   const turns = readSpokenTurns(entities);
   const lastHeard = lastHeardByEntity(entities);
@@ -13115,22 +13340,7 @@ async function buildExecutiveContext(state, deps, recallQuery) {
     explorationRate: execParams.explorationRate ?? 0.3,
     impulsivity: execParams.impulsivity ?? 0.3
   } : void 0;
-  const recentActions = [];
-  for (const entity of state.entities.values()) {
-    if (entity.type !== "decision.record") continue;
-    const actionStatus = entity.metadata?.actionStatus;
-    if (!actionStatus) continue;
-    if (!["completed", "failed", "awaiting_host", "timed_out"].includes(actionStatus)) continue;
-    recentActions.push({
-      type: entity.metadata?.actionType ?? "unknown",
-      status: actionStatus,
-      tick: entity.metadata?.executionTick ?? entity.metadata?.dispatchedAt ?? 0,
-      outcome: String(entity.metadata?.outcome ?? "").slice(0, 120),
-      planId: entity.metadata?.planId
-    });
-  }
-  recentActions.sort((a, b) => b.tick - a.tick);
-  const recentActionsCapped = recentActions.slice(0, 5);
+  const recentActionsCapped = recentActionRecords(state.entities);
   const nameOf2 = (keid) => {
     for (const e of state.entities.values()) {
       if (e.type !== "known-entity") continue;
@@ -13382,7 +13592,7 @@ function extractAffect(state) {
   const dominance = state.metrics.get("affect.dominance") ?? 0.5;
   let dominantEmotion = "neutral";
   let blends = [];
-  const affectEntity = state.entities.get("affective-state");
+  const affectEntity = state.entities.get(AFFECT_STATE_ID);
   if (affectEntity) {
     dominantEmotion = affectEntity.metadata?.dominantEmotion ?? "neutral";
     blends = affectEntity.metadata?.blends ?? [];
@@ -13994,6 +14204,9 @@ ${lines.join("\n")}${note}
     const STATUS_BADGE = {
       completed: "\u2713",
       failed: "\u2717",
+      // Not a failure. I formed it and chose not to complete it — reading that
+      // back as ✗ is how a mind learns it is bad at something it decided against.
+      withheld: "\u2298 chose not to",
       awaiting_host: "\u23F3",
       timed_out: "\u23F1 TIMED OUT"
     };
@@ -14004,10 +14217,13 @@ ${lines.join("\n")}${note}
       const outcome = a.outcome ? ` \u2014 ${a.outcome}` : "";
       return `- ${badge} **${a.type}** (tick ${a.tick}, ${age} ticks ago${planCtx})${outcome}`;
     });
-    const hasTimeout = recentActions.some((a) => a.status === "timed_out");
-    const timeoutNote = hasTimeout ? "\n\u26A0\uFE0F **One or more actions timed out** \u2014 my body dispatched them but received no confirmation. Check if the external handler is working, or choose a different approach." : "";
+    const failed = recentActions.filter((a) => a.status === "failed").length;
+    const didNotLand = failed > 0 ? `
+\u26A0\uFE0F **${failed} of these did not land** \u2014 my body attempted them and they did not complete.` : "";
+    const note = `${didNotLand}
+This is what I HAVE done, not what I meant to do. If something I intended is not on this list, it did not happen.`;
     return `## Recent Action Outcomes
-${lines.join("\n")}${timeoutNote}
+${lines.join("\n")}${note}
 
 `;
   }
@@ -14284,7 +14500,7 @@ function extractTextBlock(text, tag) {
   const contentStart = openIdx + open.length;
   const closeIdx = text.indexOf(close, contentStart);
   const content = closeIdx !== -1 ? text.slice(contentStart, closeIdx) : text.slice(contentStart);
-  return content.trim() || null;
+  return stripProtocolMarkers(content) || null;
 }
 function buildFallbackOutput(state, _recentActionTypes) {
   const energy = state.metrics.get("energy.level") ?? 100;
@@ -16076,6 +16292,29 @@ var ExecutiveEngine = class extends AsyncEngine {
   publishes() {
     return [];
   }
+  /**
+   * Fold one resolved act into the mind's record of its own doing.
+   *
+   * `withheld` is kept distinct from `failed` deliberately: the mind formed the
+   * act and chose not to complete it, which is a judgement, not an inability.
+   * Collapsing them is the #123 mistake — a COO learning it was bad at speaking
+   * from the times it decided not to speak.
+   */
+  _recordAction(event) {
+    const p = event.payload;
+    const type = typeof p?.actionType === "string" ? p.actionType : void 0;
+    if (!type) return;
+    const status = event.type === "action.withheld" ? "withheld" : p?.success === false ? "failed" : "completed";
+    const record = actionRecordEntity({
+      type,
+      status,
+      tick: typeof p?.tick === "number" ? p.tick : 0,
+      ...typeof p?.targetEntityId === "string" ? { targetEntityId: p.targetEntityId } : {},
+      outcome: typeof p?.description === "string" ? p.description.slice(0, 120) : "",
+      ...typeof p?.planId === "string" ? { planId: p.planId } : {}
+    });
+    return { set: [record] };
+  }
   snapshot() {
     return {
       bufferSize: this._gatingState.salienceBuffer.length,
@@ -16085,6 +16324,8 @@ var ExecutiveEngine = class extends AsyncEngine {
   }
   onCognitiveEvent(event) {
     if (event.sourceEngine === this.name) return;
+    if (event.type === "action.outcome" || event.type === "action.withheld")
+      return this._recordAction(event);
     if (event.type === "attention.state.changed") {
       const p = event.payload;
       this._facetSupervisor.setAttentionState(p.freeFraction);
@@ -16121,6 +16362,11 @@ var ExecutiveEngine = class extends AsyncEngine {
       result.commands ??= {};
       result.commands.set = [...result.commands.set ?? [], ...focus.set];
       result.commands.delete = [...result.commands.delete ?? [], ...focus.delete];
+    }
+    const stale = staleActionRecordIds(state.entities);
+    if (stale.length > 0) {
+      result.commands ??= {};
+      result.commands.delete = [...result.commands.delete ?? [], ...stale];
     }
     return result;
   }
@@ -22322,7 +22568,8 @@ var DEFAULT_WEIGHTS = {
   cost: 0.2,
   inhib: 0.3,
   risk: 0.2,
-  repeat: 0.3
+  repeat: 0.3,
+  settled: 0.3
 };
 var DEFAULT_TEMPERATURE = 0.15;
 function collectGoalTargets(state) {
@@ -22368,7 +22615,7 @@ function risk(a, bias) {
   return clamp016(Math.max(0, -a.expectedValence) * 0.5 + bias.threat * 0.5);
 }
 function scoreAffordance(a, bias, w = DEFAULT_WEIGHTS) {
-  const raw = w.goal * goalRelevance(a, bias) + w.reward * a.expectedReward + w.novelty * novelty(a) + w.drive * driveUrgency(a, bias) + w.habit * a.habitStrength + w.plan * (a.planBias ?? 0) + w.will * (a.willBias ?? 0) + w.social * (a.socialPrior ?? 0) - w.cost * a.cost - w.inhib * bias.inhibition - w.risk * risk(a, bias) - w.repeat * (a.justEnacted ?? 0);
+  const raw = w.goal * goalRelevance(a, bias) + w.reward * a.expectedReward + w.novelty * novelty(a) + w.drive * driveUrgency(a, bias) + w.habit * a.habitStrength + w.plan * (a.planBias ?? 0) + w.will * (a.willBias ?? 0) + w.social * (a.socialPrior ?? 0) - w.cost * a.cost - w.inhib * bias.inhibition - w.risk * risk(a, bias) - w.repeat * (a.justEnacted ?? 0) + w.settled * (a.settled ?? 0);
   const availability = a.availability ?? 1;
   return raw > 0 ? raw * availability : raw;
 }
@@ -22413,8 +22660,15 @@ var AffordanceSynthesizer = class {
    * because `_build` runs per candidate and reading them is a full-entity scan.
    */
   _inFlight = [];
+  /** Durable "when did I last do this TO them" — the entity-bound peer of
+   *  `_spokenAt`, collected once per tick for the same reason `_inFlight` is. */
+  _enactedAt = /* @__PURE__ */ new Map();
   /** Ticks an act stays satiating (engine-config-action-selector.repeatWindowTicks). */
   _satiationWindow = CONSEQUENCE_TTL_TICKS;
+  /** Verdicts System 2 has already reached and that have not yet aged out.
+   *  Collected once per tick for the same reason `_inFlight` is — `_build` runs
+   *  per candidate and this is a full-entity scan. */
+  _settled = [];
   /** Tick of the last thing said to each entity — outlives the descriptor sweep. */
   _spokenAt = /* @__PURE__ */ new Map();
   _spokeAnywhereAt = void 0;
@@ -22466,6 +22720,8 @@ var AffordanceSynthesizer = class {
     const valence = metric(state, "affect.valence", 0);
     const energyLow = metric(state, "energy.level", 0) < 30;
     this._inFlight = liveConsequences(state.entities, tick);
+    this._enactedAt = enactedAtBySchemaTarget(state.entities);
+    this._settled = liveSettlements(state.entities, tick);
     this._satiationWindow = readEffectiveParams(state, "engine-config-action-selector").repeatWindowTicks ?? CONSEQUENCE_TTL_TICKS;
     this._spokenAt = spokenAtByEntity(state.entities);
     let last = -Infinity;
@@ -22619,8 +22875,12 @@ var AffordanceSynthesizer = class {
       this._satiationWindow,
       speaks ? this._spokenAt : void 0,
       skill?.lastEnactedTick,
-      speaks ? this._spokeAnywhereAt : void 0
+      speaks ? this._spokeAnywhereAt : void 0,
+      // Not gated on `speaks`: this is exactly the arm speech does NOT need
+      // (it has `spokenAt`) and every other entity-bound act was missing.
+      this._enactedAt
     );
+    const settled = settlementForce(this._settled, schema.id, ctx.targetEntityId, tick);
     const key = ctx.targetEntityId ?? ctx.evokedBy ?? schema.id;
     const source = ctx.source ?? schema.source;
     const idTag = ctx.source && ctx.source !== schema.source ? `-${ctx.source}` : "";
@@ -22641,6 +22901,7 @@ var AffordanceSynthesizer = class {
       ...availability < 1 ? { availability } : {},
       ...socialPrior !== 0 ? { socialPrior } : {},
       ...justEnacted > 0 ? { justEnacted } : {},
+      ...settled > 0 ? { settled } : {},
       planBias: ctx.planBias,
       willBias: ctx.willBias,
       planId: ctx.planId,
@@ -22672,6 +22933,10 @@ var AffordanceSynthesizer = class {
         // it never was: this is the state hop between synthesis and the
         // competition, and `justEnacted` did not cross it.
         ...a.justEnacted !== void 0 ? { justEnacted: a.justEnacted } : {},
+        // The verdict's standing weight — same hop, same rule. A field the
+        // synthesizer computes and the entity does not carry is a field the
+        // competition never sees, which is how `justEnacted` stayed dormant.
+        ...a.settled !== void 0 ? { settled: a.settled } : {},
         planBias: a.planBias,
         willBias: a.willBias,
         planId: a.planId,
@@ -22899,8 +23164,11 @@ var ActionSelector = class {
         logger.warn(`[selector] rupture publish failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
+    const settlementDrops = rupture >= RUPTURE_REVOKE_GATE ? liveSettlements(state.entities, tick).map((s) => settlementId(s.schema, s.targetEntityId)) : [];
+    const dropSettled = settlementDrops.length > 0 ? { delete: settlementDrops } : {};
     const busy = (n) => ({
       commands: {
+        ...dropSettled,
         metrics: [
           ["agency.field.eligible", n],
           ["agency.selection.busy", 1],
@@ -22929,6 +23197,7 @@ var ActionSelector = class {
       return {
         commands: {
           set: [revocationEntity(deliberating.id, deliberating.schema, revRupture, tick)],
+          ...dropSettled,
           metrics: [
             ["agency.field.eligible", eligible.length],
             ["agency.selection.busy", 1],
@@ -22943,6 +23212,7 @@ var ActionSelector = class {
     if (eligible.length === 0)
       return {
         commands: {
+          ...dropSettled,
           metrics: [
             ["agency.field.eligible", 0],
             ["agency.selection.busy", awaiting || composite ? 1 : 0],
@@ -23116,7 +23386,7 @@ var ActionSelector = class {
       // A composite preemption rides along as a tombstone (never a delete — the
       // executor's in-tick macro-advance would resurrect the parent).
       set: compositeTombstone ? [intent, revocationEntity(compositeTombstone, compositeFrom ?? "", rupture, tick)] : [intent],
-      ...preemptDelete ? { delete: [preemptDelete] } : {},
+      ...preemptDelete || settlementDrops.length > 0 ? { delete: [...preemptDelete ? [preemptDelete] : [], ...settlementDrops] } : {},
       metrics: [
         ["agency.field.eligible", eligible.length],
         ["agency.selection.busy", 0],
@@ -23233,6 +23503,7 @@ function readAffordance(id, m) {
     willBias: typeof meta3["willBias"] === "number" ? meta3["willBias"] : void 0,
     socialPrior: typeof meta3["socialPrior"] === "number" ? meta3["socialPrior"] : void 0,
     justEnacted: typeof meta3["justEnacted"] === "number" ? meta3["justEnacted"] : void 0,
+    settled: typeof meta3["settled"] === "number" ? meta3["settled"] : void 0,
     availability: typeof meta3["availability"] === "number" ? meta3["availability"] : void 0,
     description: str4(meta3["description"]),
     planId: str4(meta3["planId"]),
@@ -23288,7 +23559,7 @@ var DeliberationEngine = class {
   }
   async react(_delta, tick, state, _context) {
     const revoked = revokedIntentIds(state.entities, tick);
-    const del = [];
+    const del = expiredSettlementIds(state.entities, tick);
     let target = null;
     for (const [id2, e] of state.entities) {
       if (e.type !== "agency.intent") continue;
@@ -23325,7 +23596,15 @@ var DeliberationEngine = class {
     }
     return {
       commands: {
-        set: [this._commit(id, meta3, chosen, candidates, "facet")],
+        set: [
+          this._commit(id, meta3, chosen, candidates, "facet"),
+          // The verdict's trace in the field it was called in to resolve.
+          // Written ONLY here, on the path where System 2 actually thought —
+          // the no-executive path below confirms the substrate's winner without
+          // reaching a conclusion, and a mind should not be held to a verdict it
+          // never formed.
+          this._settle(chosen, candidates, tick)
+        ],
         ...del.length > 0 ? { delete: del } : {},
         metrics: [["agency.deliberation.count", 1]]
       }
@@ -23362,6 +23641,24 @@ var DeliberationEngine = class {
       logger.warn(`[deliberation] facet unavailable, confirming winner: ${err instanceof Error ? err.message : String(err)}`);
       return provisional;
     }
+  }
+  /**
+   * Record that this contest was weighed and settled.
+   *
+   * Keyed on what WON, not on the rival set, so a slightly differently-framed
+   * contest still meets a verdict the mind has already reached — the rivals ride
+   * along as the introspectable reason rather than as a matching key.
+   */
+  _settle(chosen, candidates, tick) {
+    const cand = candidates.find((c) => c.schema === chosen);
+    const over = candidates.filter((c) => c.schema !== chosen).map((c) => c.schema);
+    return settlementEntity({
+      schema: chosen,
+      targetEntityId: cand?.targetEntityId,
+      ...over.length > 0 ? { over } : {},
+      tick,
+      expiresAt: tick + SETTLEMENT_TTL_TICKS
+    });
   }
   /** Write the deliberating intent back as 'selected' with the chosen action. */
   _commit(id, meta3, chosen, candidates, via) {
@@ -23504,6 +23801,7 @@ function clamp019(n) {
 }
 
 // src/cognition/agency/engines/motor.schema.executor.ts
+var ENACTED_RETENTION_TICKS = 600;
 var AWAIT_TIMEOUT = 15;
 var COMM_SCHEMA_TO_EFFECTOR = {
   "reach-out": "text",
@@ -23549,7 +23847,15 @@ var MotorSchemaExecutor = class {
    * resolve it as what it is: the intent is freed, and nothing is taught about
    * an ability that was never in question.
    */
-  _withheld = /* @__PURE__ */ new Set();
+  _withheld = /* @__PURE__ */ new Map();
+  /**
+   * The tick at which each held intent's words were REQUESTED from a facet.
+   *
+   * Authoring is off-tick and can take 10–30s of real time. In that window the
+   * situation the words were composed for can move — and until now nothing
+   * looked. See `situationMoved`.
+   */
+  _composedAt = /* @__PURE__ */ new Map();
   constructor(schemas = INNATE_SCHEMAS) {
     for (const s of schemas) this._schemas.set(s.id, s);
   }
@@ -23587,7 +23893,8 @@ var MotorSchemaExecutor = class {
     return [
       { type: "agency.enacted", version: 1, validate: () => null },
       { type: "agency.invocation", version: 1, validate: () => null },
-      { type: "agency.communicate", version: 1, validate: () => null }
+      { type: "agency.communicate", version: 1, validate: () => null },
+      { type: "action.withheld", version: 1, validate: () => null }
     ];
   }
   subscribes() {
@@ -23617,6 +23924,11 @@ var MotorSchemaExecutor = class {
       if (e.type !== CONSEQUENCE_TYPE) continue;
       if (tick >= num4(e.metadata?.["expiresAt"], 0)) del.push(id);
     }
+    for (const [id, e] of state.entities) {
+      if (e.type !== ENACTED_TYPE) continue;
+      const at = num4(e.metadata?.["tick"], 0);
+      if (at > tick || tick - at > ENACTED_RETENTION_TICKS) del.push(id);
+    }
     del.push(...staleRevocationIds(state.entities, tick));
     const revoked = revokedIntentIds(state.entities, tick);
     if (revoked.size > 0)
@@ -23640,14 +23952,17 @@ var MotorSchemaExecutor = class {
     }
     for (const id of this._authored.keys())
       if (!state.entities.has(id)) this._authored.delete(id);
-    for (const id of this._withheld)
+    for (const id of this._withheld.keys())
       if (!state.entities.has(id)) this._withheld.delete(id);
+    for (const id of this._composedAt.keys())
+      if (!state.entities.has(id)) this._composedAt.delete(id);
     for (const [id, e] of state.entities) {
       if (e.type !== "agency.intent" || str7(e.metadata?.["status"]) !== "awaiting") continue;
       if (spokeThisTick.has(id)) continue;
       if (this._authoring.has(id)) continue;
       if (this._withheld.has(id)) {
         const intent2 = readIntent(id, e.metadata);
+        const why = this._withheld.get(id) ?? "I considered speaking and chose not to.";
         set.push({
           id: `agency-outcome-${tick}-${id}`,
           type: "agency.outcome",
@@ -23656,7 +23971,7 @@ var MotorSchemaExecutor = class {
             intentId: id,
             targetEntityId: intent2.targetEntityId,
             withheld: true,
-            description: "I considered speaking and chose not to.",
+            description: why,
             mode: "communicate",
             tick,
             ...intent2.planId ? { planId: intent2.planId } : {},
@@ -23666,6 +23981,24 @@ var MotorSchemaExecutor = class {
         del.push(id);
         this._withheld.delete(id);
         metrics.push(["agency.communicate.withheld", 1]);
+        if (this._bus) {
+          try {
+            this._bus.publish({
+              type: "action.withheld",
+              version: 1,
+              sourceEngine: this.name,
+              salience: 0.4,
+              payload: {
+                actionType: intent2.schema,
+                targetEntityId: intent2.targetEntityId,
+                description: why,
+                tick,
+                ...intent2.planId ? { planId: intent2.planId } : {}
+              }
+            });
+          } catch {
+          }
+        }
         continue;
       }
       if (e.metadata?.["escalated"] === true) continue;
@@ -23771,6 +24104,8 @@ var MotorSchemaExecutor = class {
             expiresAt: tick + CONSEQUENCE_TTL_TICKS,
             tick
           }));
+          if (intent.targetEntityId && enaction.mode !== "communicate")
+            set.push(enactedEntity(intent.schema, intent.targetEntityId, tick));
           events.push(...this._emitDispatch(intent, enaction.mode, tick, state));
           metrics.push([enaction.mode === "communicate" ? "agency.communicate.dispatched" : "agency.invocation.dispatched", 1]);
         }
@@ -23902,12 +24237,22 @@ var MotorSchemaExecutor = class {
       return true;
     }
     const authored = str7(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]);
+    const fromFacet = !authored;
     let bubbles = authored ? [authored] : this._authored.get(id) ?? [];
     this._authored.delete(id);
     if (bubbles.length === 0) {
-      this._requestAuthoring(id, intent);
+      this._requestAuthoring(id, intent, tick);
       return false;
     }
+    const moved = fromFacet ? situationMoved(state, intent.targetEntityId, this._composedAt.get(id)) : null;
+    if (moved) {
+      this._withheld.set(id, moved);
+      this._composedAt.delete(id);
+      logger.debug(`[motor] "${intent.schema}" withheld \u2014 ${moved}`);
+      metrics.push(["agency.communicate.stale", 1]);
+      return false;
+    }
+    this._composedAt.delete(id);
     const request = {
       effector,
       parameters: { ...intent.parameters, messages: bubbles },
@@ -23963,10 +24308,11 @@ var MotorSchemaExecutor = class {
    * per intent — a request already in flight is not duplicated, so the intent may sit
    * 'awaiting' across many ticks with exactly one LLM call behind it.
    */
-  _requestAuthoring(id, intent) {
+  _requestAuthoring(id, intent, tick) {
     if (!this._author || this._authoring.has(id)) return;
     const name = str7(intent.parameters["targetEntityName"]) ?? intent.targetEntityId ?? "them";
     this._authoring.add(id);
+    this._composedAt.set(id, tick);
     void this._author.authorOutreach(intent.targetEntityId ?? "", name, str7(intent.parameters["gist"])).then((result) => {
       const bubbles = Array.isArray(result) ? result : result.bubbles;
       const declared = !Array.isArray(result) && result.withheld === true;
@@ -23975,7 +24321,7 @@ var MotorSchemaExecutor = class {
         return;
       }
       if (declared) {
-        this._withheld.add(id);
+        this._withheld.set(id, "I considered speaking and chose not to.");
         logger.debug(`[motor] "${intent.schema}" withheld \u2014 the facet chose silence`);
         return;
       }
@@ -24175,6 +24521,16 @@ function clamp0110(n) {
 }
 function errMsg(err) {
   return err instanceof Error ? err.message : String(err);
+}
+function situationMoved(state, targetEntityId, composedAt) {
+  if (composedAt === void 0 || !targetEntityId) return null;
+  const heard = lastAnsweredByEntity(state.entities).get(targetEntityId);
+  if (heard !== void 0 && heard > composedAt)
+    return "They said something after I composed this, so it is an answer to a moment that has passed.";
+  const spoke = spokenAtByEntity(state.entities).get(targetEntityId);
+  if (spoke !== void 0 && spoke > composedAt)
+    return "I had already spoken to them since composing this, so it was no longer what I had to say.";
+  return null;
 }
 
 // src/cognition/agency/engines/reafference.engine.ts
@@ -28189,6 +28545,7 @@ function toPolicyInvocation(instance, payload) {
     schema: payload.schema ?? "",
     parameters: payload.parameters ?? {},
     ...typeof payload.targetEntityId === "string" ? { targetEntityId: payload.targetEntityId } : {},
+    ...Array.isArray(payload.targetAddresses) ? { targetAddresses: payload.targetAddresses } : {},
     ...typeof payload.description === "string" ? { description: payload.description } : {},
     tick: payload.tick ?? 0
   };
@@ -29032,6 +29389,26 @@ var WillStem = class {
   resolveEscalation(id, invocationId, approved) {
     this._effector.resolveEscalation(this._get(id), invocationId, approved);
   }
+  /**
+   * Install the Policy Decision Point consulted before every host-owned
+   * effector invocation is handed to the world (POLICY_REAFFERENCE P0).
+   * Passing `null` restores the no-op default — a stem with no arbiter
+   * installed runs byte-identical to one built before the policy seam existed.
+   *
+   * SCOPE: one arbiter per `WillStem`, not per Will — `effectorController` is a
+   * single instance shared by every Will this stem hosts (`setAllowed`,
+   * `resolveEscalation` etc. take a resolved instance; this does not, because
+   * there is only one). `Will.create()` / `Will.wake()` each allocate a fresh
+   * `WillStem`, so on that (recommended) path this is per-Will in practice. A
+   * host running several Wills on ONE shared `WillStem` — e.g. a multi-tenant
+   * service holding many users' Wills in one process — installs ONE arbiter
+   * for all of them; branch on `invocation.willId` inside `evaluate()` if
+   * that's your host, the same way `PolicyVerdictRecord`/`PolicyVerdictSource`
+   * are already keyed per-Will for recording and replay.
+   */
+  setArbiter(arbiter) {
+    this._effector.setArbiter(arbiter);
+  }
   // ── Messaging / outbox (11.1) ────────────────────────────────────────────
   // Delegates to OutboxController (R5-c). `_get(id)` validates the Will exists
   // and supplies the WillInstance; the outbox ops touch only instance fields.
@@ -29503,6 +29880,17 @@ var Will = class _Will {
   }
   resume() {
     this.stem.resumeWill(this.id);
+  }
+  /**
+   * Install the Policy Decision Point consulted before every effector
+   * invocation this Will hands to the host (POLICY_REAFFERENCE P0). `null`
+   * restores the no-op default. See `WillStem.setArbiter` for the one scoping
+   * caveat (per-stem, not per-Will id) — irrelevant here since `Will.create()`
+   * gives this instance its own dedicated stem.
+   */
+  setArbiter(arbiter) {
+    this.stem.setArbiter(arbiter);
+    return this;
   }
   /**
    * Checkpoint the living mind into a portable PMA artifact — NON-destructive.

@@ -693,7 +693,12 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
                             .find( g => {
                               return g.tags.includes( mapping.tags[0]! )
                                       && g.tags.includes( mapping.tags[1]! )
-                                      && g.status === 'active'
+                                      // `pending` counts as existing. It did not, and a
+                                      // goal demoted for capacity therefore stopped
+                                      // blocking its own respawn — the drive minted a
+                                      // fresh copy every time its threshold was crossed.
+                                      // Measured: 92 identical copies of one goal.
+                                      && ( g.status === 'active' || g.status === 'pending')
                             })
 
       // Never spawn a goal that is *already satisfied* — it would complete on its
@@ -720,7 +725,9 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
         // Dedup by the referent (keid: tag) when present, else by description.
         const keidTag = tags.find( t => t.startsWith('keid:') )
         const existing = Array.from( this._goals.values() ).find( g =>
-          g.status === 'active' && ( keidTag ? g.tags.includes( keidTag ) : g.description === desc ) )
+          // Same rule as the drive path: a waiting goal still exists.
+          ( g.status === 'active' || g.status === 'pending')
+          && ( keidTag ? g.tags.includes( keidTag ) : g.description === desc ) )
 
         // Don't spawn a goal that's already satisfied (born-done guard — see _activateFromDrives).
         if( !existing && !this._isConditionMet( cCond, state ) )
@@ -805,6 +812,32 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
     return 0
   }
 
+  /**
+   * Reconcile the active set to capacity — in BOTH directions.
+   *
+   * Demotion alone made `pending` a one-way door, and a mind fell through it.
+   * Nothing in this file promoted a goal back (the only other write of `'active'`
+   * is `pending_verification`'s, a different status), so a goal demoted for
+   * capacity was demoted for good. Worse, `pending` is excluded from every other
+   * mechanism that could have retired it: it is not in `getActiveGoals()`, not
+   * progress-updated, not reachable by the patience/grit sweep (which skips any
+   * status but `'active'`) — yet it IS re-persisted every tick and rehydrated on
+   * every restore. Inert and immortal at once.
+   *
+   * Measured on a live COO: 96 goal entities, of which **83 pending, 0 active**,
+   * and 92 of the 96 the same drive-spawned goal. `activeGoalCount` sat at 0, so
+   * `goalless_crisis` fired every 20 ticks forever while she carried 83 goals —
+   * and the `goal` term, the joint-largest weight in the affordance competition,
+   * contributed nothing to any choice she made.
+   *
+   * Promotion also restores GC reachability, which is the quieter half of the
+   * fix: an over-patient stale goal can only be abandoned while it is active.
+   *
+   * `activatedAt` is deliberately NOT refreshed on promotion. Refreshing it would
+   * let a goal cycle demote→promote and reset its own patience each time, making
+   * it unretirable — the immortality this fix exists to end, reintroduced by the
+   * back door. A goal's age is when it was taken up, not when it last got a slot.
+   */
   private _resolveConflicts(): void {
     const active = this.getActiveGoals()
 
@@ -812,6 +845,21 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
     while( active.length > this._maxActiveGoals ){
       const lowest = active.pop()
       if( lowest ) lowest.status = 'pending'
+    }
+
+    // ...and take the best waiting goals back up when there is room. Only ever
+    // reached when UNDER capacity, so this cannot undo the demotion above:
+    // the loop leaves the set at exactly capacity, and this one starts below it.
+    if( active.length >= this._maxActiveGoals ) return
+
+    const waiting = Array.from( this._goals.values() )
+                         .filter( g => g.status === 'pending')
+                         .sort( ( a, b ) => b.priority - a.priority )
+
+    for( const goal of waiting ){
+      if( active.length >= this._maxActiveGoals ) break
+      goal.status = 'active'
+      active.push( goal )
     }
   }
 

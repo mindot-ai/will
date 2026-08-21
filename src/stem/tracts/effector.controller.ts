@@ -568,6 +568,8 @@ function toPolicyInvocation( instance: WillInstance, payload: Record<string, unk
     schema:     ( payload.schema as string ) ?? '',
     parameters: ( payload.parameters as Record<string, unknown> ) ?? {},
     ...( typeof payload.targetEntityId === 'string' ? { targetEntityId: payload.targetEntityId } : {} ),
+    ...( Array.isArray( payload.targetAddresses )
+      ? { targetAddresses: payload.targetAddresses as string[] } : {} ),
     ...( typeof payload.description    === 'string' ? { description:    payload.description    } : {} ),
     tick:       ( payload.tick as number ) ?? 0,
   }

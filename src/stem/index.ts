@@ -38,6 +38,7 @@ import { TransportController } from '#stem/tracts/transport.controller'
 import { InboundQueue } from '#stem/tracts/inbound.queue'
 import type { ExternalTransport } from '#stem/tracts/transport'
 import { effectorController } from '#stem/tracts/effector.controller'
+import type { PolicyArbiter } from '#stem/policy/arbiter'
 import { externalSchemas } from '#agency/schemas/external'
 import { inFlightOnRestore } from '#agency/restart'
 import { buildEngineConfigEntities } from '#cognition/config.mirror.entities'
@@ -892,6 +893,28 @@ export class WillStem {
    */
   resolveEscalation( id: string, invocationId: string, approved: boolean ): void {
     this._effector.resolveEscalation( this._get( id ), invocationId, approved )
+  }
+
+
+  /**
+   * Install the Policy Decision Point consulted before every host-owned
+   * effector invocation is handed to the world (POLICY_REAFFERENCE P0).
+   * Passing `null` restores the no-op default — a stem with no arbiter
+   * installed runs byte-identical to one built before the policy seam existed.
+   *
+   * SCOPE: one arbiter per `WillStem`, not per Will — `effectorController` is a
+   * single instance shared by every Will this stem hosts (`setAllowed`,
+   * `resolveEscalation` etc. take a resolved instance; this does not, because
+   * there is only one). `Will.create()` / `Will.wake()` each allocate a fresh
+   * `WillStem`, so on that (recommended) path this is per-Will in practice. A
+   * host running several Wills on ONE shared `WillStem` — e.g. a multi-tenant
+   * service holding many users' Wills in one process — installs ONE arbiter
+   * for all of them; branch on `invocation.willId` inside `evaluate()` if
+   * that's your host, the same way `PolicyVerdictRecord`/`PolicyVerdictSource`
+   * are already keyed per-Will for recording and replay.
+   */
+  setArbiter( arbiter: PolicyArbiter | null ): void {
+    this._effector.setArbiter( arbiter )
   }
 
   // ── Messaging / outbox (11.1) ────────────────────────────────────────────

@@ -110,6 +110,71 @@ export function consequenceEntity( d: ConsequenceDescriptor ): EntityInput {
   }
 }
 
+// ── The durable enaction record — satiation's third source ───────────────────
+//
+// Descriptors are swept at the ECHO window (`CONSEQUENCE_TTL_TICKS`, 30) because
+// that answers "could the world still be replying to me". Satiation asks a
+// different and longer question (`repeatWindowTicks`, 60 by default), so the
+// second half of the satiation window had no carrier at all and silently damped
+// nothing.
+//
+// The codebase already hit this exact wall twice and closed it twice:
+//   • speaking  → `conversation.sent`, durable, read as `spokenAt`
+//   • objectless → `LearnedSkill.lastEnactedTick`, durable, read as `selfEnactedAt`
+//
+// The gap left was an act WITH an object that is NOT speech — `inspect`, and
+// every entity-bound host effector. `lastEnactedTick` cannot serve it: it is
+// per-schema, so "I just looked up Alice" would damp looking up Bob, which is
+// why the objectless branch is the only place it is consulted. So this is the
+// missing peer: per (schema, target), durable, on the satiation window.
+//
+// Measured on a live COO before this existed: entity-bound acts carried
+// satiation in 40–46% of competitions against 100% for objectless ones, and she
+// re-enacted `discord_lookup_member` toward the same person 33 times in seven
+// minutes.
+export const ENACTED_TYPE = 'agency.enacted'
+
+/** Stable id — one record per (schema, target), refreshed in place, so the set is
+ *  bounded by the pairs actually enacted rather than growing per enaction. */
+export function enactedId( schema: string, targetEntityId: string ): string {
+  return `agency-enacted-${ schema }-${ targetEntityId }`
+}
+
+/** Build/refresh the durable "I did this to them, then" record. */
+export function enactedEntity( schema: string, targetEntityId: string, tick: Tick ): EntityInput {
+  return {
+    id:   enactedId( schema, targetEntityId ),
+    type: ENACTED_TYPE,
+    metadata: { schema, targetEntityId, tick },
+  }
+}
+
+/**
+ * When this mind last enacted each (schema, target) pair. Keyed
+ * `schema\u0000target` — NUL, because neither half can contain it, so a pair
+ * cannot be forged by a schema id that happens to contain the separator.
+ */
+export function enactedAtBySchemaTarget(
+  entities: ReadonlyMap<string, { type: string; metadata?: ReadonlyMap<string, unknown> | Record<string, unknown> }>,
+): Map<string, number> {
+  const out = new Map<string, number>()
+  for( const [ , e ] of entities ){
+    if( e.type !== ENACTED_TYPE ) continue
+    const meta   = ( e.metadata ?? {} ) as Record<string, unknown>
+    const schema = typeof meta['schema'] === 'string' ? meta['schema'] as string : undefined
+    const target = typeof meta['targetEntityId'] === 'string' ? meta['targetEntityId'] as string : undefined
+    const tick   = typeof meta['tick'] === 'number' ? meta['tick'] as number : undefined
+    if( !schema || !target || tick === undefined ) continue
+    out.set( enactedKey( schema, target ), tick )
+  }
+  return out
+}
+
+/** The map key for a (schema, target) pair. */
+export function enactedKey( schema: string, targetEntityId: string ): string {
+  return `${ schema }\u0000${ targetEntityId }`
+}
+
 /** Read a descriptor back off entity metadata (P2 matcher + tests). */
 export function readConsequence(
   m: ReadonlyMap<string, unknown> | Record<string, unknown> | undefined,
@@ -271,6 +336,19 @@ export function enactionFootprint(
    * damps only self-initiated outreach — which is exactly what broadcasting is.
    */
   spokeAnywhereAt?: number,
+  /**
+   * Tick this (schema, target) pair was last enacted, from the durable
+   * `agency.enacted` records — the peer of `spokenAt` for an act that has an
+   * object but is not speech (`inspect`, every entity-bound host effector).
+   *
+   * Without it those acts carried satiation only while a consequence descriptor
+   * survived, i.e. the echo window, so the back half of the satiation window
+   * damped nothing — measured at 40–46% coverage against 100% for objectless
+   * acts, with a live COO re-looking-up the same person 33 times in 7 minutes.
+   * Keyed by PAIR, not by schema, so damping "look up Alice" leaves "look up
+   * Bob" untouched — which is precisely why `selfEnactedAt` cannot serve here.
+   */
+  enactedAt?:     ReadonlyMap<string, number>,
 ): number {
   if( windowTicks <= 0 ) return 0
 
@@ -281,6 +359,12 @@ export function enactionFootprint(
   }
 
   let strongest = 0
+
+  const enacted = enactedAt?.get( enactedKey( schema, targetEntityId ) )
+  if( enacted !== undefined ){
+    const remaining = ( windowTicks - ( tick - enacted ) ) / windowTicks
+    if( remaining > strongest ) strongest = remaining
+  }
 
   const spoken = spokenAt?.get( targetEntityId )
   if( spoken !== undefined ){

@@ -33,6 +33,7 @@ import { PROVIDER_KEY_ENV, providerKeyFromEnv, type LLMProvider } from '#llm/ind
 import type { PMASnapshot } from '#pma/index'
 import type { effectorInvocation } from '#types'
 import type { EffectorDeclaration, SchemaPrecondition } from '#agency/types'
+import type { PolicyArbiter } from '#stem/policy/arbiter'
 
 // ── Public surface ────────────────────────────────────────────
 
@@ -529,6 +530,19 @@ export class Will {
 
   pause():  void { this.stem.pauseWill( this.id ) }
   resume(): void { this.stem.resumeWill( this.id ) }
+
+
+  /**
+   * Install the Policy Decision Point consulted before every effector
+   * invocation this Will hands to the host (POLICY_REAFFERENCE P0). `null`
+   * restores the no-op default. See `WillStem.setArbiter` for the one scoping
+   * caveat (per-stem, not per-Will id) — irrelevant here since `Will.create()`
+   * gives this instance its own dedicated stem.
+   */
+  setArbiter( arbiter: PolicyArbiter | null ): this {
+    this.stem.setArbiter( arbiter )
+    return this
+  }
 
   /**
    * Checkpoint the living mind into a portable PMA artifact — NON-destructive.

@@ -1,6 +1,13 @@
 # EXAFFERENCE_TODO — corollary discharge + the exafferent interrupt (commitment revocation)
 
-> **Status:** OPEN — designed 2026-07-19. Goal: make the reafferent/exafferent split a
+> **Status:** ✅ **SHIPPED** — designed 2026-07-19, all phases landed. *(Header
+> said OPEN until 2026-08-21; corrected during the SIGNAL_BOUNDARY audit. Evidence:
+> 23 of 23 phase items checked, none open, and the mechanisms are live in
+> `consequence.ts` / `exteroception.ts` / `revocation.ts`. A stale status header on
+> a shipped epoch is worse than none — it sent a later epoch looking for work that
+> was already done.)*
+>
+> Original goal: make the reafferent/exafferent split a
 > *cognitive* judgment instead of a transport accident, and let exafference not just
 > recruit the executive but **revoke the agency's current commitment** — the agency's
 > function becomes not only independent choice of action in a situation, but

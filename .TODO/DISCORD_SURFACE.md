@@ -1,6 +1,15 @@
 # DISCORD_SURFACE_TODO — a Will present in a server, not merely connected to one
 
-> **Status:** OPEN — designed 2026-08-11. Goal: give a Will the same insight into a
+> **Status:** 🟡 **P0–P1 LANDED (2026-08-11), P2+ OPEN.** *(Was a bare "OPEN";
+> refined 2026-08-21 during the SIGNAL_BOUNDARY audit.)* P0 (the room stops being
+> an id) and P1 (reactions are answers) are live. **The open half is confirmed by
+> live evidence:** a COO's Discord world is only the people who have spoken to her
+> — no member list, no ban list, no roles — so `inspect` returns a member *count*
+> and never a roster. Given moderation abilities against that world she asked to
+> unban the one person who talks to her, twice. See
+> `.TODO/SIGNAL_BOUNDARY.md` and the sense-boundary limit it records.
+>
+> Original goal: give a Will the same insight into a
 > Discord server that a person gets from the app — where it is, who is there, what
 > the room is for, what it may do — and **hands**, so presence is not only receptive.
 >

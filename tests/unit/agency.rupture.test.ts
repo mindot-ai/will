@@ -84,15 +84,41 @@ describe('rupture — the quiet path is byte-identical to pre-P3', () => {
     expect( events.some( e => e.type === 'agency.situation.rupture') ).toBe( false )
   })
 
+  it('a WAKE percept now ruptures — the behaviour P0 step 2 changed', async () => {
+    // Written with the real shape `stem/index.ts` now produces: exafferent,
+    // salience 0.75, ticked. While it was untagged it failed this gate exactly
+    // as the mind's own echo does, so a mind returning after hours away could
+    // not be ruptured by noticing that. The gate is unchanged; the percept now
+    // answers it.
+    const wake = { id: 'percept-wake-event', type: 'percept', metadata: {
+      tick: 5, salience: 0.75, category: 'system',
+      summary: 'I was offline for 3 hours. I am now online again.',
+      provenance: 'exafferent', source: 'system', offlineMs: 10_800_000,
+    } } as Ent
+    const s = makeState( 5, [ challenger('rest'), awaiting('wander', 0.9, 5 ), wake ] )
+    const { res, events } = await run( s )
+    expect( events.some( e => e.type === 'agency.situation.rupture') ).toBe( true )
+    expect( metricVal( res, 'situation.stability') ).toBeLessThan( 1 )
+  })
+
+  it('the same wake percept UNTAGGED does not rupture — isolating the tag as the cause', async () => {
+    const untaggedWake = { id: 'percept-wake-event', type: 'percept', metadata: {
+      tick: 5, salience: 0.75, category: 'system',
+      summary: 'I was offline for 3 hours. I am now online again.',
+      source: 'system', offlineMs: 10_800_000,
+    } } as Ent
+    const s = makeState( 5, [ challenger('rest'), awaiting('wander', 0.9, 5 ), untaggedWake ] )
+    const { events } = await run( s )
+    expect( events.some( e => e.type === 'agency.situation.rupture') ).toBe( false )
+  })
+
   it('an UNTAGGED percept cannot rupture either — pinning today, not endorsing it', async () => {
     // The gate is `=== 'exafferent'`, so a percept with NO provenance field is
-    // excluded exactly as our own echo is. Three writers are untagged today:
-    // `escalation.buffer` (x2) and the wake percept in `stem/index.ts` — which
-    // means a mind that has been offline for hours cannot be ruptured by
-    // noticing that. This test exists so the fix is a deliberate red test
-    // rather than a silent drift: tag the writers, or widen the gate to
-    // `!== 'reafferent'`, and this is the test that has to change with it.
-    // See .TODO/SIGNAL_BOUNDARY.md.
+    // excluded exactly as our own echo is. No writer produces one any more —
+    // P0 step 2 tagged the last three — so this now pins the GATE rather than
+    // any live path: it is what makes `perceptEntity()` requiring provenance
+    // load-bearing instead of tidy. If the gate is ever widened to
+    // `!== 'reafferent'`, this is the test that has to change with it.
     const untagged = { id: 'p-wake', type: 'percept', metadata: {
       salience: 0.95, tick: 5, entityId: 'w', category: 'system',
     } } as Ent

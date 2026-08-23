@@ -138,6 +138,12 @@ export class EscalationBuffer {
 
       const common = {
         salience: 0.85,
+        // REAFFERENT. Nothing outside the mind produced this: a facet of it
+        // raised the handoff, and the master is now sensing its own part's
+        // doing. Tagging it costs no behaviour — the rupture gate excludes
+        // reafferent and untagged alike — but it stops the exclusion being an
+        // accident, and it is the honest answer rather than the convenient one.
+        provenance: 'reafferent' as const,
         source:   'executive-facet',
         ...( h.subjectEntityId ? { entityId: h.subjectEntityId } : {} ),
         ...( h.threadId        ? { threadId: h.threadId }        : {} ),

@@ -15609,6 +15609,12 @@ var EscalationBuffer = class {
       const id = `escalation-percept-${h.subjectEntityId ?? h.facetId ?? "self"}-${h.tick}-${seq++}`;
       const common = {
         salience: 0.85,
+        // REAFFERENT. Nothing outside the mind produced this: a facet of it
+        // raised the handoff, and the master is now sensing its own part's
+        // doing. Tagging it costs no behaviour — the rupture gate excludes
+        // reafferent and untagged alike — but it stops the exclusion being an
+        // accident, and it is the honest answer rather than the convenient one.
+        provenance: "reafferent",
         source: "executive-facet",
         ...h.subjectEntityId ? { entityId: h.subjectEntityId } : {},
         ...h.threadId ? { threadId: h.threadId } : {},
@@ -27752,23 +27758,18 @@ var OutboxController = class {
       });
       break;
     }
-    instance.simulation.stateManager.setEntity({
+    instance.simulation.stateManager.setEntity(perceptEntity({
       id: `msg-delivered-${messageId}`,
-      type: "percept",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      metadata: {
-        category: "message-delivery",
-        summary: delivered ? `My message was delivered successfully.` : `My message failed to reach the recipient.`,
-        salience: delivered ? 0.35 : 0.6,
-        changeType: delivered ? "delivered" : "failed",
-        // Reafference by construction — this percept describes our own action's
-        // outcome ("ear hears the word"). Tagged, not attenuated: it is the ack
-        // surface, not a content echo (EXAFFERENCE P2).
-        provenance: "reafferent",
-        messageId
-      }
-    });
+      tick,
+      category: "message-delivery",
+      summary: delivered ? `My message was delivered successfully.` : `My message failed to reach the recipient.`,
+      salience: delivered ? 0.35 : 0.6,
+      changeType: delivered ? "delivered" : "failed",
+      // Reafference by construction — this percept describes our own action's
+      // outcome ("ear hears the word"). Tagged, not attenuated: it is the ack
+      // surface, not a content echo (EXAFFERENCE P2).
+      provenance: "reafferent"
+    }, { messageId }));
     instance.sessionLogger?.write({
       type: "conversation.delivery",
       tick,
@@ -29187,19 +29188,14 @@ var WillStem = class {
       const offlineMs = Date.now() - instance.pausedAt.getTime();
       const offlineMins = Math.round(offlineMs / 6e4);
       const duration = offlineMins < 2 ? "a moment" : offlineMins < 60 ? `${offlineMins} minutes` : `${Math.round(offlineMins / 60)} hours`;
-      instance.simulation.stateManager.setEntity({
+      instance.simulation.stateManager.setEntity(perceptEntity({
         id: "percept-wake-event",
-        type: "percept",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        metadata: {
-          category: "system",
-          summary: `I was offline for ${duration}. I am now online again.`,
-          salience: 0.75,
-          source: "system",
-          offlineMs
-        }
-      });
+        tick: instance.tickCount,
+        category: "system",
+        summary: `I was offline for ${duration}. I am now online again.`,
+        salience: 0.75,
+        provenance: "exafferent"
+      }, { source: "system", offlineMs }));
       instance.pausedAt = null;
     }
     instance._sessionBehavior = {

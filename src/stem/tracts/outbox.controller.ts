@@ -21,7 +21,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { OutboxMessage } from '#types'
-import type { SignalProvenance } from '#senses/provenance'
+import { perceptEntity } from '#cognition/percept.entity'
 import type { WillInstance } from '#stem/index'
 
 /**
@@ -93,25 +93,33 @@ export class OutboxController {
     }
 
     // 2. Write a percept so Exteroception perceives delivery ("ear hears the word")
-    instance.simulation.stateManager.setEntity({
-      id:        `msg-delivered-${messageId}`,
-      type:      'percept',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      metadata: {
-        category:   'message-delivery',
-        summary:    delivered
-          ? `My message was delivered successfully.`
-          : `My message failed to reach the recipient.`,
-        salience:   delivered ? 0.35 : 0.6,
-        changeType: delivered ? 'delivered' : 'failed',
-        // Reafference by construction — this percept describes our own action's
-        // outcome ("ear hears the word"). Tagged, not attenuated: it is the ack
-        // surface, not a content echo (EXAFFERENCE P2).
-        provenance: 'reafferent',
-        messageId,
-      },
-    })
+    //
+    // The `tick` is what stops this leaking, and it was missing since the day
+    // this was written. `exteroception._collectStalePerceptIds` is the only
+    // sweeper of this type and collects only entities whose `metadata.tick` is
+    // a number, so this one was IMMORTAL — one permanent entity per message the
+    // mind ever successfully sent. Worse than memory: `extractPercepts` ranks
+    // percepts by salience with NO recency filter, so a failed delivery at 0.6
+    // held an executive percept slot for the rest of the mind's life, offering
+    // a months-old failure as something just noticed.
+    //
+    // Sweeping loses nothing. `working.memory._ingestPercepts` copies every
+    // percept into WM on the next tick, deduped by source id — state is the
+    // staging area, WM is where it is remembered.
+    instance.simulation.stateManager.setEntity( perceptEntity( {
+      id:         `msg-delivered-${messageId}`,
+      tick,
+      category:   'message-delivery',
+      summary:    delivered
+        ? `My message was delivered successfully.`
+        : `My message failed to reach the recipient.`,
+      salience:   delivered ? 0.35 : 0.6,
+      changeType: delivered ? 'delivered' : 'failed',
+      // Reafference by construction — this percept describes our own action's
+      // outcome ("ear hears the word"). Tagged, not attenuated: it is the ack
+      // surface, not a content echo (EXAFFERENCE P2).
+      provenance: 'reafferent',
+    }, { messageId } ) )
 
     instance.sessionLogger?.write({
       type:      'conversation.delivery',

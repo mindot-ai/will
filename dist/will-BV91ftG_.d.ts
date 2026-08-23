@@ -9379,15 +9379,25 @@ interface Stimulus {
      * Whose doing this was: `'exafferent'` (the world), `'reafferent'` (the Will's
      * own act, coming back), or `'unknown'` (you cannot tell).
      *
-     * Required, with no default, because only you can answer it — nothing inside
-     * the mind can tell the echo of its own utterance from a stranger saying the
-     * same words. Most inbound traffic is `'exafferent'`; use `say()`/`tell()`,
-     * whose verbs already make that claim, when that is all you mean. Reach for
-     * `'reafferent'` when you are feeding back the result of something the Will
-     * did — an ability's output, a webhook fired by its own write, a platform
-     * echo of a message it sent — and pass `sourceIntentId` if you have it.
+     * Only you can answer it — nothing inside the mind can tell the echo of its
+     * own utterance from a stranger saying the same words. Most inbound traffic is
+     * `'exafferent'`; use `say()`/`tell()`, whose verbs already make that claim,
+     * when that is all you mean. Reach for `'reafferent'` when you are feeding
+     * back the result of something the Will did — an ability's output, a webhook
+     * fired by its own write, a platform echo of a message it sent — and pass
+     * `sourceIntentId` if you have it.
+     *
+     * ⚠️ **OPTIONAL ONLY UNTIL P3, and omitting it is already the worse choice.**
+     * It is required everywhere inside the package (`SensoryInput`, `Percept`);
+     * this one door stays lenient so a host migrates ONCE, at P3, when
+     * `perceive()` is renamed to `sense()` and the two breaks land together.
+     * Until then an omission defaults to `'exafferent'` — the same fourth,
+     * silent state the internal types exist to forbid, kept alive here on
+     * purpose and on a clock. Pass it now and the P3 bump costs you nothing.
+     *
+     * See `.TODO/SIGNAL_BOUNDARY.md` §5 P3.
      */
-    provenance: SignalProvenance;
+    provenance?: SignalProvenance;
     /** The intent whose enaction caused this, when `provenance` is `'reafferent'`. */
     sourceIntentId?: string;
     /** Conversation/thread id (default = `from`). */

@@ -217,4 +217,48 @@ describe('Will facade — subject surface', () => {
     }
     finally { await will.stop() }
   }, 30_000 )
+
+  // ── The one surviving default, on a clock ──────────────────────
+  //
+  // `provenance` is REQUIRED on `SensoryInput` and `Percept`; `Stimulus` alone
+  // stays lenient so a host migrates once, at P3, when `perceive()` becomes
+  // `sense()`. These two pin that leniency precisely, so P3 removing the `??`
+  // trips a test instead of silently changing what a quiet host means.
+  describe('Stimulus.provenance — optional until P3', () => {
+    it('an omitted provenance still reaches the stem as a full TextMessage', async () => {
+      const will = await Will.create( { ...base, name: 'Lenient', identity: { prompt: 'I listen.' } } )
+      const seen: Array<Record<string, unknown>> = []
+      const real = will.stem.ingestText.bind( will.stem )
+      will.stem.ingestText = async ( id: string, input: never ) => {
+        seen.push( input as unknown as Record<string, unknown> )
+        return real( id, input )
+      }
+      try {
+        // No `provenance` — the pre-P3 host shape.
+        await will.perceive( { from: 'ada', text: 'Hello there.' } )
+        expect( seen ).toHaveLength( 1 )
+        expect( seen[0]!['provenance'] ).toBe('exafferent')
+      }
+      finally { await will.stop() }
+    }, 30_000 )
+
+    it('an explicit provenance is never overwritten by the default', async () => {
+      const will = await Will.create( { ...base, name: 'Echo', identity: { prompt: 'I listen.' } } )
+      const seen: Array<Record<string, unknown>> = []
+      const real = will.stem.ingestText.bind( will.stem )
+      will.stem.ingestText = async ( id: string, input: never ) => {
+        seen.push( input as unknown as Record<string, unknown> )
+        return real( id, input )
+      }
+      try {
+        await will.perceive( {
+          from: 'self', text: '[I looked into #general: 3 people are in it.]',
+          provenance: 'reafferent', sourceIntentId: 'intent-9',
+        } )
+        expect( seen[0]!['provenance'] ).toBe('reafferent')
+        expect( seen[0]!['sourceIntentId'] ).toBe('intent-9')
+      }
+      finally { await will.stop() }
+    }, 30_000 )
+  } )
 } )

@@ -598,14 +598,25 @@ takes it too.
       **structural**, not a caller's omission. `InboundMessageEnvelope` has no
       such field, so a remote host cannot declare one however much it knows.
 
-> **⚠ Deviation from the sequencing rule, recorded rather than smuggled.** §5
-> says no phase may change behaviour until P3, and P0a said "optional at first
-> so nothing breaks". A required field is not a *behaviour* change — the quiet
-> path is still byte-identical — but it **is** a compile break for hosts,
-> landing two phases early. Taken deliberately: one break instead of two, and it
-> paid immediately. The compiler found two host doors the manual audit had
-> missed (`surface/mcp/server.ts`, `surface/serve/server.ts`), and it forced
-> `discord_inspect_channel` to declare what its own comment already said.
+> **⚠ Deviation, raised and then resolved back to the rule (2026-08-23).**
+> Requiring it on `Stimulus` is a compile break for hosts, and §5 says no phase
+> breaks anything until P3. It was taken briefly, and **backed out at that one
+> door**: `Stimulus.provenance` is optional again, defaulting to `'exafferent'`
+> in `perceive()`, so the break lands at P3 together with `perceive()` →
+> `sense()` and a host migrates **once instead of twice**.
+>
+> Everything inside the package stays required — `SensoryInput`, `Percept`,
+> `Transduced`. The leniency is one hop wide, at one door, and it is a
+> **deprecation, not a design**: for that hop the four-state hole is alive
+> again, an omission reading as a claim nobody made. That is the cost of the
+> single migration, and it is on a clock.
+>
+> **The brief strictness paid for itself and the gains were kept.** The compiler
+> found two host doors the manual audit had missed
+> (`surface/mcp/server.ts`, `surface/serve/server.ts`), and it forced
+> `discord_inspect_channel` to declare in a field what its own comment already
+> said in prose. Every in-repo caller now passes `provenance` explicitly and
+> keeps doing so — the leniency exists for hosts we do not own.
 
 #### P0a-c — the vocabulary was already here, twice, and unconnected
 
@@ -706,6 +717,13 @@ the same word for `{ planId, stepId }` (`reconcile.learning.ts:71`,
       perception; audition runs first and *produces* the percept. The name has
       misled every reader of this flow, including this file's first draft.
       Keep `perceive` as a deprecated alias for one minor.
+- [ ] **`Stimulus.provenance` becomes required, and the `?? 'exafferent'` in
+      `perceive()` is deleted.** Held back from P0a-b deliberately so this and
+      the rename are ONE host migration. It is the last surviving instance of
+      the four-state hole in the package, kept alive on purpose and on a clock.
+      Pinned by *"Stimulus.provenance — optional until P3"* in
+      `sdk.facade.test.ts` — those two tests must change with it, which is the
+      point of them.
 - [ ] Internal renames toward the four terms; public aliases retained one minor.
 - [ ] **Disambiguate the overloaded `provenance`.** The agency pipeline uses the
       word for `{ planId, stepId }` (`reconcile.learning.ts`, `plan.frontier.ts`)

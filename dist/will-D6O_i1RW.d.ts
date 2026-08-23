@@ -7067,18 +7067,26 @@ declare class OutboxWriter {
  *
  *   • 'exafferent' — the world did this. Nothing of mine preceded it.
  *   • 'reafferent' — I did this, and I am now sensing the consequence.
- *   • 'unknown'    — the host cannot say. ASSERTED, never inferred.
+ *   • 'unknown'    — the source cannot say.
  *
- * WHY THE DEFAULT IS 'exafferent' AND NEVER 'reafferent'. A percept wrongly
- * marked as mine is attenuated on the exafference path and can never rupture a
- * commitment — so a mind that mislabels the world as its own doing goes quiet
- * about real events, which is the failure that matters. Erring the other way
- * costs only a little redundant salience. Same shape of argument as
- * `asFinality()` refusing to default to `'context'`: the value that makes the
- * mind learn LESS must be claimed by someone who knows, not fallen into.
+ * There is no fourth, silent state — see `SensorySignal`.
  *
- * A host that genuinely cannot tell should say `'unknown'` out loud rather than
- * leave the field off — an omission reads as a decision nobody made.
+ * ONE CONCEPT, TWO WAYS OF ARRIVING AT IT. This type is shared with the percept
+ * entities `exteroception` and `outbox.controller` write, which used the same
+ * two spellings before it existed (EXAFFERENCE P2/P3), and it is deliberately
+ * not "asserted only":
+ *
+ *   • At the WORLD door, provenance is INFERRED and that is correct — the mind
+ *     holds both sides. `Exteroception` matches an observed change against its
+ *     own live consequence descriptors (`matchConsequenceText` /
+ *     `matchConsequenceEntity`) and tags the hit `'reafferent'`.
+ *   • At the SENSE door, provenance must be ASSERTED — there is nothing to
+ *     match against. A host's Discord message and the mind's own echo of it are
+ *     identical from the inside; only the host can tell them apart.
+ *
+ * What the two share is the consequence, and it is load-bearing:
+ * `action.selector`'s rupture gate counts only `'exafferent'` percepts, so
+ * anything tagged (or defaulted) as mine can never rupture a commitment.
  */
 type SignalProvenance = 'exafferent' | 'reafferent' | 'unknown';
 /**
@@ -7088,13 +7096,37 @@ type SignalProvenance = 'exafferent' | 'reafferent' | 'unknown';
  * host knows. A Discord bridge knows that the message it just received is the
  * webhook echo of the message the mind sent; nothing inside the mind can tell
  * that from a stranger saying the same words. So the boundary asserts it, and
- * the mind trusts the assertion — the same contract as `speakerName` (a name is
- * learned from the host, never guessed) and `direct` (an unknown room is not
- * known to be public).
+ * the mind trusts the assertion.
+ *
+ * WHY `provenance` IS REQUIRED AND HAS NO DEFAULT. It shipped optional first,
+ * defaulting to `'exafferent'`, and that was wrong for a reason worth keeping
+ * written down. This codebase makes a field optional when absence is the ONLY
+ * way to say a third thing: `speakerName?` (no string means "no name learned"),
+ * `direct?` (no boolean means "the channel did not say"). Provenance already
+ * HAS its third thing — `'unknown'`. So optionality bought a fourth state that
+ * was behaviourally identical to `'exafferent'` and epistemically its opposite:
+ * a claim that the world did this, made by nobody. Worse, it was lossy in the
+ * one direction that costs — a reader could never separate "the host asserts
+ * exafference" from "the host said nothing", which want different treatment
+ * downstream, and `'unknown'` exists precisely to keep them apart.
+ *
+ * The related-but-different precedent is `asFinality()`. That one DOES default,
+ * because it normalizes an `unknown` read back off entity metadata or a host
+ * ack, where the type system cannot help and something must be chosen. Here the
+ * type system can help, so it does. Should provenance ever need reading off a
+ * tape, that reader gets its own `asFinality`-shaped normalizer, and the
+ * direction of ITS fallback is `'exafferent'`: a percept wrongly marked as mine
+ * is attenuated and can never rupture a commitment, so a mind that mislabels
+ * the world as its own doing goes quiet about real events. Erring the other way
+ * costs only a little redundant salience.
+ *
+ * `sourceIntentId` stays optional by the same rule that made `provenance`
+ * required: there is no id meaning "no intent", so absence is the only way to
+ * say it, and it is meaningless unless `provenance` is `'reafferent'`.
  */
 interface SensorySignal {
-    /** Mine or the world's. Omitted reads as `'exafferent'` — see `provenanceOf`. */
-    provenance?: SignalProvenance;
+    /** Mine, the world's, or honestly unknown. Asserted by the host — never inferred. */
+    provenance: SignalProvenance;
     /**
      * The `agency.intent` id this is the consequence of. Only meaningful when
      * `provenance` is `'reafferent'`; the correlation handle a later mechanism
@@ -7103,10 +7135,38 @@ interface SensorySignal {
     sourceIntentId?: string;
 }
 /**
- * The one place the default lives. A host that says nothing is treated as
- * having sensed the world, never as having sensed itself.
+ * A percept as a sense engine BUILDS it — provenance omitted, because it is not
+ * the engine's to write. `publishPercept()` applies the host's assertion, so
+ * this type is what makes laundering a compile error rather than a runtime one.
  */
-declare function provenanceOf(input: SensorySignal): SignalProvenance;
+type Transduced<P extends {
+    provenance: SignalProvenance;
+}> = Omit<P, 'provenance' | 'sourceIntentId'>;
+/**
+ * Normalize an UNTYPED provenance — one arriving over a protocol the type
+ * system cannot police: an MCP tool call, an HTTP body, a wire envelope, a
+ * value read back off a snapshot.
+ *
+ * This is the `asFinality()` situation, and the ONLY situation in which
+ * provenance has a default. Inside the package the field is required, because
+ * there the compiler can make a producer answer. At an untyped boundary it
+ * cannot, something must be chosen, and every such read goes through here
+ * rather than comparing string literals at the call site.
+ *
+ * THE DEFAULT IS 'exafferent', AND NEVER 'reafferent'. A percept wrongly marked
+ * as mine is attenuated on the exafference path and can never rupture a
+ * commitment — so a mind that mislabels the world as its own doing goes quiet
+ * about real events, which is the failure that matters. Erring the other way
+ * costs only a little redundant salience. 'reafferent' is a claim only a caller
+ * that actually knows can make.
+ *
+ * Note it does NOT fall back to 'unknown', which would be the tidy-looking
+ * choice. 'unknown' is an assertion too — "I looked and I cannot tell" — and a
+ * caller that simply did not send the field has not looked. Where the ABSENCE
+ * is structural rather than a caller's omission (a wire envelope with no such
+ * field), say 'unknown' at that site explicitly instead of routing through here.
+ */
+declare function asProvenance(raw: unknown): SignalProvenance;
 
 declare class VisionEngine extends ShellSenseEngine {
     readonly name = "vision-engine";
@@ -7156,8 +7216,8 @@ type SenseDomain = 'audition' | 'vision' | 'somatosensation' | 'olfaction' | 'gu
  *
  * It extends `SensorySignal` because transduction does not change whose doing a
  * signal was: what the host stamped on the input is what the percept carries.
- * `BaseSenseEngine.publishPercept()` copies both fields across, so `provenance`
- * here is always set even when the host omitted it (`provenanceOf`'s default).
+ * `BaseSenseEngine.publishPercept()` applies both from the input, so a percept
+ * ALWAYS carries provenance — no consumer downstream ever writes a fallback.
  */
 interface Percept extends SensorySignal {
     domain: SenseDomain;
@@ -7314,9 +7374,20 @@ declare abstract class BaseSenseEngine implements SenseEngine {
      * fact transduction must not lose is whose doing that cause was. Taking it
      * here — instead of stashing the in-flight input on a field — is what keeps
      * the stamp correct while `_perceive()` is async and two ingests overlap.
-     * A percept arrives already stamped; downstream never has to guess.
+     *
+     * The percept arrives as `Transduced`, i.e. WITHOUT the two fields, so a
+     * sense engine cannot supply them at all. An earlier cut let one through: the
+     * stamp overwrote `provenance` unconditionally but `sourceIntentId` only when
+     * the host supplied one, so an engine could fabricate an intent id and it
+     * survived — provenance the mind would later trust, laundered by the very
+     * step that exists to establish it. The type now refuses it outright; the
+     * host's assertion is the only authority.
+     *
+     * Returns the stamped percept so a sense engine that needs it downstream (as
+     * audition does, to route the turn) uses the SAME object the bus saw, rather
+     * than a second one that could drift from it.
      */
-    protected publishPercept(percept: Percept, from: SensoryInput): void;
+    protected publishPercept<P extends Percept>(percept: Transduced<P>, from: SensorySignal): P;
 }
 /**
  * ShellSenseEngine — base for the not-yet-implemented senses
@@ -9304,6 +9375,21 @@ interface Stimulus {
      * name, the Will knows the person as "someone" until it learns one.
      */
     speaker?: string;
+    /**
+     * Whose doing this was: `'exafferent'` (the world), `'reafferent'` (the Will's
+     * own act, coming back), or `'unknown'` (you cannot tell).
+     *
+     * Required, with no default, because only you can answer it — nothing inside
+     * the mind can tell the echo of its own utterance from a stranger saying the
+     * same words. Most inbound traffic is `'exafferent'`; use `say()`/`tell()`,
+     * whose verbs already make that claim, when that is all you mean. Reach for
+     * `'reafferent'` when you are feeding back the result of something the Will
+     * did — an ability's output, a webhook fired by its own write, a platform
+     * echo of a message it sent — and pass `sourceIntentId` if you have it.
+     */
+    provenance: SignalProvenance;
+    /** The intent whose enaction caused this, when `provenance` is `'reafferent'`. */
+    sourceIntentId?: string;
     /** Conversation/thread id (default = `from`). */
     thread?: string;
     /** True when `thread` is private — just this someone and the Will. See TextMessage.direct. */
@@ -9533,9 +9619,16 @@ declare class Will {
      * `nextUtterance()`. The Will may also stay silent — that is not an error.
      */
     perceive(stimulus: Stimulus): Promise<void>;
-    /** Perceive from the default user. Sugar over `perceive`. */
+    /**
+     * Perceive from the default user. Sugar over `perceive`.
+     *
+     * Supplies `provenance: 'exafferent'` — that is not a default sneaking back
+     * in, it is what the verb MEANS. "Say" is somebody speaking to the Will; a
+     * caller who wants to feed back the Will's own act reaches for `perceive` and
+     * says so. The assertion lives in the function name.
+     */
     say(text: string): Promise<void>;
-    /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive`. */
+    /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive` — see `say` on provenance. */
     tell(entityId: string, speakerName: string, text: string): Promise<void>;
     /**
      * Await the Will's *next spontaneous utterance* — a thin, honest adapter over
@@ -9609,4 +9702,4 @@ declare class Will {
     private _emitError;
 }
 
-export { type DeltaSnapshot as $, type AckEnvelope as A, BACKGROUND_DEMAND as B, type ChunkEnvelope as C, CircadianOscillator as D, type ClockConfig as E, type Cognition as F, type CognitiveHealth as G, ConfidenceCalibrator as H, type ConfidenceCalibratorConfig as I, type ConflictReport as J, type ConflictResolution as K, type ConflictStrategy as L, type Coordinates as M, type CreateWillOptions as N, DefaultEventBus as O, DefaultMetricCollector as P, DefaultOrchestrator as Q, DefaultReplayRecorder as R, DefaultReplaySession as S, DefaultScenario as T, DefaultSerializer as U, DefaultSimulation as V, DefaultSimulationClock as W, DefaultStateManager as X, DefaultVectorMemoryAdapter as Y, DeliberationEngine as Z, DeltaEncoder as _, type AckResult as a, type ModelRoute as a$, type DenialFinality as a0, DreamSimulator as a1, type DreamSimulatorConfig as a2, type Duration as a3, ESCALATION_DEMAND as a4, type EffectorDeclaration as a5, type EffectorEntry as a6, type EffectorHandler as a7, type EffectorResult as a8, type EffectorSpec as a9, GustationEngine as aA, type InboundEnvelope as aB, type InboundMessageEnvelope as aC, type InboundPerceptEnvelope as aD, InhibitionController as aE, type InhibitionControllerConfig as aF, Interoception as aG, type InteroceptionConfig as aH, IntrospectionEngine as aI, type IntrospectionEngineConfig as aJ, KNOWN_PROVIDERS as aK, KnownEntityTracker as aL, type KnownEntityTrackerConfig as aM, type KnownProvider as aN, type LLMCallMeta as aO, type LLMCompletionRecord as aP, type LLMCompletionSink as aQ, type LLMProvider as aR, type LLMWire as aS, LossEvaluator as aT, type LossEvaluatorConfig as aU, type MessageEnvelope as aV, type MetricCollector as aW, type MetricPoint as aX, type MinimalContext as aY, MockEmbedder as aZ, type ModelPrice as a_, type EmbeddingProvider as aa, EmpathySimulator as ab, type EmpathySimulatorConfig as ac, EnergyRegulator as ad, type EnergyRegulatorConfig as ae, type EngineRegistry as af, type EngineResult as ag, type Envelope as ah, EpisodicConsolidator as ai, type EpisodicConsolidatorConfig as aj, type EventBus as ak, type EventBusConfig as al, type EventFilter as am, type EventHandler as an, type EventPayload as ao, ExecutiveEngine as ap, type ExecutiveEngineConfig$1 as aq, type ExternalTransport as ar, Exteroception as as, type ExteroceptionConfig as at, ForgettingCurve as au, type ForgettingCurveConfig as av, FrustrationEvaluator as aw, type FrustrationEvaluatorConfig as ax, GoalManager as ay, type GoalManagerConfig as az, type ActionRequest as b, type SensoryInput as b$, type ModelRouter as b0, MoralEvaluator as b1, type MoralEvaluatorConfig as b2, MotorSchemaExecutor as b3, NULL_ARBITER as b4, NULL_ROUTER as b5, NoveltyDetector as b6, type NoveltyDetectorConfig as b7, OlfactionEngine as b8, OpenAICompatibleEmbedder as b9, type ReconstructionFidelityReport as bA, type ReconstructionFidelityScores as bB, type RecordUsageInput as bC, type ReplayComparison as bD, type ReplayConfig as bE, type ReplayDifference as bF, ReplayManager as bG, type ReplayMetadata as bH, type ReplayRecord as bI, type ReplayRecorder as bJ, type ReplaySession as bK, type ReplyEnvelope as bL, ReputationTracker as bM, type ReputationTrackerConfig as bN, type RestoreOptions as bO, RewardEvaluator as bP, type RewardEvaluatorConfig as bQ, type RoutingRule as bR, type Scenario as bS, type ScenarioConfig as bT, type ScenarioValidationResult as bU, type SchemaPrecondition as bV, type SeededPRNG as bW, SelfModelUpdater as bX, type SelfModelUpdaterConfig as bY, SemanticIntegrator as bZ, type SemanticIntegratorConfig as b_, type Orchestrator as ba, type OrchestratorConfig as bb, type OutboundEnvelope as bc, type OutboxMessage as bd, type PMABehavioral as be, type PMABelief as bf, type PMAEmotionalBaseline as bg, PMAEvalHarness as bh, type PMAGoal as bi, type PMAIdentity as bj, type PMAProbe as bk, type PMASnapshot as bl, type PerceptEnvelope as bm, PersonaConsolidator as bn, type PersonaConsolidatorConfig as bo, PlanningEngine as bp, type PlanningEngineConfig as bq, type PolicyArbiter as br, type PolicyCounterfactual as bs, type PolicyDecision as bt, type PolicyInvocation as bu, type PriceTable as bv, type ProviderCredential as bw, type ReadonlySimulationState as bx, ReafferenceEngine as by, type ReasoningFootprint as bz, type ActionResult as c, type WillMessage as c$, type SensorySignal as c0, type SerializationConfig as c1, type SerializationFormat as c2, type SerializedEntity as c3, type SerializedState as c4, type Serializer as c5, type SessionLogEnvelope as c6, type SignalProvenance as c7, type Simulation as c8, type SimulationClock as c9, TheoryOfMind as cA, type TheoryOfMindConfig as cB, ThreatEvaluator as cC, type ThreatEvaluatorConfig as cD, type Tick as cE, type TickListener as cF, type Timestamp as cG, type TokenLedgerRecord as cH, type TokenReportEnvelope as cI, TokenTracker as cJ, type TokenTrackerConfig as cK, type TokenUsage as cL, type TransportStatus as cM, type VectorIndex as cN, type VectorMemoryAdapter as cO, type VectorMemoryConfig as cP, type VectorQueryFilter as cQ, type VectorQueryResult as cR, type VectorRecord as cS, type Verdict as cT, VisionEngine as cU, type VoiceChunk as cV, Will as cW, type WillAffect as cX, type WillConfig as cY, type WillEffectorAct as cZ, type WillInstance as c_, type SimulationConfig as ca, type SimulationContext as cb, type SimulationEngine as cc, type SimulationEntity as cd, type SimulationEvent as ce, type SimulationEventBase as cf, type SimulationEventListener as cg, type SimulationState as ch, type SleepPressureConfig as ci, SleepPressureRegulator as cj, SocialPerception as ck, type SocialPerceptionConfig as cl, SomatosensationEngine as cm, SpacedRepetition as cn, type SpacedRepetitionConfig as co, type StateCommands as cp, type StateManager as cq, type StateSnapshot as cr, type Stimulus as cs, type StorageAdapter as ct, StressRegulator as cu, type StressRegulatorConfig as cv, TableRouter as cw, TaskSwitcher as cx, type TaskSwitcherConfig as cy, type TextMessage as cz, ActionSelector as d, type WillStateSummary as d0, type WillStatus as d1, WillStem as d2, type WillSummary as d3, WorkingMemory as d4, type WorkingMemoryConfig as d5, type WorldEntity as d6, type WorldInterface as d7, asFinality as d8, assembleMind as d9, chainRouters as da, clearCompletionRecorder as db, defaultBaseFor as dc, type effectorInvocation as dd, type effectorInvocationEnvelope as de, finalityOf as df, getCompletionRecorder as dg, isNullArbiter as dh, isNullRouter as di, knownWireFor as dj, provenanceOf as dk, resolvePricing as dl, setCompletionRecorder as dm, type ActivityEnvelope as e, type ActivityEvent as f, type ActivityEventHandler as g, AestheticEvaluator as h, type AestheticEvaluatorConfig as i, AffectiveBlender as j, type AffectiveBlenderConfig as k, AffordanceSynthesizer as l, AsyncEngine as m, type AsyncEngineConfig as n, AttachmentEvaluator as o, type AttachmentEvaluatorConfig as p, AttentionAllocator as q, type AttentionAllocatorConfig as r, AuditionEngine as s, AutobiographicalNarrator as t, type AutobiographicalNarratorConfig as u, type BehavioralProbeResult as v, BiasDetector as w, type BiasDetectorConfig as x, BunStorageAdapter as y, type CircadianConfig as z };
+export { type DeltaSnapshot as $, type AckEnvelope as A, BACKGROUND_DEMAND as B, type ChunkEnvelope as C, CircadianOscillator as D, type ClockConfig as E, type Cognition as F, type CognitiveHealth as G, ConfidenceCalibrator as H, type ConfidenceCalibratorConfig as I, type ConflictReport as J, type ConflictResolution as K, type ConflictStrategy as L, type Coordinates as M, type CreateWillOptions as N, DefaultEventBus as O, DefaultMetricCollector as P, DefaultOrchestrator as Q, DefaultReplayRecorder as R, DefaultReplaySession as S, DefaultScenario as T, DefaultSerializer as U, DefaultSimulation as V, DefaultSimulationClock as W, DefaultStateManager as X, DefaultVectorMemoryAdapter as Y, DeliberationEngine as Z, DeltaEncoder as _, type AckResult as a, type ModelRoute as a$, type DenialFinality as a0, DreamSimulator as a1, type DreamSimulatorConfig as a2, type Duration as a3, ESCALATION_DEMAND as a4, type EffectorDeclaration as a5, type EffectorEntry as a6, type EffectorHandler as a7, type EffectorResult as a8, type EffectorSpec as a9, GustationEngine as aA, type InboundEnvelope as aB, type InboundMessageEnvelope as aC, type InboundPerceptEnvelope as aD, InhibitionController as aE, type InhibitionControllerConfig as aF, Interoception as aG, type InteroceptionConfig as aH, IntrospectionEngine as aI, type IntrospectionEngineConfig as aJ, KNOWN_PROVIDERS as aK, KnownEntityTracker as aL, type KnownEntityTrackerConfig as aM, type KnownProvider as aN, type LLMCallMeta as aO, type LLMCompletionRecord as aP, type LLMCompletionSink as aQ, type LLMProvider as aR, type LLMWire as aS, LossEvaluator as aT, type LossEvaluatorConfig as aU, type MessageEnvelope as aV, type MetricCollector as aW, type MetricPoint as aX, type MinimalContext as aY, MockEmbedder as aZ, type ModelPrice as a_, type EmbeddingProvider as aa, EmpathySimulator as ab, type EmpathySimulatorConfig as ac, EnergyRegulator as ad, type EnergyRegulatorConfig as ae, type EngineRegistry as af, type EngineResult as ag, type Envelope as ah, EpisodicConsolidator as ai, type EpisodicConsolidatorConfig as aj, type EventBus as ak, type EventBusConfig as al, type EventFilter as am, type EventHandler as an, type EventPayload as ao, ExecutiveEngine as ap, type ExecutiveEngineConfig$1 as aq, type ExternalTransport as ar, Exteroception as as, type ExteroceptionConfig as at, ForgettingCurve as au, type ForgettingCurveConfig as av, FrustrationEvaluator as aw, type FrustrationEvaluatorConfig as ax, GoalManager as ay, type GoalManagerConfig as az, type ActionRequest as b, type SensoryInput as b$, type ModelRouter as b0, MoralEvaluator as b1, type MoralEvaluatorConfig as b2, MotorSchemaExecutor as b3, NULL_ARBITER as b4, NULL_ROUTER as b5, NoveltyDetector as b6, type NoveltyDetectorConfig as b7, OlfactionEngine as b8, OpenAICompatibleEmbedder as b9, type ReconstructionFidelityReport as bA, type ReconstructionFidelityScores as bB, type RecordUsageInput as bC, type ReplayComparison as bD, type ReplayConfig as bE, type ReplayDifference as bF, ReplayManager as bG, type ReplayMetadata as bH, type ReplayRecord as bI, type ReplayRecorder as bJ, type ReplaySession as bK, type ReplyEnvelope as bL, ReputationTracker as bM, type ReputationTrackerConfig as bN, type RestoreOptions as bO, RewardEvaluator as bP, type RewardEvaluatorConfig as bQ, type RoutingRule as bR, type Scenario as bS, type ScenarioConfig as bT, type ScenarioValidationResult as bU, type SchemaPrecondition as bV, type SeededPRNG as bW, SelfModelUpdater as bX, type SelfModelUpdaterConfig as bY, SemanticIntegrator as bZ, type SemanticIntegratorConfig as b_, type Orchestrator as ba, type OrchestratorConfig as bb, type OutboundEnvelope as bc, type OutboxMessage as bd, type PMABehavioral as be, type PMABelief as bf, type PMAEmotionalBaseline as bg, PMAEvalHarness as bh, type PMAGoal as bi, type PMAIdentity as bj, type PMAProbe as bk, type PMASnapshot as bl, type PerceptEnvelope as bm, PersonaConsolidator as bn, type PersonaConsolidatorConfig as bo, PlanningEngine as bp, type PlanningEngineConfig as bq, type PolicyArbiter as br, type PolicyCounterfactual as bs, type PolicyDecision as bt, type PolicyInvocation as bu, type PriceTable as bv, type ProviderCredential as bw, type ReadonlySimulationState as bx, ReafferenceEngine as by, type ReasoningFootprint as bz, type ActionResult as c, type WillInstance as c$, type SensorySignal as c0, type SerializationConfig as c1, type SerializationFormat as c2, type SerializedEntity as c3, type SerializedState as c4, type Serializer as c5, type SessionLogEnvelope as c6, type SignalProvenance as c7, type Simulation as c8, type SimulationClock as c9, TheoryOfMind as cA, type TheoryOfMindConfig as cB, ThreatEvaluator as cC, type ThreatEvaluatorConfig as cD, type Tick as cE, type TickListener as cF, type Timestamp as cG, type TokenLedgerRecord as cH, type TokenReportEnvelope as cI, TokenTracker as cJ, type TokenTrackerConfig as cK, type TokenUsage as cL, type Transduced as cM, type TransportStatus as cN, type VectorIndex as cO, type VectorMemoryAdapter as cP, type VectorMemoryConfig as cQ, type VectorQueryFilter as cR, type VectorQueryResult as cS, type VectorRecord as cT, type Verdict as cU, VisionEngine as cV, type VoiceChunk as cW, Will as cX, type WillAffect as cY, type WillConfig as cZ, type WillEffectorAct as c_, type SimulationConfig as ca, type SimulationContext as cb, type SimulationEngine as cc, type SimulationEntity as cd, type SimulationEvent as ce, type SimulationEventBase as cf, type SimulationEventListener as cg, type SimulationState as ch, type SleepPressureConfig as ci, SleepPressureRegulator as cj, SocialPerception as ck, type SocialPerceptionConfig as cl, SomatosensationEngine as cm, SpacedRepetition as cn, type SpacedRepetitionConfig as co, type StateCommands as cp, type StateManager as cq, type StateSnapshot as cr, type Stimulus as cs, type StorageAdapter as ct, StressRegulator as cu, type StressRegulatorConfig as cv, TableRouter as cw, TaskSwitcher as cx, type TaskSwitcherConfig as cy, type TextMessage as cz, ActionSelector as d, type WillMessage as d0, type WillStateSummary as d1, type WillStatus as d2, WillStem as d3, type WillSummary as d4, WorkingMemory as d5, type WorkingMemoryConfig as d6, type WorldEntity as d7, type WorldInterface as d8, asFinality as d9, asProvenance as da, assembleMind as db, chainRouters as dc, clearCompletionRecorder as dd, defaultBaseFor as de, type effectorInvocation as df, type effectorInvocationEnvelope as dg, finalityOf as dh, getCompletionRecorder as di, isNullArbiter as dj, isNullRouter as dk, knownWireFor as dl, resolvePricing as dm, setCompletionRecorder as dn, type ActivityEnvelope as e, type ActivityEvent as f, type ActivityEventHandler as g, AestheticEvaluator as h, type AestheticEvaluatorConfig as i, AffectiveBlender as j, type AffectiveBlenderConfig as k, AffordanceSynthesizer as l, AsyncEngine as m, type AsyncEngineConfig as n, AttachmentEvaluator as o, type AttachmentEvaluatorConfig as p, AttentionAllocator as q, type AttentionAllocatorConfig as r, AuditionEngine as s, AutobiographicalNarrator as t, type AutobiographicalNarratorConfig as u, type BehavioralProbeResult as v, BiasDetector as w, type BiasDetectorConfig as x, BunStorageAdapter as y, type CircadianConfig as z };

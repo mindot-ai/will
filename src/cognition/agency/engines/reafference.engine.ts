@@ -32,6 +32,7 @@ import { schemaEntityId, availabilityEntityId } from '#agency/schemas/repertoire
 import { asFinality } from '#stem/policy/arbiter'
 import { AWAIT_TIMEOUT } from '#agency/engines/motor.schema.executor'
 import { readEffectiveParams } from '#cognition/persona.prior'
+import { asProvenance } from '#senses/provenance'
 import {
   SENT_TYPE, DEFAULT_REPLY_WINDOW_TICKS, resolveReplyExpectations,
 } from '#agency/conversation.aim'
@@ -161,7 +162,11 @@ export class ReafferenceEngine implements CognitiveEngine {
     for( const [ , e ] of state.entities ){
       if( e.type !== 'percept') continue
       const m = ( e.metadata ?? {} ) as Record<string, unknown>
-      if( str( m['provenance'] ) !== 'reafferent') continue
+      // asProvenance(), not a literal compare: this is an untyped read out of
+      // entity metadata, exactly what that normalizer exists for. Behaviour is
+      // unchanged — absent and garbage both normalize to 'exafferent', which
+      // fails this test the same way `str()` returning undefined did.
+      if( asProvenance( m['provenance'] ) !== 'reafferent') continue
       const iid = str( m['sourceIntentId'] )
       if( !iid || gradedIntentIds.has( iid ) || sensedIntentIds.has( iid ) ) continue
       const aw = awaiting.get( iid )

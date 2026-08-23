@@ -4903,6 +4903,10 @@ var Exteroception = class {
           salience,
           category: rp.category,
           summary: rp.summary,
+          // Typed, not a bare literal: this metadata write is the same concept the
+          // sense door carries, and the compiler stops at the metadata boundary.
+          // INFERRED here, legitimately — a match against our own live consequence
+          // descriptors is the efference copy doing its job. See SignalProvenance.
           provenance: hit ? "reafferent" : "exafferent",
           ...hit ? { sourceIntentId: hit.intentId } : {},
           // affect→percept seam (registry #5): what this percept FEELS like
@@ -20095,11 +20099,6 @@ function computeLanguageSalience(opts) {
   return clamp014(base + urgency + attach + goal + length);
 }
 
-// src/cognition/senses/provenance.ts
-function provenanceOf(input) {
-  return input.provenance ?? "exafferent";
-}
-
 // src/cognition/senses/base.sense.engine.ts
 var BaseSenseEngine = class {
   /**
@@ -20152,13 +20151,24 @@ var BaseSenseEngine = class {
    * fact transduction must not lose is whose doing that cause was. Taking it
    * here — instead of stashing the in-flight input on a field — is what keeps
    * the stamp correct while `_perceive()` is async and two ingests overlap.
-   * A percept arrives already stamped; downstream never has to guess.
+   *
+   * The percept arrives as `Transduced`, i.e. WITHOUT the two fields, so a
+   * sense engine cannot supply them at all. An earlier cut let one through: the
+   * stamp overwrote `provenance` unconditionally but `sourceIntentId` only when
+   * the host supplied one, so an engine could fabricate an intent id and it
+   * survived — provenance the mind would later trust, laundered by the very
+   * step that exists to establish it. The type now refuses it outright; the
+   * host's assertion is the only authority.
+   *
+   * Returns the stamped percept so a sense engine that needs it downstream (as
+   * audition does, to route the turn) uses the SAME object the bus saw, rather
+   * than a second one that could drift from it.
    */
   publishPercept(percept, from) {
     const { provenance: _stale, sourceIntentId: _staleIntent, ...rest } = percept;
     const stamped = {
       ...rest,
-      provenance: provenanceOf(from),
+      provenance: from.provenance,
       ...from.sourceIntentId ? { sourceIntentId: from.sourceIntentId } : {}
     };
     this._bus?.publish({
@@ -20168,6 +20178,7 @@ var BaseSenseEngine = class {
       salience: stamped.salience,
       payload: stamped
     });
+    return stamped;
   }
 };
 var ShellSenseEngine = class extends BaseSenseEngine {
@@ -20543,7 +20554,7 @@ var AuditionEngine = class extends BaseSenseEngine {
       activeGoalText: this._getActiveGoalText?.() ?? []
     });
     const salience = this._model.observe(`audition.${entityId}`, langEnergy).salience;
-    const percept = {
+    const transduced = {
       domain: "audition",
       channel: msg.kind,
       content,
@@ -20559,7 +20570,7 @@ var AuditionEngine = class extends BaseSenseEngine {
       timestamp: wallClock(),
       raw: msg
     };
-    this.publishPercept(percept, msg);
+    const percept = this.publishPercept(transduced, msg);
     this._digests.append(threadId, "user", content);
     this._inflightInbound.set(entityId, content);
     this._inflightThread.set(entityId, threadId);
@@ -23363,6 +23374,11 @@ function readSchema(m) {
   };
 }
 
+// src/cognition/senses/provenance.ts
+function asProvenance(raw) {
+  return raw === "reafferent" ? "reafferent" : raw === "unknown" ? "unknown" : "exafferent";
+}
+
 // src/cognition/agency/engines/reafference.engine.ts
 var PROC_THRESHOLD2 = 0.6;
 var SENSORY_SOFT_QUALITY = 0.6;
@@ -23448,7 +23464,7 @@ var ReafferenceEngine = class {
     for (const [, e] of state.entities) {
       if (e.type !== "percept") continue;
       const m = e.metadata ?? {};
-      if (str8(m["provenance"]) !== "reafferent") continue;
+      if (asProvenance(m["provenance"]) !== "reafferent") continue;
       const iid = str8(m["sourceIntentId"]);
       if (!iid || gradedIntentIds.has(iid) || sensedIntentIds.has(iid)) continue;
       const aw = awaiting.get(iid);
@@ -28603,11 +28619,12 @@ var TransportController = class {
   _dispatch(instance, env, deps) {
     switch (env.channel) {
       case "inbound_message": {
-        const input = env.kind === "voice" ? { kind: "voice", entityId: env.entityId, threadId: env.threadId, transcription: env.content } : {
+        const input = env.kind === "voice" ? { kind: "voice", entityId: env.entityId, threadId: env.threadId, transcription: env.content, provenance: "unknown" } : {
           kind: "text",
           entityId: env.entityId,
           threadId: env.threadId,
           content: env.content,
+          provenance: "unknown",
           ...env.speakerName ? { speakerName: env.speakerName } : {}
         };
         void instance.cognition.auditionEngine.ingest(input);
@@ -30491,16 +30508,25 @@ var Will = class _Will {
       ...stimulus.direct !== void 0 ? { direct: stimulus.direct } : {},
       // Omitted when the channel does not know — a room with no name stays
       // unnamed, the same way a person does, rather than being labelled with its id.
-      ...stimulus.threadName ? { threadName: stimulus.threadName } : {}
+      ...stimulus.threadName ? { threadName: stimulus.threadName } : {},
+      provenance: stimulus.provenance,
+      ...stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {}
     });
   }
-  /** Perceive from the default user. Sugar over `perceive`. */
+  /**
+   * Perceive from the default user. Sugar over `perceive`.
+   *
+   * Supplies `provenance: 'exafferent'` — that is not a default sneaking back
+   * in, it is what the verb MEANS. "Say" is somebody speaking to the Will; a
+   * caller who wants to feed back the Will's own act reaches for `perceive` and
+   * says so. The assertion lives in the function name.
+   */
   async say(text) {
-    return this.perceive({ text, from: "user" });
+    return this.perceive({ text, from: "user", provenance: "exafferent" });
   }
-  /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive`. */
+  /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive` — see `say` on provenance. */
   async tell(entityId, speakerName, text) {
-    return this.perceive({ text, from: entityId, speaker: speakerName });
+    return this.perceive({ text, from: entityId, speaker: speakerName, provenance: "exafferent" });
   }
   /**
    * Await the Will's *next spontaneous utterance* — a thin, honest adapter over
@@ -30854,6 +30880,6 @@ function describe(c) {
   return null;
 }
 
-export { ActionSelector, AestheticEvaluator, AffectiveBlender, AffordanceSynthesizer, AsyncEngine, AttachmentEvaluator, AttentionAllocator, AuditionEngine, AutobiographicalNarrator, BACKGROUND_DEMAND, BiasDetector, BunStorageAdapter, CircadianOscillator, ConfidenceCalibrator, ConflictDetector, ConsistentHashRouter, ConsoleLogger, DefaultEventBus, DefaultMetricCollector, DefaultOrchestrator, DefaultPartitionRouter, DefaultReplayRecorder, DefaultReplaySession, DefaultScenario, DefaultSerializer, DefaultSimulation, DefaultSimulationClock, DefaultStateManager, DefaultVectorMemoryAdapter, DeliberationEngine, DeltaEncoder, DistributedOrchestrator, DistributedStateManager, DreamSimulator, ESCALATION_DEMAND, EmpathySimulator, EnergyRegulator, EpisodicConsolidator, ExecutiveEngine, Exteroception, ForgettingCurve, FrustrationEvaluator, GoalManager, GustationEngine, InhibitionController, Interoception, IntrospectionEngine, KNOWN_PROVIDERS, KnownEntityTracker, LocalTransport, LoopbackTransport, LossEvaluator, MockEmbedder, MoralEvaluator, MotorSchemaExecutor, NULL_ARBITER, NULL_ROUTER, NoveltyDetector, OUTBOX_TTL_TICKS, OlfactionEngine, OpenAICompatibleEmbedder, PMAEvalHarness, PersonaConsolidator, PlanningEngine, ReafferenceEngine, ReplayManager, ReputationTracker, RewardEvaluator, RuleTableArbiter, SelfModelUpdater, SemanticIntegrator, SilentLogger, SleepPressureRegulator, SocialPerception, SocketIoTransport, SomatosensationEngine, SpacedRepetition, StreamTransport, StressRegulator, TableRouter, TaskSwitcher, TheoryOfMind, ThreatEvaluator, TokenTracker, VisionEngine, Will, WillStem, WorkingMemory, asFinality, assembleMind, chainRouters, clearCompletionRecorder, createContext, createPRNG, defaultBaseFor, fileLoggingEnabled, finalityOf, getCompletionRecorder, getLogger, isNullArbiter, isNullRouter, knownWireFor, listProfiles, logger, provenanceOf, resetLogger, resolvePricing, resolveProfile, setCompletionRecorder, setLogger };
+export { ActionSelector, AestheticEvaluator, AffectiveBlender, AffordanceSynthesizer, AsyncEngine, AttachmentEvaluator, AttentionAllocator, AuditionEngine, AutobiographicalNarrator, BACKGROUND_DEMAND, BiasDetector, BunStorageAdapter, CircadianOscillator, ConfidenceCalibrator, ConflictDetector, ConsistentHashRouter, ConsoleLogger, DefaultEventBus, DefaultMetricCollector, DefaultOrchestrator, DefaultPartitionRouter, DefaultReplayRecorder, DefaultReplaySession, DefaultScenario, DefaultSerializer, DefaultSimulation, DefaultSimulationClock, DefaultStateManager, DefaultVectorMemoryAdapter, DeliberationEngine, DeltaEncoder, DistributedOrchestrator, DistributedStateManager, DreamSimulator, ESCALATION_DEMAND, EmpathySimulator, EnergyRegulator, EpisodicConsolidator, ExecutiveEngine, Exteroception, ForgettingCurve, FrustrationEvaluator, GoalManager, GustationEngine, InhibitionController, Interoception, IntrospectionEngine, KNOWN_PROVIDERS, KnownEntityTracker, LocalTransport, LoopbackTransport, LossEvaluator, MockEmbedder, MoralEvaluator, MotorSchemaExecutor, NULL_ARBITER, NULL_ROUTER, NoveltyDetector, OUTBOX_TTL_TICKS, OlfactionEngine, OpenAICompatibleEmbedder, PMAEvalHarness, PersonaConsolidator, PlanningEngine, ReafferenceEngine, ReplayManager, ReputationTracker, RewardEvaluator, RuleTableArbiter, SelfModelUpdater, SemanticIntegrator, SilentLogger, SleepPressureRegulator, SocialPerception, SocketIoTransport, SomatosensationEngine, SpacedRepetition, StreamTransport, StressRegulator, TableRouter, TaskSwitcher, TheoryOfMind, ThreatEvaluator, TokenTracker, VisionEngine, Will, WillStem, WorkingMemory, asFinality, asProvenance, assembleMind, chainRouters, clearCompletionRecorder, createContext, createPRNG, defaultBaseFor, fileLoggingEnabled, finalityOf, getCompletionRecorder, getLogger, isNullArbiter, isNullRouter, knownWireFor, listProfiles, logger, resetLogger, resolvePricing, resolveProfile, setCompletionRecorder, setLogger };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

@@ -24,6 +24,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { Will } from '#surface/sdk/will'
+import { asProvenance } from '#senses/provenance'
 import { UtteranceTap } from '#surface/host/utterances'
 
 export interface WillHttpOptions {
@@ -100,8 +101,14 @@ export function buildWillHttpServer( will: Will, opts: WillHttpOptions = {} ): S
         if( !text ) return json( res, 400, { error: 'text is required' } )
         await will.perceive( {
           text,
+          // Untyped ingress — a JSON body cannot be type-checked, and a client
+          // that predates the field has not claimed anything. asProvenance()
+          // owns the direction; see its comment for why 'exafferent' and not
+          // the tidier-looking 'unknown'.
+          provenance: asProvenance( body.provenance ),
           ...( typeof body.from    === 'string' ? { from:    body.from }    : {} ),
           ...( typeof body.speaker === 'string' ? { speaker: body.speaker } : {} ),
+          ...( typeof body.sourceIntentId === 'string' ? { sourceIntentId: body.sourceIntentId } : {} ),
         } )
         // 202: delivered into the sensory field — NOT answered. A response, if
         // any, arrives on /utterances or /next-utterance; silence is valid.

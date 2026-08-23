@@ -37,7 +37,7 @@ function syncExecutive( onFocus?: ( f: any ) => void ){
 }
 
 const text = ( content: string, threadId = 't1'): TextMessage =>
-  ( { kind: 'text', entityId: 'alice', threadId, content } )
+  ( { kind: 'text', entityId: 'alice', threadId, content, provenance: 'exafferent' } )
 
 // The engine seeds a cold-spawn digest via EpisodicConsolidator.semanticQuery,
 // mapping each resolved episode's `content.summary` into a digest line. This adapter

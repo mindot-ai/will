@@ -29,8 +29,8 @@ import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { StateCommands } from '#core/types'
 import type { AccessGrants } from '#agency/access.grants'
-import { provenanceOf } from '#senses/provenance'
-import type { SenseEngine, SensoryInput, SenseDomain, Percept } from '#senses/index'
+import type { SensorySignal } from '#senses/provenance'
+import type { SenseEngine, SensoryInput, SenseDomain, Percept, Transduced } from '#senses/index'
 
 export abstract class BaseSenseEngine implements SenseEngine {
   abstract readonly name:   string
@@ -93,21 +93,32 @@ export abstract class BaseSenseEngine implements SenseEngine {
    * fact transduction must not lose is whose doing that cause was. Taking it
    * here — instead of stashing the in-flight input on a field — is what keeps
    * the stamp correct while `_perceive()` is async and two ingests overlap.
-   * A percept arrives already stamped; downstream never has to guess.
+   *
+   * The percept arrives as `Transduced`, i.e. WITHOUT the two fields, so a
+   * sense engine cannot supply them at all. An earlier cut let one through: the
+   * stamp overwrote `provenance` unconditionally but `sourceIntentId` only when
+   * the host supplied one, so an engine could fabricate an intent id and it
+   * survived — provenance the mind would later trust, laundered by the very
+   * step that exists to establish it. The type now refuses it outright; the
+   * host's assertion is the only authority.
+   *
+   * Returns the stamped percept so a sense engine that needs it downstream (as
+   * audition does, to route the turn) uses the SAME object the bus saw, rather
+   * than a second one that could drift from it.
    */
-  protected publishPercept( percept: Percept, from: SensoryInput ): void {
-    // Both fields are stripped off the engine's percept before being re-applied
-    // from `from`, rather than spread-over. A conditional overwrite left a hole:
-    // an engine could fabricate a `sourceIntentId` and it survived whenever the
-    // host supplied none — provenance the mind would later trust, laundered by
-    // the very step that exists to establish it. The host's assertion is the
-    // only authority, so it is applied wholesale.
-    const { provenance: _stale, sourceIntentId: _staleIntent, ...rest } = percept
-    const stamped: Percept = {
+  protected publishPercept<P extends Percept>( percept: Transduced<P>, from: SensorySignal ): P {
+    // Stripped, then re-applied — belt AND braces. `Transduced` makes forging a
+    // compile error, but a type is only as strong as the compiler that saw it:
+    // a JS host, or a consumer built against an older .d.ts, hands over whatever
+    // it likes. The strip is what holds at runtime.
+    const { provenance: _stale, sourceIntentId: _staleIntent, ...rest } =
+      percept as Transduced<P> & Partial<SensorySignal>
+
+    const stamped = {
       ...rest,
-      provenance: provenanceOf( from ),
+      provenance: from.provenance,
       ...( from.sourceIntentId ? { sourceIntentId: from.sourceIntentId } : {} ),
-    }
+    } as P
 
     this._bus?.publish({
       type:         `senses.${this.domain}.percept`,
@@ -116,6 +127,8 @@ export abstract class BaseSenseEngine implements SenseEngine {
       salience:     stamped.salience,
       payload:      stamped,
     })
+
+    return stamped
   }
 }
 

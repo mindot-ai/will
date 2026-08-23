@@ -41,7 +41,7 @@ function syncExecutive( opts: { reply?: string; confidence?: number; onFocus?: (
 }
 
 const text = ( content: string, entityId = 'alice'): TextMessage =>
-  ({ kind: 'text', entityId, threadId: 't1', content })
+  ({ kind: 'text', entityId, threadId: 't1', content, provenance: 'exafferent' })
 
 describe('AuditionEngine — conversation memory (Section 5)', () => {
   it('persists a conversation.exchange WM item after a completed exchange', async () => {
@@ -173,8 +173,8 @@ describe('AuditionEngine — salience inputs (§3) + thread keying (§2)', () =>
     engine.attachGrants({ isAllowed: () => true } as any )
     engine.attachReplyCallback( ( _e, threadId ) => threads.push( threadId ) )
 
-    await engine.ingest({ kind: 'text', entityId: 'alice', threadId: 't1', content: 'hi' })
-    await engine.ingest({ kind: 'text', entityId: 'alice', threadId: 't2', content: 'hi again' })
+    await engine.ingest({ kind: 'text', entityId: 'alice', threadId: 't1', content: 'hi', provenance: 'exafferent' })
+    await engine.ingest({ kind: 'text', entityId: 'alice', threadId: 't2', content: 'hi again', provenance: 'exafferent' })
 
     // Same facet (reused), but the reply follows the current turn's thread —
     // not the spawn-time thread 't1'.

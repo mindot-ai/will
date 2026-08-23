@@ -30,7 +30,10 @@ import type { SensoryInput }     from '#senses/index'
 
 // ── Helpers ──────────────────────────────────────────────────
 
-function makeInput<T extends SensoryInput>( overrides: T ): T { return overrides }
+/** Every shell input here is ordinary world traffic — provenance is not what these test. */
+function makeInput<T extends Omit<SensoryInput, 'provenance'>>( overrides: T ): T & { provenance: 'exafferent' } {
+  return { ...overrides, provenance: 'exafferent' }
+}
 
 const TEXT_INPUT = makeInput( { kind: 'text' as const, entityId: 'e1', threadId: 't1', content: 'hello' } )
 

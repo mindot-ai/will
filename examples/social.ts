@@ -59,6 +59,7 @@ const mkMsg = ( content: string ) => ( {
   threadId:    'dr-chen',
   content,
   speakerName: 'Dr. Chen',
+  provenance:  'exafferent' as const,
 } )
 
 async function main(): Promise<void> {

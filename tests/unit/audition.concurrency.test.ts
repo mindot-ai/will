@@ -23,7 +23,7 @@ import type { TextMessage } from '#senses/index'
 const tick = () => new Promise( r => setTimeout( r, 0 ) )
 
 function text( entityId: string, content: string ): TextMessage {
-  return { kind: 'text', entityId, threadId: `t-${entityId}`, content }
+  return { kind: 'text', entityId, threadId: `t-${entityId}`, content, provenance: 'exafferent' }
 }
 
 /**

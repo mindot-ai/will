@@ -17,7 +17,7 @@ import { AuditionEngine } from '#senses/audition.engine/engine'
 import type { TextMessage, Percept } from '#senses/index'
 
 function heard( over: Partial<TextMessage> = {} ): TextMessage {
-  return { kind: 'text', entityId: 'discord:U1', threadId: 'discord:c1', content: 'hi', ...over }
+  return { kind: 'text', entityId: 'discord:U1', threadId: 'discord:c1', content: 'hi', provenance: 'exafferent', ...over }
 }
 
 /** Ingest one message and return the percept that reached the bus. */

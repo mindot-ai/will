@@ -122,6 +122,9 @@ async function connectWhatsApp(will, opts = {}) {
     const text = textOf(m);
     if (!text.trim()) return;
     await will.perceive({
+      // Somebody messaged her. Baileys filters `fromMe` upstream, so as with
+      // Discord nothing reafferent reaches this bridge today.
+      provenance: "exafferent",
       text,
       from: entityId,
       thread: `whatsapp:${jid}`,

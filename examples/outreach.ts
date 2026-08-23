@@ -73,6 +73,7 @@ const HELLO = "Hello William, this is Dr. Chen. I'm going to stay quiet now and 
 
 const mkMsg = ( content: string ) => ({
   kind: 'text' as const, entityId: 'dr-chen', threadId: 'dr-chen', content, speakerName: 'Dr. Chen',
+  provenance: 'exafferent' as const,
 })
 
 async function main(): Promise<void> {

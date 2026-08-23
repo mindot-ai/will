@@ -83,6 +83,24 @@ describe('rupture — the quiet path is byte-identical to pre-P3', () => {
     expect( metricVal( res, 'situation.stability') ).toBeUndefined()
     expect( events.some( e => e.type === 'agency.situation.rupture') ).toBe( false )
   })
+
+  it('an UNTAGGED percept cannot rupture either — pinning today, not endorsing it', async () => {
+    // The gate is `=== 'exafferent'`, so a percept with NO provenance field is
+    // excluded exactly as our own echo is. Three writers are untagged today:
+    // `escalation.buffer` (x2) and the wake percept in `stem/index.ts` — which
+    // means a mind that has been offline for hours cannot be ruptured by
+    // noticing that. This test exists so the fix is a deliberate red test
+    // rather than a silent drift: tag the writers, or widen the gate to
+    // `!== 'reafferent'`, and this is the test that has to change with it.
+    // See .TODO/SIGNAL_BOUNDARY.md.
+    const untagged = { id: 'p-wake', type: 'percept', metadata: {
+      salience: 0.95, tick: 5, entityId: 'w', category: 'system',
+    } } as Ent
+    const s = makeState( 5, [ challenger('rest'), awaiting('wander', 0.9, 5 ), untagged ] )
+    const { res, events } = await run( s )
+    expect( metricVal( res, 'situation.stability') ).toBeUndefined()
+    expect( events.some( e => e.type === 'agency.situation.rupture') ).toBe( false )
+  })
 })
 
 describe('rupture — a strong exafferent percept fires the channel', () => {

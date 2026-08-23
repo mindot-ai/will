@@ -45,6 +45,7 @@ await stem.ingestText( life1, {
   threadId:    'ada-thread',
   content:     'Hi Memo! I am Ada. Remember this: my favorite color is ultramarine.',
   speakerName: 'Ada',
+  provenance:  'exafferent',
 })
 
 // Let the mind live with this for a while (perceive → converse → consolidate).

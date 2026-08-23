@@ -341,13 +341,21 @@ export class TransportController {
       case 'inbound_message': {
         // Fire-and-forget: AuditionEngine.ingest() serializes per-entity
         // internally; the tick must not block on the LLM reply.
+        // 'unknown', not 'exafferent', and not routed through asProvenance():
+        // the absence here is STRUCTURAL, not a caller's omission. An
+        // InboundMessageEnvelope has no provenance field at all, so a remote
+        // host has no way to declare one however much it knows — the stem
+        // genuinely cannot say, and says that. (Same door already drops
+        // `direct` and `threadName`; all three are one deliberate fix on the
+        // wire contract, not three patches. See .TODO/SIGNAL_BOUNDARY.md.)
         const input: SensoryInput = env.kind === 'voice'
-          ? { kind: 'voice', entityId: env.entityId, threadId: env.threadId, transcription: env.content }
+          ? { kind: 'voice', entityId: env.entityId, threadId: env.threadId, transcription: env.content, provenance: 'unknown' }
           : {
-              kind:     'text',
-              entityId: env.entityId,
-              threadId: env.threadId,
-              content:  env.content,
+              kind:       'text',
+              entityId:   env.entityId,
+              threadId:   env.threadId,
+              content:    env.content,
+              provenance: 'unknown',
               ...( env.speakerName ? { speakerName: env.speakerName } : {} ),
             }
         void instance.cognition.auditionEngine.ingest( input )

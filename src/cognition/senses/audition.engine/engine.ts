@@ -76,6 +76,7 @@ import type {
   Transduced,
   VoiceChunk
 } from '#senses/index'
+import { PERCEPT_SUMMARY_CAP } from '#cognition/percept.entity'
 import { validateFacetHandoff, type HandoffBody } from '#faculties/executive.engine/escalation.buffer'
 import { fnv1a } from '#agency/consequence'
 import type { OutreachResult } from '#agency/engines/motor.schema.executor'
@@ -374,6 +375,27 @@ export class AuditionEngine extends BaseSenseEngine {
    * off-tick engine has. Stamped from `FacetDecision.tick`, and used to key the
    * conversation records it writes into state.
    */
+  /**
+   * Audition does NOT lay down a percept trace (SIGNAL_BOUNDARY P0, step 3).
+   *
+   * Every other sense does, and a host implementing a new one gets it by
+   * default. This is the grandfathered exception, and the reason is measurement
+   * rather than principle: audition is the only live sense, and switching it on
+   * routes every inbound message to five consumers it has never reached —
+   * `action.selector`'s rupture gate (where a fresh high-salience exafferent
+   * percept can preempt an awaiting intent), working memory, the executive
+   * prompt, novelty, and reafference credit. On a deployed Will that is not a
+   * tweak; it is a different mind, and it deserves a measured rollout rather
+   * than a line in a refactor.
+   *
+   * Audition is not trace-less meanwhile: it writes `conversation.received`
+   * through its own sink, which is what SocialPerception reads. That record is
+   * social — sourceKeid, directedAtSelf, action:'communication' — and is NOT
+   * the generic percept the other senses now write. Two different traces for
+   * two different readers; this flag turns off only the second.
+   */
+  protected readonly tracesPercepts = false
+
   private _lastDecisionTick = 0
   /** Speaker attachment strength accessor (0–1) — weights salience by relationship. */
   private _getAttachmentScore: (( entityId: string ) => number) | null = null
@@ -592,6 +614,10 @@ export class AuditionEngine extends BaseSenseEngine {
       speakerEntityId: entityId,
       threadId,
       digest: this._digests.getDigest( threadId ),
+      // What a heard turn amounts to, for readers that do not know this is
+      // audition. Bounded, because `summary` renders into the executive prompt
+      // and a pasted essay would take the whole percept budget.
+      summary: `${ speakerName } said: ${ content }`.slice( 0, PERCEPT_SUMMARY_CAP ),
       salience,
       // Arrival metadata for an EXTERNAL inbound message (network/RPC boundary):
       // no sim clock in scope here and the value is not replayed — wallClock() is

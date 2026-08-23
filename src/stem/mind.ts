@@ -1065,6 +1065,23 @@ function _constructCognition(
   // buildExecutiveContext (already vector-backed via the consolidator).
   auditionEngine.attachMemorySink( entity => simulation.stateManager.setEntity( entity ) )
 
+  // Every sense lays down a percept trace (SIGNAL_BOUNDARY P0). Wired for all
+  // five, not just the implemented one, because that is the contract a host is
+  // owed: implement a sense and what it senses reaches the faculties that read
+  // percepts, rather than a bus event three subscribers glance at for one tick.
+  //
+  // The tick is a getter, not a value — a sense is ingest-driven and off-tick,
+  // so it has no `react()` to be handed one in, and a captured number would
+  // stamp every percept with whenever assembly ran.
+  //
+  // AuditionEngine opts out (`tracesPercepts = false`); it still gets the wiring
+  // so turning it on is a one-word change when the measurement is done.
+  for( const sense of [ auditionEngine, visionEngine, somatosensationEngine, olfactionEngine, gustationEngine ] )
+    sense.attachPerceptTrace(
+      entity => simulation.stateManager.setEntity( entity ),
+      () => simulation.clock.currentTick,
+    )
+
   // Referent → address + room. Closes over the state manager because the writer
   // is deliberately stateless; this is the one seam both send paths cross, so the
   // translation happens once rather than in each of them.

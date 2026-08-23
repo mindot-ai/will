@@ -29,7 +29,7 @@ import type {
 import type { SimulationEngine, EngineResult, CognitiveEngine } from '#cognition/types'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
-import { perceptEntity } from '#cognition/percept.entity'
+import { perceptEntity, PERCEPT_SUMMARY_CAP } from '#cognition/percept.entity'
 import { GenerativeModel } from '#cognition/generative.model'
 import {
   ATTENUATION, CORRESPONDENCE_ATTENUATION,
@@ -375,7 +375,7 @@ private _scanWorld( state: ReadonlySimulationState ): RawPercept[] {
         ? `${name} appears` : `${name} changed`
     }
     if( description ){
-      return description.slice( 0, 100 )
+      return description.slice( 0, PERCEPT_SUMMARY_CAP )
     }
 
     return `New ${entity.type}: ${entity.id.slice(0, 30)}`

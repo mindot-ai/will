@@ -34,6 +34,7 @@ class TestSense extends BaseSenseEngine {
       sourceEntityId: ( input as any ).entityId ?? 'x',
       timestamp:      0,
       salience:       0.42,
+      summary:        'a test sense sensed something',
       raw:            input,
     }, input )
   }
@@ -173,7 +174,7 @@ describe('BaseSenseEngine — provenance stamping (P0a)', () => {
     class Liar extends TestSense {
       protected async _perceive( input: SensoryInput ): Promise<void> {
         this.publishPercept( {
-          domain: this.domain, sourceEntityId: 'x', timestamp: 0, salience: 0.1,
+          domain: this.domain, sourceEntityId: 'x', timestamp: 0, salience: 0.1, summary: 's',
           raw: input, provenance: 'reafferent', sourceIntentId: 'fabricated',
         } as unknown as Transduced<Percept>, input )
       }
@@ -194,7 +195,7 @@ describe('BaseSenseEngine — provenance stamping (P0a)', () => {
     class Returner extends TestSense {
       protected async _perceive( input: SensoryInput ): Promise<void> {
         returned = this.publishPercept(
-          { domain: this.domain, sourceEntityId: 'x', timestamp: 0, salience: 0.1, raw: input },
+          { domain: this.domain, sourceEntityId: 'x', timestamp: 0, salience: 0.1, summary: 's', raw: input },
           input,
         )
       }
@@ -206,6 +207,80 @@ describe('BaseSenseEngine — provenance stamping (P0a)', () => {
 
     expect( returned ).toBe( events[0].payload )
     expect( returned!.provenance ).toBe('unknown')
+  } )
+} )
+
+// ── The percept trace (SIGNAL_BOUNDARY P0 step 3) ──────────────
+//
+// Before this, `publishPercept()` emitted a bus event three subscribers glanced
+// at for one tick and wrote nothing. A host implementing a sense got no memory
+// of having sensed: none of the five readers of `percept` entities — the
+// rupture gate, reafference credit, working memory, the executive prompt,
+// novelty — ever saw it. These pin the contract a host is now owed.
+describe('BaseSenseEngine — the percept trace (P0 step 3)', () => {
+  function traced(){
+    const written: Array<{ id: string; type: string; metadata: Record<string, unknown> }> = []
+    const e = new TestSense()
+    e.attachBus( busSpy().bus )
+    e.attachPerceptTrace( x => written.push( x as never ), () => 9 )
+    return { e, written }
+  }
+
+  it('a sense lays down a percept entity in state, not only a bus event', async () => {
+    const { e, written } = traced()
+    await e.ingest( IMAGE )
+    expect( written ).toHaveLength( 1 )
+    expect( written[0]!.type ).toBe('percept')
+  } )
+
+  it('the trace is sweepable and tagged — the two things P0 exists to guarantee', async () => {
+    const { e, written } = traced()
+    await e.ingest( IMAGE )
+    const m = written[0]!.metadata
+    expect( m['tick'] ).toBe( 9 )               // numeric ⇒ the sweeper can collect it
+    expect( m['provenance'] ).toBe('exafferent') // tagged ⇒ the rupture gate counts it
+    expect( m['category'] ).toBe('vision')       // the modality, so a reader knows which sense
+    expect( m['summary'] ).toBe('a test sense sensed something')
+    expect( m['entityId'] ).toBe('e1')
+  } )
+
+  it('carries the host\'s reafferent assertion and its intent onto the trace', async () => {
+    const { e, written } = traced()
+    await e.ingest( { ...IMAGE, provenance: 'reafferent', sourceIntentId: 'i-4' } )
+    expect( written[0]!.metadata['provenance'] ).toBe('reafferent')
+    expect( written[0]!.metadata['sourceIntentId'] ).toBe('i-4')
+  } )
+
+  it('the id is deterministic — domain, tick, content hash, and nothing else (R2)', async () => {
+    // It lives in state, so a wall-clock component would make a recorded and a
+    // replayed run diverge. Asserted as an EXACT shape rather than by comparing
+    // two ids: the first version of this test built both in the same
+    // millisecond, so a `Date.now()` smuggled into the id passed it. Two runs
+    // agreeing is not determinism; it is a fast machine.
+    const a = traced(); await a.e.ingest( IMAGE )
+    const b = traced(); await b.e.ingest( IMAGE )
+    expect( a.written[0]!.id ).toBe( b.written[0]!.id )
+    expect( a.written[0]!.id ).toMatch( /^sense-vision-9-\d+$/ )
+  } )
+
+  it('with no trace wired the sense still works — the bus event is unaffected', async () => {
+    const e = new TestSense()
+    const { bus, events } = busSpy()
+    e.attachBus( bus )
+    await expect( e.ingest( IMAGE ) ).resolves.toBeUndefined()
+    expect( events ).toHaveLength( 1 )
+  } )
+
+  it('a sense that opts out writes nothing, while still publishing', async () => {
+    class Quiet extends TestSense { protected readonly tracesPercepts = false }
+    const written: unknown[] = []
+    const e = new Quiet()
+    const { bus, events } = busSpy()
+    e.attachBus( bus )
+    e.attachPerceptTrace( x => written.push( x ), () => 9 )
+    await e.ingest( IMAGE )
+    expect( written ).toHaveLength( 0 )
+    expect( events ).toHaveLength( 1 )
   } )
 } )
 

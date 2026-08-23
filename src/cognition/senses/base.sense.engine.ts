@@ -30,6 +30,8 @@ import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { StateCommands } from '#core/types'
 import type { AccessGrants } from '#agency/access.grants'
 import type { SensorySignal } from '#senses/provenance'
+import { perceptEntity, type PerceptEntity } from '#cognition/percept.entity'
+import { fnv1a } from '#agency/consequence'
 import type { SenseEngine, SensoryInput, SenseDomain, Percept, Transduced } from '#senses/index'
 
 export abstract class BaseSenseEngine implements SenseEngine {
@@ -52,11 +54,44 @@ export abstract class BaseSenseEngine implements SenseEngine {
 
   protected _bus:    CognitiveBus | null = null
   protected _grants: AccessGrants | null = null
+  protected _trace:  (( e: PerceptEntity ) => void) | null = null
+  protected _now:    (() => number) | null = null
+
+  /**
+   * Whether this sense lays down a `percept` trace in state (SIGNAL_BOUNDARY P0).
+   *
+   * ON by default, because that is the contract a host is owed: implement a
+   * sense, and what it senses reaches the five things that read percepts — the
+   * rupture gate, reafference credit, working memory, the executive prompt, and
+   * novelty. Before this, `publishPercept()` emitted a bus event three
+   * subscribers glanced at for one tick and nothing else, so a robot host
+   * ingesting frames could never remember having SEEN anything.
+   *
+   * `AuditionEngine` overrides it to `false` — see the comment there. It is the
+   * documented exception, not the template.
+   */
+  protected readonly tracesPercepts: boolean = true
 
   // ── Wiring ───────────────────────────────────────────────
   attachBus( bus: CognitiveBus ): void { this._bus = bus }
   /** Inject the AccessGrants so `ingest()` honours `gateEffector` (the permission gate). */
   attachGrants( g: AccessGrants ): void { this._grants = g }
+
+  /**
+   * Wire the sense to state: where a percept goes, and what tick it is now.
+   *
+   * Both together, never one: a percept without a tick is uncollectable — the
+   * sweeper reads `metadata.tick` and nothing else — which is the leak P0 step 2
+   * closed in two other writers. And the tick has to be injected rather than
+   * remembered, because a sense is INGEST-DRIVEN and off-tick: it has no `react()`
+   * to be handed one in. Audition's own `_lastDecisionTick` is the cautionary
+   * case — it lags to whenever the executive last decided, so a message arriving
+   * forty ticks later would be stamped forty ticks stale and swept on arrival.
+   */
+  attachPerceptTrace( write: ( e: PerceptEntity ) => void, currentTick: () => number ): void {
+    this._trace = write
+    this._now   = currentTick
+  }
 
   // ── CognitiveEngine defaults ─────────────────────────────
   publishes(): CognitiveEventSchema[] {
@@ -128,7 +163,35 @@ export abstract class BaseSenseEngine implements SenseEngine {
       payload:      stamped,
     })
 
+    this._writeTrace( stamped )
     return stamped
+  }
+
+  /**
+   * Lay the percept down in state, so it reaches the faculties that read
+   * percepts rather than only the three that were listening on the bus this
+   * tick. Silent when the sense opts out or the host wired no sink.
+   *
+   * The id is content-derived and tick-stamped — never `wallClock()` — because
+   * this entity lives in state, and a wall-clock id makes a recorded and a
+   * replayed run diverge (R2). Two identical signals from one entity on one
+   * tick collapse to one percept, which is the same coalescing audition already
+   * applies to a burst of identical messages.
+   */
+  private _writeTrace( p: Percept ): void {
+    if( !this.tracesPercepts || !this._trace || !this._now ) return
+
+    const tick = this._now()
+    this._trace( perceptEntity( {
+      id:         `sense-${ this.domain }-${ tick }-${ fnv1a( `${ p.sourceEntityId }\u0000${ p.summary }` ) }`,
+      tick,
+      salience:   p.salience,
+      category:   this.domain,
+      summary:    p.summary,
+      provenance: p.provenance,
+      entityId:   p.sourceEntityId,
+      ...( p.sourceIntentId !== undefined ? { sourceIntentId: p.sourceIntentId } : {} ),
+    } ) )
   }
 }
 

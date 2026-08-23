@@ -1,6 +1,8 @@
 # ACTION_CONDITIONED_PREDICTION_TODO — the exafference sequel
 
-> **Status:** OPEN — designed 2026-07-20. Sequel to `.TODO/EXAFFERENCE.md`
+> **Status:** ✅ **SHIPPED** — designed 2026-07-20, all 11 tracked items landed
+> (0 open; each marked ✅ in the table below). *(Header said OPEN until 2026-08-21;
+> corrected during the SIGNAL_BOUNDARY audit.)* Sequel to `.TODO/EXAFFERENCE.md`
 > (P0–P5 + follow-ups + review all shipped). Goal: predictions conditioned on
 > **what we just did** — statistical surprise becomes true exafference
 > detection. The key discovery cutting this down to size: the substrate

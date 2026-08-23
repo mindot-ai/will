@@ -32,7 +32,7 @@ function stateWith( entities: SimulationEntity[] ): MutState {
 
 /** Run one Exteroception tick and return the ids it asked to delete. */
 async function swept( entities: SimulationEntity[], tick: number ): Promise<string[]> {
-  const eng = new Exteroception({ emitPerceptEvents: false })
+  const eng = new Exteroception()
   const r = await eng.react( 0, tick, frozen( stateWith( entities ) ), CTX )
   return r.commands?.delete ?? []
 }

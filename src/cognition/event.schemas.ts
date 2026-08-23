@@ -75,14 +75,6 @@ globalSchemaRegistry.register({
 })
 
 globalSchemaRegistry.register({
-  type: 'percept.batch.ingested', version: 1,
-  validate( p ){
-    if( !isObj(p) ) return 'payload must be object'
-    return hasNum( p, 'count')
-  },
-})
-
-globalSchemaRegistry.register({
   type: 'social.agents.present', version: 1,
   validate( p ){
     if( !isObj(p) ) return 'payload must be object'

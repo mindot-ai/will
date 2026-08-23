@@ -47,7 +47,7 @@ function seedDescriptor( s: MutState, intentId: string, text: string, expiresAt 
 
 /** Run one Exteroception tick, return the percept entities it committed. */
 async function perceive( s: MutState, tick: number ): Promise<SimulationEntity[]> {
-  const eng = new Exteroception({ emitPerceptEvents: false })
+  const eng = new Exteroception()
   const r = await eng.react( 0, tick, frozen( s ), CTX )
   return ( r.commands?.set ?? [] ).filter( e => e.type === 'percept') as SimulationEntity[]
 }

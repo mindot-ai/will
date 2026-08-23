@@ -24,7 +24,6 @@ import type {
   SimulationContext,
   ReadonlySimulationState,
   StateCommands,
-  SimulationEvent,
   SimulationEntity,
 } from '#core/types'
 import type { SimulationEngine, EngineResult, CognitiveEngine } from '#cognition/types'
@@ -44,7 +43,6 @@ export interface ExteroceptionConfig {
   /** Default salience for unmarked percepts */
   defaultSalience?: number
   /** Whether to emit percept events */
-  emitPerceptEvents?: boolean
   /** Entity types to always treat as high-salience */
   highPriorityTypes?: string[]
   /**
@@ -79,7 +77,6 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
   
   private _maxPerceptsPerTick: number
   private _defaultSalience: number
-  private _emitPerceptEvents: boolean
   private _highPriorityTypes: Set<string>
   /**
    * entityId → what was last seen of it. The TYPE is remembered alongside the
@@ -103,7 +100,6 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
     this._boundary = config.endogenous ?? null
     this._maxPerceptsPerTick = config.maxPerceptsPerTick ?? 50
     this._defaultSalience    = config.defaultSalience    ?? 0.3
-    this._emitPerceptEvents  = config.emitPerceptEvents  ?? true
     this._highPriorityTypes  = new Set( config.highPriorityTypes ?? [
       'message', 'notification', 'alert', 'threat', 'goal',
     ])
@@ -154,9 +150,7 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
     state: ReadonlySimulationState,
     context: SimulationContext
   ): Promise<EngineResult> {
-    const
-    events:   Array<Omit<SimulationEvent, 'id' | 'timestamp' | 'tick'>> = [],
-    commands: StateCommands = { set: [], delete: [], metrics: [] }
+    const commands: StateCommands = { set: [], delete: [], metrics: [] }
 
     const rawPercepts = this._scanWorld( state )
 
@@ -211,19 +205,6 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
         // affect→percept seam (registry #5): what this percept FEELS like
         ...( rp.valence !== undefined ? { valence: rp.valence, valenceSource: rp.valenceSource } : {} ),
       } ) )
-
-      // Emit percept event for downstream engines
-      if( this._emitPerceptEvents )
-        events.push({
-          type: `percept.${rp.changeType}.${rp.category}`,
-          source: this.name,
-          payload: {
-            entityId: rp.entityId,
-            salience,
-            category: rp.category,
-            summary: rp.summary,
-          },
-        })
     }
 
     // Clean up old percepts from previous ticks (keep last 2 ticks of percepts)
@@ -236,13 +217,12 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
     )
 
 
-    // Phase C + F: publish cognitive event — gated by prediction error
+    // The percept RATE is still learned — `percept.rate` carries a precision set
+    // from `executive.prediction.formed`, and the observation is what keeps that
+    // baseline honest. What is gone is the `percept.batch.ingested` event it used
+    // to publish: one publisher, zero subscribers, ever.
     const _bus = this._bus
-    if( _bus && capped.length > 0 ){
-      const predErr = this._model.observe('percept.rate', capped.length )
-      if( !predErr.gated )
-        _bus.publish({ type: 'percept.batch.ingested', version: 1, sourceEngine: this.name, salience: Math.max( 0.2, predErr.salience ), payload: { count: capped.length } })
-    }
+    if( capped.length > 0 ) this._model.observe('percept.rate', capped.length )
 
     // percept.category.updated — one event per distinct category so subscribers
     // (aesthetic.evaluator etc.) get a structured signal without scanning percepts
@@ -254,7 +234,7 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
         _bus.publish({ type: 'percept.category.updated', version: 1, sourceEngine: this.name, salience: Math.min( 1, count * 0.15 + 0.2 ), payload: { category, count } })
     }
 
-    return { events: events.length > 0 ? events : undefined, commands }
+    return { commands }
   }
 
   // ── Internal ─────────────────────────────────────────────

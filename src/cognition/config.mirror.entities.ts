@@ -103,7 +103,6 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
       params: {
         maxPerceptsPerTick: 50,
         defaultSalience:    0.3,
-        emitPerceptEvents:  1,
       },
     },
     {

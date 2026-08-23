@@ -4433,6 +4433,28 @@ var CircadianOscillator = class {
   }
 };
 
+// src/cognition/percept.entity.ts
+var PERCEPT_TYPE = "percept";
+function perceptEntity(facts, extra = {}) {
+  return {
+    id: facts.id,
+    type: PERCEPT_TYPE,
+    metadata: {
+      ...extra,
+      tick: facts.tick,
+      salience: facts.salience,
+      category: facts.category,
+      summary: facts.summary,
+      provenance: facts.provenance,
+      ...facts.sourceIntentId !== void 0 ? { sourceIntentId: facts.sourceIntentId } : {},
+      ...facts.entityId !== void 0 ? { entityId: facts.entityId } : {},
+      ...facts.changeType !== void 0 ? { changeType: facts.changeType } : {},
+      ...facts.valence !== void 0 ? { valence: facts.valence } : {},
+      ...facts.valenceSource !== void 0 ? { valenceSource: facts.valenceSource } : {}
+    }
+  };
+}
+
 // src/cognition/agency/consequence.ts
 var CONSEQUENCE_TYPE = "agency.consequence";
 var ATTENUATION = 0.25;
@@ -4894,27 +4916,19 @@ var Exteroception = class {
       const entityHit = !textHit && consequences.length > 0 ? matchConsequenceEntity(consequences, rp.entityId, rp.changeType) : null;
       const hit = textHit ?? entityHit;
       const salience = textHit ? rp.salience * ATTENUATION : entityHit ? rp.salience * CORRESPONDENCE_ATTENUATION : rp.salience;
-      const perceptEntity = {
+      commands.set.push(perceptEntity({
         id: `percept-${tick}-${i}`,
-        type: "percept",
-        metadata: {
-          entityId: rp.entityId,
-          changeType: rp.changeType,
-          salience,
-          category: rp.category,
-          summary: rp.summary,
-          // Typed, not a bare literal: this metadata write is the same concept the
-          // sense door carries, and the compiler stops at the metadata boundary.
-          // INFERRED here, legitimately — a match against our own live consequence
-          // descriptors is the efference copy doing its job. See SignalProvenance.
-          provenance: hit ? "reafferent" : "exafferent",
-          ...hit ? { sourceIntentId: hit.intentId } : {},
-          // affect→percept seam (registry #5): what this percept FEELS like
-          ...rp.valence !== void 0 ? { valence: rp.valence, valenceSource: rp.valenceSource } : {},
-          tick
-        }
-      };
-      commands.set.push(perceptEntity);
+        tick,
+        salience,
+        category: rp.category,
+        summary: rp.summary,
+        provenance: hit ? "reafferent" : "exafferent",
+        entityId: rp.entityId,
+        changeType: rp.changeType,
+        ...hit ? { sourceIntentId: hit.intentId } : {},
+        // affect→percept seam (registry #5): what this percept FEELS like
+        ...rp.valence !== void 0 ? { valence: rp.valence, valenceSource: rp.valenceSource } : {}
+      }));
       if (this._emitPerceptEvents)
         events.push({
           type: `percept.${rp.changeType}.${rp.category}`,

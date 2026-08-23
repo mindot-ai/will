@@ -29,6 +29,7 @@ import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { StateCommands } from '#core/types'
 import type { AccessGrants } from '#agency/access.grants'
+import { provenanceOf } from '#senses/provenance'
 import type { SenseEngine, SensoryInput, SenseDomain, Percept } from '#senses/index'
 
 export abstract class BaseSenseEngine implements SenseEngine {
@@ -86,14 +87,34 @@ export abstract class BaseSenseEngine implements SenseEngine {
    * Publish a percept on this engine's `senses.<domain>.percept` topic. The
    * single emit chokepoint — the AttentionAllocator (and, in future, a
    * cross-modal binder) observes percepts here.
+   *
+   * `from` is the signal this percept was transduced FROM, and it is required
+   * rather than optional on purpose: every percept has a cause, and the one
+   * fact transduction must not lose is whose doing that cause was. Taking it
+   * here — instead of stashing the in-flight input on a field — is what keeps
+   * the stamp correct while `_perceive()` is async and two ingests overlap.
+   * A percept arrives already stamped; downstream never has to guess.
    */
-  protected publishPercept( percept: Percept ): void {
+  protected publishPercept( percept: Percept, from: SensoryInput ): void {
+    // Both fields are stripped off the engine's percept before being re-applied
+    // from `from`, rather than spread-over. A conditional overwrite left a hole:
+    // an engine could fabricate a `sourceIntentId` and it survived whenever the
+    // host supplied none — provenance the mind would later trust, laundered by
+    // the very step that exists to establish it. The host's assertion is the
+    // only authority, so it is applied wholesale.
+    const { provenance: _stale, sourceIntentId: _staleIntent, ...rest } = percept
+    const stamped: Percept = {
+      ...rest,
+      provenance: provenanceOf( from ),
+      ...( from.sourceIntentId ? { sourceIntentId: from.sourceIntentId } : {} ),
+    }
+
     this._bus?.publish({
       type:         `senses.${this.domain}.percept`,
       version:      1,
       sourceEngine: this.name,
-      salience:     percept.salience,
-      payload:      percept,
+      salience:     stamped.salience,
+      payload:      stamped,
     })
   }
 }

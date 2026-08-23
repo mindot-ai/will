@@ -111,6 +111,11 @@ export type {
 
 // Sensory input types — used by callers of WillManager.ingestText()
 export type { TextMessage, VoiceChunk, SensoryInput } from '#senses/index'
+// Provenance — whose doing a signal was. The host asserts it on the way in;
+// nothing inside the mind can tell its own echo from a stranger saying the same
+// words. Omitting it reads as 'exafferent' (see provenanceOf).
+export type { SignalProvenance, SensorySignal } from '#senses/provenance'
+export { provenanceOf } from '#senses/provenance'
 
 // ── SDK facade — the ergonomic embedding API (recommended entry point) ──
 // `Will.create()` wraps WillStem in the shape a developer expects: on('message'),

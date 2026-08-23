@@ -601,7 +601,7 @@ export class AuditionEngine extends BaseSenseEngine {
 
     // Publish to CognitiveBus — AttentionAllocator et al. can react.
     // publishPercept() (base) is the single emit chokepoint on senses.<domain>.percept.
-    this.publishPercept( percept )
+    this.publishPercept( percept, msg )
 
     // ── Update digest with inbound turn ───────────────────────
     this._digests.append( threadId, 'user', content )

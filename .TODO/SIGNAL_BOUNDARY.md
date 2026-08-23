@@ -456,18 +456,111 @@ should move only once, deliberately, with aliases.
 > parallel path and prove it byte-identical, exactly as POLICY_REAFFERENCE P0
 > shipped dark. The replay-equivalence capstone gates every phase.
 
-### P0 — `SensoryInput` gains provenance (dark)
-- [ ] `provenance` + `sourceIntentId?` on `SensoryInput`, optional at first so
-      nothing breaks; `BaseSenseEngine` propagates both onto the percept it
-      transduces.
-- [ ] Default when a caller omits it: **`'exafferent'`**, and it must be an
+### P0 — **CORRECTED 2026-08-21, before implementation.** The sense door produces nothing durable.
+
+Traced before writing code, and the original P0 ("`BaseSenseEngine` propagates
+provenance onto the percept it transduces") was **wrong: there is no percept to
+propagate onto.**
+
+`BaseSenseEngine.publishPercept()` publishes a **bus event** —
+`senses.<domain>.percept`, payload `{ domain, sourceEntityId, timestamp,
+salience, raw }` — consumed by exactly three subscribers (`attention.allocator`,
+`known.entity.tracker`, `action.selector`) and then gone. **No entity is
+written.** Measured across the sense engines:
+
+| engine | durable entity write |
+| :--- | :--- |
+| audition | ✅ — `conversation.received`, via its own `_memorySink` |
+| vision · olfaction · gustation · somatosensation | **0 sites each** |
+
+So the generic sense contract is *transient by construction*, and audition is the
+only sense that remembers anything — because it hand-rolled a durable write the
+base class does not provide.
+
+**This is the portability gap, and it is bigger than provenance.** Under the
+compass (§0a), a robot host ingesting frames through `ingestSensory('vision', …)`
+would emit a bus event three faculties glance at for one tick, and the mind could
+never remember having *seen* anything. Provenance on a signal that vanishes tags
+nothing. **A sense that cannot lay down a trace is not a sense; it is an
+interrupt.**
+
+Which makes P0 the same move as the rest of the epoch — *generalize what one
+place already got right*:
+
+- [ ] **Lift audition's durable write into `BaseSenseEngine`.** Every sense lays
+      down a trace; audition's `conversation.received` becomes its *specialization*
+      of the general behaviour rather than a private exception.
+- [ ] Provenance rides on that trace, where it now has something to ride.
+- [ ] **Decision required before coding this** — it changes behaviour for a shipped
+      sense (audition), so it is not a dark change. Options: (a) lift and have
+      audition delegate; (b) add the base write and leave audition's in place until
+      P4 removes the duplicate; (c) base write behind a flag, senses opt in.
+      **Leaning (b)** — additive, keeps the quiet path byte-identical, and defers
+      the deletion to the phase that exists for deletions.
+
+The genuinely dark part of P0, unaffected by the above and safe to land first:
+
+### P0a — `SensoryInput` gains provenance (dark) — ✅ **SHIPPED 2026-08-23**
+- [x] `provenance` + `sourceIntentId?` hoisted onto a shared **`SensorySignal`**
+      base that all ten `SensoryInput` kinds extend, so the stamp is a property
+      of *being a signal* rather than ten copies of two fields. `Percept`
+      extends it too — transduction does not change whose doing a signal was.
+- [x] Default when a caller omits it: **`'exafferent'`**, and it must be an
       explicit default with a comment, not an accident. Rationale mirrors
       `asFinality`'s: the dangerous direction is claiming *mine* about something
       that is not, because a percept wrongly marked reafferent is attenuated and
       can never rupture — a mind that mislabels the world as its own doing goes
       quiet about real events. `'exafferent'` errs toward noticing.
-- [ ] Doc-only: correct the `mcp/effectors.ts` "feeds episodic memory" claim.
-- [ ] Test: quiet path byte-identical; `replay.equivalence` green.
+      → lives in exactly one place, `provenanceOf()`.
+- [x] `BaseSenseEngine.publishPercept( percept, from )` stamps at the emit
+      chokepoint. `from` is **required, not optional** — every percept has a
+      cause, and passing it explicitly (rather than stashing the in-flight input
+      on a field) is what keeps the stamp correct while `_perceive()` is async
+      and two ingests overlap.
+- [x] Doc-only: corrected the `mcp/effectors.ts` "feeds episodic memory" claim.
+      Traced: a result `description` reaches `agency.outcome`, the executive
+      prompt's `action.record` (**truncated to 120**), and the session log (300).
+      Episodic memory is not among them. `RESULT_DESCRIPTION_CAP = 700` left
+      alone deliberately — tuning it to match the 120 would ratify a truncation
+      that is itself the defect.
+- [x] Test: 10 new tests (`base.sense.engine.test.ts` ×7,
+      `senses.provenance.test.ts` ×3), each mutation-verified against 5
+      mutations. Full suite **1783 passed / 223 files**; `replay.equivalence`
+      green — the quiet path is byte-identical.
+
+**Two things found while implementing, both worth recording rather than
+patching over:**
+
+1. **The stamp had to be applied wholesale, not spread over.** The first cut
+   overwrote `provenance` unconditionally but `sourceIntentId` only when the
+   host supplied one — so a sense engine could fabricate a `sourceIntentId` and
+   it survived, provenance the mind would later trust, laundered by the very
+   step that exists to establish it. `publishPercept` now strips both fields off
+   the engine's percept before re-applying them from the input. The host's
+   assertion is the only authority. (Test: *"the stamp overrides whatever the
+   sense engine put on the percept itself"*.)
+
+2. **`provenance` lives in its own module, not `senses/index`.** `BaseSenseEngine`
+   needs the *value* `provenanceOf`, and `senses/index` re-exports
+   `BaseSenseEngine` — importing from there would have turned an erased,
+   type-only edge into a real runtime import cycle. `senses/index` re-exports
+   `./provenance`, so the public path is unchanged.
+
+**Deliberately NOT done in P0a, with reasons:**
+
+- **`Stimulus` (the SDK facade) did not gain the fields.** `stem.ingestText()`
+  takes a `TextMessage` directly and is public, so a host that wants to stamp
+  today already can. `Stimulus` is the *curated* door and should gain a field
+  when something reads it, not before — P1.
+- **The wire door stays lossy, and that is now a named item rather than a
+  discovery.** `InboundMessageEnvelope` reconstructs a `TextMessage` field by
+  field and already drops **`direct`** and **`threadName`** — two fields the
+  in-process door carries, one of which (`direct`) changes behaviour. Adding
+  `provenance` there while those two stay dropped would be a third patch on a
+  door known to leak. All three get fixed together, in the phase that owns the
+  wire contract. **Remote hosts cannot declare provenance until then** — which
+  matters directly for the compass (§0a): a robot over a socket is exactly the
+  case this door serves.
 
 ### P1a — Decompose the efference crossing
 - [ ] Split `effector.controller.ts`'s seven jobs along their real seams. A first

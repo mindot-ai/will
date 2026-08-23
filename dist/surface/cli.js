@@ -6468,6 +6468,7 @@ var CircadianOscillator = class {
 
 // src/cognition/percept.entity.ts
 var PERCEPT_TYPE = "percept";
+var PERCEPT_SUMMARY_CAP = 100;
 function perceptEntity(facts, extra = {}) {
   return {
     id: facts.id,
@@ -6869,7 +6870,6 @@ var Exteroception = class {
   name = "exteroception";
   _maxPerceptsPerTick;
   _defaultSalience;
-  _emitPerceptEvents;
   _highPriorityTypes;
   /**
    * entityId → what was last seen of it. The TYPE is remembered alongside the
@@ -6888,7 +6888,6 @@ var Exteroception = class {
     this._boundary = config.endogenous ?? null;
     this._maxPerceptsPerTick = config.maxPerceptsPerTick ?? 50;
     this._defaultSalience = config.defaultSalience ?? 0.3;
-    this._emitPerceptEvents = config.emitPerceptEvents ?? true;
     this._highPriorityTypes = new Set(config.highPriorityTypes ?? [
       "message",
       "notification",
@@ -6939,7 +6938,7 @@ var Exteroception = class {
     return {};
   }
   async react(_delta, tick, state, context) {
-    const events = [], commands = { set: [], delete: [], metrics: [] };
+    const commands = { set: [], delete: [], metrics: [] };
     const rawPercepts = this._scanWorld(state);
     const capped = rawPercepts.slice(0, this._maxPerceptsPerTick);
     const consequences = liveConsequences(state.entities, tick);
@@ -6962,17 +6961,6 @@ var Exteroception = class {
         // affect→percept seam (registry #5): what this percept FEELS like
         ...rp.valence !== void 0 ? { valence: rp.valence, valenceSource: rp.valenceSource } : {}
       }));
-      if (this._emitPerceptEvents)
-        events.push({
-          type: `percept.${rp.changeType}.${rp.category}`,
-          source: this.name,
-          payload: {
-            entityId: rp.entityId,
-            salience,
-            category: rp.category,
-            summary: rp.summary
-          }
-        });
     }
     commands.delete = this._collectStalePerceptIds(state, tick);
     commands.metrics.push(
@@ -6980,11 +6968,7 @@ var Exteroception = class {
       ["perception.total_entities_observed", state.entities.size]
     );
     const _bus = this._bus;
-    if (_bus && capped.length > 0) {
-      const predErr = this._model.observe("percept.rate", capped.length);
-      if (!predErr.gated)
-        _bus.publish({ type: "percept.batch.ingested", version: 1, sourceEngine: this.name, salience: Math.max(0.2, predErr.salience), payload: { count: capped.length } });
-    }
+    if (capped.length > 0) this._model.observe("percept.rate", capped.length);
     if (_bus && capped.length > 0) {
       const countByCategory = /* @__PURE__ */ new Map();
       for (const rp of capped)
@@ -6992,7 +6976,7 @@ var Exteroception = class {
       for (const [category, count] of countByCategory)
         _bus.publish({ type: "percept.category.updated", version: 1, sourceEngine: this.name, salience: Math.min(1, count * 0.15 + 0.2), payload: { category, count } });
     }
-    return { events: events.length > 0 ? events : void 0, commands };
+    return { commands };
   }
   // ── Internal ─────────────────────────────────────────────
   /**
@@ -7100,7 +7084,7 @@ var Exteroception = class {
       return changeType === "appeared" ? `${name} appears` : `${name} changed`;
     }
     if (description) {
-      return description.slice(0, 100);
+      return description.slice(0, PERCEPT_SUMMARY_CAP);
     }
     return `New ${entity.type}: ${entity.id.slice(0, 30)}`;
   }
@@ -21601,6 +21585,22 @@ var BaseSenseEngine = class {
   gateEffector = null;
   _bus = null;
   _grants = null;
+  _trace = null;
+  _now = null;
+  /**
+   * Whether this sense lays down a `percept` trace in state (SIGNAL_BOUNDARY P0).
+   *
+   * ON by default, because that is the contract a host is owed: implement a
+   * sense, and what it senses reaches the five things that read percepts — the
+   * rupture gate, reafference credit, working memory, the executive prompt, and
+   * novelty. Before this, `publishPercept()` emitted a bus event three
+   * subscribers glanced at for one tick and nothing else, so a robot host
+   * ingesting frames could never remember having SEEN anything.
+   *
+   * `AuditionEngine` overrides it to `false` — see the comment there. It is the
+   * documented exception, not the template.
+   */
+  tracesPercepts = true;
   // ── Wiring ───────────────────────────────────────────────
   attachBus(bus) {
     this._bus = bus;
@@ -21608,6 +21608,21 @@ var BaseSenseEngine = class {
   /** Inject the AccessGrants so `ingest()` honours `gateEffector` (the permission gate). */
   attachGrants(g) {
     this._grants = g;
+  }
+  /**
+   * Wire the sense to state: where a percept goes, and what tick it is now.
+   *
+   * Both together, never one: a percept without a tick is uncollectable — the
+   * sweeper reads `metadata.tick` and nothing else — which is the leak P0 step 2
+   * closed in two other writers. And the tick has to be injected rather than
+   * remembered, because a sense is INGEST-DRIVEN and off-tick: it has no `react()`
+   * to be handed one in. Audition's own `_lastDecisionTick` is the cautionary
+   * case — it lags to whenever the executive last decided, so a message arriving
+   * forty ticks later would be stamped forty ticks stale and swept on arrival.
+   */
+  attachPerceptTrace(write, currentTick) {
+    this._trace = write;
+    this._now = currentTick;
   }
   // ── CognitiveEngine defaults ─────────────────────────────
   publishes() {
@@ -21670,7 +21685,33 @@ var BaseSenseEngine = class {
       salience: stamped.salience,
       payload: stamped
     });
+    this._writeTrace(stamped);
     return stamped;
+  }
+  /**
+   * Lay the percept down in state, so it reaches the faculties that read
+   * percepts rather than only the three that were listening on the bus this
+   * tick. Silent when the sense opts out or the host wired no sink.
+   *
+   * The id is content-derived and tick-stamped — never `wallClock()` — because
+   * this entity lives in state, and a wall-clock id makes a recorded and a
+   * replayed run diverge (R2). Two identical signals from one entity on one
+   * tick collapse to one percept, which is the same coalescing audition already
+   * applies to a burst of identical messages.
+   */
+  _writeTrace(p) {
+    if (!this.tracesPercepts || !this._trace || !this._now) return;
+    const tick = this._now();
+    this._trace(perceptEntity({
+      id: `sense-${this.domain}-${tick}-${fnv1a(`${p.sourceEntityId}\0${p.summary}`)}`,
+      tick,
+      salience: p.salience,
+      category: this.domain,
+      summary: p.summary,
+      provenance: p.provenance,
+      entityId: p.sourceEntityId,
+      ...p.sourceIntentId !== void 0 ? { sourceIntentId: p.sourceIntentId } : {}
+    }));
   }
 };
 var ShellSenseEngine = class extends BaseSenseEngine {
@@ -21862,6 +21903,26 @@ var AuditionEngine = class extends BaseSenseEngine {
    * off-tick engine has. Stamped from `FacetDecision.tick`, and used to key the
    * conversation records it writes into state.
    */
+  /**
+   * Audition does NOT lay down a percept trace (SIGNAL_BOUNDARY P0, step 3).
+   *
+   * Every other sense does, and a host implementing a new one gets it by
+   * default. This is the grandfathered exception, and the reason is measurement
+   * rather than principle: audition is the only live sense, and switching it on
+   * routes every inbound message to five consumers it has never reached —
+   * `action.selector`'s rupture gate (where a fresh high-salience exafferent
+   * percept can preempt an awaiting intent), working memory, the executive
+   * prompt, novelty, and reafference credit. On a deployed Will that is not a
+   * tweak; it is a different mind, and it deserves a measured rollout rather
+   * than a line in a refactor.
+   *
+   * Audition is not trace-less meanwhile: it writes `conversation.received`
+   * through its own sink, which is what SocialPerception reads. That record is
+   * social — sourceKeid, directedAtSelf, action:'communication' — and is NOT
+   * the generic percept the other senses now write. Two different traces for
+   * two different readers; this flag turns off only the second.
+   */
+  tracesPercepts = false;
   _lastDecisionTick = 0;
   /** Speaker attachment strength accessor (0–1) — weights salience by relationship. */
   _getAttachmentScore = null;
@@ -22055,6 +22116,10 @@ var AuditionEngine = class extends BaseSenseEngine {
       speakerEntityId: entityId,
       threadId,
       digest: this._digests.getDigest(threadId),
+      // What a heard turn amounts to, for readers that do not know this is
+      // audition. Bounded, because `summary` renders into the executive prompt
+      // and a pasted essay would take the whole percept budget.
+      summary: `${speakerName} said: ${content}`.slice(0, PERCEPT_SUMMARY_CAP),
       salience,
       // Arrival metadata for an EXTERNAL inbound message (network/RPC boundary):
       // no sim clock in scope here and the value is not replayed — wallClock() is
@@ -25018,8 +25083,7 @@ function buildEngineConfigEntities(config, executiveInterval) {
       engine: "exteroception",
       params: {
         maxPerceptsPerTick: 50,
-        defaultSalience: 0.3,
-        emitPerceptEvents: 1
+        defaultSalience: 0.3
       }
     },
     {
@@ -25740,6 +25804,11 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   auditionEngine.attachOutboxWriter(outboxWriter);
   auditionEngine.attachGrants(accessGrants);
   auditionEngine.attachMemorySink((entity) => simulation.stateManager.setEntity(entity));
+  for (const sense of [auditionEngine, visionEngine, somatosensationEngine, olfactionEngine, gustationEngine])
+    sense.attachPerceptTrace(
+      (entity) => simulation.stateManager.setEntity(entity),
+      () => simulation.clock.currentTick
+    );
   outboxWriter.attachRouting((targetEntityId, chosenThread) => {
     if (!isReferentId(targetEntityId)) return null;
     const entities = new Map(

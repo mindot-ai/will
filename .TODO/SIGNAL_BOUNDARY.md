@@ -531,7 +531,44 @@ door, so building it first would multiply both faults.
       constructor. Nothing else can be the shape of this: the base must not
       invent a sixth variant of an entity that already has five.
 
-#### The decision that is still yours
+#### Shipped 2026-08-23 — all three steps
+
+- [x] **Step 1** — `perceptEntity()`. `tick` and `provenance` required, `extra`
+      spread first so a writer cannot clobber its own core. Adopted at
+      `exteroception`, where it is a provable no-op.
+- [x] **Step 2** — the other four writers retrofitted. **Closes the leak**
+      (`msg-delivered-<id>` was uncollectable, and `extractPercepts` ranks by
+      salience with no recency filter, so a failed delivery held an executive
+      slot for the life of the mind). **The wake percept can now rupture** —
+      paired test, tagged vs untagged, so the tag is isolated as the cause.
+- [x] **Step 3** — `BaseSenseEngine.attachPerceptTrace( write, currentTick )`.
+      The tick is injected as a *getter*, because a sense is ingest-driven and
+      off-tick: audition's `_lastDecisionTick` is the cautionary case, lagging to
+      whenever the executive last decided, so a message arriving forty ticks
+      later would be stamped stale and swept on arrival.
+- [x] `Percept.summary` is now **required**. It is the only field the rest of the
+      mind reads — `extractPercepts` renders it and skips a percept without one,
+      `working.memory` ingests on it. A sense that cannot say what it sensed
+      produced a percept that existed and was invisible, which is what every
+      shell sense would have done the day it was implemented.
+- [x] `PERCEPT_SUMMARY_CAP = 100`, adopted from `exteroception`'s existing
+      literal rather than chosen, so naming it changed nothing. One constant now
+      instead of a literal per writer — §4's sizing question is still open, but
+      answering it is a one-line change instead of an archaeology exercise.
+
+**Audition is grandfathered out** (`tracesPercepts = false`), decided
+2026-08-23. Every other sense traces by default, which is the contract a host is
+owed; audition is the documented exception because it is the only live one and
+switching it on routes every inbound message to five consumers it has never
+reached. It is opted out of the WRITE, not degraded — the summary is produced
+either way, so flipping the flag yields a well-formed percept immediately. Two
+tests pin it, and turning it on has to break them.
+
+Its `conversation.received` is untouched and is a **different trace for a
+different reader**: social, `SocialPerception`-shaped, and not the generic
+percept. The flag turns off only the second.
+
+#### Superseded — what P0 originally proposed, and why it is not that
 
 Once the base can write, **does audition opt in?** Its four shell siblings can
 opt in for free — they warn-and-return, so nothing observable changes — but

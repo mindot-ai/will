@@ -2446,7 +2446,6 @@ interface ExteroceptionConfig {
     /** Default salience for unmarked percepts */
     defaultSalience?: number;
     /** Whether to emit percept events */
-    emitPerceptEvents?: boolean;
     /** Entity types to always treat as high-salience */
     highPriorityTypes?: string[];
     /**
@@ -2465,7 +2464,6 @@ declare class Exteroception implements SimulationEngine, CognitiveEngine {
     readonly name = "exteroception";
     private _maxPerceptsPerTick;
     private _defaultSalience;
-    private _emitPerceptEvents;
     private _highPriorityTypes;
     /**
      * entityId → what was last seen of it. The TYPE is remembered alongside the
@@ -7168,6 +7166,14 @@ type Transduced<P extends {
  */
 declare function asProvenance(raw: unknown): SignalProvenance;
 
+declare const PERCEPT_TYPE = "percept";
+/** The write-side entity shape `stateManager.setEntity` accepts. */
+interface PerceptEntity {
+    id: string;
+    type: typeof PERCEPT_TYPE;
+    metadata: Record<string, unknown>;
+}
+
 declare class VisionEngine extends ShellSenseEngine {
     readonly name = "vision-engine";
     readonly domain: "vision";
@@ -7225,6 +7231,18 @@ interface Percept extends SensorySignal {
     timestamp: number;
     salience: number;
     raw: unknown;
+    /**
+     * What was sensed, in words. REQUIRED, because it is the only field the rest
+     * of the mind can read: `extractPercepts` renders `summary` (falling back to
+     * `content`) and skips a percept without one, and `working.memory` ingests on
+     * the same field. A sense that cannot say what it sensed produces a percept
+     * that exists and is invisible — which is what every shell sense would have
+     * done the moment it was implemented.
+     *
+     * Not `raw`, which is the original input object and is for a consumer that
+     * knows the modality. This is for the ones that do not.
+     */
+    summary: string;
 }
 interface TextMessage extends SensorySignal {
     kind: 'text';
@@ -7349,9 +7367,37 @@ declare abstract class BaseSenseEngine implements SenseEngine {
     protected readonly gateEffector: string | null;
     protected _bus: CognitiveBus | null;
     protected _grants: AccessGrants | null;
+    protected _trace: ((e: PerceptEntity) => void) | null;
+    protected _now: (() => number) | null;
+    /**
+     * Whether this sense lays down a `percept` trace in state (SIGNAL_BOUNDARY P0).
+     *
+     * ON by default, because that is the contract a host is owed: implement a
+     * sense, and what it senses reaches the five things that read percepts — the
+     * rupture gate, reafference credit, working memory, the executive prompt, and
+     * novelty. Before this, `publishPercept()` emitted a bus event three
+     * subscribers glanced at for one tick and nothing else, so a robot host
+     * ingesting frames could never remember having SEEN anything.
+     *
+     * `AuditionEngine` overrides it to `false` — see the comment there. It is the
+     * documented exception, not the template.
+     */
+    protected readonly tracesPercepts: boolean;
     attachBus(bus: CognitiveBus): void;
     /** Inject the AccessGrants so `ingest()` honours `gateEffector` (the permission gate). */
     attachGrants(g: AccessGrants): void;
+    /**
+     * Wire the sense to state: where a percept goes, and what tick it is now.
+     *
+     * Both together, never one: a percept without a tick is uncollectable — the
+     * sweeper reads `metadata.tick` and nothing else — which is the leak P0 step 2
+     * closed in two other writers. And the tick has to be injected rather than
+     * remembered, because a sense is INGEST-DRIVEN and off-tick: it has no `react()`
+     * to be handed one in. Audition's own `_lastDecisionTick` is the cautionary
+     * case — it lags to whenever the executive last decided, so a message arriving
+     * forty ticks later would be stamped forty ticks stale and swept on arrival.
+     */
+    attachPerceptTrace(write: (e: PerceptEntity) => void, currentTick: () => number): void;
     publishes(): CognitiveEventSchema[];
     subscribes(): string[];
     onCognitiveEvent(_e: CognitiveEvent): StateCommands | void;
@@ -7388,6 +7434,18 @@ declare abstract class BaseSenseEngine implements SenseEngine {
      * than a second one that could drift from it.
      */
     protected publishPercept<P extends Percept>(percept: Transduced<P>, from: SensorySignal): P;
+    /**
+     * Lay the percept down in state, so it reaches the faculties that read
+     * percepts rather than only the three that were listening on the bus this
+     * tick. Silent when the sense opts out or the host wired no sink.
+     *
+     * The id is content-derived and tick-stamped — never `wallClock()` — because
+     * this entity lives in state, and a wall-clock id makes a recorded and a
+     * replayed run diverge (R2). Two identical signals from one entity on one
+     * tick collapse to one percept, which is the same coalescing audition already
+     * applies to a burst of identical messages.
+     */
+    private _writeTrace;
 }
 /**
  * ShellSenseEngine — base for the not-yet-implemented senses
@@ -7655,6 +7713,26 @@ declare class AuditionEngine extends BaseSenseEngine {
      * off-tick engine has. Stamped from `FacetDecision.tick`, and used to key the
      * conversation records it writes into state.
      */
+    /**
+     * Audition does NOT lay down a percept trace (SIGNAL_BOUNDARY P0, step 3).
+     *
+     * Every other sense does, and a host implementing a new one gets it by
+     * default. This is the grandfathered exception, and the reason is measurement
+     * rather than principle: audition is the only live sense, and switching it on
+     * routes every inbound message to five consumers it has never reached —
+     * `action.selector`'s rupture gate (where a fresh high-salience exafferent
+     * percept can preempt an awaiting intent), working memory, the executive
+     * prompt, novelty, and reafference credit. On a deployed Will that is not a
+     * tweak; it is a different mind, and it deserves a measured rollout rather
+     * than a line in a refactor.
+     *
+     * Audition is not trace-less meanwhile: it writes `conversation.received`
+     * through its own sink, which is what SocialPerception reads. That record is
+     * social — sourceKeid, directedAtSelf, action:'communication' — and is NOT
+     * the generic percept the other senses now write. Two different traces for
+     * two different readers; this flag turns off only the second.
+     */
+    protected readonly tracesPercepts = false;
     private _lastDecisionTick;
     /** Speaker attachment strength accessor (0–1) — weights salience by relationship. */
     private _getAttachmentScore;

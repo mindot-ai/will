@@ -62,3 +62,34 @@ describe('audition carries provenance onto the percept (P0a)', () => {
     expect( p.sourceEntityId ).toBe('discord:U2')
   } )
 } )
+
+// ── Audition is the grandfathered exception (P0 step 3) ────────
+describe('audition lays down NO percept trace — deliberately, and on the record', () => {
+  it('publishes to the bus but writes no percept entity', async () => {
+    // Every other sense traces; audition does not, because it is the only live
+    // one and switching it on routes every inbound message to five consumers it
+    // has never reached — the rupture gate, working memory, the executive
+    // prompt, novelty, reafference credit. That is a measured rollout, not a
+    // refactor. This test is what makes turning it on deliberate: flip
+    // `tracesPercepts` and this fails, which is the point of it.
+    const engine   = new AuditionEngine()
+    const written: unknown[] = []
+    const published: unknown[] = []
+    engine.attachBus( { publish: ( e: unknown ) => published.push( e ), subscribe: () => {} } as never )
+    engine.attachPerceptTrace( x => written.push( x ), () => 5 )
+
+    await engine.ingest( heard() )
+
+    expect( published.length ).toBeGreaterThan( 0 )   // the bus still hears it
+    expect( written ).toHaveLength( 0 )               // state does not
+  } )
+
+  it('still summarises what it heard, so turning the trace on needs no other change', async () => {
+    // The summary is produced whether or not it is written — audition is opted
+    // out of the WRITE, not degraded. Flipping the flag yields a well-formed
+    // percept immediately rather than an empty one.
+    const p = await perceptFor( heard( { speakerName: 'Ada', content: 'is the deploy done?' } ) )
+    expect( p.summary ).toContain('Ada')
+    expect( p.summary ).toContain('is the deploy done?')
+  } )
+} )

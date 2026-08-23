@@ -53,6 +53,18 @@ export interface Percept extends SensorySignal {
   timestamp:      number
   salience:       number   // 0–1, computed by the sense engine
   raw:            unknown  // original input object
+  /**
+   * What was sensed, in words. REQUIRED, because it is the only field the rest
+   * of the mind can read: `extractPercepts` renders `summary` (falling back to
+   * `content`) and skips a percept without one, and `working.memory` ingests on
+   * the same field. A sense that cannot say what it sensed produces a percept
+   * that exists and is invisible — which is what every shell sense would have
+   * done the moment it was implemented.
+   *
+   * Not `raw`, which is the original input object and is for a consumer that
+   * knows the modality. This is for the ones that do not.
+   */
+  summary:        string
 }
 
 /** Audition-specific percept — carries language content and thread context. */

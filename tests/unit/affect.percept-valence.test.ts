@@ -34,7 +34,7 @@ const put = ( s: MutState, id: string, type: string, metadata: Record<string, un
 
 /** Run one Exteroception tick and return the percept about `entityId`. */
 async function perceive( s: MutState, entityId: string, tick = 1 ) {
-  const r = await new Exteroception({ emitPerceptEvents: false }).react( 0, tick, frozen( s ), CTX )
+  const r = await new Exteroception().react( 0, tick, frozen( s ), CTX )
   return ( r.commands?.set ?? [] ).find( e =>
     e.type === 'percept' && ( e.metadata as Record<string, unknown> )['entityId'] === entityId )!
 }

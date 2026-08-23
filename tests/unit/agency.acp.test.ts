@@ -67,7 +67,7 @@ describe('matchConsequenceEntity — narrow by design', () => {
 /** Two ticks: register the entity (appeared), then bump updatedAt (modified). */
 async function perceiveModified( withDescriptor: boolean, expiresAt = 30 ) {
   const s = freshState()
-  const eng = new Exteroception({ emitPerceptEvents: false })
+  const eng = new Exteroception()
   s.entities.set('bob', { id: 'bob', type: 'creature', createdAt: 0, updatedAt: 0,
     metadata: { salience: 0.8 } } as SimulationEntity )
   if( withDescriptor ) seedDescriptor( s, extDesc('intent-wave', 'bob', expiresAt ) )
@@ -108,7 +108,7 @@ describe('P5 sensory confirmation now covers external effectors', () => {
     s.entities.set('bob', { id: 'bob', type: 'creature', createdAt: 0, updatedAt: 0,
       metadata: { salience: 0.8 } } as SimulationEntity )
 
-    const extero = new Exteroception({ emitPerceptEvents: false })
+    const extero = new Exteroception()
     apply( s, ( await extero.react( 0, 2, frozen( s ), CTX ) ).commands )   // appeared
     s.entities.get('bob')!.updatedAt = 5
     apply( s, ( await extero.react( 0, 3, frozen( s ), CTX ) ).commands )   // modified → reafferent

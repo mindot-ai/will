@@ -456,49 +456,96 @@ should move only once, deliberately, with aliases.
 > parallel path and prove it byte-identical, exactly as POLICY_REAFFERENCE P0
 > shipped dark. The replay-equivalence capstone gates every phase.
 
-### P0 — **CORRECTED 2026-08-21, before implementation.** The sense door produces nothing durable.
+### P0 — **CORRECTED TWICE, both times before writing code.** The sense door lays down no trace, and the trace it should lay is not the one this file first named.
 
-Traced before writing code, and the original P0 ("`BaseSenseEngine` propagates
-provenance onto the percept it transduces") was **wrong: there is no percept to
-propagate onto.**
+**First correction (2026-08-21):** the original P0 said "`BaseSenseEngine`
+propagates provenance onto the percept it transduces". There is no percept to
+propagate onto. `publishPercept()` emits a **bus event** consumed by three
+subscribers and then gone; **no entity is written.** Audition is the only sense
+that remembers anything, via a `_memorySink` the base class does not provide.
 
-`BaseSenseEngine.publishPercept()` publishes a **bus event** —
-`senses.<domain>.percept`, payload `{ domain, sourceEntityId, timestamp,
-salience, raw }` — consumed by exactly three subscribers (`attention.allocator`,
-`known.entity.tracker`, `action.selector`) and then gone. **No entity is
-written.** Measured across the sense engines:
+**Second correction (2026-08-23), from tracing that sink:** the fix that
+correction proposed — "lift audition's durable write into `BaseSenseEngine`,
+audition's `conversation.received` becomes its specialization" — is also wrong,
+in three ways.
 
-| engine | durable entity write |
-| :--- | :--- |
-| audition | ✅ — `conversation.received`, via its own `_memorySink` |
-| vision · olfaction · gustation · somatosensation | **0 sites each** |
+**1. `conversation.received` is not a generic trace with a specialization.** It
+is a social-cognition record: `sourceKeid`, `sourceName`,
+`directedAtSelf: true`, `action: 'communication'`, `preview`, `chars`. It exists
+because `SocialPerception` had nothing to scan and every downstream consumer —
+reputation, affect, theory-of-mind, attachment, frustration — learned nothing
+from any conversation. A vision frame has no `sourceKeid` and is not
+`directedAtSelf`. Lifting this would make every sense pretend to be a
+conversation.
 
-So the generic sense contract is *transient by construction*, and audition is the
-only sense that remembers anything — because it hand-rolled a durable write the
-base class does not provide.
+**2. The trace the rest of cognition actually reads is `type: 'percept'`** —
+consumed by the rupture gate (`action.selector`), reafference credit
+(`reafference.engine`), `working.memory._ingestPercepts`, the executive context's
+`extractPercepts`, and `novelty.detector`. `Exteroception` writes them for
+world-changes. **Nothing writes one from the sense door.** *That* is the
+portability gap: a robot host ingesting frames reaches none of those five.
 
-**This is the portability gap, and it is bigger than provenance.** Under the
-compass (§0a), a robot host ingesting frames through `ingestSensory('vision', …)`
-would emit a bus event three faculties glance at for one tick, and the mind could
-never remember having *seen* anything. Provenance on a signal that vanishes tags
-nothing. **A sense that cannot lay down a trace is not a sense; it is an
-interrupt.**
+**3. "Durable" is the wrong word, and the difference matters.**
+`exteroception._collectStalePerceptIds` deletes every `percept` older than **2
+ticks**. A `percept` entity is a short-lived staging area; persistence happens
+downstream, WorkingMemory → EpisodicConsolidator → vector. So the sense door
+needs to write a `percept` in order to *enter that pipeline*, not because the
+percept itself lasts.
 
-Which makes P0 the same move as the rest of the epoch — *generalize what one
-place already got right*:
+The mechanism is not the hard part and is already solved once: sense engines are
+ingest-driven and **off-tick**, so they cannot return `StateCommands` — which is
+exactly why audition needed an injected sink (`attachMemorySink`, wired at
+`stem/mind.ts:1066` to `stateManager.setEntity`). The base needs the same.
 
-- [ ] **Lift audition's durable write into `BaseSenseEngine`.** Every sense lays
-      down a trace; audition's `conversation.received` becomes its *specialization*
-      of the general behaviour rather than a private exception.
-- [ ] Provenance rides on that trace, where it now has something to ride.
-- [ ] **Decision required before coding this** — it changes behaviour for a shipped
-      sense (audition), so it is not a dark change. Options: (a) lift and have
-      audition delegate; (b) add the base write and leave audition's in place until
-      P4 removes the duplicate; (c) base write behind a flag, senses opt in.
-      **Leaning (b)** — additive, keeps the quiet path byte-identical, and defers
-      the deletion to the phase that exists for deletions.
+#### The blocker found underneath it — `percept` has no owned lifecycle
 
-The genuinely dark part of P0, unaffected by the above and safe to land first:
+`exteroception` is the **only** sweeper of `type: 'percept'`
+(`social.perception` sweeps `conversation.received` and `percept.social`, not
+this), and it only collects entities whose `metadata.tick` is a number. Two
+writers omit it:
+
+| writer | id | consequence |
+| :--- | :--- | :--- |
+| `outbox.controller` | `msg-delivered-${messageId}` | **unbounded leak** — one immortal `percept` per message the mind ever successfully sends |
+| `stem/index.ts` | `percept-wake-event` | fixed id, so one only — but permanent: "I was offline for 3 hours" stays in state and in front of the executive forever |
+
+Same root cause as the untagged-provenance finding in P0a-c: **`percept`
+entities are written by code that does not own their lifecycle.** Three writers
+skip provenance, two skip the tick. P0 proposes *more* writers from the sense
+door, so building it first would multiply both faults.
+
+#### What P0 therefore is
+
+- [ ] **Own the `percept` contract before widening it.** One constructor for a
+      `percept` entity — id, `tick`, `salience`, `category`, `summary`,
+      `provenance`, optional `sourceIntentId` — so the tick and the provenance
+      cannot be forgotten, and the sweeper's precondition is structural. The
+      `satisfies SignalProvenance` in P0a-c was the first half of this; the
+      constructor is the rest.
+- [ ] Retrofit the five existing writers onto it. `outbox.controller` and
+      `stem/index.ts` gain a `tick` (**fixes the leak**), `escalation.buffer`
+      and both gain provenance. **Behaviour changes here** — a tagged
+      `'exafferent'` wake percept becomes rupture-eligible, which is the fix
+      named in P0a-c and wants its own test.
+- [ ] **Then** `BaseSenseEngine` gains the sink and writes through the same
+      constructor. Nothing else can be the shape of this: the base must not
+      invent a sixth variant of an entity that already has five.
+
+#### The decision that is still yours
+
+Once the base can write, **does audition opt in?** Its four shell siblings can
+opt in for free — they warn-and-return, so nothing observable changes — but
+audition is live, and switching it on means every inbound Discord message
+suddenly reaches **five consumers it has never reached**: the rupture gate
+(where a high-salience exafferent percept can preempt an awaiting intent),
+working memory, the executive prompt, novelty, and reafference credit. On Lora
+that is not a tweak, it is a different mind.
+
+**Recommendation: the base writes the trace, and audition is GRANDFATHERED OUT
+until it is measured** — the inverse of this file's earlier framing. A host
+implementing a new sense gets the trace by default, which is the compass's
+requirement; audition is the documented exception carrying a link to the
+measurement, not the template everyone inherits from.
 
 ### P0a — `SensoryInput` gains provenance (dark) — ✅ **SHIPPED 2026-08-23**
 - [x] `provenance` + `sourceIntentId?` hoisted onto a shared **`SensorySignal`**

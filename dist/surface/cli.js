@@ -29799,7 +29799,14 @@ var Will = class _Will {
       // Omitted when the channel does not know — a room with no name stays
       // unnamed, the same way a person does, rather than being labelled with its id.
       ...stimulus.threadName ? { threadName: stimulus.threadName } : {},
-      provenance: stimulus.provenance,
+      // The one surviving default at the surface, and it is a DEPRECATION, not
+      // a design: `SensoryInput.provenance` is required, so this line exists
+      // solely to keep pre-P3 hosts compiling. It reintroduces the four-state
+      // hole for exactly one hop — an omission becomes a claim nobody made —
+      // which is tolerable only because it is scheduled to die at P3 alongside
+      // the `perceive` → `sense` rename, so a host migrates once instead of
+      // twice. Deleting this `??` is a P3 checklist item.
+      provenance: stimulus.provenance ?? "exafferent",
       ...stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {}
     });
   }

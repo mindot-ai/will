@@ -21,6 +21,7 @@
 
 import type { CognitiveEngine } from '#cognition/types'
 import type { CognitiveBus }    from '#cognition/bus'
+import type { SensorySignal }   from './provenance'
 
 // ── Domain ────────────────────────────────────────────────────
 
@@ -31,10 +32,22 @@ export type SenseDomain =
   | 'olfaction'       // ambient signals  — OlfactionEngine (shell)
   | 'gustation'       // self-evaluation  — GustationEngine (shell)
 
+// ── Provenance (re-exported from ./provenance) ────────────────
+
+export type { SignalProvenance, SensorySignal } from './provenance'
+export { provenanceOf } from './provenance'
+
 // ── Percept types ─────────────────────────────────────────────
 
-/** Base percept published on the CognitiveBus. */
-export interface Percept {
+/**
+ * Base percept published on the CognitiveBus.
+ *
+ * It extends `SensorySignal` because transduction does not change whose doing a
+ * signal was: what the host stamped on the input is what the percept carries.
+ * `BaseSenseEngine.publishPercept()` copies both fields across, so `provenance`
+ * here is always set even when the host omitted it (`provenanceOf`'s default).
+ */
+export interface Percept extends SensorySignal {
   domain:         SenseDomain
   sourceEntityId: string
   timestamp:      number
@@ -56,7 +69,7 @@ export interface LanguagePercept extends Percept {
 // ── Sensory input types (discriminated union) ─────────────────
 
 // Audition
-export interface TextMessage {
+export interface TextMessage extends SensorySignal {
   kind:     'text'
   entityId: string
   threadId: string
@@ -92,7 +105,7 @@ export interface TextMessage {
   threadName?: string
 }
 
-export interface VoiceChunk {
+export interface VoiceChunk extends SensorySignal {
   kind:           'voice'
   entityId:       string
   threadId:       string
@@ -101,14 +114,14 @@ export interface VoiceChunk {
 }
 
 // Vision (stub)
-export interface ImageFrame {
+export interface ImageFrame extends SensorySignal {
   kind:     'image'
   entityId: string
   data:     Buffer
   mimeType: string
 }
 
-export interface VideoSegment {
+export interface VideoSegment extends SensorySignal {
   kind:      'video'
   entityId:  string
   frames:    ImageFrame[]
@@ -116,41 +129,41 @@ export interface VideoSegment {
 }
 
 // Somatosensation (stub)
-export interface WebhookEvent {
+export interface WebhookEvent extends SensorySignal {
   kind:    'webhook'
   source:  string
   payload: unknown
   headers: Record<string, string>
 }
 
-export interface SystemSignal {
+export interface SystemSignal extends SensorySignal {
   kind:   'system'
   signal: string
   data:   unknown
 }
 
 // Olfaction (stub)
-export interface AmbientMetric {
+export interface AmbientMetric extends SensorySignal {
   kind:      'ambient'
   metricKey: string
   value:     number
   trend:     'rising' | 'falling' | 'stable'
 }
 
-export interface BackgroundSignal {
+export interface BackgroundSignal extends SensorySignal {
   kind:     'background'
   category: string
   data:     unknown
 }
 
 // Gustation (stub)
-export interface InternalEvaluation {
+export interface InternalEvaluation extends SensorySignal {
   kind:    'self-eval'
   context: string
   trigger: string
 }
 
-export interface SelfAssessmentTrigger {
+export interface SelfAssessmentTrigger extends SensorySignal {
   kind:      'assessment'
   goalId?:   string
   checkType: string

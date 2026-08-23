@@ -20095,6 +20095,11 @@ function computeLanguageSalience(opts) {
   return clamp014(base + urgency + attach + goal + length);
 }
 
+// src/cognition/senses/provenance.ts
+function provenanceOf(input) {
+  return input.provenance ?? "exafferent";
+}
+
 // src/cognition/senses/base.sense.engine.ts
 var BaseSenseEngine = class {
   /**
@@ -20141,14 +20146,27 @@ var BaseSenseEngine = class {
    * Publish a percept on this engine's `senses.<domain>.percept` topic. The
    * single emit chokepoint — the AttentionAllocator (and, in future, a
    * cross-modal binder) observes percepts here.
+   *
+   * `from` is the signal this percept was transduced FROM, and it is required
+   * rather than optional on purpose: every percept has a cause, and the one
+   * fact transduction must not lose is whose doing that cause was. Taking it
+   * here — instead of stashing the in-flight input on a field — is what keeps
+   * the stamp correct while `_perceive()` is async and two ingests overlap.
+   * A percept arrives already stamped; downstream never has to guess.
    */
-  publishPercept(percept) {
+  publishPercept(percept, from) {
+    const { provenance: _stale, sourceIntentId: _staleIntent, ...rest } = percept;
+    const stamped = {
+      ...rest,
+      provenance: provenanceOf(from),
+      ...from.sourceIntentId ? { sourceIntentId: from.sourceIntentId } : {}
+    };
     this._bus?.publish({
       type: `senses.${this.domain}.percept`,
       version: 1,
       sourceEngine: this.name,
-      salience: percept.salience,
-      payload: percept
+      salience: stamped.salience,
+      payload: stamped
     });
   }
 };
@@ -20541,7 +20559,7 @@ var AuditionEngine = class extends BaseSenseEngine {
       timestamp: wallClock(),
       raw: msg
     };
-    this.publishPercept(percept);
+    this.publishPercept(percept, msg);
     this._digests.append(threadId, "user", content);
     this._inflightInbound.set(entityId, content);
     this._inflightThread.set(entityId, threadId);
@@ -30836,6 +30854,6 @@ function describe(c) {
   return null;
 }
 
-export { ActionSelector, AestheticEvaluator, AffectiveBlender, AffordanceSynthesizer, AsyncEngine, AttachmentEvaluator, AttentionAllocator, AuditionEngine, AutobiographicalNarrator, BACKGROUND_DEMAND, BiasDetector, BunStorageAdapter, CircadianOscillator, ConfidenceCalibrator, ConflictDetector, ConsistentHashRouter, ConsoleLogger, DefaultEventBus, DefaultMetricCollector, DefaultOrchestrator, DefaultPartitionRouter, DefaultReplayRecorder, DefaultReplaySession, DefaultScenario, DefaultSerializer, DefaultSimulation, DefaultSimulationClock, DefaultStateManager, DefaultVectorMemoryAdapter, DeliberationEngine, DeltaEncoder, DistributedOrchestrator, DistributedStateManager, DreamSimulator, ESCALATION_DEMAND, EmpathySimulator, EnergyRegulator, EpisodicConsolidator, ExecutiveEngine, Exteroception, ForgettingCurve, FrustrationEvaluator, GoalManager, GustationEngine, InhibitionController, Interoception, IntrospectionEngine, KNOWN_PROVIDERS, KnownEntityTracker, LocalTransport, LoopbackTransport, LossEvaluator, MockEmbedder, MoralEvaluator, MotorSchemaExecutor, NULL_ARBITER, NULL_ROUTER, NoveltyDetector, OUTBOX_TTL_TICKS, OlfactionEngine, OpenAICompatibleEmbedder, PMAEvalHarness, PersonaConsolidator, PlanningEngine, ReafferenceEngine, ReplayManager, ReputationTracker, RewardEvaluator, RuleTableArbiter, SelfModelUpdater, SemanticIntegrator, SilentLogger, SleepPressureRegulator, SocialPerception, SocketIoTransport, SomatosensationEngine, SpacedRepetition, StreamTransport, StressRegulator, TableRouter, TaskSwitcher, TheoryOfMind, ThreatEvaluator, TokenTracker, VisionEngine, Will, WillStem, WorkingMemory, asFinality, assembleMind, chainRouters, clearCompletionRecorder, createContext, createPRNG, defaultBaseFor, fileLoggingEnabled, finalityOf, getCompletionRecorder, getLogger, isNullArbiter, isNullRouter, knownWireFor, listProfiles, logger, resetLogger, resolvePricing, resolveProfile, setCompletionRecorder, setLogger };
+export { ActionSelector, AestheticEvaluator, AffectiveBlender, AffordanceSynthesizer, AsyncEngine, AttachmentEvaluator, AttentionAllocator, AuditionEngine, AutobiographicalNarrator, BACKGROUND_DEMAND, BiasDetector, BunStorageAdapter, CircadianOscillator, ConfidenceCalibrator, ConflictDetector, ConsistentHashRouter, ConsoleLogger, DefaultEventBus, DefaultMetricCollector, DefaultOrchestrator, DefaultPartitionRouter, DefaultReplayRecorder, DefaultReplaySession, DefaultScenario, DefaultSerializer, DefaultSimulation, DefaultSimulationClock, DefaultStateManager, DefaultVectorMemoryAdapter, DeliberationEngine, DeltaEncoder, DistributedOrchestrator, DistributedStateManager, DreamSimulator, ESCALATION_DEMAND, EmpathySimulator, EnergyRegulator, EpisodicConsolidator, ExecutiveEngine, Exteroception, ForgettingCurve, FrustrationEvaluator, GoalManager, GustationEngine, InhibitionController, Interoception, IntrospectionEngine, KNOWN_PROVIDERS, KnownEntityTracker, LocalTransport, LoopbackTransport, LossEvaluator, MockEmbedder, MoralEvaluator, MotorSchemaExecutor, NULL_ARBITER, NULL_ROUTER, NoveltyDetector, OUTBOX_TTL_TICKS, OlfactionEngine, OpenAICompatibleEmbedder, PMAEvalHarness, PersonaConsolidator, PlanningEngine, ReafferenceEngine, ReplayManager, ReputationTracker, RewardEvaluator, RuleTableArbiter, SelfModelUpdater, SemanticIntegrator, SilentLogger, SleepPressureRegulator, SocialPerception, SocketIoTransport, SomatosensationEngine, SpacedRepetition, StreamTransport, StressRegulator, TableRouter, TaskSwitcher, TheoryOfMind, ThreatEvaluator, TokenTracker, VisionEngine, Will, WillStem, WorkingMemory, asFinality, assembleMind, chainRouters, clearCompletionRecorder, createContext, createPRNG, defaultBaseFor, fileLoggingEnabled, finalityOf, getCompletionRecorder, getLogger, isNullArbiter, isNullRouter, knownWireFor, listProfiles, logger, provenanceOf, resetLogger, resolvePricing, resolveProfile, setCompletionRecorder, setLogger };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

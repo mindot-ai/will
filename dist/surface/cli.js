@@ -21567,6 +21567,11 @@ function computeLanguageSalience(opts) {
   return clamp015(base + urgency + attach + goal + length);
 }
 
+// src/cognition/senses/provenance.ts
+function provenanceOf(input) {
+  return input.provenance ?? "exafferent";
+}
+
 // src/cognition/senses/base.sense.engine.ts
 var BaseSenseEngine = class {
   /**
@@ -21613,14 +21618,27 @@ var BaseSenseEngine = class {
    * Publish a percept on this engine's `senses.<domain>.percept` topic. The
    * single emit chokepoint — the AttentionAllocator (and, in future, a
    * cross-modal binder) observes percepts here.
+   *
+   * `from` is the signal this percept was transduced FROM, and it is required
+   * rather than optional on purpose: every percept has a cause, and the one
+   * fact transduction must not lose is whose doing that cause was. Taking it
+   * here — instead of stashing the in-flight input on a field — is what keeps
+   * the stamp correct while `_perceive()` is async and two ingests overlap.
+   * A percept arrives already stamped; downstream never has to guess.
    */
-  publishPercept(percept) {
+  publishPercept(percept, from) {
+    const { provenance: _stale, sourceIntentId: _staleIntent, ...rest } = percept;
+    const stamped = {
+      ...rest,
+      provenance: provenanceOf(from),
+      ...from.sourceIntentId ? { sourceIntentId: from.sourceIntentId } : {}
+    };
     this._bus?.publish({
       type: `senses.${this.domain}.percept`,
       version: 1,
       sourceEngine: this.name,
-      salience: percept.salience,
-      payload: percept
+      salience: stamped.salience,
+      payload: stamped
     });
   }
 };
@@ -22013,7 +22031,7 @@ var AuditionEngine = class extends BaseSenseEngine {
       timestamp: wallClock(),
       raw: msg
     };
-    this.publishPercept(percept);
+    this.publishPercept(percept, msg);
     this._digests.append(threadId, "user", content);
     this._inflightInbound.set(entityId, content);
     this._inflightThread.set(entityId, threadId);

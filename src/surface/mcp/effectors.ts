@@ -53,7 +53,24 @@ export interface McpToolInfo {
   }
 }
 
-/** Keep tool outcomes bounded — the description feeds reafference + episodic memory. */
+/**
+ * Keep tool outcomes bounded. Corrected 2026-08-23 (SIGNAL_BOUNDARY P0a) — the
+ * claim here used to be "feeds reafference + episodic memory", and the second
+ * half was never true. Traced, a result `description` reaches exactly three
+ * places and none of them is episodic memory:
+ *
+ *   • `agency.outcome` state, via `reconcileInvocation` — the reafference the
+ *     ReafferenceEngine learns from next tick;
+ *   • the executive prompt's `action.record`, **truncated to 120 chars**
+ *     (`executive.engine.ts`);
+ *   • the session log's `action.outcome`, capped at 300 — telemetry, not memory.
+ *
+ * So 700 is generous against the only consumer the mind actually reads with:
+ * everything past the first 120 characters is written for a reader that does
+ * not exist. The cap stays until the 120 is dealt with on its own terms — see
+ * `.TODO/SIGNAL_BOUNDARY.md` — rather than being quietly tuned to match a
+ * truncation that is itself the defect.
+ */
 const RESULT_DESCRIPTION_CAP = 700
 /** Keep ability meanings bounded — they render into the executive prompt. */
 const MEANING_CAP = 300

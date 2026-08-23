@@ -47,6 +47,7 @@ import { SensoryController } from '#stem/tracts/sensory.controller'
 import { BiographyWriter } from '#stem/tracts/biography.writer'
 import { HealthReporter } from '#stem/tracts/health.reporter'
 import { mergeIdentity } from '#cognition/identity.entity'
+import { perceptEntity } from '#cognition/percept.entity'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -576,19 +577,26 @@ export class WillStem {
           ? `${offlineMins} minutes`
           : `${Math.round( offlineMins / 60 )} hours`
 
-      instance.simulation.stateManager.setEntity({
-        id:        'percept-wake-event',
-        type:      'percept',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        metadata: {
-          category:  'system',
-          summary:   `I was offline for ${duration}. I am now online again.`,
-          salience:  0.75,
-          source:    'system',
-          offlineMs,
-        },
-      })
+      // EXAFFERENT: time passed and the host brought me back. Nothing I did
+      // caused it, and that tag is load-bearing — `action.selector`'s rupture
+      // gate counts only exafferent percepts, so while this was untagged a mind
+      // returning after hours away could not be ruptured by noticing.
+      //
+      // The `tick` was missing too, which made this the only percept in the
+      // system that never expired: at salience 0.75 it outranked most of what
+      // `extractPercepts` had to offer and stayed in the executive's slots
+      // permanently, still announcing an absence that ended long ago. It is
+      // ingested into working memory on the next tick, so it is noticed once
+      // and then, correctly, becomes something remembered rather than something
+      // still happening.
+      instance.simulation.stateManager.setEntity( perceptEntity( {
+        id:         'percept-wake-event',
+        tick:       instance.tickCount,
+        category:   'system',
+        summary:    `I was offline for ${duration}. I am now online again.`,
+        salience:   0.75,
+        provenance: 'exafferent',
+      }, { source: 'system', offlineMs } ) )
 
       instance.pausedAt = null
     }

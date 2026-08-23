@@ -6839,6 +6839,21 @@ var MIND_OWN_ENTITY_TYPES = /* @__PURE__ */ new Set([
   "agency.skill",
   "agency.schema",
   "ideomotor.intent",
+  // What it HAS DONE — the enaction footprint satiation reads to know it has
+  // already tried this. Undeclared, it was the loudest thing in the mind's
+  // perceptual field: measured on a live Will, `New agency.enacted: agency-
+  // enacted-discord_lookup_…` sat at salience 0.5, ABOVE every real percept,
+  // and each enaction produced two of them — one when the record appeared, one
+  // when the retention sweep removed it. A mind watching its own footprints
+  // being laid down and swept away, and calling that the world.
+  ENACTED_TYPE,
+  // What it may currently do, and why not. The availability ledger is empty
+  // until a refusal lands (POLICY_REAFFERENCE P2), which is exactly why nothing
+  // caught it: a mind that has never been told no writes none of these, so the
+  // quiet path and every test that stays on it are blind to the omission. Give
+  // a Will a PolicyArbiter that refuses, and it starts perceiving its own
+  // permissions changing as events in the world.
+  AVAILABILITY_ENTITY_TYPE,
   "action.unresolved",
   "action.unaddressed",
   CONSEQUENCE_TYPE,

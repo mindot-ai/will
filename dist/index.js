@@ -4605,6 +4605,411 @@ function matchConsequenceEntity(descriptors, entityId, changeType) {
   return null;
 }
 
+// src/cognition/agency/schemas/innate.ts
+var INNATE_SCHEMAS = [
+  // ── objectless stances ───────────────────────────────────────
+  {
+    id: "orient",
+    kind: "primitive",
+    source: "innate",
+    binds: "none",
+    cost: 0.05,
+    baseValence: 0,
+    tags: ["perception", "reflexive"]
+  },
+  {
+    id: "attend",
+    kind: "primitive",
+    source: "innate",
+    binds: "none",
+    cost: 0.08,
+    preconditions: [{ metric: "energy.level", op: "gt", value: 10 }],
+    baseValence: 0,
+    tags: ["attention", "meta-cognition"]
+  },
+  {
+    id: "rest",
+    kind: "primitive",
+    source: "innate",
+    binds: "none",
+    cost: 0,
+    preconditions: [{ metric: "energy.level", op: "lt", value: 95 }],
+    baseValence: 0.15,
+    tags: ["self-care", "regulatory"]
+  },
+  {
+    id: "withdraw",
+    kind: "primitive",
+    source: "innate",
+    binds: "none",
+    cost: 0.03,
+    baseValence: 0.05,
+    tags: ["self-protection", "regulatory"]
+  },
+  {
+    id: "reflect",
+    kind: "primitive",
+    source: "innate",
+    binds: "none",
+    cost: 0.06,
+    preconditions: [{ metric: "energy.level", op: "gt", value: 10 }],
+    baseValence: 0.05,
+    tags: ["cognitive", "meta-cognition", "internal"]
+  },
+  {
+    id: "wait",
+    kind: "primitive",
+    source: "innate",
+    binds: "none",
+    cost: 0.01,
+    baseValence: 0,
+    tags: ["neutral"]
+  },
+  {
+    id: "express",
+    kind: "primitive",
+    source: "innate",
+    binds: "none",
+    cost: 0.02,
+    baseValence: 0.1,
+    tags: ["affective", "expression"]
+  },
+  // ── perception-bound possibilities ───────────────────────────
+  {
+    id: "inspect",
+    kind: "primitive",
+    source: "perceptual",
+    binds: "percept",
+    cost: 0.06,
+    preconditions: [{ metric: "energy.level", op: "gt", value: 8 }],
+    baseValence: 0.05,
+    /**
+     * Outward only — a question put to the world, which is the only thing that
+     * can answer it.
+     *
+     * Turning attention inward already has three names on this very floor:
+     * `orient` sweeps the situation, `attend` mobilises attention, `reflect`
+     * turns inward and lets patterns settle. `inspect` naming that too was a
+     * second name for an act that already had one.
+     *
+     * The collision was not stylistic. The two readings have DIFFERENT failure
+     * modes — "I hold no record of it" versus "the world did not answer" — so one
+     * verb covering both forced three disambiguation flags into a pure function,
+     * and left the inward reading unable to fail at all. Live, a fresh Will
+     * proceduralized this to habit 0.64 within fifteen ticks of birth and spent
+     * five of its first eight decisions on it, examining its own affordance
+     * entities and being told each time that it went well.
+     *
+     * Tagged external it rides the path `reach-out` already rides: dispatched to
+     * the host, held awaiting, acked or timed out. The ack carries only
+     * `{success, description, metrics}`, so a host CANNOT hand facts back through
+     * it — an answer must arrive the one way anything reaches this mind, as a
+     * percept it judges for itself. An unanswered look fails at AWAIT_TIMEOUT,
+     * which is what teaches a mind to stop examining what will not resolve.
+     *
+     * Innate AND host-dependent is not a contradiction; `reach-out` is both.
+     * Every mind can look, but whether looking finds anything depends on there
+     * being a world.
+     */
+    tags: ["perception", "information", "external"]
+  },
+  {
+    id: "reach-out",
+    kind: "primitive",
+    source: "social",
+    binds: "entity",
+    cost: 0.1,
+    preconditions: [{ metric: "energy.level", op: "gt", value: 5 }],
+    baseValence: 0.2,
+    tags: ["social", "communication"]
+  }
+];
+var INNATE_SCHEMA_BY_ID = new Map(INNATE_SCHEMAS.map((s) => [s.id, s]));
+
+// src/cognition/agency/schemas/repertoire.ts
+var VALUE_ALPHA = 0.2;
+var ERROR_BETA = 0.2;
+var HABIT_GAIN = 0.12;
+var HABIT_FAIL_DECAY = 0.1;
+var CONFIDENT_ERROR = 0.3;
+var PROC_THRESHOLD = 0.6;
+var IDLE_TICKS = 200;
+var DECAY_RATE = 0.02;
+var DROP_HABIT = 0.05;
+var AVAIL_DROP_CLASS = 0.5;
+var AVAIL_DROP_PARAMETER = 0.12;
+var AVAIL_FLOOR = 0.05;
+var AVAIL_RECOVERY = 0.02;
+var AVAIL_RECOVERED = 0.999;
+var SchemaRepertoire = class {
+  _templates = /* @__PURE__ */ new Map();
+  _skills = /* @__PURE__ */ new Map();
+  /** Tracks which templates were learned at runtime (vs innate) so decay can forget them. */
+  _learned = /* @__PURE__ */ new Set();
+  /** Availability layer (P2): schema → { value 0..1, lastRefusedTick }. Empty until
+   *  a refusal lands — a never-refused Will writes nothing here (byte-identical). */
+  _availability = /* @__PURE__ */ new Map();
+  constructor(seed = INNATE_SCHEMAS) {
+    for (const s of seed) this._templates.set(s.id, s);
+  }
+  // ── templates ─────────────────────────────────────────────────
+  schemas() {
+    return [...this._templates.values()];
+  }
+  getSchema(id) {
+    return this._templates.get(id);
+  }
+  /** Register a learned composite skill template (starts with no habit). */
+  registerComposite(schema) {
+    this._templates.set(schema.id, schema);
+    this._learned.add(schema.id);
+    if (!this._skills.has(schema.id))
+      this._skills.set(schema.id, freshSkill(schema.id, 0.4, 0));
+  }
+  /**
+   * Register a host effector's primitive schema at runtime (post-create
+   * `.effector()`). Unlike a composite it is NOT marked learned — it is a
+   * capacity the host granted, which the synthesizer surfaces immediately and
+   * reafference then builds skill on. Idempotent; re-registering updates it.
+   */
+  registerExternal(schema) {
+    if (INNATE_SCHEMA_BY_ID.has(schema.id)) {
+      logger.debug(`[repertoire] "${schema.id}" is innate \u2014 keeping the body's schema, binding the handler only`);
+      return;
+    }
+    this._templates.set(schema.id, schema);
+  }
+  // ── skills ────────────────────────────────────────────────────
+  skills() {
+    return this._skills;
+  }
+  getSkill(id) {
+    return this._skills.get(id);
+  }
+  // ── availability (P2) ─────────────────────────────────────────
+  availability() {
+    return this._availability;
+  }
+  /**
+   * How available a schema is right now, 0..1. Absent from the ledger ⇒ 1
+   * (fully available — the common case). This is the ONLY value the
+   * AffordanceSynthesizer reads; it never touches competence.
+   */
+  availabilityOf(schema) {
+    return this._availability.get(schema)?.value ?? 1;
+  }
+  /**
+   * Fold a policy refusal into the availability layer (NOT competence). A
+   * `class` refusal cuts availability hard; a `parameter` refusal dents it
+   * lightly. Multiplicative so repeated refusals compound toward — but never
+   * reach — zero, keeping re-probe alive.
+   *
+   * `context` is EXCLUDED FROM THE SIGNATURE, not handled inside: a refusal
+   * that was not about the action must never reach the availability layer at
+   * all, and making that a type error rather than a convention means a future
+   * caller cannot quietly re-introduce the dent. The routing decision lives in
+   * the ReafferenceEngine's refused branch (P5).
+   */
+  recordRefusal(schema, finality, tick) {
+    const prev = this._availability.get(schema)?.value ?? 1;
+    const drop = finality === "class" ? AVAIL_DROP_CLASS : AVAIL_DROP_PARAMETER;
+    const value = Math.max(AVAIL_FLOOR, prev * (1 - drop));
+    this._availability.set(schema, { value, lastRefusedTick: tick });
+    return value;
+  }
+  /**
+   * Fold one outcome into the schema's learned skill. Returns the updated skill
+   * and whether it just crossed the proceduralization threshold this update.
+   */
+  recordOutcome(o) {
+    const prior = this._skills.get(o.schema) ?? freshSkill(o.schema, o.predictedReward, o.tick);
+    const wasProceduralized = prior.habitStrength >= PROC_THRESHOLD;
+    const error = clamp01(Math.abs(o.predictedReward - o.outcomeQuality));
+    const confident = o.success && error < CONFIDENT_ERROR;
+    const habitStrength = clamp01(
+      confident ? prior.habitStrength + HABIT_GAIN * (1 - prior.habitStrength) : prior.habitStrength - HABIT_FAIL_DECAY * prior.habitStrength
+    );
+    const skill = {
+      schema: o.schema,
+      habitStrength,
+      valueEstimate: clamp01(prior.valueEstimate + VALUE_ALPHA * (o.outcomeQuality - prior.valueEstimate)),
+      paramPriors: o.success && o.params ? { ...prior.paramPriors, ...o.params } : prior.paramPriors,
+      enactments: prior.enactments + 1,
+      successes: prior.successes + (o.success ? 1 : 0),
+      avgPredictionError: prior.avgPredictionError + ERROR_BETA * (error - prior.avgPredictionError),
+      lastEnactedTick: o.tick
+    };
+    this._skills.set(o.schema, skill);
+    return { skill, proceduralized: !wasProceduralized && habitStrength >= PROC_THRESHOLD };
+  }
+  /**
+   * Forgetting curve over the competence layer, plus availability recovery.
+   * Skills unused for IDLE_TICKS lose habit; learned composites below DROP_HABIT
+   * are dropped entirely (template + skill). Availability entries climb back
+   * toward 1 and are dropped once fully recovered. Returns the ids that were
+   * removed from each layer so their mirrored state entities can be deleted.
+   */
+  decay(tick) {
+    const skills = [];
+    for (const [id, skill] of this._skills) {
+      if (tick - skill.lastEnactedTick <= IDLE_TICKS) continue;
+      const habitStrength = clamp01(skill.habitStrength - DECAY_RATE);
+      if (this._learned.has(id) && habitStrength < DROP_HABIT) {
+        this._skills.delete(id);
+        this._templates.delete(id);
+        this._learned.delete(id);
+        skills.push(id);
+        continue;
+      }
+      this._skills.set(id, { ...skill, habitStrength });
+    }
+    const availability = [];
+    for (const [id, avail] of this._availability) {
+      const value = avail.value + AVAIL_RECOVERY * (1 - avail.value);
+      if (value >= AVAIL_RECOVERED) {
+        this._availability.delete(id);
+        availability.push(id);
+      } else this._availability.set(id, { ...avail, value });
+    }
+    return { skills, availability };
+  }
+  // ── PMA portability (Phase 6 reads these) ─────────────────────
+  /** Learned composite templates + all skills above a confidence floor. */
+  export(minHabit = 0) {
+    return {
+      composites: [...this._learned].map((id) => this._templates.get(id)).filter((s) => !!s),
+      skills: [...this._skills.values()].filter((s) => s.habitStrength >= minHabit)
+    };
+  }
+  import(data) {
+    for (const c of data.composites ?? []) {
+      this._templates.set(c.id, c);
+      this._learned.add(c.id);
+    }
+    for (const s of data.skills ?? []) this._skills.set(s.schema, s);
+  }
+  // ── snapshot / replay portability (deterministic state path) ──
+  // Skills mirror to `agency.skill`; the invented composite *definitions* must
+  // travel too, or a snapshot/restore brings back an `agency.skill` whose schema
+  // is gone and the MotorSchemaExecutor can't expand it (it misroutes the intent
+  // to the host and times out). compositeEntities() is the write side (the
+  // ReafferenceEngine pushes these each tick); restoreComposites() is the read
+  // side, called from the first agency engine after a restore.
+  /** Learned composite templates encoded as `agency.schema` state entities. */
+  compositeEntities() {
+    const out = [];
+    for (const id of this._learned) {
+      const s = this._templates.get(id);
+      if (s && s.kind === "composite") out.push(schemaEntity(s));
+    }
+    return out;
+  }
+  /**
+   * Re-register learned composites from `agency.schema` state entities after a
+   * restore rebuilt the repertoire innate-only. Idempotent — skips composites
+   * already present and never seeds a fresh skill (the restored `agency.skill`
+   * entity and future outcomes own the habit; seeding here would reset it).
+   * Mirrors GoalManager._syncFromStateGoals.
+   */
+  restoreComposites(entities) {
+    for (const e of entities.values()) {
+      if (e.type !== SCHEMA_ENTITY_TYPE) continue;
+      const s = readSchema(e.metadata);
+      if (!s || this._templates.has(s.id)) continue;
+      this._templates.set(s.id, s);
+      this._learned.add(s.id);
+    }
+  }
+  /** Availability ledger encoded as `agency.availability` state entities (P2).
+   *  Empty until a refusal lands, so the quiet path writes nothing. */
+  availabilityEntities() {
+    const out = [];
+    for (const [schema, a] of this._availability)
+      out.push(availabilityEntity(schema, a.value, a.lastRefusedTick));
+    return out;
+  }
+  /** Rehydrate the availability ledger from state after a restore. Idempotent;
+   *  keeps whichever value is more restrictive so a concurrent refusal isn't lost. */
+  restoreAvailability(entities) {
+    for (const e of entities.values()) {
+      if (e.type !== AVAILABILITY_ENTITY_TYPE) continue;
+      const m = e.metadata ?? {};
+      const schema = typeof m["schema"] === "string" ? m["schema"] : "";
+      if (!schema) continue;
+      const value = typeof m["value"] === "number" ? m["value"] : 1;
+      const tick = typeof m["lastRefusedTick"] === "number" ? m["lastRefusedTick"] : 0;
+      const prev = this._availability.get(schema);
+      if (!prev || value < prev.value) this._availability.set(schema, { value, lastRefusedTick: tick });
+    }
+  }
+};
+function freshSkill(schema, value, tick) {
+  return {
+    schema,
+    habitStrength: 0,
+    valueEstimate: clamp01(value),
+    paramPriors: {},
+    enactments: 0,
+    successes: 0,
+    avgPredictionError: 0,
+    lastEnactedTick: tick
+  };
+}
+function clamp01(n) {
+  return n < 0 ? 0 : n > 1 ? 1 : n;
+}
+var AVAILABILITY_ENTITY_TYPE = "agency.availability";
+function availabilityEntityId(schema) {
+  return `agency-availability-${schema}`;
+}
+function availabilityEntity(schema, value, lastRefusedTick) {
+  return {
+    id: availabilityEntityId(schema),
+    type: AVAILABILITY_ENTITY_TYPE,
+    metadata: { schema, value, lastRefusedTick }
+  };
+}
+var SCHEMA_ENTITY_TYPE = "agency.schema";
+function schemaEntityId(schemaId) {
+  return `agency-schema-${schemaId}`;
+}
+function schemaEntity(s) {
+  return {
+    id: schemaEntityId(s.id),
+    type: SCHEMA_ENTITY_TYPE,
+    metadata: {
+      id: s.id,
+      kind: s.kind,
+      source: s.source,
+      cost: s.cost,
+      binds: s.binds,
+      preconditions: s.preconditions,
+      composedOf: s.composedOf,
+      baseValence: s.baseValence,
+      description: s.description,
+      tags: s.tags
+    }
+  };
+}
+function readSchema(m) {
+  const meta3 = m ?? {};
+  const id = typeof meta3["id"] === "string" ? meta3["id"] : void 0;
+  const kind = meta3["kind"];
+  if (!id || kind !== "composite" && kind !== "primitive") return void 0;
+  return {
+    id,
+    kind,
+    source: meta3["source"] ?? "repertoire",
+    cost: typeof meta3["cost"] === "number" ? meta3["cost"] : 0,
+    binds: meta3["binds"] ?? "none",
+    preconditions: meta3["preconditions"],
+    composedOf: Array.isArray(meta3["composedOf"]) ? meta3["composedOf"] : void 0,
+    baseValence: typeof meta3["baseValence"] === "number" ? meta3["baseValence"] : void 0,
+    description: typeof meta3["description"] === "string" ? meta3["description"] : void 0,
+    tags: Array.isArray(meta3["tags"]) ? meta3["tags"] : void 0
+  };
+}
+
 // src/cognition/agency/revocation.ts
 var REVOCATION_TYPE = "agency.revocation";
 var RUPTURE_REVOKE_GATE = 0.7;
@@ -4806,6 +5211,21 @@ var MIND_OWN_ENTITY_TYPES = /* @__PURE__ */ new Set([
   "agency.skill",
   "agency.schema",
   "ideomotor.intent",
+  // What it HAS DONE — the enaction footprint satiation reads to know it has
+  // already tried this. Undeclared, it was the loudest thing in the mind's
+  // perceptual field: measured on a live Will, `New agency.enacted: agency-
+  // enacted-discord_lookup_…` sat at salience 0.5, ABOVE every real percept,
+  // and each enaction produced two of them — one when the record appeared, one
+  // when the retention sweep removed it. A mind watching its own footprints
+  // being laid down and swept away, and calling that the world.
+  ENACTED_TYPE,
+  // What it may currently do, and why not. The availability ledger is empty
+  // until a refusal lands (POLICY_REAFFERENCE P2), which is exactly why nothing
+  // caught it: a mind that has never been told no writes none of these, so the
+  // quiet path and every test that stays on it are blind to the omission. Give
+  // a Will a PolicyArbiter that refuses, and it starts perceiving its own
+  // permissions changing as events in the world.
+  AVAILABILITY_ENTITY_TYPE,
   "action.unresolved",
   "action.unaddressed",
   CONSEQUENCE_TYPE,
@@ -8301,127 +8721,6 @@ var EpisodicConsolidator = class {
   }
 };
 
-// src/cognition/agency/schemas/innate.ts
-var INNATE_SCHEMAS = [
-  // ── objectless stances ───────────────────────────────────────
-  {
-    id: "orient",
-    kind: "primitive",
-    source: "innate",
-    binds: "none",
-    cost: 0.05,
-    baseValence: 0,
-    tags: ["perception", "reflexive"]
-  },
-  {
-    id: "attend",
-    kind: "primitive",
-    source: "innate",
-    binds: "none",
-    cost: 0.08,
-    preconditions: [{ metric: "energy.level", op: "gt", value: 10 }],
-    baseValence: 0,
-    tags: ["attention", "meta-cognition"]
-  },
-  {
-    id: "rest",
-    kind: "primitive",
-    source: "innate",
-    binds: "none",
-    cost: 0,
-    preconditions: [{ metric: "energy.level", op: "lt", value: 95 }],
-    baseValence: 0.15,
-    tags: ["self-care", "regulatory"]
-  },
-  {
-    id: "withdraw",
-    kind: "primitive",
-    source: "innate",
-    binds: "none",
-    cost: 0.03,
-    baseValence: 0.05,
-    tags: ["self-protection", "regulatory"]
-  },
-  {
-    id: "reflect",
-    kind: "primitive",
-    source: "innate",
-    binds: "none",
-    cost: 0.06,
-    preconditions: [{ metric: "energy.level", op: "gt", value: 10 }],
-    baseValence: 0.05,
-    tags: ["cognitive", "meta-cognition", "internal"]
-  },
-  {
-    id: "wait",
-    kind: "primitive",
-    source: "innate",
-    binds: "none",
-    cost: 0.01,
-    baseValence: 0,
-    tags: ["neutral"]
-  },
-  {
-    id: "express",
-    kind: "primitive",
-    source: "innate",
-    binds: "none",
-    cost: 0.02,
-    baseValence: 0.1,
-    tags: ["affective", "expression"]
-  },
-  // ── perception-bound possibilities ───────────────────────────
-  {
-    id: "inspect",
-    kind: "primitive",
-    source: "perceptual",
-    binds: "percept",
-    cost: 0.06,
-    preconditions: [{ metric: "energy.level", op: "gt", value: 8 }],
-    baseValence: 0.05,
-    /**
-     * Outward only — a question put to the world, which is the only thing that
-     * can answer it.
-     *
-     * Turning attention inward already has three names on this very floor:
-     * `orient` sweeps the situation, `attend` mobilises attention, `reflect`
-     * turns inward and lets patterns settle. `inspect` naming that too was a
-     * second name for an act that already had one.
-     *
-     * The collision was not stylistic. The two readings have DIFFERENT failure
-     * modes — "I hold no record of it" versus "the world did not answer" — so one
-     * verb covering both forced three disambiguation flags into a pure function,
-     * and left the inward reading unable to fail at all. Live, a fresh Will
-     * proceduralized this to habit 0.64 within fifteen ticks of birth and spent
-     * five of its first eight decisions on it, examining its own affordance
-     * entities and being told each time that it went well.
-     *
-     * Tagged external it rides the path `reach-out` already rides: dispatched to
-     * the host, held awaiting, acked or timed out. The ack carries only
-     * `{success, description, metrics}`, so a host CANNOT hand facts back through
-     * it — an answer must arrive the one way anything reaches this mind, as a
-     * percept it judges for itself. An unanswered look fails at AWAIT_TIMEOUT,
-     * which is what teaches a mind to stop examining what will not resolve.
-     *
-     * Innate AND host-dependent is not a contradiction; `reach-out` is both.
-     * Every mind can look, but whether looking finds anything depends on there
-     * being a world.
-     */
-    tags: ["perception", "information", "external"]
-  },
-  {
-    id: "reach-out",
-    kind: "primitive",
-    source: "social",
-    binds: "entity",
-    cost: 0.1,
-    preconditions: [{ metric: "energy.level", op: "gt", value: 5 }],
-    baseValence: 0.2,
-    tags: ["social", "communication"]
-  }
-];
-var INNATE_SCHEMA_BY_ID = new Map(INNATE_SCHEMAS.map((s) => [s.id, s]));
-
 // src/cognition/faculties/executive.engine/commands.ts
 var EVIDENCE_TO_COUNT = {
   single_observation: 1,
@@ -8704,7 +9003,7 @@ function buildIdeomotorIntents(output, state, footprint) {
   const seen = /* @__PURE__ */ new Set();
   const unresolved = /* @__PURE__ */ new Set();
   const unaddressed = /* @__PURE__ */ new Set();
-  const priority = clamp01(output.confidence ?? 0.8);
+  const priority = clamp012(output.confidence ?? 0.8);
   const externalBySchema = /* @__PURE__ */ new Map();
   for (const e of state.entities.values()) {
     if (e.type !== "affordance") continue;
@@ -8809,7 +9108,7 @@ function buildIdeomotorIntents(output, state, footprint) {
     del.push("action.unaddressed");
   return { set, delete: del };
 }
-function clamp01(n) {
+function clamp012(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 function inferPredictedDomains(output) {
@@ -12256,14 +12555,14 @@ var W_NOVELTY = 0.2;
 var W_PENDING = 0.15;
 var W_STRESS = 0.1;
 var DELIBERATE_THRESHOLD = 0.5;
-var clamp012 = (x) => Math.max(0, Math.min(1, x));
+var clamp013 = (x) => Math.max(0, Math.min(1, x));
 function selectProcess(signals, threshold = DELIBERATE_THRESHOLD) {
   const contributions = [
-    ["uncertainty", W_UNCERTAINTY * clamp012(signals.epistemicUncertainty)],
-    ["low_confidence", W_LOW_CONFIDENCE * (1 - clamp012(signals.priorConfidence))],
-    ["novelty", W_NOVELTY * clamp012(signals.novelty)],
+    ["uncertainty", W_UNCERTAINTY * clamp013(signals.epistemicUncertainty)],
+    ["low_confidence", W_LOW_CONFIDENCE * (1 - clamp013(signals.priorConfidence))],
+    ["novelty", W_NOVELTY * clamp013(signals.novelty)],
     ["pending_reply", W_PENDING * (signals.hasPendingMessage ? 1 : 0)],
-    ["load", W_STRESS * clamp012(signals.stressLoad / 100)]
+    ["load", W_STRESS * clamp013(signals.stressLoad / 100)]
   ];
   const effortScore = contributions.reduce((sum, [, v]) => sum + v, 0);
   const dominant = contributions.reduce((a, b) => b[1] > a[1] ? b : a)[0];
@@ -12277,7 +12576,7 @@ function selectProcess(signals, threshold = DELIBERATE_THRESHOLD) {
 var IDEATION_TEMP_MIN = 0.6;
 var IDEATION_TEMP_MAX = 1;
 function ideationTemperature(creativity) {
-  return IDEATION_TEMP_MIN + clamp012(creativity) * (IDEATION_TEMP_MAX - IDEATION_TEMP_MIN);
+  return IDEATION_TEMP_MIN + clamp013(creativity) * (IDEATION_TEMP_MAX - IDEATION_TEMP_MIN);
 }
 
 // src/cognition/faculties/executive.engine/deliberate.reasoning.ts
@@ -15550,7 +15849,7 @@ var ExecutiveEngine = class extends AsyncEngine {
 
 // src/cognition/faculties/planning.engine/types.ts
 var TERMINAL_STATUSES = ["completed", "failed", "rejected"];
-function clamp013(n) {
+function clamp014(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
@@ -15750,7 +16049,7 @@ function projectFrontier(plans, commands, tick, state, goalPriority, biasGain) {
     if (e.type === "plan.prior") commands.delete.push(id);
   for (const plan of plans) {
     if (plan.status !== "executing") continue;
-    const strength = clamp013((0.5 * goalPriority(plan.goalId) + 0.5 * plan.confidence) * biasGain);
+    const strength = clamp014((0.5 * goalPriority(plan.goalId) + 0.5 * plan.confidence) * biasGain);
     for (const step of plan.steps) {
       if (step.status !== "active") continue;
       commands.set.push({
@@ -20084,7 +20383,7 @@ function buildConversationExchange(input) {
 
 // src/cognition/senses/audition.engine/salience.ts
 var URGENCY = /urgent|critical|help|asap|emergency|now\b/i;
-var clamp014 = (n) => Math.max(0, Math.min(1, n));
+var clamp015 = (n) => Math.max(0, Math.min(1, n));
 function overlapsActiveGoal(content, activeGoalText) {
   if (activeGoalText.length === 0) return false;
   const lc = content.toLowerCase();
@@ -20097,10 +20396,10 @@ function computeLanguageSalience(opts) {
   const { content, attachmentScore, activeGoalText } = opts;
   const base = 0.15;
   const urgency = URGENCY.test(content) ? 0.3 : 0;
-  const attach = clamp014(attachmentScore) * 0.35;
+  const attach = clamp015(attachmentScore) * 0.35;
   const goal = overlapsActiveGoal(content, activeGoalText) ? 0.15 : 0;
   const length = Math.min(1, content.length / 200) * 0.05;
-  return clamp014(base + urgency + attach + goal + length);
+  return clamp015(base + urgency + attach + goal + length);
 }
 
 // src/cognition/senses/base.sense.engine.ts
@@ -21251,10 +21550,10 @@ function driveUrgency(a, bias) {
   return 0;
 }
 function novelty(a) {
-  return clamp015(1 - a.habitStrength);
+  return clamp016(1 - a.habitStrength);
 }
 function risk(a, bias) {
-  return clamp015(Math.max(0, -a.expectedValence) * 0.5 + bias.threat * 0.5);
+  return clamp016(Math.max(0, -a.expectedValence) * 0.5 + bias.threat * 0.5);
 }
 function scoreAffordance(a, bias, w = DEFAULT_WEIGHTS) {
   const raw = w.goal * goalRelevance(a, bias) + w.reward * a.expectedReward + w.novelty * novelty(a) + w.drive * driveUrgency(a, bias) + w.habit * a.habitStrength + w.plan * (a.planBias ?? 0) + w.will * (a.willBias ?? 0) + w.social * (a.socialPrior ?? 0) - w.cost * a.cost - w.inhib * bias.inhibition - w.risk * risk(a, bias) - w.repeat * (a.justEnacted ?? 0) + w.settled * (a.settled ?? 0);
@@ -21262,7 +21561,7 @@ function scoreAffordance(a, bias, w = DEFAULT_WEIGHTS) {
   return raw > 0 ? raw * availability : raw;
 }
 function stakes(winner, bias) {
-  return clamp015(Math.max(
+  return clamp016(Math.max(
     bias.threat,
     Math.abs(winner.expectedValence),
     novelty(winner) * 0.5
@@ -21281,9 +21580,9 @@ function competitionEntropy(activations, temperature = DEFAULT_TEMPERATURE) {
     const p = e / sum;
     if (p > 0) h -= p * Math.log(p);
   }
-  return clamp015(h / Math.log(n));
+  return clamp016(h / Math.log(n));
 }
-function clamp015(n) {
+function clamp016(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
@@ -21436,7 +21735,7 @@ var AffordanceSynthesizer = class {
       const schemaId = str3(m?.["schema"]);
       const schema = schemaId ? schemas.find((s) => s.id === schemaId) : void 0;
       if (!schema) continue;
-      const willBias = clamp016(num2(m?.["priority"], 0.8));
+      const willBias = clamp017(num2(m?.["priority"], 0.8));
       candidates.push({
         salience: IDEOMOTOR_BASE_SALIENCE + willBias,
         affordance: this._build(schema, tick, state, valence, energyLow, skills, {
@@ -21454,7 +21753,7 @@ var AffordanceSynthesizer = class {
       const schemaId = str3(m?.["schema"]);
       const schema = schemaId ? schemas.find((s) => s.id === schemaId) : void 0;
       if (!schema) continue;
-      const planBias = clamp016(num2(m?.["planBias"], 0.6));
+      const planBias = clamp017(num2(m?.["planBias"], 0.6));
       candidates.push({
         salience: IDEOMOTOR_BASE_SALIENCE + planBias,
         affordance: this._build(schema, tick, state, valence, energyLow, skills, {
@@ -21504,10 +21803,10 @@ var AffordanceSynthesizer = class {
     const skill = skills?.get(schema.id);
     const availability = this._repertoire?.availabilityOf(schema.id) ?? 1;
     const socialPrior = ctx.targetEntityId ? socialStanding(state, ctx.targetEntityId) : 0;
-    const expectedReward = skill?.valueEstimate ?? clamp016(((schema.baseValence ?? 0) + 1) / 2);
+    const expectedReward = skill?.valueEstimate ?? clamp017(((schema.baseValence ?? 0) + 1) / 2);
     const expectedValence = schema.baseValence ?? valence;
     const habitStrength = skill?.habitStrength ?? 0;
-    const cost = clamp016(schema.cost * (energyLow ? 1.5 : 1));
+    const cost = clamp017(schema.cost * (energyLow ? 1.5 : 1));
     const speaks = schema.tags?.includes("communication") ?? false;
     const justEnacted = enactionFootprint(
       this._inFlight,
@@ -21621,7 +21920,7 @@ function num2(v, fallback) {
 function str3(v) {
   return typeof v === "string" ? v : void 0;
 }
-function clamp016(n) {
+function clamp017(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 function socialStanding(state, keid) {
@@ -21631,7 +21930,7 @@ function socialStanding(state, keid) {
     const m = e.metadata;
     if (m?.["keid"] !== keid) continue;
     const t = num2(m["trustworthiness"], 0.5);
-    const c = clamp016(num2(m["confidence"], 0));
+    const c = clamp017(num2(m["confidence"], 0));
     trust = (t - 0.5) * 2 * c;
     break;
   }
@@ -21790,7 +22089,7 @@ var ActionSelector = class {
     this._senseBuffer = [];
     const rupture = computeRupture(state, tick, senseEvents);
     const prevStab = metric2(state, "situation.stability", 1);
-    const nextStabRaw = clamp017(prevStab + STABILITY_RECOVERY * (1 - prevStab) - rupture);
+    const nextStabRaw = clamp018(prevStab + STABILITY_RECOVERY * (1 - prevStab) - rupture);
     const nextStab = 1 - nextStabRaw < STABILITY_EPSILON ? 1 : nextStabRaw;
     const stabMetrics = rupture > 0 || prevStab < 1 ? [["situation.stability", nextStab]] : [];
     if (rupture > 0 && this._bus) {
@@ -21926,7 +22225,7 @@ var ActionSelector = class {
     const relief = Math.min(1, habit) * HABIT_RELIEF;
     const deliberativeness = -(readPersonaPrior(state, "engine-config-executive")["deliberateThreshold"] ?? 0);
     const marginGate = Math.max(0, MARGIN_THRESHOLD - relief + deliberativeness * DELIB_MARGIN_SENS);
-    const stakesGate = clamp017(BASE_STAKES_THRESHOLD + relief - deliberativeness * DELIB_STAKES_SENS);
+    const stakesGate = clamp018(BASE_STAKES_THRESHOLD + relief - deliberativeness * DELIB_STAKES_SENS);
     const deliberate = margin < marginGate || stk > stakesGate;
     this._lastEntropy = entropy;
     this._lastDeliberate = deliberate;
@@ -22069,7 +22368,7 @@ function computeRupture(state, tick, senseEvents = []) {
     }
   }
   if (maxSalience <= RUPTURE_SALIENCE_GATE) return 0;
-  return clamp017((maxSalience - RUPTURE_SALIENCE_GATE) / (1 - RUPTURE_SALIENCE_GATE));
+  return clamp018((maxSalience - RUPTURE_SALIENCE_GATE) / (1 - RUPTURE_SALIENCE_GATE));
 }
 function refusedClassSchemas(state) {
   const out = /* @__PURE__ */ new Set();
@@ -22115,15 +22414,15 @@ function buildBias(state) {
   }
   return {
     goalTargets,
-    maxGoalPriority: clamp017(maxGoalPriority),
+    maxGoalPriority: clamp018(maxGoalPriority),
     drives: {
-      energy: clamp017((100 - metric2(state, "energy.level", 100)) / 100),
-      sleep: clamp017(metric2(state, "sleep.pressure", 0) / 100),
-      stress: clamp017(metric2(state, "stress.load", 0) / 100),
-      social: clamp017(metric2(state, "drive.social", 0))
+      energy: clamp018((100 - metric2(state, "energy.level", 100)) / 100),
+      sleep: clamp018(metric2(state, "sleep.pressure", 0) / 100),
+      stress: clamp018(metric2(state, "stress.load", 0) / 100),
+      social: clamp018(metric2(state, "drive.social", 0))
     },
-    threat: clamp017(metric2(state, "threat.level", 0)),
-    inhibition: clamp017(metric2(state, "inhibition.level", 0))
+    threat: clamp018(metric2(state, "threat.level", 0)),
+    inhibition: clamp018(metric2(state, "inhibition.level", 0))
   };
 }
 function readAffordance(id, m) {
@@ -22162,7 +22461,7 @@ function num3(v, fallback) {
 function str4(v) {
   return typeof v === "string" ? v : void 0;
 }
-function clamp017(n) {
+function clamp018(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
@@ -22394,8 +22693,8 @@ function enact(ctx) {
 }
 function syncStance(ctx) {
   const { schema, energy, stress } = ctx;
-  const e01 = clamp018(energy / 100);
-  const s01 = clamp018(stress / 100);
+  const e01 = clamp019(energy / 100);
+  const s01 = clamp019(stress / 100);
   switch (schema.id) {
     case "rest":
       return sync(0.5 + (1 - e01) * 0.4, 0.15, "I let myself recover; the pressure eases a little.");
@@ -22433,12 +22732,12 @@ function syncStance(ctx) {
   }
 }
 function sync(outcomeQuality, valence, description) {
-  return { mode: "sync", success: true, outcomeQuality: clamp018(outcomeQuality), valence, description };
+  return { mode: "sync", success: true, outcomeQuality: clamp019(outcomeQuality), valence, description };
 }
 function str6(v) {
   return typeof v === "string" ? v : void 0;
 }
-function clamp018(n) {
+function clamp019(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
@@ -22706,7 +23005,7 @@ var MotorSchemaExecutor = class {
           intent,
           enaction.success,
           enaction.outcomeQuality,
-          clamp019(Math.abs(predicted.expectedReward - enaction.outcomeQuality)),
+          clamp0110(Math.abs(predicted.expectedReward - enaction.outcomeQuality)),
           tick
         );
         if (intent.parentIntentId)
@@ -22830,7 +23129,7 @@ var MotorSchemaExecutor = class {
       compIntent,
       true,
       avgQuality,
-      clamp019(Math.abs(compIntent.expectedReward - avgQuality)),
+      clamp0110(Math.abs(compIntent.expectedReward - avgQuality)),
       tick
     );
   }
@@ -22847,7 +23146,7 @@ var MotorSchemaExecutor = class {
         status: "selected",
         targetEntityId,
         parameters,
-        expectedReward: clamp019((baseV + 1) / 2),
+        expectedReward: clamp0110((baseV + 1) / 2),
         expectedValence: baseV,
         tick
       }
@@ -22938,7 +23237,7 @@ var MotorSchemaExecutor = class {
       intent,
       result.success,
       result.feedback.outcomeQuality,
-      clamp019(Math.abs(predicted.expectedReward - result.feedback.outcomeQuality)),
+      clamp0110(Math.abs(predicted.expectedReward - result.feedback.outcomeQuality)),
       tick
     );
     metrics.push(["agency.communicate.delivered", 1]);
@@ -22977,7 +23276,7 @@ var MotorSchemaExecutor = class {
   // ── bus emission ─────────────────────────────────────────────
   _emitEnacted(intent, enaction, predicted, tick) {
     if (!this._bus) return;
-    const surprise = clamp019(Math.abs(predicted.expectedReward - enaction.outcomeQuality));
+    const surprise = clamp0110(Math.abs(predicted.expectedReward - enaction.outcomeQuality));
     try {
       this._bus.publish({
         type: "agency.enacted",
@@ -23111,7 +23410,7 @@ var MotorSchemaExecutor = class {
   }
 };
 function outcomeEntity(tick, intent, enaction, predicted) {
-  const surprise = clamp019(Math.abs(predicted.expectedReward - enaction.outcomeQuality));
+  const surprise = clamp0110(Math.abs(predicted.expectedReward - enaction.outcomeQuality));
   return {
     id: `agency-outcome-${tick}-${intent.id}`,
     type: "agency.outcome",
@@ -23158,7 +23457,7 @@ function firstMessage(v) {
 function num4(v, fallback) {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
-function clamp019(n) {
+function clamp0110(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 function errMsg(err) {
@@ -23173,290 +23472,6 @@ function situationMoved(state, targetEntityId, composedAt) {
   if (spoke !== void 0 && spoke > composedAt)
     return "I had already spoken to them since composing this, so it was no longer what I had to say.";
   return null;
-}
-
-// src/cognition/agency/schemas/repertoire.ts
-var VALUE_ALPHA = 0.2;
-var ERROR_BETA = 0.2;
-var HABIT_GAIN = 0.12;
-var HABIT_FAIL_DECAY = 0.1;
-var CONFIDENT_ERROR = 0.3;
-var PROC_THRESHOLD = 0.6;
-var IDLE_TICKS = 200;
-var DECAY_RATE = 0.02;
-var DROP_HABIT = 0.05;
-var AVAIL_DROP_CLASS = 0.5;
-var AVAIL_DROP_PARAMETER = 0.12;
-var AVAIL_FLOOR = 0.05;
-var AVAIL_RECOVERY = 0.02;
-var AVAIL_RECOVERED = 0.999;
-var SchemaRepertoire = class {
-  _templates = /* @__PURE__ */ new Map();
-  _skills = /* @__PURE__ */ new Map();
-  /** Tracks which templates were learned at runtime (vs innate) so decay can forget them. */
-  _learned = /* @__PURE__ */ new Set();
-  /** Availability layer (P2): schema → { value 0..1, lastRefusedTick }. Empty until
-   *  a refusal lands — a never-refused Will writes nothing here (byte-identical). */
-  _availability = /* @__PURE__ */ new Map();
-  constructor(seed = INNATE_SCHEMAS) {
-    for (const s of seed) this._templates.set(s.id, s);
-  }
-  // ── templates ─────────────────────────────────────────────────
-  schemas() {
-    return [...this._templates.values()];
-  }
-  getSchema(id) {
-    return this._templates.get(id);
-  }
-  /** Register a learned composite skill template (starts with no habit). */
-  registerComposite(schema) {
-    this._templates.set(schema.id, schema);
-    this._learned.add(schema.id);
-    if (!this._skills.has(schema.id))
-      this._skills.set(schema.id, freshSkill(schema.id, 0.4, 0));
-  }
-  /**
-   * Register a host effector's primitive schema at runtime (post-create
-   * `.effector()`). Unlike a composite it is NOT marked learned — it is a
-   * capacity the host granted, which the synthesizer surfaces immediately and
-   * reafference then builds skill on. Idempotent; re-registering updates it.
-   */
-  registerExternal(schema) {
-    if (INNATE_SCHEMA_BY_ID.has(schema.id)) {
-      logger.debug(`[repertoire] "${schema.id}" is innate \u2014 keeping the body's schema, binding the handler only`);
-      return;
-    }
-    this._templates.set(schema.id, schema);
-  }
-  // ── skills ────────────────────────────────────────────────────
-  skills() {
-    return this._skills;
-  }
-  getSkill(id) {
-    return this._skills.get(id);
-  }
-  // ── availability (P2) ─────────────────────────────────────────
-  availability() {
-    return this._availability;
-  }
-  /**
-   * How available a schema is right now, 0..1. Absent from the ledger ⇒ 1
-   * (fully available — the common case). This is the ONLY value the
-   * AffordanceSynthesizer reads; it never touches competence.
-   */
-  availabilityOf(schema) {
-    return this._availability.get(schema)?.value ?? 1;
-  }
-  /**
-   * Fold a policy refusal into the availability layer (NOT competence). A
-   * `class` refusal cuts availability hard; a `parameter` refusal dents it
-   * lightly. Multiplicative so repeated refusals compound toward — but never
-   * reach — zero, keeping re-probe alive.
-   *
-   * `context` is EXCLUDED FROM THE SIGNATURE, not handled inside: a refusal
-   * that was not about the action must never reach the availability layer at
-   * all, and making that a type error rather than a convention means a future
-   * caller cannot quietly re-introduce the dent. The routing decision lives in
-   * the ReafferenceEngine's refused branch (P5).
-   */
-  recordRefusal(schema, finality, tick) {
-    const prev = this._availability.get(schema)?.value ?? 1;
-    const drop = finality === "class" ? AVAIL_DROP_CLASS : AVAIL_DROP_PARAMETER;
-    const value = Math.max(AVAIL_FLOOR, prev * (1 - drop));
-    this._availability.set(schema, { value, lastRefusedTick: tick });
-    return value;
-  }
-  /**
-   * Fold one outcome into the schema's learned skill. Returns the updated skill
-   * and whether it just crossed the proceduralization threshold this update.
-   */
-  recordOutcome(o) {
-    const prior = this._skills.get(o.schema) ?? freshSkill(o.schema, o.predictedReward, o.tick);
-    const wasProceduralized = prior.habitStrength >= PROC_THRESHOLD;
-    const error = clamp0110(Math.abs(o.predictedReward - o.outcomeQuality));
-    const confident = o.success && error < CONFIDENT_ERROR;
-    const habitStrength = clamp0110(
-      confident ? prior.habitStrength + HABIT_GAIN * (1 - prior.habitStrength) : prior.habitStrength - HABIT_FAIL_DECAY * prior.habitStrength
-    );
-    const skill = {
-      schema: o.schema,
-      habitStrength,
-      valueEstimate: clamp0110(prior.valueEstimate + VALUE_ALPHA * (o.outcomeQuality - prior.valueEstimate)),
-      paramPriors: o.success && o.params ? { ...prior.paramPriors, ...o.params } : prior.paramPriors,
-      enactments: prior.enactments + 1,
-      successes: prior.successes + (o.success ? 1 : 0),
-      avgPredictionError: prior.avgPredictionError + ERROR_BETA * (error - prior.avgPredictionError),
-      lastEnactedTick: o.tick
-    };
-    this._skills.set(o.schema, skill);
-    return { skill, proceduralized: !wasProceduralized && habitStrength >= PROC_THRESHOLD };
-  }
-  /**
-   * Forgetting curve over the competence layer, plus availability recovery.
-   * Skills unused for IDLE_TICKS lose habit; learned composites below DROP_HABIT
-   * are dropped entirely (template + skill). Availability entries climb back
-   * toward 1 and are dropped once fully recovered. Returns the ids that were
-   * removed from each layer so their mirrored state entities can be deleted.
-   */
-  decay(tick) {
-    const skills = [];
-    for (const [id, skill] of this._skills) {
-      if (tick - skill.lastEnactedTick <= IDLE_TICKS) continue;
-      const habitStrength = clamp0110(skill.habitStrength - DECAY_RATE);
-      if (this._learned.has(id) && habitStrength < DROP_HABIT) {
-        this._skills.delete(id);
-        this._templates.delete(id);
-        this._learned.delete(id);
-        skills.push(id);
-        continue;
-      }
-      this._skills.set(id, { ...skill, habitStrength });
-    }
-    const availability = [];
-    for (const [id, avail] of this._availability) {
-      const value = avail.value + AVAIL_RECOVERY * (1 - avail.value);
-      if (value >= AVAIL_RECOVERED) {
-        this._availability.delete(id);
-        availability.push(id);
-      } else this._availability.set(id, { ...avail, value });
-    }
-    return { skills, availability };
-  }
-  // ── PMA portability (Phase 6 reads these) ─────────────────────
-  /** Learned composite templates + all skills above a confidence floor. */
-  export(minHabit = 0) {
-    return {
-      composites: [...this._learned].map((id) => this._templates.get(id)).filter((s) => !!s),
-      skills: [...this._skills.values()].filter((s) => s.habitStrength >= minHabit)
-    };
-  }
-  import(data) {
-    for (const c of data.composites ?? []) {
-      this._templates.set(c.id, c);
-      this._learned.add(c.id);
-    }
-    for (const s of data.skills ?? []) this._skills.set(s.schema, s);
-  }
-  // ── snapshot / replay portability (deterministic state path) ──
-  // Skills mirror to `agency.skill`; the invented composite *definitions* must
-  // travel too, or a snapshot/restore brings back an `agency.skill` whose schema
-  // is gone and the MotorSchemaExecutor can't expand it (it misroutes the intent
-  // to the host and times out). compositeEntities() is the write side (the
-  // ReafferenceEngine pushes these each tick); restoreComposites() is the read
-  // side, called from the first agency engine after a restore.
-  /** Learned composite templates encoded as `agency.schema` state entities. */
-  compositeEntities() {
-    const out = [];
-    for (const id of this._learned) {
-      const s = this._templates.get(id);
-      if (s && s.kind === "composite") out.push(schemaEntity(s));
-    }
-    return out;
-  }
-  /**
-   * Re-register learned composites from `agency.schema` state entities after a
-   * restore rebuilt the repertoire innate-only. Idempotent — skips composites
-   * already present and never seeds a fresh skill (the restored `agency.skill`
-   * entity and future outcomes own the habit; seeding here would reset it).
-   * Mirrors GoalManager._syncFromStateGoals.
-   */
-  restoreComposites(entities) {
-    for (const e of entities.values()) {
-      if (e.type !== SCHEMA_ENTITY_TYPE) continue;
-      const s = readSchema(e.metadata);
-      if (!s || this._templates.has(s.id)) continue;
-      this._templates.set(s.id, s);
-      this._learned.add(s.id);
-    }
-  }
-  /** Availability ledger encoded as `agency.availability` state entities (P2).
-   *  Empty until a refusal lands, so the quiet path writes nothing. */
-  availabilityEntities() {
-    const out = [];
-    for (const [schema, a] of this._availability)
-      out.push(availabilityEntity(schema, a.value, a.lastRefusedTick));
-    return out;
-  }
-  /** Rehydrate the availability ledger from state after a restore. Idempotent;
-   *  keeps whichever value is more restrictive so a concurrent refusal isn't lost. */
-  restoreAvailability(entities) {
-    for (const e of entities.values()) {
-      if (e.type !== AVAILABILITY_ENTITY_TYPE) continue;
-      const m = e.metadata ?? {};
-      const schema = typeof m["schema"] === "string" ? m["schema"] : "";
-      if (!schema) continue;
-      const value = typeof m["value"] === "number" ? m["value"] : 1;
-      const tick = typeof m["lastRefusedTick"] === "number" ? m["lastRefusedTick"] : 0;
-      const prev = this._availability.get(schema);
-      if (!prev || value < prev.value) this._availability.set(schema, { value, lastRefusedTick: tick });
-    }
-  }
-};
-function freshSkill(schema, value, tick) {
-  return {
-    schema,
-    habitStrength: 0,
-    valueEstimate: clamp0110(value),
-    paramPriors: {},
-    enactments: 0,
-    successes: 0,
-    avgPredictionError: 0,
-    lastEnactedTick: tick
-  };
-}
-function clamp0110(n) {
-  return n < 0 ? 0 : n > 1 ? 1 : n;
-}
-var AVAILABILITY_ENTITY_TYPE = "agency.availability";
-function availabilityEntityId(schema) {
-  return `agency-availability-${schema}`;
-}
-function availabilityEntity(schema, value, lastRefusedTick) {
-  return {
-    id: availabilityEntityId(schema),
-    type: AVAILABILITY_ENTITY_TYPE,
-    metadata: { schema, value, lastRefusedTick }
-  };
-}
-var SCHEMA_ENTITY_TYPE = "agency.schema";
-function schemaEntityId(schemaId) {
-  return `agency-schema-${schemaId}`;
-}
-function schemaEntity(s) {
-  return {
-    id: schemaEntityId(s.id),
-    type: SCHEMA_ENTITY_TYPE,
-    metadata: {
-      id: s.id,
-      kind: s.kind,
-      source: s.source,
-      cost: s.cost,
-      binds: s.binds,
-      preconditions: s.preconditions,
-      composedOf: s.composedOf,
-      baseValence: s.baseValence,
-      description: s.description,
-      tags: s.tags
-    }
-  };
-}
-function readSchema(m) {
-  const meta3 = m ?? {};
-  const id = typeof meta3["id"] === "string" ? meta3["id"] : void 0;
-  const kind = meta3["kind"];
-  if (!id || kind !== "composite" && kind !== "primitive") return void 0;
-  return {
-    id,
-    kind,
-    source: meta3["source"] ?? "repertoire",
-    cost: typeof meta3["cost"] === "number" ? meta3["cost"] : 0,
-    binds: meta3["binds"] ?? "none",
-    preconditions: meta3["preconditions"],
-    composedOf: Array.isArray(meta3["composedOf"]) ? meta3["composedOf"] : void 0,
-    baseValence: typeof meta3["baseValence"] === "number" ? meta3["baseValence"] : void 0,
-    description: typeof meta3["description"] === "string" ? meta3["description"] : void 0,
-    tags: Array.isArray(meta3["tags"]) ? meta3["tags"] : void 0
-  };
 }
 
 // src/cognition/senses/provenance.ts

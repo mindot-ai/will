@@ -89,11 +89,13 @@ describe('the sense boundary — where I end and the world begins', () => {
       await simulation.step( 1 )
       const state = simulation.stateManager.snapshot() as never as { entities: Map<string, SimulationEntity> }
       for( const p of percepts( state.entities ) ){
-        const cat = p.category ?? ''
-        if( MIND_OWN_ENTITY_TYPES.has( cat ) ) offenders.set( cat, p.summary ?? '')
-        // A removal is reported under the flat 'removed' category, so its own
-        // type is gone by then — the entity id is what identifies it.
-        if( cat === 'removed' ) offenders.set(`removed:${ p.entityId }`, p.summary ?? '')
+        // EVERY percept, not only those whose category is already in the set.
+        // Checking membership could only ever catch a type that is BOTH listed
+        // and perceived — an enforcement failure — and was blind by construction
+        // to a type MISSING from the list, which is the failure that actually
+        // happened twice (`agency.enacted`, `agency.availability`). In the dark
+        // there is no world, so any percept at all is the mind sensing itself.
+        offenders.set( p.category ?? `removed:${ p.entityId }`, p.summary ?? '')
       }
     }
 

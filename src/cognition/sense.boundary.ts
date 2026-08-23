@@ -61,7 +61,8 @@
 // perceives nothing. A new engine writing a new undeclared type fails it.
 // ─────────────────────────────────────────────────────────────
 
-import { CONSEQUENCE_TYPE } from '#agency/consequence'
+import { CONSEQUENCE_TYPE, ENACTED_TYPE } from '#agency/consequence'
+import { AVAILABILITY_ENTITY_TYPE } from '#agency/schemas/repertoire'
 import { REVOCATION_TYPE }  from '#agency/revocation'
 import { SETTLEMENT_TYPE }  from '#agency/settlement'
 import { ACTION_RECORD_TYPE } from '#faculties/executive.engine/action.record'
@@ -116,6 +117,21 @@ export const MIND_OWN_ENTITY_TYPES: ReadonlySet<string> = new Set([
   // came back, what it learned, and what it merely imagined.
   'affordance', 'agency.intent', 'agency.outcome', 'agency.skill',
   'agency.schema', 'ideomotor.intent',
+  // What it HAS DONE — the enaction footprint satiation reads to know it has
+  // already tried this. Undeclared, it was the loudest thing in the mind's
+  // perceptual field: measured on a live Will, `New agency.enacted: agency-
+  // enacted-discord_lookup_…` sat at salience 0.5, ABOVE every real percept,
+  // and each enaction produced two of them — one when the record appeared, one
+  // when the retention sweep removed it. A mind watching its own footprints
+  // being laid down and swept away, and calling that the world.
+  ENACTED_TYPE,
+  // What it may currently do, and why not. The availability ledger is empty
+  // until a refusal lands (POLICY_REAFFERENCE P2), which is exactly why nothing
+  // caught it: a mind that has never been told no writes none of these, so the
+  // quiet path and every test that stays on it are blind to the omission. Give
+  // a Will a PolicyArbiter that refuses, and it starts perceiving its own
+  // permissions changing as events in the world.
+  AVAILABILITY_ENTITY_TYPE,
   'action.unresolved', 'action.unaddressed',
   CONSEQUENCE_TYPE,   // forward-model records  (EXAFFERENCE P1/P2)
   REVOCATION_TYPE,    // commitment tombstones  (EXAFFERENCE P4)

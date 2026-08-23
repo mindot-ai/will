@@ -16,7 +16,7 @@ import { createTestBus }  from '#cognition/bus'
 import type { TextMessage } from '#senses/index'
 
 const text = ( content: string, entityId = 'alice'): TextMessage =>
-  ({ kind: 'text', entityId, threadId: 't1', content })
+  ({ kind: 'text', entityId, threadId: 't1', content, provenance: 'exafferent' })
 
 /** Executive whose facet captures the chunk pipe so the test can drive raw tokens. */
 function makeChunkExecutive(){

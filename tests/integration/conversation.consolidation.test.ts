@@ -53,7 +53,7 @@ async function captureExchangeEntity( inbound: string, reply: string ): Promise<
   engine.attachExecutiveEngine( syncExecutive( reply ) as any )
   engine.attachMemorySink( e => captured.push( e ) )
 
-  const msg: TextMessage = { kind: 'text', entityId: 'alice', threadId: 't1', content: inbound }
+  const msg: TextMessage = { kind: 'text', entityId: 'alice', threadId: 't1', content: inbound, provenance: 'exafferent' }
   await engine.ingest( msg )
 
   // The sink also receives the inbound social signal (conversation.received);

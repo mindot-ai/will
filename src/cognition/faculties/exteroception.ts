@@ -30,6 +30,7 @@ import type {
 import type { SimulationEngine, EngineResult, CognitiveEngine } from '#cognition/types'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
+import type { SignalProvenance } from '#senses/provenance'
 import { GenerativeModel } from '#cognition/generative.model'
 import {
   ATTENUATION, CORRESPONDENCE_ATTENUATION,
@@ -198,7 +199,11 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
           salience,
           category: rp.category,
           summary: rp.summary,
-          provenance: hit ? 'reafferent' : 'exafferent',
+          // Typed, not a bare literal: this metadata write is the same concept the
+          // sense door carries, and the compiler stops at the metadata boundary.
+          // INFERRED here, legitimately — a match against our own live consequence
+          // descriptors is the efference copy doing its job. See SignalProvenance.
+          provenance: ( hit ? 'reafferent' : 'exafferent') satisfies SignalProvenance,
           ...( hit ? { sourceIntentId: hit.intentId } : {} ),
           // affect→percept seam (registry #5): what this percept FEELS like
           ...( rp.valence !== undefined ? { valence: rp.valence, valenceSource: rp.valenceSource } : {} ),

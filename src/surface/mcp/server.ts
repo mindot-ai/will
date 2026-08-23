@@ -25,6 +25,7 @@ import { dirname } from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { Will } from '#surface/sdk/will'
+import { asProvenance } from '#senses/provenance'
 import { UtteranceTap } from '#surface/host/utterances'
 
 export interface WillMcpOptions {
@@ -65,9 +66,22 @@ export function buildWillMcpServer( will: Will, opts: WillMcpOptions = {} ): Mcp
       text:    z.string().describe('What is said or observed.'),
       from:    z.string().optional().describe( "Who it's from (entity id, default 'user'). Use a stable id per person." ),
       speaker: z.string().optional().describe('Display name of the speaker.'),
+      provenance: z.enum([ 'exafferent', 'reafferent', 'unknown' ]).optional().describe(
+        `Whose doing this was. 'exafferent' (default) — the world did it, somebody spoke or something happened. ` +
+        `'reafferent' — this is ${ will.name }'s OWN act coming back to it: the result of an ability it used, ` +
+        `an echo of a message it sent. 'unknown' — you looked and cannot tell. It cannot work this out for ` +
+        `itself; its own echo and a stranger saying the same words are identical from the inside.`),
     },
-  }, async ( { text, from, speaker } ) => {
-    await will.perceive( { text, ...( from ? { from } : {} ), ...( speaker ? { speaker } : {} ) } )
+  }, async ( { text, from, speaker, provenance } ) => {
+    // asProvenance, not a bare cast: this is an untyped protocol boundary, and
+    // an older client that never sends the field has not made a claim — it just
+    // predates the field. Defaulting toward 'exafferent' errs toward noticing.
+    await will.perceive( {
+      text,
+      provenance: asProvenance( provenance ),
+      ...( from ? { from } : {} ),
+      ...( speaker ? { speaker } : {} ),
+    } )
     return {
       content: [ {
         type: 'text',

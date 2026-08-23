@@ -95,7 +95,7 @@ function makeMockExecutive( spawnBehavior: 'available' | 'full' = 'available'): 
 }
 
 function makeTextInput( opts: { entityId: string; threadId: string; content: string } ): TextMessage {
-  return { kind: 'text', ...opts }
+  return { kind: 'text', ...opts, provenance: 'exafferent' }
 }
 
 // ── Tests ─────────────────────────────────────────────────────

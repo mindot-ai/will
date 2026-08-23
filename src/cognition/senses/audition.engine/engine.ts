@@ -73,6 +73,7 @@ import type {
   SensoryInput,
   LanguagePercept,
   TextMessage,
+  Transduced,
   VoiceChunk
 } from '#senses/index'
 import { validateFacetHandoff, type HandoffBody } from '#faculties/executive.engine/escalation.buffer'
@@ -583,7 +584,7 @@ export class AuditionEngine extends BaseSenseEngine {
     const salience = this._model.observe(`audition.${entityId}`, langEnergy ).salience
 
     // ── Percept ────────────────────────────────────────────────
-    const percept: LanguagePercept = {
+    const transduced: Transduced<LanguagePercept> = {
       domain: 'audition',
       channel: msg.kind,
       content,
@@ -601,7 +602,7 @@ export class AuditionEngine extends BaseSenseEngine {
 
     // Publish to CognitiveBus — AttentionAllocator et al. can react.
     // publishPercept() (base) is the single emit chokepoint on senses.<domain>.percept.
-    this.publishPercept( percept, msg )
+    const percept = this.publishPercept<LanguagePercept>( transduced, msg )
 
     // ── Update digest with inbound turn ───────────────────────
     this._digests.append( threadId, 'user', content )

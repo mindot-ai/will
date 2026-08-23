@@ -78,7 +78,9 @@ describe('TransportController', () => {
     f.ctrl.applyInbound( f.instance, 7, f.deps as any )
 
     expect( f.ingest ).toHaveBeenCalledTimes( 1 )
-    expect( f.ingest ).toHaveBeenCalledWith({ kind: 'text', entityId: 'alice', threadId: 't1', content: 'hello', speakerName: 'Alice' })
+    // 'unknown', not 'exafferent': the envelope has no provenance field, so the
+    // stem cannot say — and says that rather than guessing on a host's behalf.
+    expect( f.ingest ).toHaveBeenCalledWith({ kind: 'text', entityId: 'alice', threadId: 't1', content: 'hello', provenance: 'unknown', speakerName: 'Alice' })
     expect( f.instance.inbound.size ).toBe( 0 )   // drained
   } )
 
@@ -88,7 +90,7 @@ describe('TransportController', () => {
 
     f.ctrl.applyInbound( f.instance, 1, f.deps as any )
 
-    expect( f.ingest ).toHaveBeenCalledWith({ kind: 'voice', entityId: 'a', threadId: 't', transcription: 'spoken words' })
+    expect( f.ingest ).toHaveBeenCalledWith({ kind: 'voice', entityId: 'a', threadId: 't', transcription: 'spoken words', provenance: 'unknown' })
   } )
 
   it('dispatches a result-ack → effector.confirmExecution (reafference)', () => {

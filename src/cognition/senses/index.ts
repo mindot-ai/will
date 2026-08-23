@@ -34,8 +34,8 @@ export type SenseDomain =
 
 // ── Provenance (re-exported from ./provenance) ────────────────
 
-export type { SignalProvenance, SensorySignal } from './provenance'
-export { provenanceOf } from './provenance'
+export type { SignalProvenance, SensorySignal, Transduced } from './provenance'
+export { asProvenance } from './provenance'
 
 // ── Percept types ─────────────────────────────────────────────
 
@@ -44,8 +44,8 @@ export { provenanceOf } from './provenance'
  *
  * It extends `SensorySignal` because transduction does not change whose doing a
  * signal was: what the host stamped on the input is what the percept carries.
- * `BaseSenseEngine.publishPercept()` copies both fields across, so `provenance`
- * here is always set even when the host omitted it (`provenanceOf`'s default).
+ * `BaseSenseEngine.publishPercept()` applies both from the input, so a percept
+ * ALWAYS carries provenance — no consumer downstream ever writes a fallback.
  */
 export interface Percept extends SensorySignal {
   domain:         SenseDomain

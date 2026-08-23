@@ -284,6 +284,11 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
       from:   `discord:${ user.id }`,
       thread: `discord:${ msg.channelId }`,
       direct: isDM,
+      // Exafferent, and the near-miss is worth naming: this is ABOUT something
+      // she did, but it is not her doing it. Somebody else reacted. Reafference
+      // is the mind sensing its OWN act's consequence, not the world's response
+      // to that act — a reply would fail the same test for the same reason.
+      provenance: 'exafferent',
       ...( roomLabel( msg ) ? { threadName: roomLabel( msg ) } : {} ),
       ...( who ? { speaker: who } : {} ),
     } )
@@ -339,6 +344,11 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
       // the right or wrong place to say something, and the mind never saw it —
       // which is how a follow-up promised in a DM went out to #general.
       direct: isDM,
+      // Somebody spoke. The bridge already drops her own messages (`onMessage`
+      // returns early on `author.id === self.id`), so nothing reafferent can
+      // reach this line today — but that filter is a bridge-level deletion of
+      // a signal she is entitled to sense, not a reason for the field to lie.
+      provenance: 'exafferent',
       ...( roomLabel( message ) ? { threadName: roomLabel( message ) } : {} ),
       ...( speaker ? { speaker } : {} ),
     } )
@@ -435,6 +445,14 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
       from:   address,
       thread: address,
       direct: false,
+      // REAFFERENT — the one place in this bridge where it is. She enacted
+      // `discord_inspect_channel` and this is the consequence coming back to
+      // her own senses. Until the field existed, that fact lived only in the
+      // English of the bracketed prose above, where nothing but the LLM could
+      // read it. No `sourceIntentId`: an effector handler is not given the
+      // invocation id it is running under, which is the gap ACT_EXPECTATIONS
+      // has to close before the echo can be matched to the act mechanically.
+      provenance: 'reafferent',
       ...( label ? { threadName: label } : {} ),
     } )
 

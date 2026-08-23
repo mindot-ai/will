@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { OutboxMessage } from '#types'
+import type { SignalProvenance } from '#senses/provenance'
 import type { WillInstance } from '#stem/index'
 
 /**

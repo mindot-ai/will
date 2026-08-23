@@ -546,6 +546,110 @@ patching over:**
    type-only edge into a real runtime import cycle. `senses/index` re-exports
    `./provenance`, so the public path is unchanged.
 
+#### P0a-b — provenance made MANDATORY (2026-08-23, same day)
+
+P0a shipped it `provenance?`, "optional at first so nothing breaks". That was
+wrong within the hour, and the reason is worth keeping because it is a rule, not
+a taste:
+
+> **This codebase makes a field optional when absence is the ONLY way to say a
+> third thing.** `speakerName?` — no string means "no name learned". `direct?` —
+> no boolean means "the channel did not say". Provenance already HAS its third
+> thing: `'unknown'`. So optionality bought a fourth state, behaviourally
+> identical to `'exafferent'` and epistemically its opposite — a claim that the
+> world did this, made by nobody. And it was lossy in the direction that costs:
+> a reader could never separate *"the host asserts exafference"* from *"the host
+> said nothing"*, which want different treatment, and `'unknown'` exists exactly
+> to keep them apart.
+
+The `asFinality()` citation in the original P0a was doing work it cannot do.
+`asFinality( raw: unknown )` normalizes a value read off entity metadata, a
+tape, or a host ack — *untyped* surfaces where the compiler cannot help and
+something must be chosen. It justifies the **direction** of a fallback. It says
+nothing about whether a **typed** field should be optional. Two decisions,
+collapsed into one citation.
+
+So: `provenance` is required, and the default survives in exactly one place —
+**`asProvenance()`**, the `asFinality`-shaped normalizer for untyped ingress (an
+MCP tool call, an HTTP body). Its fallback is `'exafferent'`, and deliberately
+not the tidier-looking `'unknown'`: `'unknown'` is an assertion too — *"I looked
+and cannot tell"* — and a caller that simply did not send the field has not looked.
+
+**Required at `SensoryInput` ALONE would have been theatre**, which is the part
+that changed the plan. No host constructs a `SensoryInput`; Discord and WhatsApp
+both call `will.perceive( Stimulus )`. Requiring it only on the inner type just
+forces the facade to write a magic literal — moving the unfounded claim *out* of
+a named, tested, greppable helper and *into* `surface/sdk/will.ts`. So `Stimulus`
+takes it too.
+
+- [x] `Transduced<P>` — a percept as a sense engine BUILDS it, without the two
+      fields, so forging the stamp is a **compile** error. The runtime strip
+      stays as well: a type is only as strong as the compiler that saw it, and a
+      JS host or an older-`.d.ts` consumer hands over whatever it likes. (The
+      runtime test caught me re-introducing exactly that hole when I added the
+      type guard and deleted the strip.)
+- [x] `publishPercept` returns the stamped percept, so audition routes the turn
+      with the same object the bus saw rather than a second one that can drift.
+- [x] `say()` / `tell()` supply `'exafferent'` — not a default sneaking back in.
+      The verb *is* the assertion: "say" is somebody speaking to the Will. A
+      caller feeding back the Will's own act reaches for `perceive` and says so.
+- [x] The transport controller writes **`'unknown'`**, not `'exafferent'`, and
+      deliberately does not route through `asProvenance()`: the absence there is
+      **structural**, not a caller's omission. `InboundMessageEnvelope` has no
+      such field, so a remote host cannot declare one however much it knows.
+
+> **⚠ Deviation from the sequencing rule, recorded rather than smuggled.** §5
+> says no phase may change behaviour until P3, and P0a said "optional at first
+> so nothing breaks". A required field is not a *behaviour* change — the quiet
+> path is still byte-identical — but it **is** a compile break for hosts,
+> landing two phases early. Taken deliberately: one break instead of two, and it
+> paid immediately. The compiler found two host doors the manual audit had
+> missed (`surface/mcp/server.ts`, `surface/serve/server.ts`), and it forced
+> `discord_inspect_channel` to declare what its own comment already said.
+
+#### P0a-c — the vocabulary was already here, twice, and unconnected
+
+Found only because the type was made required and the codebase was re-swept.
+**`provenance: 'reafferent' | 'exafferent'` and `sourceIntentId` already
+existed** — EXAFFERENCE P2/P3 shipped them, and P0a independently re-derived the
+identical two field names for the sense door without noticing. Five sites, one
+concept, no shared type:
+
+| site | | how provenance is determined |
+| :--- | :--- | :--- |
+| `exteroception.ts:201` | writes | **inferred** — matches the change against our own live consequence descriptors |
+| `outbox.controller.ts:110` | writes | `'reafferent'` by construction (the ack surface) |
+| `reafference.engine.ts:164` | reads | `!== 'reafferent'` |
+| `action.selector.ts:708` | reads | `!== 'exafferent'` — **the rupture gate** |
+| `senses/provenance.ts` | mine | **asserted** by the host |
+
+- [x] `SignalProvenance` is now the shared type; both writers use `satisfies`,
+      because the compiler stops at the entity-metadata boundary (§6's own
+      warning) and a bare literal there is unchecked.
+- [x] `reafference.engine` reads through `asProvenance()` — behaviour-identical
+      (absent and garbage both normalized to `'exafferent'`, which fails
+      `!== 'reafferent'` exactly as `str()`-undefined did).
+- [x] Corrected P0a's claim that provenance is *"ASSERTED, never inferred"*. It
+      is **one concept with two determination mechanisms**, and both are right:
+      at the WORLD door the mind holds both sides and inference *is* the
+      efference copy working; at the SENSE door there is nothing to match
+      against, so only the host can say.
+
+**Left alone on purpose — `action.selector.ts:708`, the rupture gate.** It tests
+`=== 'exafferent'`, so an **untagged** percept is excluded from rupture exactly
+as our own echo is. Three writers are untagged: `escalation.buffer` (×2) and the
+wake percept in `stem/index.ts` — which means **a mind that has been offline for
+hours cannot be ruptured by noticing that**. Routing this read through
+`asProvenance()` would default them to `'exafferent'` and fix it in one
+character, and that is a genuine behaviour change that belongs to the phase that
+tags those writers, with tests. Pinned meanwhile by
+*"an UNTAGGED percept cannot rupture either — pinning today, not endorsing it"*
+in `agency.rupture.test.ts`, so the fix has to be deliberate.
+
+Also noted, not touched: **`provenance` is overloaded.** The agency pipeline uses
+the same word for `{ planId, stepId }` (`reconcile.learning.ts:71`,
+`plan.frontier.ts:40`). Unrelated concept, identical name. A P3 rename item.
+
 **Deliberately NOT done in P0a, with reasons:**
 
 - **`Stimulus` (the SDK facade) did not gain the fields.** `stem.ingestText()`
@@ -603,6 +707,10 @@ patching over:**
       misled every reader of this flow, including this file's first draft.
       Keep `perceive` as a deprecated alias for one minor.
 - [ ] Internal renames toward the four terms; public aliases retained one minor.
+- [ ] **Disambiguate the overloaded `provenance`.** The agency pipeline uses the
+      word for `{ planId, stepId }` (`reconcile.learning.ts`, `plan.frontier.ts`)
+      — an unrelated concept sharing the name with `SignalProvenance`. One of
+      the two must give it up; the signal sense is the one the vocabulary needs.
 - [ ] Update `EXAFFERENCE.md` / `POLICY_REAFFERENCE.md` cross-references.
 
 ### P4 — Delete what the doors subsumed

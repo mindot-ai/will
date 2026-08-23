@@ -34,6 +34,7 @@ import type { PMASnapshot } from '#pma/index'
 import type { effectorInvocation } from '#types'
 import type { EffectorDeclaration, SchemaPrecondition } from '#agency/types'
 import type { PolicyArbiter } from '#stem/policy/arbiter'
+import type { SignalProvenance } from '#senses/provenance'
 
 // ── Public surface ────────────────────────────────────────────
 
@@ -55,6 +56,21 @@ export interface Stimulus {
    * name, the Will knows the person as "someone" until it learns one.
    */
   speaker?: string
+  /**
+   * Whose doing this was: `'exafferent'` (the world), `'reafferent'` (the Will's
+   * own act, coming back), or `'unknown'` (you cannot tell).
+   *
+   * Required, with no default, because only you can answer it — nothing inside
+   * the mind can tell the echo of its own utterance from a stranger saying the
+   * same words. Most inbound traffic is `'exafferent'`; use `say()`/`tell()`,
+   * whose verbs already make that claim, when that is all you mean. Reach for
+   * `'reafferent'` when you are feeding back the result of something the Will
+   * did — an ability's output, a webhook fired by its own write, a platform
+   * echo of a message it sent — and pass `sourceIntentId` if you have it.
+   */
+  provenance: SignalProvenance
+  /** The intent whose enaction caused this, when `provenance` is `'reafferent'`. */
+  sourceIntentId?: string
   /** Conversation/thread id (default = `from`). */
   thread?: string
   /** True when `thread` is private — just this someone and the Will. See TextMessage.direct. */
@@ -404,17 +420,26 @@ export class Will {
       // Omitted when the channel does not know — a room with no name stays
       // unnamed, the same way a person does, rather than being labelled with its id.
       ...( stimulus.threadName ? { threadName: stimulus.threadName } : {} ),
+      provenance: stimulus.provenance,
+      ...( stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {} ),
     } )
   }
 
-  /** Perceive from the default user. Sugar over `perceive`. */
+  /**
+   * Perceive from the default user. Sugar over `perceive`.
+   *
+   * Supplies `provenance: 'exafferent'` — that is not a default sneaking back
+   * in, it is what the verb MEANS. "Say" is somebody speaking to the Will; a
+   * caller who wants to feed back the Will's own act reaches for `perceive` and
+   * says so. The assertion lives in the function name.
+   */
   async say( text: string ): Promise<void> {
-    return this.perceive( { text, from: 'user' } )
+    return this.perceive( { text, from: 'user', provenance: 'exafferent' } )
   }
 
-  /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive`. */
+  /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive` — see `say` on provenance. */
   async tell( entityId: string, speakerName: string, text: string ): Promise<void> {
-    return this.perceive( { text, from: entityId, speaker: speakerName } )
+    return this.perceive( { text, from: entityId, speaker: speakerName, provenance: 'exafferent' } )
   }
 
   /**

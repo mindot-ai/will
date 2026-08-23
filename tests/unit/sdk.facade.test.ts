@@ -209,7 +209,7 @@ describe('Will facade — subject surface', () => {
   it('perceive() is the intake say/tell route through, and does not stall ticking', async () => {
     const will = await Will.create( { ...base, name: 'Ears', identity: { prompt: 'I listen.' } } )
     try {
-      await will.perceive( { from: 'ada', speaker: 'Ada', text: 'Hello there.' } )
+      await will.perceive( { from: 'ada', speaker: 'Ada', text: 'Hello there.', provenance: 'exafferent' } )
       await will.say('noted')
       await will.tell('bob', 'Bob', 'and hello from Bob')
       await new Promise( r => setTimeout( r, 150 ) )

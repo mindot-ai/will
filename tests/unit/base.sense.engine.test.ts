@@ -16,8 +16,8 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { BaseSenseEngine, ShellSenseEngine } from '#senses/base.sense.engine'
-import { provenanceOf } from '#senses/index'
-import type { SensoryInput, Percept } from '#senses/index'
+import { asProvenance } from '#senses/index'
+import type { SensoryInput, Percept, Transduced } from '#senses/index'
 
 // ── A minimal concrete sense engine — the whole point of §6 ────
 class TestSense extends BaseSenseEngine {
@@ -45,8 +45,8 @@ class TestShell extends ShellSenseEngine {
   protected readonly acceptedKinds = new Set<SensoryInput['kind']>( [ 'ambient' ] )
 }
 
-const IMAGE: SensoryInput = { kind: 'image', entityId: 'e1', data: Buffer.from(''), mimeType: 'image/png' }
-const TEXT:  SensoryInput = { kind: 'text', entityId: 'e1', threadId: 't1', content: 'hi' }
+const IMAGE: SensoryInput = { kind: 'image', entityId: 'e1', data: Buffer.from(''), mimeType: 'image/png', provenance: 'exafferent' }
+const TEXT:  SensoryInput = { kind: 'text', entityId: 'e1', threadId: 't1', content: 'hi', provenance: 'exafferent' }
 
 function busSpy(){
   const events: any[] = []
@@ -119,10 +119,8 @@ describe('BaseSenseEngine — shared pipeline (§6)', () => {
 //
 // The emit chokepoint is where a signal stops being the host's and becomes the
 // mind's, so it is the one place that can guarantee every percept says whose
-// doing it was. These pin the guarantee AND its direction: a host that says
-// nothing must land on 'exafferent', never 'reafferent' — a percept wrongly
-// marked as mine is attenuated and can never rupture a commitment, so the
-// silent default has to be the one that errs toward noticing.
+// doing it was. The guarantee has two halves and both are pinned here: the
+// stamp is CARRIED faithfully, and it cannot be FORGED by the sense engine.
 describe('BaseSenseEngine — provenance stamping (P0a)', () => {
   async function stampOf( input: SensoryInput ){
     const e = new TestSense()
@@ -132,41 +130,52 @@ describe('BaseSenseEngine — provenance stamping (P0a)', () => {
     return events[0].payload as Percept
   }
 
-  it('an unstamped signal is exafferent — the world did it, not me', async () => {
+  it('provenance is REQUIRED on a signal — there is no silent fourth state', () => {
+    // A type test, deliberately, because that is where the guarantee now lives.
+    // It shipped optional-with-a-default first, and the default was a claim
+    // ("the world did this") made by nobody: behaviourally identical to
+    // 'exafferent', epistemically its opposite, and impossible to tell apart
+    // from a host that genuinely asserted it. 'unknown' already covers "I
+    // cannot say", so absence bought a state with no meaning of its own.
+    // If this stops erroring, the four-state hole is back.
+    // @ts-expect-error — provenance is not optional
+    const missing: SensoryInput = { kind: 'text', entityId: 'e1', threadId: 't1', content: 'hi' }
+    expect( missing.kind ).toBe('text')
+  } )
+
+  it("carries 'exafferent' — the world did this", async () => {
     expect( ( await stampOf( IMAGE ) ).provenance ).toBe('exafferent')
   } )
 
-  it("never silently defaults to 'reafferent'", async () => {
-    // The failure that matters: a mind that mislabels the world as its own doing
-    // goes quiet about real events. Stated separately from the positive
-    // assertion above so a future default change trips a test that NAMES the risk.
-    expect( ( await stampOf( IMAGE ) ).provenance ).not.toBe('reafferent')
-  } )
-
-  it("carries an asserted 'reafferent' stamp and its sourceIntentId across transduction", async () => {
+  it("carries 'reafferent' and its sourceIntentId across transduction", async () => {
     const p = await stampOf( { ...IMAGE, provenance: 'reafferent', sourceIntentId: 'intent-77' } )
     expect( p.provenance ).toBe('reafferent')
     expect( p.sourceIntentId ).toBe('intent-77')
   } )
 
-  it("carries an asserted 'unknown' — a host that cannot tell says so out loud", async () => {
+  it("carries 'unknown' — a host that cannot tell says so out loud", async () => {
     expect( ( await stampOf( { ...IMAGE, provenance: 'unknown' } ) ).provenance ).toBe('unknown')
   } )
 
   it('omits sourceIntentId entirely when the host supplied none (absent, not undefined)', async () => {
-    const p = await stampOf( IMAGE )
-    expect('sourceIntentId' in p ).toBe( false )
+    expect('sourceIntentId' in ( await stampOf( IMAGE ) ) ).toBe( false )
   } )
 
-  it('the stamp overrides whatever the sense engine put on the percept itself', async () => {
-    // A sense engine must not be able to launder provenance: the host's assertion
-    // is the only authority, so publishPercept() stamps last.
+  it('a sense engine cannot forge the stamp', async () => {
+    // `Transduced` makes this a compile error, which is the real guard. This
+    // keeps the runtime half, because the type is only as strong as the
+    // compiler that saw it: a JS host, or a consumer built against an older
+    // .d.ts, can still hand over an object carrying these fields. The first
+    // cut let exactly that through — the stamp overwrote `provenance`
+    // unconditionally but `sourceIntentId` only when the host supplied one, so
+    // a fabricated intent id survived: provenance the mind would later trust,
+    // laundered by the step that exists to establish it.
     class Liar extends TestSense {
       protected async _perceive( input: SensoryInput ): Promise<void> {
         this.publishPercept( {
           domain: this.domain, sourceEntityId: 'x', timestamp: 0, salience: 0.1,
           raw: input, provenance: 'reafferent', sourceIntentId: 'fabricated',
-        }, input )
+        } as unknown as Transduced<Percept>, input )
       }
     }
     const e = new Liar()
@@ -178,10 +187,48 @@ describe('BaseSenseEngine — provenance stamping (P0a)', () => {
     expect( events[0].payload.sourceIntentId ).toBeUndefined()
   } )
 
-  it('provenanceOf is the single place the default lives', () => {
-    expect( provenanceOf( {} ) ).toBe('exafferent')
-    expect( provenanceOf( { provenance: 'reafferent' } ) ).toBe('reafferent')
-    expect( provenanceOf( { provenance: 'unknown' } ) ).toBe('unknown')
+  it('publishPercept returns the SAME stamped object it published', async () => {
+    // Audition routes the turn with this return value; a second, unstamped copy
+    // would let the bus and the facet disagree about whose doing it was.
+    let returned: Percept | undefined
+    class Returner extends TestSense {
+      protected async _perceive( input: SensoryInput ): Promise<void> {
+        returned = this.publishPercept(
+          { domain: this.domain, sourceEntityId: 'x', timestamp: 0, salience: 0.1, raw: input },
+          input,
+        )
+      }
+    }
+    const e = new Returner()
+    const { bus, events } = busSpy()
+    e.attachBus( bus )
+    await e.ingest( { ...IMAGE, provenance: 'unknown' } )
+
+    expect( returned ).toBe( events[0].payload )
+    expect( returned!.provenance ).toBe('unknown')
+  } )
+} )
+
+// ── asProvenance — the ONE place a default survives (untyped ingress) ──
+describe('asProvenance — untyped boundary normalizer', () => {
+  it('recognizes each asserted value', () => {
+    expect( asProvenance('exafferent') ).toBe('exafferent')
+    expect( asProvenance('reafferent') ).toBe('reafferent')
+    expect( asProvenance('unknown') ).toBe('unknown')
+  } )
+
+  it("falls back to 'exafferent', and never to 'reafferent'", () => {
+    // A percept wrongly marked as mine is attenuated and can never rupture a
+    // commitment, so a mind that mislabels the world as its own doing goes
+    // quiet about real events. The fallback errs toward noticing.
+    for( const raw of [ undefined, null, '', 'nonsense', 42, {} ] )
+      expect( asProvenance( raw ) ).toBe('exafferent')
+  } )
+
+  it("does NOT fall back to 'unknown'", () => {
+    // 'unknown' is an assertion too — "I looked and cannot tell" — and a caller
+    // that just did not send the field has not looked.
+    expect( asProvenance( undefined ) ).not.toBe('unknown')
   } )
 } )
 
@@ -192,7 +239,7 @@ describe('ShellSenseEngine — stub contract (§6)', () => {
 
   it('warns for an accepted kind but never throws', async () => {
     const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
-    await expect( new TestShell().ingest( { kind: 'ambient', metricKey: 'cpu', value: 1, trend: 'rising' } ) ).resolves.toBeUndefined()
+    await expect( new TestShell().ingest( { kind: 'ambient', metricKey: 'cpu', value: 1, trend: 'rising', provenance: 'exafferent' } ) ).resolves.toBeUndefined()
     expect( warn ).toHaveBeenCalledWith( expect.stringContaining('test-shell') )
     warn.mockRestore()
   } )

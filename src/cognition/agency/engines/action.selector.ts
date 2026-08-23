@@ -705,6 +705,14 @@ function computeRupture(
   for( const e of state.entities.values() ){
     if( e.type !== 'percept') continue
     const m = e.metadata
+    // Deliberately NOT asProvenance(). Absence is load-bearing here and only
+    // here: an UNTAGGED percept is excluded from rupture, and three writers
+    // are untagged — `escalation.buffer` (x2) and the wake percept in
+    // `stem/index.ts`. Normalizing would default them to 'exafferent' and make
+    // them rupture-eligible. That is a real behaviour change, and probably the
+    // right one — a mind waking after hours offline currently cannot be
+    // ruptured by that fact — but it belongs to the phase that tags those
+    // writers, with tests. See .TODO/SIGNAL_BOUNDARY.md.
     if( str( m?.['provenance'] ) !== 'exafferent') continue
     const pTick = num( m?.['tick'], -1 )
     if( pTick < 0 || tick - pTick > RUPTURE_WINDOW_TICKS ) continue

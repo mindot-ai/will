@@ -88,6 +88,7 @@ await stem.ingestText( willId, {
   threadId:    'hello-thread',
   content:     'Hello! Who are you?',
   speakerName: 'Visitor',
+  provenance:  'exafferent',
 })
 
 const reply = await replyArrived

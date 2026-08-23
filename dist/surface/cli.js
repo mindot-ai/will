@@ -6936,6 +6936,10 @@ var Exteroception = class {
           salience,
           category: rp.category,
           summary: rp.summary,
+          // Typed, not a bare literal: this metadata write is the same concept the
+          // sense door carries, and the compiler stops at the metadata boundary.
+          // INFERRED here, legitimately — a match against our own live consequence
+          // descriptors is the efference copy doing its job. See SignalProvenance.
           provenance: hit ? "reafferent" : "exafferent",
           ...hit ? { sourceIntentId: hit.intentId } : {},
           // affect→percept seam (registry #5): what this percept FEELS like
@@ -21567,11 +21571,6 @@ function computeLanguageSalience(opts) {
   return clamp015(base + urgency + attach + goal + length);
 }
 
-// src/cognition/senses/provenance.ts
-function provenanceOf(input) {
-  return input.provenance ?? "exafferent";
-}
-
 // src/cognition/senses/base.sense.engine.ts
 var BaseSenseEngine = class {
   /**
@@ -21624,13 +21623,24 @@ var BaseSenseEngine = class {
    * fact transduction must not lose is whose doing that cause was. Taking it
    * here — instead of stashing the in-flight input on a field — is what keeps
    * the stamp correct while `_perceive()` is async and two ingests overlap.
-   * A percept arrives already stamped; downstream never has to guess.
+   *
+   * The percept arrives as `Transduced`, i.e. WITHOUT the two fields, so a
+   * sense engine cannot supply them at all. An earlier cut let one through: the
+   * stamp overwrote `provenance` unconditionally but `sourceIntentId` only when
+   * the host supplied one, so an engine could fabricate an intent id and it
+   * survived — provenance the mind would later trust, laundered by the very
+   * step that exists to establish it. The type now refuses it outright; the
+   * host's assertion is the only authority.
+   *
+   * Returns the stamped percept so a sense engine that needs it downstream (as
+   * audition does, to route the turn) uses the SAME object the bus saw, rather
+   * than a second one that could drift from it.
    */
   publishPercept(percept, from) {
     const { provenance: _stale, sourceIntentId: _staleIntent, ...rest } = percept;
     const stamped = {
       ...rest,
-      provenance: provenanceOf(from),
+      provenance: from.provenance,
       ...from.sourceIntentId ? { sourceIntentId: from.sourceIntentId } : {}
     };
     this._bus?.publish({
@@ -21640,6 +21650,7 @@ var BaseSenseEngine = class {
       salience: stamped.salience,
       payload: stamped
     });
+    return stamped;
   }
 };
 var ShellSenseEngine = class extends BaseSenseEngine {
@@ -22015,7 +22026,7 @@ var AuditionEngine = class extends BaseSenseEngine {
       activeGoalText: this._getActiveGoalText?.() ?? []
     });
     const salience = this._model.observe(`audition.${entityId}`, langEnergy).salience;
-    const percept = {
+    const transduced = {
       domain: "audition",
       channel: msg.kind,
       content,
@@ -22031,7 +22042,7 @@ var AuditionEngine = class extends BaseSenseEngine {
       timestamp: wallClock(),
       raw: msg
     };
-    this.publishPercept(percept, msg);
+    const percept = this.publishPercept(transduced, msg);
     this._digests.append(threadId, "user", content);
     this._inflightInbound.set(entityId, content);
     this._inflightThread.set(entityId, threadId);
@@ -24551,6 +24562,11 @@ function situationMoved(state, targetEntityId, composedAt) {
   return null;
 }
 
+// src/cognition/senses/provenance.ts
+function asProvenance(raw) {
+  return raw === "reafferent" ? "reafferent" : raw === "unknown" ? "unknown" : "exafferent";
+}
+
 // src/cognition/agency/engines/reafference.engine.ts
 var PROC_THRESHOLD2 = 0.6;
 var SENSORY_SOFT_QUALITY = 0.6;
@@ -24636,7 +24652,7 @@ var ReafferenceEngine = class {
     for (const [, e] of state.entities) {
       if (e.type !== "percept") continue;
       const m = e.metadata ?? {};
-      if (str8(m["provenance"]) !== "reafferent") continue;
+      if (asProvenance(m["provenance"]) !== "reafferent") continue;
       const iid = str8(m["sourceIntentId"]);
       if (!iid || gradedIntentIds.has(iid) || sensedIntentIds.has(iid)) continue;
       const aw = awaiting.get(iid);
@@ -28079,11 +28095,12 @@ var TransportController = class {
   _dispatch(instance, env, deps) {
     switch (env.channel) {
       case "inbound_message": {
-        const input = env.kind === "voice" ? { kind: "voice", entityId: env.entityId, threadId: env.threadId, transcription: env.content } : {
+        const input = env.kind === "voice" ? { kind: "voice", entityId: env.entityId, threadId: env.threadId, transcription: env.content, provenance: "unknown" } : {
           kind: "text",
           entityId: env.entityId,
           threadId: env.threadId,
           content: env.content,
+          provenance: "unknown",
           ...env.speakerName ? { speakerName: env.speakerName } : {}
         };
         void instance.cognition.auditionEngine.ingest(input);
@@ -29781,16 +29798,25 @@ var Will = class _Will {
       ...stimulus.direct !== void 0 ? { direct: stimulus.direct } : {},
       // Omitted when the channel does not know — a room with no name stays
       // unnamed, the same way a person does, rather than being labelled with its id.
-      ...stimulus.threadName ? { threadName: stimulus.threadName } : {}
+      ...stimulus.threadName ? { threadName: stimulus.threadName } : {},
+      provenance: stimulus.provenance,
+      ...stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {}
     });
   }
-  /** Perceive from the default user. Sugar over `perceive`. */
+  /**
+   * Perceive from the default user. Sugar over `perceive`.
+   *
+   * Supplies `provenance: 'exafferent'` — that is not a default sneaking back
+   * in, it is what the verb MEANS. "Say" is somebody speaking to the Will; a
+   * caller who wants to feed back the Will's own act reaches for `perceive` and
+   * says so. The assertion lives in the function name.
+   */
   async say(text) {
-    return this.perceive({ text, from: "user" });
+    return this.perceive({ text, from: "user", provenance: "exafferent" });
   }
-  /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive`. */
+  /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive` — see `say` on provenance. */
   async tell(entityId, speakerName, text) {
-    return this.perceive({ text, from: entityId, speaker: speakerName });
+    return this.perceive({ text, from: entityId, speaker: speakerName, provenance: "exafferent" });
   }
   /**
    * Await the Will's *next spontaneous utterance* — a thin, honest adapter over
@@ -30358,10 +30384,18 @@ function buildWillMcpServer(will, opts = {}) {
     inputSchema: {
       text: z.string().describe("What is said or observed."),
       from: z.string().optional().describe("Who it's from (entity id, default 'user'). Use a stable id per person."),
-      speaker: z.string().optional().describe("Display name of the speaker.")
+      speaker: z.string().optional().describe("Display name of the speaker."),
+      provenance: z.enum(["exafferent", "reafferent", "unknown"]).optional().describe(
+        `Whose doing this was. 'exafferent' (default) \u2014 the world did it, somebody spoke or something happened. 'reafferent' \u2014 this is ${will.name}'s OWN act coming back to it: the result of an ability it used, an echo of a message it sent. 'unknown' \u2014 you looked and cannot tell. It cannot work this out for itself; its own echo and a stranger saying the same words are identical from the inside.`
+      )
     }
-  }, async ({ text, from, speaker }) => {
-    await will.perceive({ text, ...from ? { from } : {}, ...speaker ? { speaker } : {} });
+  }, async ({ text, from, speaker, provenance }) => {
+    await will.perceive({
+      text,
+      provenance: asProvenance(provenance),
+      ...from ? { from } : {},
+      ...speaker ? { speaker } : {}
+    });
     return {
       content: [{
         type: "text",
@@ -30476,8 +30510,14 @@ data: ${JSON.stringify(data)}
         if (!text) return json(res, 400, { error: "text is required" });
         await will.perceive({
           text,
+          // Untyped ingress — a JSON body cannot be type-checked, and a client
+          // that predates the field has not claimed anything. asProvenance()
+          // owns the direction; see its comment for why 'exafferent' and not
+          // the tidier-looking 'unknown'.
+          provenance: asProvenance(body.provenance),
           ...typeof body.from === "string" ? { from: body.from } : {},
-          ...typeof body.speaker === "string" ? { speaker: body.speaker } : {}
+          ...typeof body.speaker === "string" ? { speaker: body.speaker } : {},
+          ...typeof body.sourceIntentId === "string" ? { sourceIntentId: body.sourceIntentId } : {}
         });
         return json(res, 202, { delivered: true, tick: will.state().tick });
       }
@@ -30685,6 +30725,11 @@ async function connectDiscord(will, opts) {
       from: `discord:${user.id}`,
       thread: `discord:${msg.channelId}`,
       direct: isDM,
+      // Exafferent, and the near-miss is worth naming: this is ABOUT something
+      // she did, but it is not her doing it. Somebody else reacted. Reafference
+      // is the mind sensing its OWN act's consequence, not the world's response
+      // to that act — a reply would fail the same test for the same reason.
+      provenance: "exafferent",
       ...roomLabel(msg) ? { threadName: roomLabel(msg) } : {},
       ...who ? { speaker: who } : {}
     });
@@ -30725,6 +30770,11 @@ async function connectDiscord(will, opts) {
       // the right or wrong place to say something, and the mind never saw it —
       // which is how a follow-up promised in a DM went out to #general.
       direct: isDM,
+      // Somebody spoke. The bridge already drops her own messages (`onMessage`
+      // returns early on `author.id === self.id`), so nothing reafferent can
+      // reach this line today — but that filter is a bridge-level deletion of
+      // a signal she is entitled to sense, not a reason for the field to lie.
+      provenance: "exafferent",
       ...roomLabel(message) ? { threadName: roomLabel(message) } : {},
       ...speaker ? { speaker } : {}
     });
@@ -30787,6 +30837,14 @@ async function connectDiscord(will, opts) {
       from: address,
       thread: address,
       direct: false,
+      // REAFFERENT — the one place in this bridge where it is. She enacted
+      // `discord_inspect_channel` and this is the consequence coming back to
+      // her own senses. Until the field existed, that fact lived only in the
+      // English of the bracketed prose above, where nothing but the LLM could
+      // read it. No `sourceIntentId`: an effector handler is not given the
+      // invocation id it is running under, which is the gap ACT_EXPECTATIONS
+      // has to close before the echo can be matched to the act mechanically.
+      provenance: "reafferent",
       ...label ? { threadName: label } : {}
     });
     return { success: true, description: `Looked into ${label}.` };
@@ -30946,6 +31004,9 @@ async function connectWhatsApp(will, opts = {}) {
     const text = textOf(m);
     if (!text.trim()) return;
     await will.perceive({
+      // Somebody messaged her. Baileys filters `fromMe` upstream, so as with
+      // Discord nothing reafferent reaches this bridge today.
+      provenance: "exafferent",
       text,
       from: entityId,
       thread: `whatsapp:${jid}`,

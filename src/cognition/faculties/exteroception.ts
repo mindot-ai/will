@@ -30,7 +30,7 @@ import type {
 import type { SimulationEngine, EngineResult, CognitiveEngine } from '#cognition/types'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
-import type { SignalProvenance } from '#senses/provenance'
+import { perceptEntity } from '#cognition/percept.entity'
 import { GenerativeModel } from '#cognition/generative.model'
 import {
   ATTENUATION, CORRESPONDENCE_ATTENUATION,
@@ -190,28 +190,27 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
         : entityHit ? rp.salience * CORRESPONDENCE_ATTENUATION
         : rp.salience
 
-      const perceptEntity = {
-        id: `percept-${tick}-${i}`,
-        type: 'percept',
-        metadata: {
-          entityId: rp.entityId,
-          changeType: rp.changeType,
-          salience,
-          category: rp.category,
-          summary: rp.summary,
-          // Typed, not a bare literal: this metadata write is the same concept the
-          // sense door carries, and the compiler stops at the metadata boundary.
-          // INFERRED here, legitimately — a match against our own live consequence
-          // descriptors is the efference copy doing its job. See SignalProvenance.
-          provenance: ( hit ? 'reafferent' : 'exafferent') satisfies SignalProvenance,
-          ...( hit ? { sourceIntentId: hit.intentId } : {} ),
-          // affect→percept seam (registry #5): what this percept FEELS like
-          ...( rp.valence !== undefined ? { valence: rp.valence, valenceSource: rp.valenceSource } : {} ),
-          tick,
-        },
-      }
-
-      commands.set!.push( perceptEntity )
+      // Through the shared constructor (SIGNAL_BOUNDARY P0) rather than a
+      // hand-rolled literal. A no-op here — this writer already set every core
+      // field — which is exactly why it is the one that proves the shape: four
+      // other writers reach it having each forgotten a different one.
+      //
+      // `provenance` is INFERRED here, legitimately: a match against our own
+      // live consequence descriptors is the efference copy doing its job. The
+      // sense door asserts instead, because it has nothing to match against.
+      commands.set!.push( perceptEntity( {
+        id:         `percept-${tick}-${i}`,
+        tick,
+        salience,
+        category:   rp.category,
+        summary:    rp.summary,
+        provenance: hit ? 'reafferent' : 'exafferent',
+        entityId:   rp.entityId,
+        changeType: rp.changeType,
+        ...( hit ? { sourceIntentId: hit.intentId } : {} ),
+        // affect→percept seam (registry #5): what this percept FEELS like
+        ...( rp.valence !== undefined ? { valence: rp.valence, valenceSource: rp.valenceSource } : {} ),
+      } ) )
 
       // Emit percept event for downstream engines
       if( this._emitPerceptEvents )

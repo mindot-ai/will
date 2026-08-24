@@ -154,7 +154,7 @@ async function connectDiscord(will, opts) {
     const who = user.displayName ?? user.username;
     const said = (msg.cleanContent || msg.content || "").trim().slice(0, REACTION_QUOTE_CHARS);
     const text = said ? `[${who ?? "someone"} reacted ${emoji} to what I said: "${said}"]` : `[${who ?? "someone"} reacted ${emoji} to something I said]`;
-    await will.perceive({
+    await will.sense({
       text,
       from: `discord:${user.id}`,
       thread: `discord:${msg.channelId}`,
@@ -195,7 +195,7 @@ async function connectDiscord(will, opts) {
       opts.readAttachments === false ? void 0 : fetchAttachmentText
     );
     const text = [said, shared].filter(Boolean).join("\n");
-    await will.perceive({
+    await will.sense({
       text,
       from: entityId,
       thread: `discord:${message.channelId}`,

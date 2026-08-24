@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────
 /**
  * WhatsApp bridge — both directions of the paradigm over a fake socket:
- * inbound DM/group messages become perceive() stimuli (entity id from the
+ * inbound DM/group messages become sense() stimuli (entity id from the
  * bare number, learned push name, per-chat thread), outbound utterances
  * route via the roster — with the WhatsApp-specific twist that a DM jid is
  * derivable from the entity id, so an unmet addressee is still reachable.
@@ -46,9 +46,9 @@ class FakeSocket implements WaLikeSocket {
 class FakeWill {
   id = 'aria'
   name = 'Aria'
-  perceived: Stimulus[] = []
+  sensed: Stimulus[] = []
   private messageHandlers: Array<( m: WillMessage ) => void> = []
-  async perceive( s: Stimulus ){ this.perceived.push( s ) }
+  async sense( s: Stimulus ){ this.sensed.push( s ) }
   on( _e: 'message', fn: ( m: WillMessage ) => void ){ this.messageHandlers.push( fn ); return this }
   utter( m: WillMessage ){ for( const fn of this.messageHandlers ) fn( m ) }
 }
@@ -86,13 +86,13 @@ async function bridgeUp( opts: Partial<Parameters<typeof connectWhatsApp>[1]> = 
 // ── inbound ──────────────────────────────────────────────────────────────────
 
 describe('whatsapp bridge — inbound', () => {
-  it('maps a DM onto perceive: entity from the bare number, learned push name, per-chat thread', async () => {
+  it('maps a DM onto sense: entity from the bare number, learned push name, per-chat thread', async () => {
     const { socket, will } = await bridgeUp()
     socket.emit( dm('4915551234', 'hallo', 'Ada L.') )
     await flush()
 
-    expect( will.perceived ).toHaveLength( 1 )
-    expect( will.perceived[0] ).toMatchObject( {
+    expect( will.sensed ).toHaveLength( 1 )
+    expect( will.sensed[0] ).toMatchObject( {
       text: 'hallo', from: 'whatsapp:4915551234', speaker: 'Ada L.', thread: 'whatsapp:4915551234@s.whatsapp.net',
     } )
   } )
@@ -102,7 +102,7 @@ describe('whatsapp bridge — inbound', () => {
     socket.emit( groupMsg('12036302-1633', '4915551234', 'moin', { name: 'Ada' } ) )
     await flush()
 
-    expect( will.perceived[0] ).toMatchObject( {
+    expect( will.sensed[0] ).toMatchObject( {
       from: 'whatsapp:4915551234', thread: 'whatsapp:12036302-1633@g.us',
     } )
   } )
@@ -115,7 +115,7 @@ describe('whatsapp bridge — inbound', () => {
     socket.emit( { key: { remoteJid: 'status@broadcast', fromMe: false }, message: { conversation: 'story' } } )
     socket.emit( dm('4', '   ') )
     await flush()
-    expect( will.perceived ).toHaveLength( 0 )
+    expect( will.sensed ).toHaveLength( 0 )
   } )
 
   it('honours the chats allowlist', async () => {
@@ -123,7 +123,7 @@ describe('whatsapp bridge — inbound', () => {
     socket.emit( groupMsg('g1', '111', 'in-room') )
     socket.emit( groupMsg('g2', '111', 'elsewhere') )
     await flush()
-    expect( will.perceived.map( s => s.text ) ).toEqual( [ 'in-room' ] )
+    expect( will.sensed.map( s => s.text ) ).toEqual( [ 'in-room' ] )
   } )
 
   it('mentionOnly gates group chatter (device suffix ignored) but never DMs', async () => {
@@ -132,7 +132,7 @@ describe('whatsapp bridge — inbound', () => {
     socket.emit( groupMsg('g1', '111', 'hey @aria', { mentions: [ '490000@s.whatsapp.net' ] } ) )
     socket.emit( dm('222', 'psst') )
     await flush()
-    expect( will.perceived.map( s => s.text ) ).toEqual( [ 'hey @aria', 'psst' ] )
+    expect( will.sensed.map( s => s.text ) ).toEqual( [ 'hey @aria', 'psst' ] )
   } )
 
   it('sends a composing cue only when addressed — and composing is not a reply', async () => {
@@ -143,7 +143,7 @@ describe('whatsapp bridge — inbound', () => {
 
     expect( socket.composing ).toEqual( [ '222@s.whatsapp.net' ] )
     expect( socket.sent.size ).toBe( 0 )          // perceiving ≠ answering
-    expect( will.perceived ).toHaveLength( 2 )    // ambient chatter is still perceived
+    expect( will.sensed ).toHaveLength( 2 )    // ambient chatter is still perceived
   } )
 } )
 

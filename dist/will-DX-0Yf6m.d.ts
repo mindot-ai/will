@@ -9542,7 +9542,7 @@ declare class WillStem {
 
 /**
  * A stimulus entering the Will's sensory field. A Will is a subject, not a
- * function: you don't *call* it with input and await a return — you `perceive`
+ * function: you don't *call* it with input and await a return — you `sense`
  * something to it, and it *may* project a response later (see `nextUtterance`),
  * coloured by its current state. Silence is a valid, meaningful outcome.
  */
@@ -9562,25 +9562,27 @@ interface Stimulus {
      * Whose doing this was: `'exafferent'` (the world), `'reafferent'` (the Will's
      * own act, coming back), or `'unknown'` (you cannot tell).
      *
-     * Only you can answer it — nothing inside the mind can tell the echo of its
-     * own utterance from a stranger saying the same words. Most inbound traffic is
-     * `'exafferent'`; use `say()`/`tell()`, whose verbs already make that claim,
-     * when that is all you mean. Reach for `'reafferent'` when you are feeding
-     * back the result of something the Will did — an ability's output, a webhook
-     * fired by its own write, a platform echo of a message it sent — and pass
-     * `sourceIntentId` if you have it.
+     * REQUIRED, as of P3. Only you can answer it — nothing inside the mind can
+     * tell the echo of its own utterance from a stranger saying the same words,
+     * which is why this is asserted at the boundary and never inferred behind it.
+     * Most inbound traffic is `'exafferent'`; use `say()`/`tell()`, whose verbs
+     * already make that claim, when that is all you mean. Reach for `'reafferent'`
+     * when you are feeding back the result of something the Will did — an
+     * ability's output, a webhook fired by its own write, a platform echo of a
+     * message it sent — and pass `sourceIntentId` if you have it.
      *
-     * ⚠️ **OPTIONAL ONLY UNTIL P3, and omitting it is already the worse choice.**
-     * It is required everywhere inside the package (`SensoryInput`, `Percept`);
-     * this one door stays lenient so a host migrates ONCE, at P3, when
-     * `perceive()` is renamed to `sense()` and the two breaks land together.
-     * Until then an omission defaults to `'exafferent'` — the same fourth,
-     * silent state the internal types exist to forbid, kept alive here on
-     * purpose and on a clock. Pass it now and the P3 bump costs you nothing.
+     * It was optional for exactly one epoch, defaulting to `'exafferent'`, so that
+     * a host migrated ONCE — at P3, alongside the `perceive()` → `sense()` rename
+     * — rather than twice. That default was the last surviving instance of the
+     * four-state hole the internal types exist to forbid: an omission silently
+     * became a claim nobody made. It is gone.
      *
-     * See `.TODO/SIGNAL_BOUNDARY.md` §5 P3.
+     * If you genuinely cannot tell, say `'unknown'`. That is a different statement
+     * from `'exafferent'` and the mind treats it as one: the rupture gate in
+     * `action.selector` counts only `'exafferent'` percepts, so a mislabelled echo
+     * can interrupt a mind's train of thought with its own words.
      */
-    provenance?: SignalProvenance;
+    provenance: SignalProvenance;
     /** The intent whose enaction caused this, when `provenance` is `'reafferent'`. */
     sourceIntentId?: string;
     /** Conversation/thread id (default = `from`). */
@@ -9599,7 +9601,7 @@ interface WillMessage {
     /** Entity id the Will addressed (the speaker you used in say()/tell(), or a bond). */
     to: string;
     /**
-     * The conversation this belongs to — the `thread` from the `perceive()` that
+     * The conversation this belongs to — the `thread` from the `sense()` that
      * prompted it. Absent when the Will spoke unprompted, which genuinely has no
      * thread.
      *
@@ -9676,7 +9678,7 @@ type EffectorResult = string | {
      * the field you would want it to notice.
      *
      * Before this, a host with facts to hand back had to return the ack AND call
-     * `perceive()` separately — two calls for one act, and the second one had to
+     * `sense()` separately — two calls for one act, and the second one had to
      * pretend somebody had spoken.
      */
     observation?: unknown;
@@ -9689,7 +9691,7 @@ type EffectorHandler = (args: Record<string, unknown>, ctx: {
      * The `agency.intent` this handler is running under — the correlation handle
      * the Will will match an ack to (SIGNAL_BOUNDARY P1).
      *
-     * Pass it as `sourceIntentId` on any `perceive()` you make from inside a
+     * Pass it as `sourceIntentId` on any `sense()` you make from inside a
      * handler, and the resulting percept is a *reafference* the mind can tie back
      * to the act that caused it, rather than an unexplained arrival. Before this
      * existed, `discord_inspect_channel` had to say so in English — a bracketed
@@ -9861,18 +9863,36 @@ declare class Will {
      * *delivered*, NOT once the Will has responded: a response (if any) is a
      * projection that arrives later on the `message` event, or via
      * `nextUtterance()`. The Will may also stay silent — that is not an error.
+     *
+     * NAMED `sense`, NOT `perceive` (SIGNAL_BOUNDARY P3). What happens here is
+     * *transduction*: a signal crosses into the mind. PERCEPTION is what a sense
+     * engine does afterwards — audition runs, judges salience, and produces a
+     * `Percept`, which may not resemble what arrived and may not happen at all
+     * (a gated sense drops it). Calling the door `perceive` said the caller had
+     * already done the mind's work, and it misled every reader of this flow,
+     * including the first draft of the epoch that renamed it.
+     */
+    sense(stimulus: Stimulus): Promise<void>;
+    /**
+     * @deprecated Renamed to `sense()` (SIGNAL_BOUNDARY P3) — see `sense` for why. Kept for one minor so a host upgrades on its own schedule; it
+     * delegates, so there is no second code path to drift.
+     *
+     * Note that `Stimulus.provenance` became REQUIRED in the same release, so a
+     * host that only renames the call still has one field to add. That pairing is
+     * deliberate: the two breaks were held back to land together rather than
+     * making the same host migrate twice.
      */
     perceive(stimulus: Stimulus): Promise<void>;
     /**
-     * Perceive from the default user. Sugar over `perceive`.
+     * Sense from the default user. Sugar over `sense`.
      *
      * Supplies `provenance: 'exafferent'` — that is not a default sneaking back
      * in, it is what the verb MEANS. "Say" is somebody speaking to the Will; a
-     * caller who wants to feed back the Will's own act reaches for `perceive` and
+     * caller who wants to feed back the Will's own act reaches for `sense` and
      * says so. The assertion lives in the function name.
      */
     say(text: string): Promise<void>;
-    /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive` — see `say` on provenance. */
+    /** Sense from a specific interlocutor (multi-party). Sugar over `sense` — see `say` on provenance. */
     tell(entityId: string, speakerName: string, text: string): Promise<void>;
     /**
      * Await the Will's *next spontaneous utterance* — a thin, honest adapter over
@@ -9881,7 +9901,7 @@ declare class Will {
      * 5000). `null` is a real outcome — the Will chose not to speak — not a
      * failure. Pass `to` to only accept an utterance addressed to that entity.
      *
-     *   await will.perceive( { from: 'ada', text: 'Hi!' } )
+     *   await will.sense( { from: 'ada', text: 'Hi!', provenance: 'exafferent' } )
      *   const reply = await will.nextUtterance( { to: 'ada', within: 3000 } )
      *   // reply is a WillMessage, or null if Ada got the silent treatment.
      */

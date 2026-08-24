@@ -76,7 +76,7 @@ export function buildWillMcpServer( will: Will, opts: WillMcpOptions = {} ): Mcp
     // asProvenance, not a bare cast: this is an untyped protocol boundary, and
     // an older client that never sends the field has not made a claim — it just
     // predates the field. Defaulting toward 'exafferent' errs toward noticing.
-    await will.perceive( {
+    await will.sense( {
       text,
       provenance: asProvenance( provenance ),
       ...( from ? { from } : {} ),

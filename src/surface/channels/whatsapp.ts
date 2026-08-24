@@ -4,7 +4,7 @@
 //
 // Same paradigm as the Discord bridge, different room:
 //
-//   inbound   DM / group message → will.perceive({ from, speaker, text, thread })
+//   inbound   DM / group message → will.sense({ from, speaker, text, thread })
 //             — every author is `whatsapp:<number>` (stable across chats), the
 //             push name is *learned* by the mind, and each chat (DM or group)
 //             is its own conversation thread.
@@ -162,7 +162,7 @@ export async function connectWhatsApp( will: Will, opts: WhatsAppBridgeOptions =
     const text = textOf( m )
     if( !text.trim() ) return
 
-    await will.perceive( {
+    await will.sense( {
       // Somebody messaged her. Baileys filters `fromMe` upstream, so as with
       // Discord nothing reafferent reaches this bridge today.
       provenance: 'exafferent',

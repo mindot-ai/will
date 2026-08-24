@@ -99,7 +99,7 @@ export function buildWillHttpServer( will: Will, opts: WillHttpOptions = {} ): S
         const body = await readJsonBody( req )
         const text = typeof body.text === 'string' ? body.text : ''
         if( !text ) return json( res, 400, { error: 'text is required' } )
-        await will.perceive( {
+        await will.sense( {
           text,
           // Untyped ingress — a JSON body cannot be type-checked, and a client
           // that predates the field has not claimed anything. asProvenance()

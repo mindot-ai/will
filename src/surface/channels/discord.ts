@@ -4,7 +4,7 @@
 //
 // The bridge relays both directions of the paradigm and nothing else:
 //
-//   inbound   guild/DM message → will.perceive({ from, speaker, text, thread })
+//   inbound   guild/DM message → will.sense({ from, speaker, text, thread })
 //             — every author is `discord:<userId>` (stable across guilds), the
 //             display name is *learned* by the mind, and each Discord channel
 //             is its own conversation thread.
@@ -279,7 +279,7 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
       ? `[${ who ?? 'someone' } reacted ${ emoji } to what I said: "${ said }"]`
       : `[${ who ?? 'someone' } reacted ${ emoji } to something I said]`
 
-    await will.perceive( {
+    await will.sense( {
       text,
       from:   `discord:${ user.id }`,
       thread: `discord:${ msg.channelId }`,
@@ -335,7 +335,7 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
     )
     const text = [ said, shared ].filter( Boolean ).join('\n')
 
-    await will.perceive( {
+    await will.sense( {
       text,
       from:   entityId,
       thread: `discord:${ message.channelId }`,

@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────
 /**
  * Discord bridge — both directions of the paradigm over a fake client:
- * inbound messages become perceive() stimuli (entity id, learned speaker,
+ * inbound messages become sense() stimuli (entity id, learned speaker,
  * per-channel thread), outbound utterances route via the roster, and the
  * gates (bots, allowlist, mentionOnly) narrow perception without ever
  * fabricating a reply.
@@ -73,11 +73,11 @@ class FakeClient implements DiscordLikeClient {
 class FakeWill {
   id = 'aria'
   name = 'Aria'
-  perceived: Stimulus[] = []
+  sensed: Stimulus[] = []
   private messageHandlers: Array<( m: WillMessage ) => void> = []
   /** Abilities the bridge registered — the mind's side is not exercised here. */
   effectors = new Map<string, ( a: Record<string, unknown>, c: Record<string, unknown> ) => unknown>()
-  async perceive( s: Stimulus ){ this.perceived.push( s ) }
+  async sense( s: Stimulus ){ this.sensed.push( s ) }
   on( _e: 'message', fn: ( m: WillMessage ) => void ){ this.messageHandlers.push( fn ); return this }
   effector( name: string, handler: ( a: Record<string, unknown>, c: Record<string, unknown> ) => unknown ){
     this.effectors.set( name, handler ); return this
@@ -104,13 +104,13 @@ async function bridgeUp( opts: Partial<Parameters<typeof connectDiscord>[1]> = {
 // ── inbound ──────────────────────────────────────────────────────────────────
 
 describe('discord bridge — inbound', () => {
-  it('maps a guild message onto perceive: stable entity id, learned speaker, per-channel thread', async () => {
+  it('maps a guild message onto sense: stable entity id, learned speaker, per-channel thread', async () => {
     const { client, will } = await bridgeUp()
     client.emit( { content: 'hello there', channelId: 'c1', author: { id: 'U1', username: 'ada' }, member: { displayName: 'Ada L.' } } )
     await flush()
 
-    expect( will.perceived ).toHaveLength( 1 )
-    expect( will.perceived[0] ).toMatchObject( {
+    expect( will.sensed ).toHaveLength( 1 )
+    expect( will.sensed[0] ).toMatchObject( {
       text: 'hello there', from: 'discord:U1', speaker: 'Ada L.', thread: 'discord:c1',
     } )
   } )
@@ -121,7 +121,7 @@ describe('discord bridge — inbound', () => {
     client.emit( { content: 'echo', channelId: 'c1', author: { id: 'BOT' } } )
     client.emit( { content: '   ',  channelId: 'c1', author: { id: 'U1' } } )
     await flush()
-    expect( will.perceived ).toHaveLength( 0 )
+    expect( will.sensed ).toHaveLength( 0 )
   } )
 
   it('honours the channel allowlist', async () => {
@@ -129,7 +129,7 @@ describe('discord bridge — inbound', () => {
     client.emit( { content: 'in-room', channelId: 'allowed' } )
     client.emit( { content: 'elsewhere', channelId: 'other' } )
     await flush()
-    expect( will.perceived.map( s => s.text ) ).toEqual( [ 'in-room' ] )
+    expect( will.sensed.map( s => s.text ) ).toEqual( [ 'in-room' ] )
   } )
 
   it('mentionOnly gates guild chatter but never DMs', async () => {
@@ -138,7 +138,7 @@ describe('discord bridge — inbound', () => {
     client.emit( { content: 'hey @Aria', channelId: 'c1', mentions: { has: id => id === 'BOT' } } )
     client.emit( { content: 'psst', channelId: 'dm1', guildId: null } )
     await flush()
-    expect( will.perceived.map( s => s.text ) ).toEqual( [ 'hey @Aria', 'psst' ] )
+    expect( will.sensed.map( s => s.text ) ).toEqual( [ 'hey @Aria', 'psst' ] )
   } )
 
   it('sends a typing cue only when addressed — and typing is not a reply', async () => {
@@ -150,7 +150,7 @@ describe('discord bridge — inbound', () => {
     const channel = client.channelsById.get('c1')!
     expect( channel.typed ).toBe( 1 )
     expect( channel.sent ).toHaveLength( 0 )      // perceiving ≠ answering
-    expect( will.perceived ).toHaveLength( 2 )    // ambient chatter is still perceived
+    expect( will.sensed ).toHaveLength( 2 )    // ambient chatter is still perceived
   } )
 } )
 
@@ -254,10 +254,10 @@ describe('discord bridge — attachments', () => {
     } )
     await flush()
 
-    expect( will.perceived ).toHaveLength( 1 )
-    expect( will.perceived[0]!.text ).toContain('ROADMAP.md')
-    expect( will.perceived[0]!.text ).toContain('have not read')
-    expect( will.perceived[0] ).toMatchObject( { from: 'discord:U1', speaker: 'Ada', thread: 'discord:c1' } )
+    expect( will.sensed ).toHaveLength( 1 )
+    expect( will.sensed[0]!.text ).toContain('ROADMAP.md')
+    expect( will.sensed[0]!.text ).toContain('have not read')
+    expect( will.sensed[0] ).toMatchObject( { from: 'discord:U1', speaker: 'Ada', thread: 'discord:c1' } )
   } )
 
   it('reads a text attachment from the CDN into the percept, alongside what was said', async () => {
@@ -271,7 +271,7 @@ describe('discord bridge — attachments', () => {
       } )
       await flush()
 
-      const text = will.perceived[0]!.text
+      const text = will.sensed[0]!.text
       expect( text ).toContain('here it is')          // speech survives
       expect( text ).toContain('Ship the thing.')     // document is readable
       expect( text ).toContain('not something said to me')   // …and marked as handed over
@@ -292,8 +292,8 @@ describe('discord bridge — attachments', () => {
       await flush()
 
       expect( called ).toBe( 0 )
-      expect( will.perceived[0]!.text ).not.toContain('pwned')
-      expect( will.perceived[0]!.text ).toContain('notes.md')
+      expect( will.sensed[0]!.text ).not.toContain('pwned')
+      expect( will.sensed[0]!.text ).toContain('notes.md')
     }
     finally { globalThis.fetch = original }
   } )
@@ -311,7 +311,7 @@ describe('discord bridge — attachments', () => {
       await flush()
 
       expect( called ).toBe( 0 )
-      expect( will.perceived[0]!.text ).toContain('diagram.png')
+      expect( will.sensed[0]!.text ).toContain('diagram.png')
     }
     finally { globalThis.fetch = original }
   } )
@@ -341,7 +341,7 @@ describe('discord bridge — attachments arrive as a Map (the discord.js Collect
       } )
       await flush()
 
-      const text = will.perceived[0]!.text
+      const text = will.sensed[0]!.text
       expect( text ).toContain('Here it is')
       expect( text ).toContain('message.txt')            // the NAME resolved, not undefined
       expect( text ).not.toContain('unnamed')
@@ -357,8 +357,8 @@ describe('discord bridge — attachments arrive as a Map (the discord.js Collect
       attachments: [ { name: 'notes.md', contentType: 'text/markdown', size: 12 } ],
     } )
     await flush()
-    expect( will.perceived[0]!.text ).toContain('notes.md')
-    expect( will.perceived[0]!.text ).not.toContain('unnamed')
+    expect( will.sensed[0]!.text ).toContain('notes.md')
+    expect( will.sensed[0]!.text ).not.toContain('unnamed')
   } )
 } )
 
@@ -377,7 +377,7 @@ describe('discord bridge — where the Will is present', () => {
     client.emit( from('c1') )
     client.emit( from('c2') )
     await flush()
-    expect( will.perceived.map( p => p.thread ) ).toEqual( [ 'discord:c1' ] )
+    expect( will.sensed.map( p => p.thread ) ).toEqual( [ 'discord:c1' ] )
   } )
 
   it('"*" means everywhere — being added to a channel in Discord is enough', async () => {
@@ -385,14 +385,14 @@ describe('discord bridge — where the Will is present', () => {
     client.emit( from('c1') )
     client.emit( from('c9') )
     await flush()
-    expect( will.perceived ).toHaveLength( 2 )
+    expect( will.sensed ).toHaveLength( 2 )
   } )
 
   it('an unset list behaves like "*" — unchanged from before', async () => {
     const { client, will } = await bridgeUp({})
     client.emit( from('c7') )
     await flush()
-    expect( will.perceived ).toHaveLength( 1 )
+    expect( will.sensed ).toHaveLength( 1 )
   } )
 
   it('mentionOnly:true gates every channel', async () => {
@@ -400,7 +400,7 @@ describe('discord bridge — where the Will is present', () => {
     client.emit( from('c1') )
     client.emit( { ...from('c1'), mentions: { has: () => true } } )
     await flush()
-    expect( will.perceived ).toHaveLength( 1 )
+    expect( will.sensed ).toHaveLength( 1 )
   } )
 
   it('mentionOnly as a LIST gates only those channels', async () => {
@@ -414,14 +414,14 @@ describe('discord bridge — where the Will is present', () => {
     await flush()
 
     // Order is not the contract — arrival interleaves. What matters is WHICH.
-    expect( will.perceived.map( p => p.thread ).sort() ).toEqual( [ 'discord:busy', 'discord:quiet' ] )
+    expect( will.sensed.map( p => p.thread ).sort() ).toEqual( [ 'discord:busy', 'discord:quiet' ] )
   } )
 
   it('a DM is always perceived, whatever the gating says', async () => {
     const { client, will } = await bridgeUp({ channels: [ 'c1' ], mentionOnly: true })
     client.emit( { ...from('dm1'), guildId: null } )
     await flush()
-    expect( will.perceived ).toHaveLength( 1 )
+    expect( will.sensed ).toHaveLength( 1 )
   } )
 } )
 
@@ -471,8 +471,8 @@ describe('discord bridge — a reaction is an answer', () => {
     client.react( onOwnMessage(), { id: 'U1', username: 'ada', displayName: 'Ada L.' } )
     await flush()
 
-    expect( will.perceived ).toHaveLength( 1 )
-    const p = will.perceived[0]!
+    expect( will.sensed ).toHaveLength( 1 )
+    const p = will.sensed[0]!
     // Same id space and thread as a spoken turn — this is what lets the answered
     // loop match it against the message it answers.
     expect( p.from ).toBe('discord:U1')
@@ -485,7 +485,7 @@ describe('discord bridge — a reaction is an answer', () => {
     client.react( onOwnMessage(), { id: 'U1', displayName: 'Ada L.' } )
     await flush()
 
-    const text = will.perceived[0]!.text!
+    const text = will.sensed[0]!.text!
     // Bracketed and first-person, the shape renderAttachments uses for a file:
     // it reached the mind through the conversation, but nobody SAID it, and a
     // percept that reads like speech invites answering words never spoken.
@@ -499,7 +499,7 @@ describe('discord bridge — a reaction is an answer', () => {
     const { client, will } = await bridgeUp()
     client.react( onOwnMessage( { author: { id: 'U2' } } ), { id: 'U1', username: 'ada' } )
     await flush()
-    expect( will.perceived ).toHaveLength( 0 )
+    expect( will.sensed ).toHaveLength( 0 )
   } )
 
   it('ignores its own reaction, and other bots', async () => {
@@ -507,7 +507,7 @@ describe('discord bridge — a reaction is an answer', () => {
     client.react( onOwnMessage(), { id: 'BOT', username: 'aria' } )
     client.react( onOwnMessage(), { id: 'U9', username: 'webhook', bot: true } )
     await flush()
-    expect( will.perceived ).toHaveLength( 0 )
+    expect( will.sensed ).toHaveLength( 0 )
   } )
 
   it('fetches a partial reaction and a partial message before reading them', async () => {
@@ -538,22 +538,22 @@ describe('discord bridge — a reaction is an answer', () => {
 
     expect( fetchedReaction, 'a partial reaction must be fetched').toBe( true )
     expect( fetchedMessage,  'a partial message must be fetched').toBe( true )
-    expect( will.perceived ).toHaveLength( 1 )
-    expect( will.perceived[0]!.text ).toContain('shipped it')
+    expect( will.sensed ).toHaveLength( 1 )
+    expect( will.sensed[0]!.text ).toContain('shipped it')
   } )
 
   it('carries `direct` so a DM reaction is not treated as public', async () => {
     const { client, will } = await bridgeUp()
     client.react( onOwnMessage( { guildId: null } ), { id: 'U1', displayName: 'Ada L.' } )
     await flush()
-    expect( will.perceived[0]!.direct ).toBe( true )
+    expect( will.sensed[0]!.direct ).toBe( true )
   } )
 
   it('respects the channel allowlist', async () => {
     const { client, will } = await bridgeUp( { channels: [ 'c9' ] } )
     client.react( onOwnMessage(), { id: 'U1', username: 'ada' } )
     await flush()
-    expect( will.perceived ).toHaveLength( 0 )
+    expect( will.sensed ).toHaveLength( 0 )
   } )
 } )
 
@@ -572,7 +572,7 @@ describe('discord bridge — the room is not just an id', () => {
     client.channelsById.set('c1', channel )
     client.emit( { content: 'hi', channelId: 'c1', guild: { name: 'Mindot' } } as never )
     await flush()
-    expect( will.perceived[0]!.threadName ).toBe('#general in Mindot')
+    expect( will.sensed[0]!.threadName ).toBe('#general in Mindot')
   } )
 
   it('reads a thread as its parent channel', async () => {
@@ -582,7 +582,7 @@ describe('discord bridge — the room is not just an id', () => {
     client.channelsById.set('c1', channel )
     client.emit( { content: 'hi', channelId: 'c1', guild: { name: 'Mindot' } } as never )
     await flush()
-    expect( will.perceived[0]!.threadName ).toBe('#general › release-cut in Mindot')
+    expect( will.sensed[0]!.threadName ).toBe('#general › release-cut in Mindot')
   } )
 
   it('names no room for a DM — a private thread is the person, not a place', async () => {
@@ -591,7 +591,7 @@ describe('discord bridge — the room is not just an id', () => {
     client.channelsById.set('d1', channel )
     client.emit( { content: 'psst', channelId: 'd1', guildId: null } )
     await flush()
-    expect( will.perceived[0]!.threadName ).toBeUndefined()
+    expect( will.sensed[0]!.threadName ).toBeUndefined()
   } )
 
   it('omits the label rather than inventing one when the channel has no name', async () => {
@@ -600,7 +600,7 @@ describe('discord bridge — the room is not just an id', () => {
     await flush()
     // An unnamed room stays unnamed, the same way a person does — it is never
     // labelled with its own id.
-    expect( will.perceived[0]!.threadName ).toBeUndefined()
+    expect( will.sensed[0]!.threadName ).toBeUndefined()
   } )
 } )
 
@@ -644,7 +644,7 @@ describe('discord bridge — answering an inquiry', () => {
 
     // And no second call. The bridge used to `perceive()` the answer separately,
     // wrapped in a bracketed sentence, because an ack could not carry facts.
-    expect( will.perceived ).toHaveLength( 0 )
+    expect( will.sensed ).toHaveLength( 0 )
   } )
 
   it('reports a count, never a roster — people are met, not listed', async () => {
@@ -666,7 +666,7 @@ describe('discord bridge — answering an inquiry', () => {
     const ack = await look( will, { targetEntityId: 'ke:x', targetAddresses: [ 'whatsapp:123' ] } )
     expect( ack.success ).toBe( false )
     // A failed look teaches the mind to stop examining what will not resolve.
-    expect( will.perceived ).toHaveLength( 0 )
+    expect( will.sensed ).toHaveLength( 0 )
   } )
 
   it('fails honestly when the room has nothing recorded', async () => {
@@ -676,6 +676,6 @@ describe('discord bridge — answering an inquiry', () => {
 
     const ack = await look( will, { targetEntityId: 'ke:q', targetAddresses: [ 'discord:c2' ] } )
     expect( ack.success ).toBe( false )
-    expect( will.perceived ).toHaveLength( 0 )
+    expect( will.sensed ).toHaveLength( 0 )
   } )
 } )

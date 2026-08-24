@@ -311,7 +311,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // action its current frontier needs. The PlanningEngine writes one `plan.prior`
     // per ready frontier step; each enters the field as a HIGH-salience candidate
     // (the frontier is willed) carrying a `planBias` the scorer weighs and the
-    // planId/stepId provenance that flows through to action.outcome so the plan
+    // planId/stepId link that flows through to action.outcome so the plan
     // advances when the field actually enacts it. Like ideomotor, it never bypasses
     // the selector — if a more pressing affordance wins, the plan simply re-projects
     // next tick. The suggested schema must resolve in the repertoire; if it does not,

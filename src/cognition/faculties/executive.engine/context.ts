@@ -55,7 +55,7 @@ export async function buildExecutiveContext(
 
   // Working memory — getItems() returns WMItem[] sorted by activation descending.
   // Filter types that are already rendered elsewhere in the prompt:
-  //   conversation.exchange → shown in Recent Action Outcomes
+  //   conversation.exchange → shown in What Became Of What I Did
   //   goal                  → shown in Active Goals
   const WM_FILTER_TYPES = new Set([ 'conversation.exchange', 'goal' ])
   const wmItems = ( deps.workingMemory?.getItems() ?? [] )
@@ -264,7 +264,7 @@ export async function buildExecutiveContext(
   } : undefined
 
   // What became of what I did — this is what closes the Act → Confirm → Perceive
-  // loop the prompt's `## Recent Action Outcomes` section was written for.
+  // loop the prompt's `## What Became Of What I Did` section was written for.
   //
   // It used to scan `decision.record` for an `actionStatus`, a field READ here
   // and written nowhere in the engine. The section therefore rendered zero times

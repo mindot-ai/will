@@ -276,7 +276,7 @@ export class ReafferenceEngine implements CognitiveEngine {
       updates++
 
       // Plan advancement for the async path: a host-acked outcome that carries plan
-      // provenance is the ONLY signal the PlanningEngine will get (the executor never
+      // the plan link is the ONLY signal the PlanningEngine will get (the executor never
       // saw the ack — the intent was 'awaiting'). Emit the action.outcome it advances
       // on. Sync/timeout outcomes never carry planId here (the executor emitted their
       // action.outcome already), so this never double-advances.

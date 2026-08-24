@@ -1146,20 +1146,59 @@ saying nothing, so the signal's own name is used instead.
 > Will gets no compile error from this rename either — only a real `Will`
 > reference does.
 
-#### P3b — the rest
-- [ ] Internal renames toward the four terms; public aliases retained one minor.
-- [ ] **Disambiguate the overloaded `provenance`.** The agency pipeline uses the
-      word for `{ planId, stepId }` (`reconcile.learning.ts`, `plan.frontier.ts`)
-      — an unrelated concept sharing the name with `SignalProvenance`. One of
-      the two must give it up; the signal sense is the one the vocabulary needs.
-- [ ] **Disambiguate `action.outcome`.** §3c decided this belongs to P3 and the
-      checklist did not carry it — recording it here so it is not lost. One
-      string names three unrelated shapes: the bus event (6 subscribers), the
-      session-log record, and the near-collision with the `action.record` entity
-      the prompt section is actually named after. The bus event is the
-      highest-blast-radius rename in the epoch; it moves once, deliberately,
-      with aliases.
-- [ ] Update `EXAFFERENCE.md` / `POLICY_REAFFERENCE.md` cross-references.
+#### P3b — one word, one meaning — ✅ **SHIPPED 2026-08-24**
+- [x] **`provenance` now means exactly one thing in this codebase.** The agency
+      pipeline used it for `{ planId, stepId }`; that concept is now the named
+      type **`PlanLink`** (`agency/types.ts`), threaded through
+      `reconcileInvocation` and `effector.controller`. The signal sense keeps the
+      word, as decided.
+- [x] Swept the word out of every comment where it meant something else — plan
+      links in six files, data lineage in the semantic integrator, "context" in
+      `instruction.handler`, the session id in `pma`. What is left is one meaning.
+- [x] An inline `{ planId?, stepId? }` in three signatures is also *how the
+      collision stayed invisible*: a name can be grepped, a shape cannot.
+      Behaviour is pinned by an existing test — dropping the plan link from the
+      reconciled outcome turns `ReafferenceEngine — host-ack of a PLAN step` red.
+
+#### P3c — `action.outcome` named three things — ✅ **SHIPPED 2026-08-24**
+
+§3c assigned this to P3 and the checklist had lost it. **The bus event keeps the
+name** — six subscribers, a validated schema, one of the better seams here, and
+§3c is explicit that a rename epoch must not treat health as debt. The two
+impostors give it up:
+
+- [x] **The session-log record** `type: 'action.outcome'` → **`'effector.acked'`**,
+      which is what it records: a host acked an effector invocation. Nothing else
+      wrote it and nothing outside this package reads it (the backend's
+      `action.outcome` mapping keys on the BUS event, which is untouched).
+- [x] **Its `as never` cast is gone**, and that mattered more than the rename:
+      the cast opted the write out of `LogEntryType` altogether, so the string
+      was never checked against the union it belonged to. It is now.
+- [x] **The prompt sections** were the third shape and the worst one, because a
+      mind reads them. `## Recent Action Outcomes` (which renders `action.record`
+      entities — what HAPPENED) sat two sections below `## Recent Actions` (which
+      lists action types the mind CHOSE — intentions). Near-identical labels on
+      opposite claims, adjacent on the page. They are now
+      **`## What Became Of What I Did`** and **`## What I Have Been Choosing`**.
+      Pinned by a test that asserts both titles and that neither old name
+      survives anywhere on the page.
+
+> The live cost of that pair, for the record: asked "have you completed that?", a
+> COO answered *"Yes — it's done. I drafted the full v0.1 spec… Posted it to
+> FKEM."* She had posted nothing and had no effectors at all. Her deliberation
+> history said "I produce the scoping doc now" across twenty cycles and nothing
+> on the page distinguished that from having done it.
+
+#### P3d — cross-references — ✅ **CHECKED 2026-08-24**
+- [x] `EXAFFERENCE.md` and `POLICY_REAFFERENCE.md` re-read end to end. Every
+      `provenance` in both is the signal sense and every one is still accurate;
+      neither mentions `will.perceive()`. `SENSES_HARDENING.md` refers only to
+      `_perceive()`, the sense engine's internal template method, which is
+      unchanged and correctly named — the domain work there really does produce
+      the percept. **No edits were needed, which is the finding.**
+- [ ] Internal renames toward the four terms, beyond the two collisions above —
+      deferred, not skipped. `ingestText` and friends are not misleading, only
+      unlovely, and a rename with no defect behind it is churn.
 
 ### P4 — Delete what the doors subsumed
 - [ ] Remove bespoke `percept` writers that now go through a sense.

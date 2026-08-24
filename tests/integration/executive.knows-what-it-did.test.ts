@@ -4,7 +4,7 @@
 /**
  * A mind that cannot tell an intention from an act.
  *
- * The executive prompt has a `## Recent Action Outcomes` section, a builder for
+ * The executive prompt has a `## What Became Of What I Did` section, a builder for
  * it, and a type for its data. `context.ts` filled it by scanning
  * `decision.record` entities carrying an `actionStatus` — a field READ in that
  * one place and written NOWHERE in the engine. So the section rendered zero
@@ -12,7 +12,7 @@
  * ticks, while `## What I've Said Lately` rendered in all of them.
  *
  * The mind could see what it had SAID and never what it had DONE. Its only other
- * record of its own doing is `## Recent Actions`, fed from `output.actions` —
+ * record of its own doing is `## What I Have Been Choosing`, fed from `output.actions` —
  * the executive's DECISIONS — which is a list of intentions wearing the name of
  * a history.
  *

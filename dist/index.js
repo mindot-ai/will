@@ -12241,19 +12241,39 @@ Rest and sleep RESTORE energy. All other actions CONSUME energy. Do not let ener
    * and must not be distracted by message urgency while focused on their
    * specific reasoning task.
    */
+  /**
+   * What the mind has been CHOOSING lately — action types, for the variety
+   * check. Not a history of what happened: nothing here says an act landed.
+   * Retitled from `## Recent Actions` at P3 for exactly that reason (see
+   * `_buildRecentOutcomesSection`) — it sat beside a real history under a name
+   * that claimed to be one.
+   */
   static _buildActionDiversitySection(recentActionTypes) {
     if (recentActionTypes.length === 0) return "";
     const recent = recentActionTypes;
     const reflectCount = recent.filter((t) => t === "reflect" || t === "observe").length;
     const warning = reflectCount >= 3 ? `
 \u26A0\uFE0F **Action variety alert**: "${recent.filter((t) => t === "reflect" || t === "observe").join('", "')}" dominated my last ${recent.length} cycles. Choose something DIFFERENT this cycle \u2014 e.g. learn, express_emotion, explore, communicate, set_goal, or rest.` : "";
-    return `## Recent Actions (last ${recent.length})
+    return `## What I Have Been Choosing (last ${recent.length})
 ${recent.map((t, i) => `${i + 1}. ${t}`).join(" \u2192 ")}${warning}
 
 `;
   }
   /**
-   * Render the recent action outcomes section — closes the Act→Confirm→Perceive loop.
+   * Render what became of what the mind did — closes the Act→Confirm→Sense loop.
+   *
+   * NAMED FOR WHAT IT RENDERS (SIGNAL_BOUNDARY P3). It was `## Recent Action
+   * Outcomes`, which named the `action.outcome` BUS EVENT — a different shape
+   * this section never touches. It renders `action.record` entities: what became
+   * of acts the mind actually took. Meanwhile the section two above it,
+   * `## Recent Actions`, listed action TYPES THE MIND CHOSE — a list of
+   * intentions wearing the name of a history, directly beside a history.
+   *
+   * A mind that cannot tell those two apart cannot tell an intention from an
+   * act, and one live COO could not: asked "have you completed that?", she said
+   * "Yes — it's done", having posted nothing and having no effectors at all. The
+   * section titles are the mind's own labels for its own memory; they are not
+   * decoration.
    * Shows the executive what it tried, whether it landed, and if anything timed out.
    * Only rendered when there are status-bearing action records in state.
    */
@@ -12347,7 +12367,7 @@ ${lines.join("\n")}${note}
 \u26A0\uFE0F **${failed} of these did not land** \u2014 my body attempted them and they did not complete.` : "";
     const note = `${didNotLand}
 This is what I HAVE done, not what I meant to do. If something I intended is not on this list, it did not happen.`;
-    return `## Recent Action Outcomes
+    return `## What Became Of What I Did
 ${lines.join("\n")}${note}
 
 `;
@@ -16698,7 +16718,7 @@ var PlanningEngine = class {
             if (plan.status !== "executing") continue;
             const step = plan.steps.find((s) => s.status === "active" && s.action === p.actionType);
             if (!step) continue;
-            logger.info(`[planning] conscious-enaction credit: ${plan.id}/${step.id}=${step.action} (no provenance on outcome)`);
+            logger.info(`[planning] conscious-enaction credit: ${plan.id}/${step.id}=${step.action} (no plan link on outcome)`);
             this._onStepOutcome(plan.id, step.id, {
               success: p.success,
               description: p.description ?? (p.success ? "Completed" : "Failed"),
@@ -22445,7 +22465,7 @@ var ActionSelector = class {
         // happens: an intention that has been acted on is no longer an intention, and
         // nothing was deleting these. See MotorSchemaExecutor._dischargeWill.
         ...winner.affordance.evokedBy ? { evokedBy: winner.affordance.evokedBy } : {},
-        // Plan provenance (when a plan's frontier-step prior won the competition) —
+        // The plan link (when a plan's frontier-step prior won the competition) —
         // flows through the executor's action.outcome so the PlanningEngine advances.
         ...winner.affordance.planId ? { planId: winner.affordance.planId } : {},
         ...winner.affordance.stepId ? { stepId: winner.affordance.stepId } : {},
@@ -23040,7 +23060,7 @@ var MotorSchemaExecutor = class {
    * The executor is plan-agnostic. A plan does NOT dispatch steps here — it biases
    * the affordance competition (see PLANNING_AS_PRIOR_TODO.md), so a plan-driven
    * action reaches the executor as an ordinary committed `agency.intent` the
-   * selector won. That intent already carries planId/stepId provenance (stamped by
+   * selector won. That intent already carries its planId/stepId link (stamped by
    * the selector from the winning affordance); `_emitActionOutcome` threads it back
    * out, which is how the PlanningEngine advances. Nothing plan-specific here.
    */
@@ -27544,7 +27564,7 @@ var PMADistiller = class {
    * @param willId     The Will's ID
    * @param willName   The Will's display name
    * @param state      Current simulation state (from stateManager.snapshot())
-   * @param sessionId  Active session ID — recorded as provenance
+   * @param sessionId  Active session ID — recorded on the snapshot as its origin
    * @param dataDir    Root data dir (defaults to WILL_DATA_DIR env or './data')
    * @param repertoire The agency competence layer (in-memory manager). When
    *                   provided, the Will's learned skills + composite schemas are
@@ -28987,7 +29007,7 @@ var InboundQueue = class {
 };
 
 // src/cognition/agency/reconcile.learning.ts
-function reconcileInvocation(intentId, schema, result, tick, predicted = { reward: 0.5, valence: 0 }, provenance = {}) {
+function reconcileInvocation(intentId, schema, result, tick, predicted = { reward: 0.5, valence: 0 }, planLink = {}) {
   const outcomeQuality = result.outcomeQuality ?? (result.success ? 0.8 : 0.1);
   const valence = result.valence ?? (result.success ? 0.2 : -0.2);
   const surprise = clamp0112(Math.abs(predicted.reward - outcomeQuality));
@@ -29011,8 +29031,8 @@ function reconcileInvocation(intentId, schema, result, tick, predicted = { rewar
       // Only when the arbiter actually reported a bound — a refusal without one
       // writes no key at all, so the quiet path is unchanged.
       ...result.refused && result.counterfactual ? { counterfactual: result.counterfactual } : {},
-      ...provenance.planId ? { planId: provenance.planId } : {},
-      ...provenance.stepId ? { stepId: provenance.stepId } : {}
+      ...planLink.planId ? { planId: planLink.planId } : {},
+      ...planLink.stepId ? { stepId: planLink.stepId } : {}
     }
   };
 }
@@ -29439,7 +29459,7 @@ var effectorController = class {
    *
    * It reconciles the ack into an `agency.outcome` (via `reconcileInvocation`),
    * carrying the intent's efference copy (predicted reward/valence) so surprise is
-   * honest, and its plan provenance (planId/stepId) when it was a plan's frontier
+   * honest, and its plan link (planId/stepId) when it was a plan's frontier
    * step. The ReafferenceEngine consumes that next tick: it learns the real result,
    * frees the awaiting intent, and — for a plan-tagged outcome — emits the
    * `action.outcome` the PlanningEngine advances on. No decision.record, no legacy
@@ -29458,9 +29478,9 @@ var effectorController = class {
       reward: num6(m["predictedReward"], num6(m["expectedReward"], 0.5)),
       valence: num6(m["predictedValence"], num6(m["expectedValence"], 0))
     };
-    const provenance = { planId: m["planId"], stepId: m["stepId"] };
+    const planLink = { planId: m["planId"], stepId: m["stepId"] };
     instance.simulation.stateManager.setEntity(
-      reconcileInvocation(invocationId, schema, result, tick, predicted, provenance)
+      reconcileInvocation(invocationId, schema, result, tick, predicted, planLink)
     );
     if (result.observation !== void 0 && result.observation !== null)
       void instance.cognition.somatosensationEngine.ingest({
@@ -29480,7 +29500,7 @@ var effectorController = class {
           logger.warn(`[effector] confirmExecution: dropped non-finite metric "${k}"=${String(v)} from host ack (${schema})`);
       }
     instance.sessionLogger?.write({
-      type: "action.outcome",
+      type: "effector.acked",
       tick,
       actionType: schema,
       success: result.success,

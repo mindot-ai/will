@@ -118,7 +118,7 @@ export interface Affordance {
   parameters:      Record<string, unknown>
   /** Bound target entity id, when the schema binds an entity. */
   targetEntityId?: string
-  /** Entity id of the percept / known-entity that evoked this (provenance). */
+  /** Entity id of the percept / known-entity that evoked this. */
   evokedBy?:       string
   /** Anticipated affective outcome −1..1 (learned, falling back to schema prior). */
   expectedValence: number
@@ -209,6 +209,23 @@ export interface Affordance {
   /** Provenance: the frontier step id — flows through to action.outcome so the plan advances. */
   stepId?:         string
   tick:            number
+}
+
+/**
+ * PlanLink — where an act sits in a plan: the frontier step it serves, if any.
+ * Rides on the `agency.outcome` so the PlanningEngine can advance the step the
+ * act was committed from.
+ *
+ * NAMED, AND NAMED THIS, BECAUSE IT USED TO BE CALLED `provenance`
+ * (SIGNAL_BOUNDARY P3). Two unrelated concepts shared that word in one codebase:
+ * this one, and `SignalProvenance` — whether a signal came from the world or
+ * from the mind's own act. The signal sense is the one the vocabulary needs, so
+ * this one gives the word up. An inline `{ planId?, stepId? }` in three
+ * signatures is also how the collision stayed invisible; a name can be grepped.
+ */
+export interface PlanLink {
+  planId?: string
+  stepId?: string
 }
 
 /**

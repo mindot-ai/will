@@ -562,7 +562,7 @@ export class ActionSelector implements CognitiveEngine {
         // happens: an intention that has been acted on is no longer an intention, and
         // nothing was deleting these. See MotorSchemaExecutor._dischargeWill.
         ...( winner.affordance.evokedBy ? { evokedBy: winner.affordance.evokedBy } : {} ),
-        // Plan provenance (when a plan's frontier-step prior won the competition) —
+        // The plan link (when a plan's frontier-step prior won the competition) —
         // flows through the executor's action.outcome so the PlanningEngine advances.
         ...( winner.affordance.planId ? { planId: winner.affordance.planId } : {} ),
         ...( winner.affordance.stepId ? { stepId: winner.affordance.stepId } : {} ),

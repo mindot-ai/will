@@ -20,7 +20,7 @@
  * competition: each tick it projects its ready frontier step(s) as `plan.prior`
  * entities the AffordanceSynthesizer turns into competing affordances (top-down
  * prior, never a bypass — see PLANNING_AS_PRIOR_TODO.md). The ordinary selector
- * enacts the winner; the executor emits `action.outcome{planId,stepId}` (provenance
+ * enacts the winner; the executor emits `action.outcome{planId,stepId}` (the plan link
  * carried through the affordance→intent chain), which this engine consumes to
  * advance the frontier. Resolves the prerequisite DAG to choose the ready frontier.
  *
@@ -207,7 +207,7 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
           planId?: string; stepId?: string
         }
 
-        // Conscious-enaction credit: outcomes carry plan provenance only when
+        // Conscious-enaction credit: outcomes carry a plan link only when
         // the plan's OWN frontier prior won the competition. But the plan is a
         // prior over WHAT to do — if the self does the very thing an active
         // step calls for by any route (executive action via ideomotor, habit),
@@ -222,7 +222,7 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
             if( plan.status !== 'executing') continue
             const step = plan.steps.find( s => s.status === 'active' && s.action === p.actionType )
             if( !step ) continue
-            logger.info(`[planning] conscious-enaction credit: ${plan.id}/${step.id}=${step.action} (no provenance on outcome)`)
+            logger.info(`[planning] conscious-enaction credit: ${plan.id}/${step.id}=${step.action} (no plan link on outcome)`)
             this._onStepOutcome( plan.id, step.id, {
               success: p.success,
               description: p.description ?? ( p.success ? 'Completed' : 'Failed'),
@@ -656,7 +656,7 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
     // pause/escalate, or a terminal goal — it stops projecting its frontier. But an
     // `agency.intent` the competition had ALREADY committed from a frontier prior can
     // still resolve a few ticks later (sync this tick, or an awaiting one timing out).
-    // That outcome carries this plan's provenance, so it lands here. We must NOT act on
+    // That outcome carries this plan's link, so it lands here. We must NOT act on
     // it: completion is the executive's call, not the late arrival of a step it has
     // already moved past — and re-running supervision below could re-spawn the facet
     // we just tore down. The enaction itself still happened (and still taught the

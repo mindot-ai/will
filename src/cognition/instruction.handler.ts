@@ -18,7 +18,7 @@ export interface Instruction {
   deadline?: number
   /** Constraints on how to execute */
   constraints?: string[]
-  /** Context/provenance — why this instruction was given */
+  /** Context — why this instruction was given */
   context: string
   /** Whether the Will can refuse */
   isOverridable: boolean

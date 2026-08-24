@@ -3433,7 +3433,7 @@ declare class WorkingMemory implements SimulationEngine, CognitiveEngine {
 
 /** Forwards each entry to the consumer (the stem bridges it onto the transport). */
 type SessionLogEmit = (record: Record<string, unknown>) => void;
-type LogEntryType = 'session.start' | 'session.end' | 'tick' | 'event' | 'executive.call' | 'executive.response' | 'executive.output' | 'executive.facet.spawn' | 'executive.facet.call' | 'executive.facet.response' | 'executive.facet.output' | 'executive.facet.destroy' | 'action.execute' | 'action.error' | 'action.outcome' | 'belief.integrate' | 'conversation.in' | 'conversation.out' | 'plan.step.activated' | 'plan.step.outcome' | 'goal.progress' | 'goal.achieved' | 'goal.blocked' | 'goal.abandoned' | 'outbox.push' | 'outbox.expire';
+type LogEntryType = 'session.start' | 'session.end' | 'tick' | 'event' | 'executive.call' | 'executive.response' | 'executive.output' | 'executive.facet.spawn' | 'executive.facet.call' | 'executive.facet.response' | 'executive.facet.output' | 'executive.facet.destroy' | 'action.execute' | 'action.error' | 'effector.acked' | 'belief.integrate' | 'conversation.in' | 'conversation.out' | 'plan.step.activated' | 'plan.step.outcome' | 'goal.progress' | 'goal.achieved' | 'goal.blocked' | 'goal.abandoned' | 'outbox.push' | 'outbox.expire';
 interface BaseEntry {
     type: LogEntryType;
     wallTime: number;
@@ -7620,7 +7620,7 @@ declare class MotorSchemaExecutor implements CognitiveEngine {
      * The executor is plan-agnostic. A plan does NOT dispatch steps here — it biases
      * the affordance competition (see PLANNING_AS_PRIOR_TODO.md), so a plan-driven
      * action reaches the executor as an ordinary committed `agency.intent` the
-     * selector won. That intent already carries planId/stepId provenance (stamped by
+     * selector won. That intent already carries its planId/stepId link (stamped by
      * the selector from the winning affordance); `_emitActionOutcome` threads it back
      * out, which is how the PlanningEngine advances. Nothing plan-specific here.
      */
@@ -7991,7 +7991,7 @@ interface Instruction {
     deadline?: number;
     /** Constraints on how to execute */
     constraints?: string[];
-    /** Context/provenance — why this instruction was given */
+    /** Context — why this instruction was given */
     context: string;
     /** Whether the Will can refuse */
     isOverridable: boolean;

@@ -31178,27 +31178,26 @@ async function connectDiscord(will, opts) {
     if (facts.length === 0)
       return { success: false, description: `#${channel.name} has nothing recorded about it.` };
     const label = roomLabel({ guildId: "g", channel }) ?? `#${channel.name}`;
-    await will.perceive({
-      // Bracketed and first-person, like a shared file: it arrived because she
-      // went looking, and it is not something anybody said to her.
-      text: `[I looked into ${label}: ${facts.join("; ")}.]`,
-      from: address,
-      thread: address,
-      direct: false,
-      // REAFFERENT — the one place in this bridge where it is. The mind enacted
-      // `inspect` and this is the consequence arriving back at its own senses.
-      // Until the field existed, that fact lived only in the English of the
-      // bracketed prose above, where nothing but the LLM could read it.
+    return {
+      success: true,
+      description: `Looked into ${label}.`,
+      // The room as Discord has it, in the shape Discord has it. Not flattened
+      // into a sentence for the mind's benefit — a host that reshapes its own
+      // data is deciding what the mind may notice about it, and `observation`
+      // takes whatever shape the answer already had.
       //
-      // `sourceIntentId` closes the other half (SIGNAL_BOUNDARY P1): the echo is
-      // now tied to the act that caused it by an id, so a later mechanism can
-      // ask "is this the echo of that?" without reading prose. The bracket stays,
-      // but it is decoration now rather than the mechanism.
-      provenance: "reafferent",
-      sourceIntentId: ctx.intentId,
-      ...label ? { threadName: label } : {}
-    });
-    return { success: true, description: `Looked into ${label}.` };
+      // `summary` is the one concession: it is what the executive prompt renders,
+      // so the host says it in words rather than leaving the mind to read JSON.
+      // Everything beside it stays available.
+      observation: {
+        summary: `I looked into ${label}: ${facts.join("; ")}.`,
+        room: label,
+        address,
+        ...channel.topic ? { topic: channel.topic } : {},
+        ...channel.parent?.name ? { parent: `#${channel.parent.name}` } : {},
+        ...typeof channel.memberCount === "number" ? { memberCount: channel.memberCount } : {}
+      }
+    };
   });
   let closed = false;
   will.on("message", (m) => {

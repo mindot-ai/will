@@ -407,13 +407,19 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
   // `inspect` is innate: every mind can look. What it finds depends on there
   // being a world that can be asked, and this is Discord's answer.
   //
-  // The answer is DELIVERED AS A PERCEPT, not returned. The ack this handler
-  // returns carries `{success, description}` and reaches reafference only — it
-  // says the looking happened, never what was found. Facts reach the mind the one
-  // way anything does, through perception, so it can weigh them, disbelieve them,
-  // or decide they do not matter. An earlier cut of this wrote the answer straight
-  // into her dossier and beliefs, which is a mind being told what it knows rather
-  // than a mind finding out.
+  // The answer is RETURNED AS AN OBSERVATION, and the engine turns it into a
+  // percept (SIGNAL_BOUNDARY P2). `description` says how the looking went;
+  // `observation` says what was found, and arrives at the mind as a reafferent
+  // percept tied to this act by `sourceIntentId` — so it can weigh the facts,
+  // disbelieve them, or decide they do not matter. An earlier cut wrote the
+  // answer straight into her dossier and beliefs, which is a mind being told
+  // what it knows rather than a mind finding out.
+  //
+  // This used to take TWO calls: return the ack, then separately `perceive()`
+  // the answer wrapped in a bracketed sentence — because an ack could not carry
+  // facts, and the sense door only accepted things somebody had said. The prose
+  // bracket was load-bearing: it was the only place the reafference lived where
+  // anything could read it. Both are gone.
   will.effector('inspect', async ( _args, ctx ) => {
     // The mind names a referent (`ke:1sqlkux`); we hold channel ids. The Will
     // resolves the anchor to the addresses it was met at, and we take ours.
@@ -438,28 +444,27 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
       return { success: false, description: `#${ channel.name } has nothing recorded about it.` }
 
     const label = roomLabel( { channelId: id, guildId: 'g', channel } as DiscordLikeMessage ) ?? `#${ channel.name }`
-    await will.perceive( {
-      // Bracketed and first-person, like a shared file: it arrived because she
-      // went looking, and it is not something anybody said to her.
-      text:   `[I looked into ${ label }: ${ facts.join('; ') }.]`,
-      from:   address,
-      thread: address,
-      direct: false,
-      // REAFFERENT — the one place in this bridge where it is. The mind enacted
-      // `inspect` and this is the consequence arriving back at its own senses.
-      // Until the field existed, that fact lived only in the English of the
-      // bracketed prose above, where nothing but the LLM could read it.
-      //
-      // `sourceIntentId` closes the other half (SIGNAL_BOUNDARY P1): the echo is
-      // now tied to the act that caused it by an id, so a later mechanism can
-      // ask "is this the echo of that?" without reading prose. The bracket stays,
-      // but it is decoration now rather than the mechanism.
-      provenance:     'reafferent',
-      sourceIntentId: ctx.intentId,
-      ...( label ? { threadName: label } : {} ),
-    } )
 
-    return { success: true, description: `Looked into ${ label }.` }
+    return {
+      success:     true,
+      description: `Looked into ${ label }.`,
+      // The room as Discord has it, in the shape Discord has it. Not flattened
+      // into a sentence for the mind's benefit — a host that reshapes its own
+      // data is deciding what the mind may notice about it, and `observation`
+      // takes whatever shape the answer already had.
+      //
+      // `summary` is the one concession: it is what the executive prompt renders,
+      // so the host says it in words rather than leaving the mind to read JSON.
+      // Everything beside it stays available.
+      observation: {
+        summary:  `I looked into ${ label }: ${ facts.join('; ') }.`,
+        room:     label,
+        address,
+        ...( channel.topic          ? { topic: channel.topic } : {} ),
+        ...( channel.parent?.name   ? { parent: `#${ channel.parent.name }` } : {} ),
+        ...( typeof channel.memberCount === 'number' ? { memberCount: channel.memberCount } : {} ),
+      },
+    }
   } )
 
   // ── outbound: projected utterance → the addressee ─────────────────────────

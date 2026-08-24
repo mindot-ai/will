@@ -66,7 +66,7 @@ describe('AuditionEngine — cold-spawn digest hydration (§5.4)', () => {
       return [ 'alice: "where were we?" → "we were planning the trip"' ]
     } ) as any )
 
-    await engine.ingest( text('remind me what we discussed') )
+    await engine.sense( text('remind me what we discussed') )
 
     // Recall was queried with the live message and the digest cap.
     expect( calls ).toEqual( [ { query: 'remind me what we discussed', limit: ThreadDigestManager.MAX_TURNS } ] )
@@ -82,8 +82,8 @@ describe('AuditionEngine — cold-spawn digest hydration (§5.4)', () => {
     engine.attachExecutiveEngine( syncExecutive() as any )
     engine.attachEpisodicConsolidator( recallConsolidator( async () => { recallCount++; return [ 'alice: "x" → "y"' ] } ) as any )
 
-    await engine.ingest( text('first') )
-    await engine.ingest( text('second') )
+    await engine.sense( text('first') )
+    await engine.sense( text('second') )
 
     expect( recallCount ).toBe( 1 )   // cold spawn only
   } )
@@ -94,7 +94,7 @@ describe('AuditionEngine — cold-spawn digest hydration (§5.4)', () => {
     engine.attachExecutiveEngine( syncExecutive() as any )
     engine.attachEpisodicConsolidator( recallConsolidator( async () => { throw new Error('vector down') } ) as any )
 
-    await expect( engine.ingest( text('hi') ) ).resolves.toBeUndefined()
+    await expect( engine.sense( text('hi') ) ).resolves.toBeUndefined()
   } )
 
   it('no recall attached → cold spawn proceeds with an empty digest', async () => {
@@ -103,7 +103,7 @@ describe('AuditionEngine — cold-spawn digest hydration (§5.4)', () => {
     engine.attachBus( createTestBus() )
     engine.attachExecutiveEngine( syncExecutive( f => focuses.push( f ) ) as any )
 
-    await engine.ingest( text('hello') )
+    await engine.sense( text('hello') )
 
     expect( focuses ).toHaveLength( 1 )
     // No prior turns and nothing recalled → no thread-digest block in the focus.

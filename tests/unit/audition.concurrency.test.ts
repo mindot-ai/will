@@ -82,9 +82,9 @@ describe('AuditionEngine — coalescing + per-entity serialization', () => {
 
   it('coalesces a burst that piles up before the turn starts into ONE turn (§6)', async () => {
     const ps = [
-      engine.ingest( text('alice', 'A') ),
-      engine.ingest( text('alice', 'B') ),
-      engine.ingest( text('alice', 'C') ),
+      engine.sense( text('alice', 'A') ),
+      engine.sense( text('alice', 'B') ),
+      engine.sense( text('alice', 'C') ),
     ]
 
     await tick()
@@ -100,14 +100,14 @@ describe('AuditionEngine — coalescing + per-entity serialization', () => {
   } )
 
   it('does not begin the next turn until the in-flight turn resolves', async () => {
-    const p1 = engine.ingest( text('alice', 'A') )
+    const p1 = engine.sense( text('alice', 'A') )
 
     await tick()
     // A's window started immediately — its turn is in flight.
     expect( ctrl.log ).toEqual( [ 'report:A' ] )
 
     // B arrives AFTER A started → it opens a fresh window queued behind A.
-    const p2 = engine.ingest( text('alice', 'B') )
+    const p2 = engine.sense( text('alice', 'B') )
     await tick()
     expect( ctrl.log ).toEqual( [ 'report:A' ] )      // B blocked on A's decision
 
@@ -123,13 +123,13 @@ describe('AuditionEngine — coalescing + per-entity serialization', () => {
   } )
 
   it('coalesces messages that arrive DURING an in-flight turn into the next turn (§6)', async () => {
-    const p1 = engine.ingest( text('alice', 'A') )
+    const p1 = engine.sense( text('alice', 'A') )
     await tick()
     expect( ctrl.log ).toEqual( [ 'report:A' ] )      // A in flight
 
     // B and C arrive while A is still reasoning → they fold into one next turn.
-    const p2 = engine.ingest( text('alice', 'B') )
-    const p3 = engine.ingest( text('alice', 'C') )
+    const p2 = engine.sense( text('alice', 'B') )
+    const p3 = engine.sense( text('alice', 'C') )
     await tick()
     expect( ctrl.log ).toEqual( [ 'report:A' ] )      // both wait behind A
 
@@ -143,8 +143,8 @@ describe('AuditionEngine — coalescing + per-entity serialization', () => {
   } )
 
   it('processes different entities concurrently (no cross-entity blocking)', async () => {
-    const p1 = engine.ingest( text('alice', 'A') )
-    const p2 = engine.ingest( text('bob',   'B') )
+    const p1 = engine.sense( text('alice', 'A') )
+    const p2 = engine.sense( text('bob',   'B') )
 
     await tick()
     // Both reported without waiting on each other.

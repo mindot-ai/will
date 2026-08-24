@@ -97,15 +97,6 @@ export interface ExecutiveOutputFull {
    */
   noMessage?: string
   /**
-   * @deprecated Legacy JSON reply format — no longer emitted by conversation facets.
-   * Kept for backward compatibility with any tests/tooling that inspect parsed output.
-   */
-  conversationReplies?: Array<{
-    targetEntityId: string
-    targetEntityName: string
-    messages: string[]
-  }>
-  /**
    * System 2 only — the distinct approaches the master generated and weighed before
    * committing, retained for explainability/auditability (and a future regret /
    * counterfactual substrate). Populated on the deliberate (propose→evaluate) path;

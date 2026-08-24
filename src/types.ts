@@ -22,9 +22,15 @@ export interface effectorInvocation {
   id:               string
   /** Correlation handle — the awaiting `agency.intent` id. Echo it when POSTing to
    *  `POST /v1/wills/:id/effectors/invoked/ack`; the Will reconciles the result onto
-   *  that intent. (Field name kept for wire-contract stability; no longer a
-   *  `decision.record` id since the agency cutover.) */
-  decisionRecordId: string
+   *  that intent.
+   *
+   *  Called `decisionRecordId` until the aliases came out. It stopped being a
+   *  `decision.record` id at the agency cutover and was kept anyway "for
+   *  wire-contract stability" — so the wire was stable and wrong, naming a
+   *  record type that no longer exists, while the SDK translated it to
+   *  `intentId` one hop later for the handler. Stability that preserves a false
+   *  name is preserving the wrong thing. */
+  intentId:         string
   effectorName:      string
   parameters:       Record<string, unknown>
   targetEntityId:   string | undefined

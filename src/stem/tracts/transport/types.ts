@@ -29,7 +29,7 @@ interface BaseEnvelope {
   /**
    * Stable id used to match an outbound envelope to its ack(s).
    * For messages this is the OutboxMessage id; for effector invocations the
-   * decisionRecordId; for replies/chunks a generated id.
+   * intentId; for replies/chunks a generated id.
    */
   correlationId: string
   /** Monotonic per-Will sequence number — ordering + dedup at the peer. */

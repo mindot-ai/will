@@ -44,13 +44,13 @@ describe('the wake event arrives through the sense door', () => {
     const stem = new WillStem()
     await stem.createWill( config('wake-1'), true )
     const instance = ( stem as unknown as { _get( id: string ): {
-      cognition: { somatosensationEngine: { ingest( i: SensoryInput ): Promise<void> } }
+      cognition: { somatosensationEngine: { sense( i: SensoryInput ): Promise<void> } }
       pausedAt: Date | null
     } } )._get('wake-1')
 
     const seen: SensoryInput[] = []
-    const real = instance.cognition.somatosensationEngine.ingest.bind( instance.cognition.somatosensationEngine )
-    instance.cognition.somatosensationEngine.ingest = async ( i: SensoryInput ) => { seen.push( i ); return real( i ) }
+    const real = instance.cognition.somatosensationEngine.sense.bind( instance.cognition.somatosensationEngine )
+    instance.cognition.somatosensationEngine.sense = async ( i: SensoryInput ) => { seen.push( i ); return real( i ) }
 
     // Pretend it slept: `resumeWill` only wakes what was actually paused.
     instance.pausedAt = new Date( Date.now() - 3 * 60 * 60 * 1000 )
@@ -75,10 +75,10 @@ describe('the wake event arrives through the sense door', () => {
     const stem = new WillStem()
     await stem.createWill( config('wake-2'), true )
     const instance = ( stem as unknown as { _get( id: string ): {
-      cognition: { somatosensationEngine: { ingest: unknown } }
+      cognition: { somatosensationEngine: { sense: unknown } }
     } } )._get('wake-2')
     const spy = vi.fn()
-    instance.cognition.somatosensationEngine.ingest = spy
+    instance.cognition.somatosensationEngine.sense = spy
 
     stem.resumeWill('wake-2')
 
@@ -99,15 +99,15 @@ describe('a mind woken from a PMA is told it was away', () => {
     const stem = new WillStem()
     await stem.createWill( config('pma-wake'), true )
     const instance = ( stem as unknown as { _get( id: string ): {
-      cognition: { somatosensationEngine: { ingest( i: SensoryInput ): Promise<void> } }
+      cognition: { somatosensationEngine: { sense( i: SensoryInput ): Promise<void> } }
       pausedAt: Date | null
     } } )._get('pma-wake')
 
     expect( instance.pausedAt ).toBeNull()   // the bug: nothing had said it was away
 
     const seen: SensoryInput[] = []
-    const real = instance.cognition.somatosensationEngine.ingest.bind( instance.cognition.somatosensationEngine )
-    instance.cognition.somatosensationEngine.ingest = async ( i: SensoryInput ) => { seen.push( i ); return real( i ) }
+    const real = instance.cognition.somatosensationEngine.sense.bind( instance.cognition.somatosensationEngine )
+    instance.cognition.somatosensationEngine.sense = async ( i: SensoryInput ) => { seen.push( i ); return real( i ) }
 
     const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000
     stem.loadPMA('pma-wake', pma( twoHoursAgo ) )
@@ -159,7 +159,7 @@ describe('an effector handler knows which act it is running', () => {
       await ( will as unknown as {
         _runEffector( inv: Record<string, unknown> ): Promise<void>
       } )._runEffector( {
-        id: 'agency-intent-77', decisionRecordId: 'agency-intent-77',
+        id: 'agency-intent-77', intentId: 'agency-intent-77',
         effectorName: 'poke', parameters: {}, reasoning: '', tick: 1, timestamp: 0,
       } )
 

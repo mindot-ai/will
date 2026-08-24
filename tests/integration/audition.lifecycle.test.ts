@@ -112,28 +112,28 @@ describe('AuditionEngine — session lifecycle', () => {
   } )
 
   it('spawns a facet for the first message from a new entity', async () => {
-    await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hello' }) )
+    await engine.sense( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hello' }) )
     expect( exec.spawns ).toBe( 1 )
     expect( engine.activeSessions() ).toContain('alice')
   } )
 
   it('reuses the existing facet for subsequent messages from the same entity', async () => {
-    await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hello' }) )
-    await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'How are you?' }) )
+    await engine.sense( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hello' }) )
+    await engine.sense( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'How are you?' }) )
     expect( exec.spawns ).toBe( 1 )
   } )
 
   it('creates independent facets for different entities', async () => {
-    await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hi Alice' }) )
-    await engine.ingest( makeTextInput({ entityId: 'bob',   threadId: 't2', content: 'Hi Bob' }) )
+    await engine.sense( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hi Alice' }) )
+    await engine.sense( makeTextInput({ entityId: 'bob',   threadId: 't2', content: 'Hi Bob' }) )
     expect( exec.spawns ).toBe( 2 )
     expect( engine.activeSessions() ).toContain('alice')
     expect( engine.activeSessions() ).toContain('bob')
   } )
 
   it('delivers each inbound message to the facet as a report', async () => {
-    await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'msg1' }) )
-    await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'msg2' }) )
+    await engine.sense( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'msg1' }) )
+    await engine.sense( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'msg2' }) )
 
     const { handles } = exec
     expect( handles[0]!.reports ).toHaveLength( 2 )
@@ -142,7 +142,7 @@ describe('AuditionEngine — session lifecycle', () => {
   } )
 
   it('endSession() destroys the facet and removes it from activeSessions()', async () => {
-    await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hi' }) )
+    await engine.sense( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hi' }) )
     expect( engine.activeSessions() ).toContain('alice')
 
     engine.endSession('alice')
@@ -156,7 +156,7 @@ describe('AuditionEngine — session lifecycle', () => {
   } )
 
   it('clears the session when the supervisor reaps the facet (onReaped)', async () => {
-    await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hi' }) )
+    await engine.sense( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hi' }) )
     expect( engine.activeSessions() ).toContain('alice')
 
     // Simulate the supervisor reaping alice's facet (idle TTL / LRU eviction).
@@ -166,8 +166,8 @@ describe('AuditionEngine — session lifecycle', () => {
   } )
 
   it('destroy() tears down all active facets', async () => {
-    await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hi' }) )
-    await engine.ingest( makeTextInput({ entityId: 'bob',   threadId: 't2', content: 'Hi' }) )
+    await engine.sense( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hi' }) )
+    await engine.sense( makeTextInput({ entityId: 'bob',   threadId: 't2', content: 'Hi' }) )
 
     engine.destroy()
 
@@ -181,7 +181,7 @@ describe('AuditionEngine — session lifecycle', () => {
     engine.attachExecutiveEngine( fullExec.engine )
 
     await expect(
-      engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hi' }) )
+      engine.sense( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hi' }) )
     ).resolves.toBeUndefined()
 
     expect( engine.activeSessions() ).toHaveLength( 0 )
@@ -201,7 +201,7 @@ describe('AuditionEngine — thread digest persistence', () => {
   } )
 
   it('digest includes the inbound message after ingest()', async () => {
-    await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'First msg' }) )
+    await engine.sense( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'First msg' }) )
     // The digest includes user turn; access via internal ThreadDigestManager
     // through the engine's snapshot (domain-level data)
     const snap = engine.snapshot()
@@ -210,9 +210,9 @@ describe('AuditionEngine — thread digest persistence', () => {
   } )
 
   it('multiple messages from same thread accumulate independently of other threads', async () => {
-    await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 'thread-A', content: 'A1' }) )
-    await engine.ingest( makeTextInput({ entityId: 'alice', threadId: 'thread-A', content: 'A2' }) )
-    await engine.ingest( makeTextInput({ entityId: 'bob',   threadId: 'thread-B', content: 'B1' }) )
+    await engine.sense( makeTextInput({ entityId: 'alice', threadId: 'thread-A', content: 'A1' }) )
+    await engine.sense( makeTextInput({ entityId: 'alice', threadId: 'thread-A', content: 'A2' }) )
+    await engine.sense( makeTextInput({ entityId: 'bob',   threadId: 'thread-B', content: 'B1' }) )
 
     // All messages ingested without errors; both entities have active sessions
     expect( engine.activeSessions() ).toHaveLength( 2 )
@@ -226,8 +226,8 @@ describe('AuditionEngine — thread digest persistence', () => {
     eng.attachBus( createTestBus() )
     eng.attachExecutiveEngine( exec.engine )
 
-    await eng.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hello' }) )
-    await eng.ingest( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'How are you?' }) )
+    await eng.sense( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'Hello' }) )
+    await eng.sense( makeTextInput({ entityId: 'alice', threadId: 't1', content: 'How are you?' }) )
 
     // The focus sent on the 2nd message should contain the digest from the first
     const focuses = exec.handles[0]!.focuses

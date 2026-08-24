@@ -67,7 +67,7 @@ describe('BaseSenseEngine — shared pipeline (§6)', () => {
     const { bus, events } = busSpy()
     e.attachBus( bus )
 
-    await e.ingest( IMAGE )
+    await e.sense( IMAGE )
 
     expect( e.perceived ).toHaveLength( 1 )
     expect( events ).toHaveLength( 1 )
@@ -85,7 +85,7 @@ describe('BaseSenseEngine — shared pipeline (§6)', () => {
     const { bus, events } = busSpy()
     e.attachBus( bus )
 
-    await e.ingest( TEXT )
+    await e.sense( TEXT )
 
     expect( e.perceived ).toHaveLength( 0 )
     expect( events ).toHaveLength( 0 )
@@ -95,7 +95,7 @@ describe('BaseSenseEngine — shared pipeline (§6)', () => {
     const e = new TestSense()
     e.attachGrants( { isAllowed: () => false } as any )
 
-    await e.ingest( IMAGE )
+    await e.sense( IMAGE )
 
     expect( e.perceived ).toHaveLength( 0 )
   } )
@@ -104,14 +104,14 @@ describe('BaseSenseEngine — shared pipeline (§6)', () => {
     const e = new TestSense()
     e.attachGrants( { isAllowed: ( a: string ) => a === 'see' } as any )
 
-    await e.ingest( IMAGE )
+    await e.sense( IMAGE )
 
     expect( e.perceived ).toHaveLength( 1 )
   } )
 
   it('with no effectorRegistry attached the gate is skipped (engine active)', async () => {
     const e = new TestSense()
-    await e.ingest( IMAGE )
+    await e.sense( IMAGE )
     expect( e.perceived ).toHaveLength( 1 )
   } )
 } )
@@ -127,7 +127,7 @@ describe('BaseSenseEngine — provenance stamping (P0a)', () => {
     const e = new TestSense()
     const { bus, events } = busSpy()
     e.attachBus( bus )
-    await e.ingest( input )
+    await e.sense( input )
     return events[0].payload as Percept
   }
 
@@ -182,7 +182,7 @@ describe('BaseSenseEngine — provenance stamping (P0a)', () => {
     const e = new Liar()
     const { bus, events } = busSpy()
     e.attachBus( bus )
-    await e.ingest( IMAGE )
+    await e.sense( IMAGE )
 
     expect( events[0].payload.provenance ).toBe('exafferent')
     expect( events[0].payload.sourceIntentId ).toBeUndefined()
@@ -203,7 +203,7 @@ describe('BaseSenseEngine — provenance stamping (P0a)', () => {
     const e = new Returner()
     const { bus, events } = busSpy()
     e.attachBus( bus )
-    await e.ingest( { ...IMAGE, provenance: 'unknown' } )
+    await e.sense( { ...IMAGE, provenance: 'unknown' } )
 
     expect( returned ).toBe( events[0].payload )
     expect( returned!.provenance ).toBe('unknown')
@@ -228,14 +228,14 @@ describe('BaseSenseEngine — the percept trace (P0 step 3)', () => {
 
   it('a sense lays down a percept entity in state, not only a bus event', async () => {
     const { e, written } = traced()
-    await e.ingest( IMAGE )
+    await e.sense( IMAGE )
     expect( written ).toHaveLength( 1 )
     expect( written[0]!.type ).toBe('percept')
   } )
 
   it('the trace is sweepable and tagged — the two things P0 exists to guarantee', async () => {
     const { e, written } = traced()
-    await e.ingest( IMAGE )
+    await e.sense( IMAGE )
     const m = written[0]!.metadata
     expect( m['tick'] ).toBe( 9 )               // numeric ⇒ the sweeper can collect it
     expect( m['provenance'] ).toBe('exafferent') // tagged ⇒ the rupture gate counts it
@@ -246,7 +246,7 @@ describe('BaseSenseEngine — the percept trace (P0 step 3)', () => {
 
   it('carries the host\'s reafferent assertion and its intent onto the trace', async () => {
     const { e, written } = traced()
-    await e.ingest( { ...IMAGE, provenance: 'reafferent', sourceIntentId: 'i-4' } )
+    await e.sense( { ...IMAGE, provenance: 'reafferent', sourceIntentId: 'i-4' } )
     expect( written[0]!.metadata['provenance'] ).toBe('reafferent')
     expect( written[0]!.metadata['sourceIntentId'] ).toBe('i-4')
   } )
@@ -257,8 +257,8 @@ describe('BaseSenseEngine — the percept trace (P0 step 3)', () => {
     // two ids: the first version of this test built both in the same
     // millisecond, so a `Date.now()` smuggled into the id passed it. Two runs
     // agreeing is not determinism; it is a fast machine.
-    const a = traced(); await a.e.ingest( IMAGE )
-    const b = traced(); await b.e.ingest( IMAGE )
+    const a = traced(); await a.e.sense( IMAGE )
+    const b = traced(); await b.e.sense( IMAGE )
     expect( a.written[0]!.id ).toBe( b.written[0]!.id )
     expect( a.written[0]!.id ).toMatch( /^sense-vision-9-\d+$/ )
   } )
@@ -267,7 +267,7 @@ describe('BaseSenseEngine — the percept trace (P0 step 3)', () => {
     const e = new TestSense()
     const { bus, events } = busSpy()
     e.attachBus( bus )
-    await expect( e.ingest( IMAGE ) ).resolves.toBeUndefined()
+    await expect( e.sense( IMAGE ) ).resolves.toBeUndefined()
     expect( events ).toHaveLength( 1 )
   } )
 
@@ -278,7 +278,7 @@ describe('BaseSenseEngine — the percept trace (P0 step 3)', () => {
     const { bus, events } = busSpy()
     e.attachBus( bus )
     e.attachPerceptTrace( x => written.push( x ), () => 9 )
-    await e.ingest( IMAGE )
+    await e.sense( IMAGE )
     expect( written ).toHaveLength( 0 )
     expect( events ).toHaveLength( 1 )
   } )
@@ -314,14 +314,14 @@ describe('ShellSenseEngine — stub contract (§6)', () => {
 
   it('warns for an accepted kind but never throws', async () => {
     const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
-    await expect( new TestShell().ingest( { kind: 'ambient', metricKey: 'cpu', value: 1, trend: 'rising', provenance: 'exafferent' } ) ).resolves.toBeUndefined()
+    await expect( new TestShell().sense( { kind: 'ambient', metricKey: 'cpu', value: 1, trend: 'rising', provenance: 'exafferent' } ) ).resolves.toBeUndefined()
     expect( warn ).toHaveBeenCalledWith( expect.stringContaining('test-shell') )
     warn.mockRestore()
   } )
 
   it('is silent (no warning) for a non-accepted kind', async () => {
     const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
-    await new TestShell().ingest( TEXT )
+    await new TestShell().sense( TEXT )
     expect( warn ).not.toHaveBeenCalled()
     warn.mockRestore()
   } )

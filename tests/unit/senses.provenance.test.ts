@@ -31,7 +31,7 @@ async function perceptFor( msg: TextMessage ): Promise<Percept> {
     subscribe: () => {},
   } as never )
 
-  await engine.ingest( msg )
+  await engine.sense( msg )
   expect( percepts ).toHaveLength( 1 )
   return percepts[0]!
 }
@@ -78,7 +78,7 @@ describe('audition lays down NO percept trace — deliberately, and on the recor
     engine.attachBus( { publish: ( e: unknown ) => published.push( e ), subscribe: () => {} } as never )
     engine.attachPerceptTrace( x => written.push( x ), () => 5 )
 
-    await engine.ingest( heard() )
+    await engine.sense( heard() )
 
     expect( published.length ).toBeGreaterThan( 0 )   // the bus still hears it
     expect( written ).toHaveLength( 0 )               // state does not

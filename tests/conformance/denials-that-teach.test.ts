@@ -214,7 +214,7 @@ describe('Denials That Teach — conformance pack (consumer side)', () => {
     // The SAME action resumed — not a re-issue. Both correlation handles must
     // still be the id the action was first proposed with.
     expect( raw.pendingEffectorInvocations[0]!.id ).toBe('intent-approve')
-    expect( raw.pendingEffectorInvocations[0]!.decisionRecordId ).toBe('intent-approve')
+    expect( raw.pendingEffectorInvocations[0]!.intentId ).toBe('intent-approve')
   } )
 
   it( T('S5'), () => {

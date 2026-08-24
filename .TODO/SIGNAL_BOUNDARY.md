@@ -1196,9 +1196,43 @@ impostors give it up:
       `_perceive()`, the sense engine's internal template method, which is
       unchanged and correctly named — the domain work there really does produce
       the percept. **No edits were needed, which is the finding.**
-- [ ] Internal renames toward the four terms, beyond the two collisions above —
-      deferred, not skipped. `ingestText` and friends are not misleading, only
-      unlovely, and a rename with no defect behind it is churn.
+#### P3e — no aliases at all — ✅ **SHIPPED 2026-08-24**
+
+P3b/c deferred the internal renames as "unlovely, not misleading". Overruled,
+and rightly: *"we're wearing a new skin here."* A second name for one thing is a
+place where two readers can be talking about different objects and not find out.
+
+**Deleted outright — no deprecation window:**
+- `Will.perceive()`. It was one minor old and it was the newest alias in the
+  package, which is the argument for taking it out now rather than later.
+- `CreateWillOptions.model` (say `llmConfig.model`). Two spellings of one thing
+  is how a config grows a precedence rule nobody can remember — and it had one.
+- `EmbedderOptions.batchSize` → `maxConcurrency`. Nothing passed it.
+- `ExecutiveOutputFull.conversationReplies` — a legacy JSON reply format no
+  facet has emitted in a long time. The one read of it was writing an
+  always-empty `replies: []` into the session log.
+- The `ExecutiveFacet` compatibility re-export — a second import path for a
+  symbol that already had one.
+
+**Renamed so one verb spans the stack:**
+- `stem.ingestText` → **`senseText`**, `stem.ingestSensory` → **`senseSignal`**,
+  and `SenseEngine.ingest()` → **`sense()`** across every engine. The crossing
+  into a mind is now called the same thing at the facade, the stem, the
+  controller and the engine — it was called four things.
+- `effectorInvocation.decisionRecordId` → **`intentId`**. It stopped being a
+  `decision.record` id at the agency cutover and was kept "for wire-contract
+  stability" — so the wire was stable and wrong, while the SDK translated it to
+  `intentId` one hop later for the handler. Stability that preserves a false
+  name is preserving the wrong thing.
+
+> **A rename makes test doubles lie, twice over.** Renaming `ingest` broke 9
+> tests loudly — and made one pass VACUOUSLY: `instance…somatosensationEngine
+> .ingest = spy` assigned a spy to a property nothing reads, under an assertion
+> that the spy was never called. It passed for the wrong reason. Sweep `.x =`,
+> `.x.bind(`, `{ x: vi.fn() }` and structural cast types, not just `.x(`.
+
+`injectEvent` is untouched: it writes an entity straight into state, so it is not
+a door with a bad name — it is a bypass, and bypasses are P4.
 
 ### P4 — Delete what the doors subsumed
 - [ ] Remove bespoke `percept` writers that now go through a sense.

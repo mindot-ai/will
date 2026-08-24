@@ -94,7 +94,7 @@ async function main(): Promise<void> {
     if( SCRIPT[tick] && !fired.has( tick ) ){
       fired.add( tick )
       console.log(`\n  🧑‍🔬 [Dr. Chen → William] ${SCRIPT[tick]}`)
-      m.ingestText( WILL_ID, mkMsg( SCRIPT[tick]! ) ).catch( e => console.error('[ingest err]', e ) )
+      m.senseText( WILL_ID, mkMsg( SCRIPT[tick]! ) ).catch( e => console.error('[ingest err]', e ) )
     }
 
     // Continuity: pause → offline → resume (wake percept)

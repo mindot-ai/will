@@ -11144,6 +11144,372 @@ var GoalManager = class {
   }
 };
 
+// src/cognition/cache/fingerprint.ts
+var FINGERPRINT_DIM = 36;
+var FINGERPRINT_VERSION = 1;
+function extractFingerprint(state) {
+  const vec = new Float32Array(FINGERPRINT_DIM);
+  let idx = 0;
+  vec[idx++] = _norm(_metric(state, "energy.level", 50), 0, 100);
+  vec[idx++] = _norm(_metric(state, "sleep.pressure", 0), 0, 100);
+  vec[idx++] = _norm(_metric(state, "stress.load", 0), 0, 100);
+  vec[idx++] = _clamp01((_metric(state, "affect.valence", 0) + 1) / 2);
+  vec[idx++] = _clamp01(_metric(state, "affect.arousal", 0.3));
+  vec[idx++] = _clamp01(_metric(state, "affect.dominance", 0.5));
+  idx = _topEntityScalars(state, "goal", "priority", 0, vec, idx, 10);
+  idx = _topEntityScalars(state, "belief", "confidence", 0.5, vec, idx, 10);
+  idx = _topEntityScalars(state, "working_memory.item", "activation", 0, vec, idx, 10);
+  while (idx < FINGERPRINT_DIM) vec[idx++] = 0;
+  return vec;
+}
+function _topEntityScalars(state, type, field, fallback, vec, idx, count) {
+  const vals = [];
+  for (const e of state.entities.values()) {
+    if (e.type !== type) continue;
+    const raw = e.metadata?.[field];
+    vals.push(typeof raw === "number" ? raw : fallback);
+  }
+  vals.sort((a, b) => b - a);
+  for (let i = 0; i < count; i++)
+    vec[idx++] = _clamp01(vals[i] ?? 0);
+  return idx;
+}
+function _metric(state, key, fallback) {
+  const v = state.metrics.get(key);
+  return typeof v === "number" ? v : fallback;
+}
+function _norm(v, min, max) {
+  return Math.max(0, Math.min(1, (v - min) / (max - min)));
+}
+function _clamp01(v) {
+  if (Number.isNaN(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
+function fingerprintSimilarity(a, b) {
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < FINGERPRINT_DIM; i++) {
+    const ai = a[i] ?? 0;
+    const bi = b[i] ?? 0;
+    dot += ai * bi;
+    na += ai * ai;
+    nb += bi * bi;
+  }
+  const denom = Math.sqrt(na) * Math.sqrt(nb);
+  return denom === 0 ? 0 : dot / denom;
+}
+
+// src/cognition/cache/composition.ts
+function composeOutput(neighbors, tau, scopes) {
+  const weights = _softmaxWeights(neighbors, tau);
+  const anchor = neighbors[0].pattern.output;
+  const out = {
+    actions: [],
+    reasoning: anchor.reasoning ?? "",
+    confidence: anchor.confidence ?? 0.5
+  };
+  if (scopes.includes("actions")) {
+    const composed = _composeActions(neighbors, weights);
+    out.actions = composed.actions;
+    out.reasoning = composed.reasoning;
+    out.confidence = composed.confidence;
+  } else {
+    out.actions = _clone(anchor.actions ?? []);
+  }
+  if (scopes.includes("goals"))
+    out.newGoals = _composeGoals(neighbors, weights);
+  if (scopes.includes("beliefs"))
+    out.newBeliefs = _composeBeliefs(neighbors, weights);
+  return out;
+}
+function _softmaxWeights(neighbors, tau) {
+  const t = tau > 0 ? tau : 1e-6;
+  const sims = neighbors.map((n) => n.similarity);
+  const maxSim = Math.max(...sims);
+  const exps = sims.map((s) => Math.exp((s - maxSim) / t));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  return exps.map((e) => sum === 0 ? 1 / exps.length : e / sum);
+}
+function _composeActions(neighbors, weights) {
+  const typeWeight = /* @__PURE__ */ new Map();
+  for (let i = 0; i < neighbors.length; i++) {
+    const acts = neighbors[i].pattern.output.actions ?? [];
+    const primary = acts[0]?.type;
+    if (primary === void 0) continue;
+    typeWeight.set(primary, (typeWeight.get(primary) ?? 0) + (weights[i] ?? 0));
+  }
+  let winningType = null;
+  let bestWeight = -1;
+  for (let i = 0; i < neighbors.length; i++) {
+    const primary = neighbors[i].pattern.output.actions?.[0]?.type;
+    if (primary === void 0) continue;
+    const w = typeWeight.get(primary) ?? 0;
+    if (w > bestWeight) {
+      bestWeight = w;
+      winningType = primary;
+    }
+  }
+  let source = neighbors[0];
+  for (let i = 0; i < neighbors.length; i++) {
+    if (neighbors[i].pattern.output.actions?.[0]?.type === winningType) {
+      source = neighbors[i];
+      break;
+    }
+  }
+  const src = source.pattern.output;
+  return {
+    actions: _clone(src.actions ?? []),
+    reasoning: src.reasoning ?? "",
+    confidence: src.confidence ?? 0.5
+  };
+}
+function _composeGoals(neighbors, weights) {
+  const byDesc = /* @__PURE__ */ new Map();
+  for (let i = 0; i < neighbors.length; i++) {
+    const w = weights[i] ?? 0;
+    for (const g of neighbors[i].pattern.output.newGoals ?? []) {
+      const cur = byDesc.get(g.description);
+      if (cur) {
+        cur.weight += w;
+        cur.priority += g.priority * w;
+        if (w > cur.bestW) {
+          cur.bestW = w;
+          cur.tags = g.tags;
+          cur.completionType = g.completionType;
+          cur.completionCondition = g.completionCondition;
+        }
+      } else {
+        byDesc.set(g.description, {
+          weight: w,
+          priority: g.priority * w,
+          tags: g.tags,
+          completionType: g.completionType,
+          completionCondition: g.completionCondition,
+          bestW: w
+        });
+      }
+    }
+  }
+  const result = [];
+  for (const [description, a] of byDesc) {
+    result.push({
+      description,
+      priority: a.weight === 0 ? 0 : a.priority / a.weight,
+      tags: [...a.tags],
+      completionType: a.completionType,
+      ...a.completionCondition !== void 0 ? { completionCondition: a.completionCondition } : {}
+    });
+  }
+  result.sort((x, y) => y.priority - x.priority);
+  return result.slice(0, 3);
+}
+function _composeBeliefs(neighbors, weights) {
+  const byStmt = /* @__PURE__ */ new Map();
+  for (let i = 0; i < neighbors.length; i++) {
+    const w = weights[i] ?? 0;
+    for (const b of neighbors[i].pattern.output.newBeliefs ?? []) {
+      const cur = byStmt.get(b.statement);
+      if (cur) {
+        cur.weight += w;
+        cur.confidence += b.confidence * w;
+        if (w > cur.bestW) {
+          cur.bestW = w;
+          cur.category = b.category;
+          cur.evidence = b.evidence;
+          cur.tags = b.tags;
+        }
+      } else {
+        byStmt.set(b.statement, {
+          weight: w,
+          confidence: b.confidence * w,
+          category: b.category,
+          evidence: b.evidence,
+          tags: b.tags,
+          bestW: w
+        });
+      }
+    }
+  }
+  const result = [];
+  for (const [statement, a] of byStmt) {
+    result.push({
+      statement,
+      category: a.category,
+      confidence: a.weight === 0 ? 0 : a.confidence / a.weight,
+      evidence: a.evidence,
+      tags: [...a.tags]
+    });
+  }
+  return result;
+}
+function _clone(v) {
+  return JSON.parse(JSON.stringify(v));
+}
+
+// src/cognition/cache/deliberation.cache.ts
+var DEFAULT_CONFIG = {
+  maxPatterns: 5e3,
+  k: 5,
+  minSimilarity: 0.75,
+  theta: 0.7,
+  tau: 0.5,
+  eta: 0.1,
+  decayPerCycle: 0.999,
+  verifyEveryNHits: 5,
+  scopes: ["actions"]
+};
+var DeliberationCache = class {
+  name = "deliberation-cache";
+  _patterns = [];
+  _config;
+  _hitCount = 0;
+  _missCount = 0;
+  _verifyCounter = 0;
+  constructor(config = {}) {
+    this._config = { ...DEFAULT_CONFIG, ...config };
+  }
+  get size() {
+    return this._patterns.length;
+  }
+  get hitCount() {
+    return this._hitCount;
+  }
+  get missCount() {
+    return this._missCount;
+  }
+  // ── Retrieval + composition ──────────────────────────────
+  /**
+   * Retrieve neighbors of `queryFp` and, if confident, compose an output.
+   * Confidence ρ = max over neighbors of (competence × similarity), per the
+   * research sketch §2.2 — a diffuse cloud of weak matches never triggers a hit.
+   */
+  retrieve(queryFp, _tick) {
+    const neighbors = this._retrieveNeighbors(queryFp);
+    if (neighbors.length === 0) {
+      this._missCount++;
+      return { output: null, confidence: 0, neighbors: [], hit: false };
+    }
+    let confidence = 0;
+    for (const n of neighbors) {
+      const score = n.pattern.competence * n.similarity;
+      if (score > confidence) confidence = score;
+    }
+    const hit = confidence >= this._config.theta;
+    if (hit) this._hitCount++;
+    else this._missCount++;
+    const output = hit ? composeOutput(neighbors, this._config.tau, this._config.scopes) : null;
+    return { output, confidence, neighbors, hit };
+  }
+  /** Store a new (fingerprint, output) pair from the slow (LLM) path. */
+  learn(queryFp, output, tick) {
+    this._evictIfFull(tick);
+    this._patterns.push({
+      fingerprint: new Float32Array(queryFp),
+      output,
+      competence: 0.5,
+      storedAtTick: tick,
+      retrievalCount: 0,
+      successCount: 0
+    });
+  }
+  /**
+   * Update the competence of the pattern nearest to `queryFp`, from a reafference
+   * reward in [0,1]. Called after an action outcome is confirmed.
+   */
+  updateCompetence(queryFp, reward, _tick) {
+    const best = this._findBestMatch(queryFp);
+    if (!best) return;
+    const r = Math.max(0, Math.min(1, reward));
+    best.retrievalCount++;
+    if (r > 0.5) best.successCount++;
+    const a = this._config.eta;
+    best.competence = Math.max(0, Math.min(1, best.competence * (1 - a) + r * a));
+  }
+  /** Decay all competences one executive cycle. Slowly forgets stale patterns. */
+  decay() {
+    const f = this._config.decayPerCycle;
+    if (f >= 1) return;
+    for (const p of this._patterns) p.competence *= f;
+  }
+  /** Deterministic 1-in-N verify schedule. Increments a counter each call. */
+  shouldVerify() {
+    if (this._config.verifyEveryNHits <= 0) return false;
+    this._verifyCounter++;
+    return this._verifyCounter % this._config.verifyEveryNHits === 0;
+  }
+  // ── Snapshot / restore (entity persistence + tests) ──────
+  snapshot() {
+    return {
+      version: FINGERPRINT_VERSION,
+      patterns: this._patterns.map((p) => ({
+        fingerprint: Array.from(p.fingerprint),
+        output: p.output,
+        competence: p.competence,
+        storedAtTick: p.storedAtTick,
+        retrievalCount: p.retrievalCount,
+        successCount: p.successCount
+      })),
+      hitCount: this._hitCount,
+      missCount: this._missCount,
+      verifyCounter: this._verifyCounter
+    };
+  }
+  restore(snap) {
+    if (snap.version !== FINGERPRINT_VERSION) return;
+    this._patterns = snap.patterns.map((p) => ({
+      fingerprint: new Float32Array(p.fingerprint),
+      output: p.output,
+      competence: p.competence,
+      storedAtTick: p.storedAtTick,
+      retrievalCount: p.retrievalCount,
+      successCount: p.successCount
+    }));
+    this._hitCount = snap.hitCount ?? 0;
+    this._missCount = snap.missCount ?? 0;
+    this._verifyCounter = snap.verifyCounter ?? 0;
+  }
+  // ── Internal ─────────────────────────────────────────────
+  _retrieveNeighbors(queryFp) {
+    const scored = [];
+    for (const p of this._patterns) {
+      const similarity = fingerprintSimilarity(queryFp, p.fingerprint);
+      if (similarity >= this._config.minSimilarity)
+        scored.push({ pattern: p, similarity });
+    }
+    scored.sort((a, b) => {
+      const sa = a.similarity * a.pattern.competence;
+      const sb = b.similarity * b.pattern.competence;
+      if (sa !== sb) return sb - sa;
+      return a.pattern.storedAtTick - b.pattern.storedAtTick;
+    });
+    return scored.slice(0, this._config.k);
+  }
+  _findBestMatch(queryFp) {
+    let best = null;
+    let bestSim = -1;
+    for (const p of this._patterns) {
+      const sim = fingerprintSimilarity(queryFp, p.fingerprint);
+      if (sim > bestSim) {
+        bestSim = sim;
+        best = p;
+      }
+    }
+    return best;
+  }
+  _evictIfFull(_tick) {
+    if (this._patterns.length < this._config.maxPatterns) return;
+    let evictIdx = 0;
+    let best = this._patterns[0];
+    for (let i = 1; i < this._patterns.length; i++) {
+      const p = this._patterns[i];
+      if (p.competence < best.competence || p.competence === best.competence && p.storedAtTick < best.storedAtTick) {
+        best = p;
+        evictIdx = i;
+      }
+    }
+    this._patterns.splice(evictIdx, 1);
+  }
+};
+
 // src/cognition/identity.entity.ts
 var IDENTITY_ENTITY_ID = "identity-self";
 var IDENTITY_ENTITY_TYPE = "will.identity";
@@ -12445,1103 +12811,6 @@ PromptFactory.buildOutputFormatInstruction.bind(PromptFactory);
 PromptFactory.computeQualityModulation.bind(PromptFactory);
 PromptFactory.computeEpistemicUncertainty.bind(PromptFactory);
 
-// src/llm/wire.contracts.ts
-var REPLY_TEXT_TAG = "REPLY_TEXT";
-var REPLY_TEXT_OPEN = `[${REPLY_TEXT_TAG}]`;
-var REPLY_TEXT_CLOSE = `[/${REPLY_TEXT_TAG}]`;
-var NO_MESSAGE_TAG = "NO_MESSAGE";
-var NO_MESSAGE_OPEN = `[${NO_MESSAGE_TAG}]`;
-function wrapReplyText(body) {
-  return [REPLY_TEXT_OPEN, body, REPLY_TEXT_CLOSE].join("\n");
-}
-var PROTOCOL_TAGS = [
-  REPLY_TEXT_TAG,
-  NO_MESSAGE_TAG,
-  "INTROSPECTION",
-  "NARRATIVE",
-  "SELF_OBS"
-];
-function stripProtocolMarkers(text) {
-  let out = text;
-  for (const tag of PROTOCOL_TAGS)
-    out = out.split(`[${tag}]`).join("").split(`[/${tag}]`).join("");
-  return out.split("\n").filter((line, i, all) => line.trim() !== "" || i > 0 && i < all.length - 1 && all[i - 1]?.trim() !== "").join("\n").trim();
-}
-function renderSpeakerLine(speakerName, speakerEntityId) {
-  return `Speaker: ${speakerName} (id: ${speakerEntityId})`;
-}
-function renderCurrentMessageLine(content) {
-  return `Current message: "${content}"`;
-}
-function matchConversationFocus(userMessage) {
-  const speakerMatch = userMessage.match(/Speaker: .+? \(id: .+?\)/);
-  const messageMatch = userMessage.match(/Current message: "([\s\S]+?)"/);
-  if (!speakerMatch || !messageMatch) return null;
-  return { content: messageMatch[1] };
-}
-
-// src/cognition/faculties/executive.engine/parser.ts
-function parseResponse(responseText, state, recentActionTypes) {
-  const codeBlocks = [...responseText.matchAll(/```(?:json)?\s*\n?([\s\S]*?)\n?```/g)], actionsBlock = codeBlocks.find((m) => m[1].includes('"actions"')), fullText = actionsBlock?.[1]?.trim() ?? responseText.trim();
-  let actions, confidence = 0.5;
-  try {
-    const parsed = JSON.parse(fullText);
-    if (!Array.isArray(parsed.actions))
-      throw new Error("actions is not an array");
-    actions = parsed.actions;
-    confidence = parsed.confidence ?? 0.5;
-  } catch {
-    const actionsStr = extractBalancedArray(fullText, "actions");
-    if (!actionsStr) {
-      logger.warn("[executive] No actions found in response \u2014 using fallback");
-      return buildFallbackOutput(state);
-    }
-    try {
-      actions = JSON.parse(actionsStr);
-    } catch {
-      logger.warn("[executive] Failed to parse actions array \u2014 using fallback");
-      return buildFallbackOutput(state);
-    }
-    const confidenceMatch = fullText.match(/"confidence"\s*:\s*([\d.]+)/);
-    confidence = confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.5;
-  }
-  const full = parseTaggedBlocks({ actions, reasoning: fullText, confidence });
-  const replyText = extractTextBlock(responseText, REPLY_TEXT_TAG);
-  if (replyText) full.replyText = replyText;
-  if (responseText.includes(NO_MESSAGE_OPEN))
-    full.noMessage = extractTextBlock(responseText, NO_MESSAGE_TAG) ?? "(no reason given)";
-  return full;
-}
-function parseIdeation(responseText) {
-  const codeBlocks = [...responseText.matchAll(/```(?:json)?\s*\n?([\s\S]*?)\n?```/g)], block = codeBlocks.find((m) => m[1].includes('"candidates"')), text = block?.[1]?.trim() ?? responseText.trim();
-  const coerce = (raw) => {
-    if (!Array.isArray(raw)) return [];
-    return raw.map((c) => {
-      const o = c ?? {};
-      return {
-        approach: String(o.approach ?? "").trim(),
-        description: String(o.description ?? "").trim(),
-        upside: String(o.upside ?? "").trim(),
-        risk: String(o.risk ?? "").trim()
-      };
-    }).filter((c) => c.approach.length > 0 || c.description.length > 0);
-  };
-  try {
-    const parsed = JSON.parse(text);
-    const candidates = coerce(parsed.candidates);
-    if (candidates.length > 0) return { candidates };
-  } catch {
-  }
-  const arrStr = extractBalancedArray(text, "candidates");
-  if (arrStr) {
-    try {
-      return { candidates: coerce(JSON.parse(arrStr)) };
-    } catch {
-    }
-  }
-  logger.warn("[executive] ideation parse failed \u2014 no candidates (deliberate pass proceeds without an injected set)");
-  return { candidates: [] };
-}
-function extractBalancedArray(text, key) {
-  const keyMatch = text.match(new RegExp(`"${key}"\\s*:\\s*(\\[)`));
-  if (!keyMatch || keyMatch.index === void 0) return null;
-  const start = keyMatch.index + keyMatch[0].length - 1;
-  let depth = 0, inString = false, escape = false;
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i];
-    if (escape) {
-      escape = false;
-      continue;
-    }
-    if (ch === "\\" && inString) {
-      escape = true;
-      continue;
-    }
-    if (ch === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (ch === "[" || ch === "{") depth++;
-    else if (ch === "]" || ch === "}") {
-      depth--;
-      if (depth === 0)
-        return text.slice(start, i + 1);
-    }
-  }
-  return null;
-}
-function parseTaggedBlocks(minimal, state) {
-  const full = {
-    actions: minimal.actions,
-    reasoning: minimal.reasoning,
-    confidence: minimal.confidence
-  }, text = minimal.reasoning, taggedTypes = [
-    "PLANS",
-    "BELIEFS",
-    "INTROSPECTION",
-    "NARRATIVE",
-    "IDENTITY",
-    "KNOWN_ENTITIES",
-    "GOALS_NEW",
-    "GOALS_ABANDON",
-    "GOALS_REPRIORITIZE",
-    "EFFECTORS",
-    "SELF_OBS",
-    "SKILLS"
-  ], found = taggedTypes.filter((t) => text.includes(`[${t}]`));
-  if (found.length > 0) {
-    const closed = found.map((t) => `${t}: ${text.includes(`[/${t}]`) ? "CLOSED" : "UNCLOSED"}`).join(", ");
-    logger.info(`[executive] TAGGED BLOCKS: ${closed}`);
-  }
-  const parseJsonBlock = (tag) => {
-    const block = extractBlock(text, tag);
-    if (!block) return null;
-    const trimmed = block.trim();
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-    }
-    try {
-      const repaired = trimmed.replace(/\\"/g, '"').replace(/\\n/g, "\n").replace(/\\\\/g, "\\");
-      return JSON.parse(repaired);
-    } catch {
-      return null;
-    }
-  };
-  try {
-    const plansData = parseJsonBlock("PLANS");
-    if (plansData?.plans) full.plans = plansData.plans;
-  } catch {
-  }
-  try {
-    const beliefsData = parseJsonBlock("BELIEFS");
-    if (beliefsData?.newBeliefs) full.newBeliefs = beliefsData.newBeliefs;
-  } catch {
-  }
-  try {
-    const introspectionData = parseJsonBlock("INTROSPECTION");
-    if (introspectionData?.introspection) full.introspection = introspectionData.introspection;
-  } catch {
-  }
-  try {
-    const narrativeData = parseJsonBlock("NARRATIVE");
-    if (narrativeData) {
-      if (narrativeData.narrative) full.narrative = narrativeData.narrative;
-      if (narrativeData.narrativeThemes) full.narrativeThemes = narrativeData.narrativeThemes;
-      if (narrativeData.currentSelfView) full.currentSelfView = narrativeData.currentSelfView;
-    }
-  } catch {
-  }
-  try {
-    const identityData = parseJsonBlock("IDENTITY");
-    if (identityData?.identityUpdates) full.identityUpdates = identityData.identityUpdates;
-    const knownEntityData = parseJsonBlock("KNOWN_ENTITIES");
-    if (knownEntityData?.knownEntityUpdates) full.knownEntityUpdates = knownEntityData.knownEntityUpdates;
-  } catch {
-  }
-  try {
-    const goalsNewData = parseJsonBlock("GOALS_NEW");
-    if (goalsNewData?.newGoals) full.newGoals = goalsNewData.newGoals;
-  } catch {
-  }
-  try {
-    const goalsAbandonData = parseJsonBlock("GOALS_ABANDON");
-    if (goalsAbandonData?.goalsToAbandon) full.goalsToAbandon = goalsAbandonData.goalsToAbandon;
-  } catch {
-  }
-  try {
-    const goalsReprioritizeData = parseJsonBlock("GOALS_REPRIORITIZE");
-    if (goalsReprioritizeData?.goalsToReprioritize) full.goalsToReprioritize = goalsReprioritizeData.goalsToReprioritize;
-  } catch {
-  }
-  try {
-    const selfObsData = parseJsonBlock("SELF_OBS");
-    if (selfObsData?.selfObservations) full.selfObservations = selfObsData.selfObservations;
-  } catch {
-  }
-  try {
-    const skillsData = parseJsonBlock("SKILLS");
-    if (skillsData?.newSkills) full.newSkills = skillsData.newSkills;
-  } catch {
-  }
-  return full;
-}
-function extractBlock(text, tag) {
-  const regex = new RegExp(`\\[${tag}\\]\\s*\\n?([\\s\\S]*?)\\n?\\[/${tag}\\]`, "i");
-  const match = text.match(regex);
-  return match?.[1]?.trim() ?? null;
-}
-function extractTextBlock(text, tag) {
-  const open = `[${tag}]`;
-  const close = `[/${tag}]`;
-  const openIdx = text.indexOf(open);
-  if (openIdx === -1) return null;
-  const contentStart = openIdx + open.length;
-  const closeIdx = text.indexOf(close, contentStart);
-  const content = closeIdx !== -1 ? text.slice(contentStart, closeIdx) : text.slice(contentStart);
-  return stripProtocolMarkers(content) || null;
-}
-function buildFallbackOutput(state, _recentActionTypes) {
-  const energy = state.metrics.get("energy.level") ?? 100;
-  const sleepPressure = state.metrics.get("sleep.pressure") ?? 0;
-  const stressLoad = state.metrics.get("stress.load") ?? 0;
-  const reflex = energy < 20 ? { type: "rest", reasoning: "Energy critically low \u2014 I let myself recover." } : sleepPressure > 60 ? { type: "rest", reasoning: "Sleep pressure high \u2014 I let myself recover." } : stressLoad > 70 ? { type: "withdraw", reasoning: "Stress elevated \u2014 I pull back from the press of things." } : null;
-  return {
-    actions: reflex ? [{ type: reflex.type, reasoning: reflex.reasoning, expectedOutcome: "The body settles" }] : [],
-    reasoning: reflex ? `Heuristic fallback \u2014 my reasoning did not come back. ${reflex.reasoning}` : "Heuristic fallback \u2014 my reasoning did not come back, and nothing about my state is pressing. I intend nothing in particular; my body goes on choosing.",
-    confidence: 0.4
-  };
-}
-
-// src/cognition/faculties/executive.engine/effort.gate.ts
-var W_UNCERTAINTY = 0.3;
-var W_LOW_CONFIDENCE = 0.25;
-var W_NOVELTY = 0.2;
-var W_PENDING = 0.15;
-var W_STRESS = 0.1;
-var DELIBERATE_THRESHOLD = 0.5;
-var clamp013 = (x) => Math.max(0, Math.min(1, x));
-function selectProcess(signals, threshold = DELIBERATE_THRESHOLD) {
-  const contributions = [
-    ["uncertainty", W_UNCERTAINTY * clamp013(signals.epistemicUncertainty)],
-    ["low_confidence", W_LOW_CONFIDENCE * (1 - clamp013(signals.priorConfidence))],
-    ["novelty", W_NOVELTY * clamp013(signals.novelty)],
-    ["pending_reply", W_PENDING * (signals.hasPendingMessage ? 1 : 0)],
-    ["load", W_STRESS * clamp013(signals.stressLoad / 100)]
-  ];
-  const effortScore = contributions.reduce((sum, [, v]) => sum + v, 0);
-  const dominant = contributions.reduce((a, b) => b[1] > a[1] ? b : a)[0];
-  const deliberate = effortScore >= threshold;
-  return {
-    process: deliberate ? "deliberate" : "fast",
-    effortScore,
-    reason: deliberate ? `deliberate:${dominant}` : "fast"
-  };
-}
-var IDEATION_TEMP_MIN = 0.6;
-var IDEATION_TEMP_MAX = 1;
-function ideationTemperature(creativity) {
-  return IDEATION_TEMP_MIN + clamp013(creativity) * (IDEATION_TEMP_MAX - IDEATION_TEMP_MIN);
-}
-
-// src/cognition/faculties/executive.engine/deliberate.reasoning.ts
-async function proposeCandidates(params) {
-  try {
-    const result = await params.director.call(
-      params.systemPrompt,
-      params.ideationUserMessage,
-      params.tick,
-      params.proposeTemperature,
-      params.meta ?? { category: "executive", attribute: "master", process: "ideation", function: "-" }
-    );
-    const candidates = parseIdeation(result.text).candidates;
-    return candidates.length > 0 ? candidates : void 0;
-  } catch {
-    return void 0;
-  }
-}
-
-// src/cognition/faculties/executive.engine/facet.ts
-var ExecutiveFacet = class {
-  facetId;
-  _bus;
-  _llmDirector;
-  _contextDeps;
-  _promptDeps;
-  _willId;
-  _listeners = /* @__PURE__ */ new Set();
-  _destroyed = false;
-  _sessionLogger = null;
-  /**
-   * Tick-boundary landing (see cognition/completion.inbox.ts). When present,
-   * subscriber notification is STAGED at LLM-promise resolution and applied by
-   * the CognitiveOrchestrator in Phase 2 — so PlanningEngine / AuditionEngine
-   * effects (plan mutations, outbox writes) never interleave with a tick in
-   * flight. Null = legacy direct notification (bare facets in unit tests).
-   */
-  _inbox = null;
-  /**
-   * Reports waiting for the per-tick pump (tick-discipline mode only). Reasoning
-   * launches from pump(), never from report() — see report() for why.
-   */
-  _pendingReports = [];
-  /** Current focus for this facet — set by creator (PlanningEngine, etc.) */
-  _currentFocus = null;
-  /** Accumulated reasoning history for continuity across report() calls */
-  _facetReasoningHistory = [];
-  _masterSyncHistory = [];
-  /**
-   * This facet's own prior reasoning, for the supervisor to carry to whichever
-   * facet takes over the same keyed thread. Continuity belongs to the thread, not
-   * to the instance holding it: a facet reaped mid-conversation used to take the
-   * mind's private thinking about that person with it.
-   */
-  get reasoningHistory() {
-    return [...this._facetReasoningHistory];
-  }
-  /** Resume a thread's reasoning on spawn (supervisor-only; see FacetSpawnDeps.key). */
-  restoreReasoningHistory(history) {
-    this._facetReasoningHistory = [...history];
-  }
-  /** Confidence of this facet's *previous* decision — a dual-process gate signal. */
-  _lastConfidence = 0.5;
-  /** Current state reference (updated by orchestrator each tick) */
-  _currentStateRef = null;
-  /**
-   * Sim tick of the last activity (report). Used by FacetSupervisor's idle
-   * reaper + LRU eviction. Sim tick (deterministic), never wallClock.
-   */
-  _lastActiveTick = 0;
-  get lastActiveTick() {
-    return this._lastActiveTick;
-  }
-  /** Stamp activity at `tick` (called at spawn and on each report). */
-  markActive(tick) {
-    this._lastActiveTick = tick;
-  }
-  /** _reason() calls currently in flight — a real LLM call spans many ticks. */
-  _inflight = 0;
-  /**
-   * True while the facet has work the reaper must not discard: queued reports
-   * awaiting the pump, or an in-flight _reason() whose decision hasn't landed.
-   * The idle TTL only measures *quiet* facets — reaping a busy one destroys the
-   * listeners its pending decision needs, silently dropping a conversation reply.
-   */
-  get busy() {
-    return this._inflight > 0 || this._pendingReports.length > 0;
-  }
-  /**
-   * Per-facet chunk handler — fires for every LLM token during _reason().
-   * Set by the creating engine (e.g. AuditionEngine) for entity-scoped streaming.
-   * Independent from the master's global _chunkBroadcaster.
-   */
-  _chunkHandler = null;
-  constructor(facetId, bus, llmDirector, contextDeps, promptDeps, willId, inbox = null) {
-    this.facetId = facetId;
-    this._bus = bus;
-    this._llmDirector = llmDirector;
-    this._contextDeps = contextDeps;
-    this._promptDeps = promptDeps;
-    this._willId = willId;
-    this._inbox = inbox;
-    this._bus.subscribe(
-      `executive-facet-${facetId}`,
-      ["executive.master.sync"],
-      this._onMasterSync
-    );
-    logger.info(`[executive.facet] ${facetId} created`);
-  }
-  // ── Public API ─────────────────────────────────────────────
-  /**
-   * Set the focus for this facet.
-   * Called by the creator (PlanningEngine, etc.) before first report.
-   */
-  setFocus(focus) {
-    this._currentFocus = focus;
-  }
-  /**
-   * Set the current state reference.
-   * Called by the orchestrator each tick to keep facet in sync.
-   */
-  setStateRef(state) {
-    this._currentStateRef = state;
-  }
-  attachSessionLogger(logger2) {
-    this._sessionLogger = logger2;
-  }
-  /** Register a per-facet chunk handler for entity-scoped token streaming. */
-  setChunkHandler(handler) {
-    this._chunkHandler = handler;
-  }
-  async report(report) {
-    if (this._destroyed) return;
-    this.markActive(this._currentStateRef?.tick ?? this._lastActiveTick);
-    logger.info(
-      `[executive.facet] ${this.facetId} received report: type=${report.type}`
-    );
-    if (this._inbox) {
-      this._pendingReports.push(report);
-      return;
-    }
-    this._launchReason(report);
-  }
-  /**
-   * Launch _reason() with in-flight accounting. `busy` must hold for the whole
-   * span (a real LLM call is 10–30s ≈ many ticks) so the supervisor's idle
-   * reaper never destroys a facet whose decision is still coming — that would
-   * clear its listeners and silently drop the reply. Completion re-stamps
-   * activity so the idle TTL measures quiet time *after* the decision, not
-   * after the report that started it.
-   */
-  _launchReason(report) {
-    this._inflight++;
-    this._reason(report).catch((err) => logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err)).finally(() => {
-      this._inflight--;
-      this.markActive(this._currentStateRef?.tick ?? this._lastActiveTick);
-    });
-  }
-  /**
-   * Per-tick pump — called by the FacetSupervisor from the ExecutiveEngine's
-   * react() with the tick's FROZEN snapshot. Refreshes the state reference,
-   * then launches reasoning for every queued report, FIFO. The launch happens
-   * at a fixed point in the serial engine order, so prompt inputs are a pure
-   * function of (tick, seed, recorded external inputs) — replayable.
-   */
-  pump(state) {
-    if (this._destroyed) return;
-    this.setStateRef(state);
-    if (this._pendingReports.length === 0) return;
-    const batch = this._pendingReports;
-    this._pendingReports = [];
-    for (const report of batch)
-      this._launchReason(report);
-  }
-  subscribe(listener) {
-    this._listeners.add(listener);
-    return () => {
-      this._listeners.delete(listener);
-    };
-  }
-  destroy() {
-    if (this._destroyed) return;
-    this._destroyed = true;
-    this._bus.unsubscribe(`executive-facet-${this.facetId}`);
-    this._listeners.clear();
-    logger.info(`[executive.facet] ${this.facetId} destroyed`);
-  }
-  // ── Master sync ────────────────────────────────────────────
-  _onMasterSync = (event) => {
-    if (this._destroyed) return;
-    const payload = event.payload;
-    if (payload.facetId && payload.facetId !== this.facetId) return;
-    logger.info(`[executive.facet] ${this.facetId} synced from master (tick=${payload.tick})`);
-    if (payload.reasoning)
-      this._masterSyncHistory.push(`[tick ${payload.tick}] ${payload.reasoning.slice(0, 400)}`);
-    if (this._masterSyncHistory.length > 5)
-      this._masterSyncHistory = this._masterSyncHistory.slice(-5);
-  };
-  // ── Reasoning ──────────────────────────────────────────────
-  async _reason(report) {
-    if (!this._currentStateRef)
-      throw new Error(`[executive.facet] ${this.facetId} no state reference available`);
-    const reportFocus = report.focus ?? this._currentFocus;
-    if (!reportFocus)
-      throw new Error(`[executive.facet] ${this.facetId} no focus set. Call setFocus() before report().`);
-    const currentState = this._currentStateRef;
-    const execContext = await PromptFactory.buildFreshContext(this._contextDeps, currentState, reportFocus.recallQuery);
-    const qualityModulation = PromptFactory.computeQualityModulation(currentState);
-    const epistemicUncertainty = PromptFactory.computeEpistemicUncertainty(execContext, currentState);
-    const focus = this._masterSyncHistory.length > 0 ? {
-      ...reportFocus,
-      content: `${reportFocus.content}
-
-## What I've Been Turning Over
-${this._masterSyncHistory.join("\n")}`
-    } : reportFocus;
-    const systemPrompt = PromptFactory.buildSystemPrompt({
-      context: execContext,
-      focus,
-      deps: this._promptDeps,
-      mode: "facet"
-    });
-    const continuityBlock = this._facetReasoningHistory.length > 0 ? `## Where My Thinking Had Got To
-${this._facetReasoningHistory.join("\n")}` : "";
-    const reportContent = [
-      continuityBlock,
-      report.instructions ?? ""
-    ].filter(Boolean).join("\n\n") || void 0;
-    const deliberateThreshold = readEffectiveParams(currentState, "engine-config-executive").deliberateThreshold ?? DELIBERATE_THRESHOLD;
-    const processSelection = selectProcess({
-      epistemicUncertainty,
-      priorConfidence: this._lastConfidence,
-      novelty: currentState.metrics.get("perception.novelty") ?? 0,
-      stressLoad: currentState.metrics.get("stress.load") ?? 0,
-      // A facet's "stakes-bearing moment" is a live message awaiting reply (conversation
-      // facets set focus.recallQuery to it); planning/other facets rely on uncertainty.
-      hasPendingMessage: !!reportFocus.recallQuery
-    }, deliberateThreshold);
-    let ideationCandidates;
-    if (processSelection.process === "deliberate") {
-      const proposeTemperature = ideationTemperature(execContext.identity.traits["creativity"] ?? 0.5);
-      const ideationUserMessage = PromptFactory.buildUserMessage({
-        context: execContext,
-        state: currentState,
-        qualityModulation,
-        epistemicUncertainty,
-        focus,
-        deps: this._promptDeps,
-        recentActionTypes: [],
-        mode: "facet",
-        reportContent,
-        outputFormat: PromptFactory.buildIdeationFormatInstruction()
-      });
-      ideationCandidates = await proposeCandidates({
-        director: this._llmDirector,
-        systemPrompt,
-        ideationUserMessage,
-        tick: currentState.tick,
-        proposeTemperature,
-        meta: {
-          category: "executive",
-          attribute: "facet",
-          process: "ideation",
-          function: reportFocus.function ?? "-",
-          scope: this.facetId,
-          demand: processSelection.effortScore
-        }
-      });
-      logger.info(
-        `[executive.facet] ${this.facetId} \u25C6 deliberate propose tick=${currentState.tick}  candidates=${ideationCandidates?.length ?? 0}  temp=${proposeTemperature.toFixed(2)}`
-      );
-    }
-    const userMessage = PromptFactory.buildUserMessage({
-      context: execContext,
-      state: currentState,
-      qualityModulation,
-      epistemicUncertainty,
-      focus,
-      deps: this._promptDeps,
-      recentActionTypes: [],
-      mode: "facet",
-      reportContent,
-      outputFormat: focus.outputFormat,
-      ideationCandidates
-    });
-    this._sessionLogger?.write({
-      type: "executive.facet.call",
-      tick: currentState.tick,
-      facetId: this.facetId,
-      promptChars: systemPrompt.length + userMessage.length,
-      promptTokensEst: Math.round((systemPrompt.length + userMessage.length) / 4),
-      systemChars: systemPrompt.length,
-      userChars: userMessage.length
-    });
-    let output;
-    const llmStart = wallClock();
-    try {
-      const facetMeta = {
-        category: "executive",
-        attribute: "facet",
-        process: "decision",
-        // A focus that declares no function is making its decision call, the
-        // facet's analogue of master's 'decision'. This previously fell back to
-        // 'facet' — an *attribute* value, which quietly created a bogus bucket
-        // in the by-function cost breakdown. The typed axes caught it.
-        function: reportFocus.function ?? "-",
-        scope: this.facetId,
-        demand: processSelection.effortScore
-      };
-      const result = this._chunkHandler ? await this._llmDirector.callStream(systemPrompt, userMessage, currentState.tick, this._chunkHandler, void 0, facetMeta) : await this._llmDirector.call(systemPrompt, userMessage, currentState.tick, void 0, facetMeta);
-      output = parseResponse(result.text, currentState, []);
-      if (ideationCandidates && ideationCandidates.length > 0)
-        output.consideredAlternatives = ideationCandidates.map((c) => c.approach || c.description);
-      logger.info(
-        `[executive.facet] ${this.facetId} \u2713 tick=${currentState.tick}  in=${result.inputTok} tok  out=${result.outputTok} tok  cache=${result.cacheReadTok ?? 0}r/${result.cacheWriteTok ?? 0}w  latency=${wallClock() - llmStart}ms`
-      );
-      this._sessionLogger?.write({
-        type: "executive.facet.response",
-        tick: currentState.tick,
-        facetId: this.facetId,
-        latencyMs: wallClock() - llmStart,
-        responseChars: result.text.length,
-        promptTokens: result.inputTok,
-        completionTokens: result.outputTok,
-        cacheReadTokens: result.cacheReadTok ?? 0,
-        cacheWriteTokens: result.cacheWriteTok ?? 0,
-        responseExcerpt: result.text.slice(0, 600)
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error(`[executive.facet] ${this.facetId} LLM call failed: ${msg.slice(0, 200)}`);
-      this._sessionLogger?.write({
-        type: "executive.facet.response",
-        tick: currentState.tick,
-        facetId: this.facetId,
-        latencyMs: wallClock() - llmStart,
-        error: msg.slice(0, 300)
-      });
-      output = buildFallbackOutput(currentState);
-    }
-    this._sessionLogger?.write({
-      type: "executive.facet.output",
-      tick: currentState.tick,
-      facetId: this.facetId,
-      confidence: output.confidence,
-      reasoning: output.reasoning.slice(0, 500),
-      actions: output.actions,
-      newBeliefs: output.newBeliefs ?? [],
-      plansCount: output.plans?.length ?? 0,
-      goalsNew: output.newGoals ?? [],
-      goalsAbandon: output.goalsToAbandon ?? [],
-      hasIntrospection: !!output.introspection,
-      hasNarrative: !!output.narrative
-    });
-    this._lastConfidence = output.confidence;
-    this._facetReasoningHistory.push(`[Report: ${report.type}] ${output.reasoning.slice(0, 400)}`);
-    if (this._facetReasoningHistory.length > 10)
-      this._facetReasoningHistory = this._facetReasoningHistory.slice(-10);
-    const decision = {
-      facetId: this.facetId,
-      respondingToType: report.type,
-      decision: this._extractDecisionPayload(output, focus),
-      reasoning: output.reasoning,
-      confidence: output.confidence,
-      tick: currentState.tick
-    };
-    const dec = typeof decision.decision === "object" && decision.decision !== null ? decision.decision : {};
-    this._bus.publish({
-      type: "executive.facet.progress",
-      version: 1,
-      sourceEngine: `executive-facet-${this.facetId}`,
-      salience: Math.max(0.5, decision.confidence),
-      payload: {
-        facetId: this.facetId,
-        respondingToType: report.type,
-        decision: decision.decision,
-        // promoted for GoalManager
-        goalId: dec["goalId"],
-        goalProgress: dec["goalProgress"],
-        newGoals: dec["newGoals"],
-        goalsToAbandon: dec["goalsToAbandon"],
-        // promoted for SemanticIntegrator
-        newBeliefs: dec["newBeliefs"],
-        // promoted for SemanticIntegrator (learned facts about others → keid-tagged beliefs)
-        knownEntityUpdates: dec["knownEntityUpdates"],
-        contextId: report.contextId,
-        tick: currentState.tick
-      }
-    });
-    const keUpdates = dec["knownEntityUpdates"];
-    if (keUpdates) {
-      for (const u of keUpdates)
-        if (u.keid && u.keid !== "agent-self" && (u.name || u.feeling != null || u.sameAs))
-          this._bus.publish({
-            type: "known.entity.learned",
-            version: 1,
-            sourceEngine: `executive-facet-${this.facetId}`,
-            salience: u.sameAs ? 0.7 : 0.5,
-            payload: { keid: u.keid, name: u.name, feeling: u.feeling, sameAs: u.sameAs }
-          });
-    }
-    this._bus.publish({
-      type: "executive.facet.sync",
-      version: 1,
-      sourceEngine: `executive-facet-${this.facetId}`,
-      salience: Math.max(0.5, decision.confidence),
-      payload: {
-        facetId: this.facetId,
-        reasoning: output.reasoning,
-        confidence: output.confidence,
-        actionTypes: output.actions.map((a) => a.type),
-        // WHO this facet is engaged with (FocusSection.subject*). The master keeps
-        // the singular seat, so it needs the person, not just the facet number.
-        ...focus.subjectEntityId ? { subjectEntityId: focus.subjectEntityId } : {},
-        ...focus.subjectName ? { subjectName: focus.subjectName } : {},
-        tick: currentState.tick
-      }
-    });
-    const notify = () => {
-      for (const listener of this._listeners)
-        try {
-          listener(decision);
-        } catch (err) {
-          logger.error(`[executive.facet] ${this.facetId} listener error:`, err);
-        }
-    };
-    if (this._inbox) this._inbox.enqueue(`${this.facetId}:decision`, notify);
-    else notify();
-  }
-  /**
-   * Extract the decision payload from the executive output.
-   *
-   * If the creating engine supplied a `focus.extractDecision` callback, delegate
-   * entirely to it — the engine knows what fields it needs and how to derive them
-   * from the LLM output (e.g. reading action type as a directive, computing
-   * goalProgress from plan state, etc.).
-   *
-   * If no callback is provided, fall back to a generic passthrough of the
-   * LLM's raw actions and goal-mutation lists. This is safe for any facet that
-   * doesn't need domain-specific decision routing.
-   */
-  _extractDecisionPayload(output, focus) {
-    if (focus.extractDecision) return focus.extractDecision(output);
-    return {
-      actions: output.actions,
-      newGoals: output.newGoals,
-      goalsToAbandon: output.goalsToAbandon,
-      newBeliefs: output.newBeliefs,
-      knownEntityUpdates: output.knownEntityUpdates
-    };
-  }
-};
-
-// src/cognition/cache/fingerprint.ts
-var FINGERPRINT_DIM = 36;
-var FINGERPRINT_VERSION = 1;
-function extractFingerprint(state) {
-  const vec = new Float32Array(FINGERPRINT_DIM);
-  let idx = 0;
-  vec[idx++] = _norm(_metric(state, "energy.level", 50), 0, 100);
-  vec[idx++] = _norm(_metric(state, "sleep.pressure", 0), 0, 100);
-  vec[idx++] = _norm(_metric(state, "stress.load", 0), 0, 100);
-  vec[idx++] = _clamp01((_metric(state, "affect.valence", 0) + 1) / 2);
-  vec[idx++] = _clamp01(_metric(state, "affect.arousal", 0.3));
-  vec[idx++] = _clamp01(_metric(state, "affect.dominance", 0.5));
-  idx = _topEntityScalars(state, "goal", "priority", 0, vec, idx, 10);
-  idx = _topEntityScalars(state, "belief", "confidence", 0.5, vec, idx, 10);
-  idx = _topEntityScalars(state, "working_memory.item", "activation", 0, vec, idx, 10);
-  while (idx < FINGERPRINT_DIM) vec[idx++] = 0;
-  return vec;
-}
-function _topEntityScalars(state, type, field, fallback, vec, idx, count) {
-  const vals = [];
-  for (const e of state.entities.values()) {
-    if (e.type !== type) continue;
-    const raw = e.metadata?.[field];
-    vals.push(typeof raw === "number" ? raw : fallback);
-  }
-  vals.sort((a, b) => b - a);
-  for (let i = 0; i < count; i++)
-    vec[idx++] = _clamp01(vals[i] ?? 0);
-  return idx;
-}
-function _metric(state, key, fallback) {
-  const v = state.metrics.get(key);
-  return typeof v === "number" ? v : fallback;
-}
-function _norm(v, min, max) {
-  return Math.max(0, Math.min(1, (v - min) / (max - min)));
-}
-function _clamp01(v) {
-  if (Number.isNaN(v)) return 0;
-  return Math.max(0, Math.min(1, v));
-}
-function fingerprintSimilarity(a, b) {
-  let dot = 0, na = 0, nb = 0;
-  for (let i = 0; i < FINGERPRINT_DIM; i++) {
-    const ai = a[i] ?? 0;
-    const bi = b[i] ?? 0;
-    dot += ai * bi;
-    na += ai * ai;
-    nb += bi * bi;
-  }
-  const denom = Math.sqrt(na) * Math.sqrt(nb);
-  return denom === 0 ? 0 : dot / denom;
-}
-
-// src/cognition/cache/composition.ts
-function composeOutput(neighbors, tau, scopes) {
-  const weights = _softmaxWeights(neighbors, tau);
-  const anchor = neighbors[0].pattern.output;
-  const out = {
-    actions: [],
-    reasoning: anchor.reasoning ?? "",
-    confidence: anchor.confidence ?? 0.5
-  };
-  if (scopes.includes("actions")) {
-    const composed = _composeActions(neighbors, weights);
-    out.actions = composed.actions;
-    out.reasoning = composed.reasoning;
-    out.confidence = composed.confidence;
-  } else {
-    out.actions = _clone(anchor.actions ?? []);
-  }
-  if (scopes.includes("goals"))
-    out.newGoals = _composeGoals(neighbors, weights);
-  if (scopes.includes("beliefs"))
-    out.newBeliefs = _composeBeliefs(neighbors, weights);
-  return out;
-}
-function _softmaxWeights(neighbors, tau) {
-  const t = tau > 0 ? tau : 1e-6;
-  const sims = neighbors.map((n) => n.similarity);
-  const maxSim = Math.max(...sims);
-  const exps = sims.map((s) => Math.exp((s - maxSim) / t));
-  const sum = exps.reduce((a, b) => a + b, 0);
-  return exps.map((e) => sum === 0 ? 1 / exps.length : e / sum);
-}
-function _composeActions(neighbors, weights) {
-  const typeWeight = /* @__PURE__ */ new Map();
-  for (let i = 0; i < neighbors.length; i++) {
-    const acts = neighbors[i].pattern.output.actions ?? [];
-    const primary = acts[0]?.type;
-    if (primary === void 0) continue;
-    typeWeight.set(primary, (typeWeight.get(primary) ?? 0) + (weights[i] ?? 0));
-  }
-  let winningType = null;
-  let bestWeight = -1;
-  for (let i = 0; i < neighbors.length; i++) {
-    const primary = neighbors[i].pattern.output.actions?.[0]?.type;
-    if (primary === void 0) continue;
-    const w = typeWeight.get(primary) ?? 0;
-    if (w > bestWeight) {
-      bestWeight = w;
-      winningType = primary;
-    }
-  }
-  let source = neighbors[0];
-  for (let i = 0; i < neighbors.length; i++) {
-    if (neighbors[i].pattern.output.actions?.[0]?.type === winningType) {
-      source = neighbors[i];
-      break;
-    }
-  }
-  const src = source.pattern.output;
-  return {
-    actions: _clone(src.actions ?? []),
-    reasoning: src.reasoning ?? "",
-    confidence: src.confidence ?? 0.5
-  };
-}
-function _composeGoals(neighbors, weights) {
-  const byDesc = /* @__PURE__ */ new Map();
-  for (let i = 0; i < neighbors.length; i++) {
-    const w = weights[i] ?? 0;
-    for (const g of neighbors[i].pattern.output.newGoals ?? []) {
-      const cur = byDesc.get(g.description);
-      if (cur) {
-        cur.weight += w;
-        cur.priority += g.priority * w;
-        if (w > cur.bestW) {
-          cur.bestW = w;
-          cur.tags = g.tags;
-          cur.completionType = g.completionType;
-          cur.completionCondition = g.completionCondition;
-        }
-      } else {
-        byDesc.set(g.description, {
-          weight: w,
-          priority: g.priority * w,
-          tags: g.tags,
-          completionType: g.completionType,
-          completionCondition: g.completionCondition,
-          bestW: w
-        });
-      }
-    }
-  }
-  const result = [];
-  for (const [description, a] of byDesc) {
-    result.push({
-      description,
-      priority: a.weight === 0 ? 0 : a.priority / a.weight,
-      tags: [...a.tags],
-      completionType: a.completionType,
-      ...a.completionCondition !== void 0 ? { completionCondition: a.completionCondition } : {}
-    });
-  }
-  result.sort((x, y) => y.priority - x.priority);
-  return result.slice(0, 3);
-}
-function _composeBeliefs(neighbors, weights) {
-  const byStmt = /* @__PURE__ */ new Map();
-  for (let i = 0; i < neighbors.length; i++) {
-    const w = weights[i] ?? 0;
-    for (const b of neighbors[i].pattern.output.newBeliefs ?? []) {
-      const cur = byStmt.get(b.statement);
-      if (cur) {
-        cur.weight += w;
-        cur.confidence += b.confidence * w;
-        if (w > cur.bestW) {
-          cur.bestW = w;
-          cur.category = b.category;
-          cur.evidence = b.evidence;
-          cur.tags = b.tags;
-        }
-      } else {
-        byStmt.set(b.statement, {
-          weight: w,
-          confidence: b.confidence * w,
-          category: b.category,
-          evidence: b.evidence,
-          tags: b.tags,
-          bestW: w
-        });
-      }
-    }
-  }
-  const result = [];
-  for (const [statement, a] of byStmt) {
-    result.push({
-      statement,
-      category: a.category,
-      confidence: a.weight === 0 ? 0 : a.confidence / a.weight,
-      evidence: a.evidence,
-      tags: [...a.tags]
-    });
-  }
-  return result;
-}
-function _clone(v) {
-  return JSON.parse(JSON.stringify(v));
-}
-
-// src/cognition/cache/deliberation.cache.ts
-var DEFAULT_CONFIG = {
-  maxPatterns: 5e3,
-  k: 5,
-  minSimilarity: 0.75,
-  theta: 0.7,
-  tau: 0.5,
-  eta: 0.1,
-  decayPerCycle: 0.999,
-  verifyEveryNHits: 5,
-  scopes: ["actions"]
-};
-var DeliberationCache = class {
-  name = "deliberation-cache";
-  _patterns = [];
-  _config;
-  _hitCount = 0;
-  _missCount = 0;
-  _verifyCounter = 0;
-  constructor(config = {}) {
-    this._config = { ...DEFAULT_CONFIG, ...config };
-  }
-  get size() {
-    return this._patterns.length;
-  }
-  get hitCount() {
-    return this._hitCount;
-  }
-  get missCount() {
-    return this._missCount;
-  }
-  // ── Retrieval + composition ──────────────────────────────
-  /**
-   * Retrieve neighbors of `queryFp` and, if confident, compose an output.
-   * Confidence ρ = max over neighbors of (competence × similarity), per the
-   * research sketch §2.2 — a diffuse cloud of weak matches never triggers a hit.
-   */
-  retrieve(queryFp, _tick) {
-    const neighbors = this._retrieveNeighbors(queryFp);
-    if (neighbors.length === 0) {
-      this._missCount++;
-      return { output: null, confidence: 0, neighbors: [], hit: false };
-    }
-    let confidence = 0;
-    for (const n of neighbors) {
-      const score = n.pattern.competence * n.similarity;
-      if (score > confidence) confidence = score;
-    }
-    const hit = confidence >= this._config.theta;
-    if (hit) this._hitCount++;
-    else this._missCount++;
-    const output = hit ? composeOutput(neighbors, this._config.tau, this._config.scopes) : null;
-    return { output, confidence, neighbors, hit };
-  }
-  /** Store a new (fingerprint, output) pair from the slow (LLM) path. */
-  learn(queryFp, output, tick) {
-    this._evictIfFull(tick);
-    this._patterns.push({
-      fingerprint: new Float32Array(queryFp),
-      output,
-      competence: 0.5,
-      storedAtTick: tick,
-      retrievalCount: 0,
-      successCount: 0
-    });
-  }
-  /**
-   * Update the competence of the pattern nearest to `queryFp`, from a reafference
-   * reward in [0,1]. Called after an action outcome is confirmed.
-   */
-  updateCompetence(queryFp, reward, _tick) {
-    const best = this._findBestMatch(queryFp);
-    if (!best) return;
-    const r = Math.max(0, Math.min(1, reward));
-    best.retrievalCount++;
-    if (r > 0.5) best.successCount++;
-    const a = this._config.eta;
-    best.competence = Math.max(0, Math.min(1, best.competence * (1 - a) + r * a));
-  }
-  /** Decay all competences one executive cycle. Slowly forgets stale patterns. */
-  decay() {
-    const f = this._config.decayPerCycle;
-    if (f >= 1) return;
-    for (const p of this._patterns) p.competence *= f;
-  }
-  /** Deterministic 1-in-N verify schedule. Increments a counter each call. */
-  shouldVerify() {
-    if (this._config.verifyEveryNHits <= 0) return false;
-    this._verifyCounter++;
-    return this._verifyCounter % this._config.verifyEveryNHits === 0;
-  }
-  // ── Snapshot / restore (entity persistence + tests) ──────
-  snapshot() {
-    return {
-      version: FINGERPRINT_VERSION,
-      patterns: this._patterns.map((p) => ({
-        fingerprint: Array.from(p.fingerprint),
-        output: p.output,
-        competence: p.competence,
-        storedAtTick: p.storedAtTick,
-        retrievalCount: p.retrievalCount,
-        successCount: p.successCount
-      })),
-      hitCount: this._hitCount,
-      missCount: this._missCount,
-      verifyCounter: this._verifyCounter
-    };
-  }
-  restore(snap) {
-    if (snap.version !== FINGERPRINT_VERSION) return;
-    this._patterns = snap.patterns.map((p) => ({
-      fingerprint: new Float32Array(p.fingerprint),
-      output: p.output,
-      competence: p.competence,
-      storedAtTick: p.storedAtTick,
-      retrievalCount: p.retrievalCount,
-      successCount: p.successCount
-    }));
-    this._hitCount = snap.hitCount ?? 0;
-    this._missCount = snap.missCount ?? 0;
-    this._verifyCounter = snap.verifyCounter ?? 0;
-  }
-  // ── Internal ─────────────────────────────────────────────
-  _retrieveNeighbors(queryFp) {
-    const scored = [];
-    for (const p of this._patterns) {
-      const similarity = fingerprintSimilarity(queryFp, p.fingerprint);
-      if (similarity >= this._config.minSimilarity)
-        scored.push({ pattern: p, similarity });
-    }
-    scored.sort((a, b) => {
-      const sa = a.similarity * a.pattern.competence;
-      const sb = b.similarity * b.pattern.competence;
-      if (sa !== sb) return sb - sa;
-      return a.pattern.storedAtTick - b.pattern.storedAtTick;
-    });
-    return scored.slice(0, this._config.k);
-  }
-  _findBestMatch(queryFp) {
-    let best = null;
-    let bestSim = -1;
-    for (const p of this._patterns) {
-      const sim = fingerprintSimilarity(queryFp, p.fingerprint);
-      if (sim > bestSim) {
-        bestSim = sim;
-        best = p;
-      }
-    }
-    return best;
-  }
-  _evictIfFull(_tick) {
-    if (this._patterns.length < this._config.maxPatterns) return;
-    let evictIdx = 0;
-    let best = this._patterns[0];
-    for (let i = 1; i < this._patterns.length; i++) {
-      const p = this._patterns[i];
-      if (p.competence < best.competence || p.competence === best.competence && p.storedAtTick < best.storedAtTick) {
-        best = p;
-        evictIdx = i;
-      }
-    }
-    this._patterns.splice(evictIdx, 1);
-  }
-};
-
 // src/cognition/faculties/executive.engine/config.ts
 var WORKSPACE_THRESHOLD = 0.4;
 var BUFFER_SALIENCE_TRIGGER = 2.5;
@@ -13808,6 +13077,41 @@ async function withGate(fn, label, gate = llmGate) {
     );
     await new Promise((r) => setTimeout(r, retryDelay));
   }
+}
+
+// src/llm/wire.contracts.ts
+var REPLY_TEXT_TAG = "REPLY_TEXT";
+var REPLY_TEXT_OPEN = `[${REPLY_TEXT_TAG}]`;
+var REPLY_TEXT_CLOSE = `[/${REPLY_TEXT_TAG}]`;
+var NO_MESSAGE_TAG = "NO_MESSAGE";
+var NO_MESSAGE_OPEN = `[${NO_MESSAGE_TAG}]`;
+function wrapReplyText(body) {
+  return [REPLY_TEXT_OPEN, body, REPLY_TEXT_CLOSE].join("\n");
+}
+var PROTOCOL_TAGS = [
+  REPLY_TEXT_TAG,
+  NO_MESSAGE_TAG,
+  "INTROSPECTION",
+  "NARRATIVE",
+  "SELF_OBS"
+];
+function stripProtocolMarkers(text) {
+  let out = text;
+  for (const tag of PROTOCOL_TAGS)
+    out = out.split(`[${tag}]`).join("").split(`[/${tag}]`).join("");
+  return out.split("\n").filter((line, i, all) => line.trim() !== "" || i > 0 && i < all.length - 1 && all[i - 1]?.trim() !== "").join("\n").trim();
+}
+function renderSpeakerLine(speakerName, speakerEntityId) {
+  return `Speaker: ${speakerName} (id: ${speakerEntityId})`;
+}
+function renderCurrentMessageLine(content) {
+  return `Current message: "${content}"`;
+}
+function matchConversationFocus(userMessage) {
+  const speakerMatch = userMessage.match(/Speaker: .+? \(id: .+?\)/);
+  const messageMatch = userMessage.match(/Current message: "([\s\S]+?)"/);
+  if (!speakerMatch || !messageMatch) return null;
+  return { content: messageMatch[1] };
 }
 
 // src/llm/index.ts
@@ -14431,6 +13735,268 @@ var LLMDirector = class {
   }
 };
 
+// src/cognition/faculties/executive.engine/parser.ts
+function parseResponse(responseText, state, recentActionTypes) {
+  const codeBlocks = [...responseText.matchAll(/```(?:json)?\s*\n?([\s\S]*?)\n?```/g)], actionsBlock = codeBlocks.find((m) => m[1].includes('"actions"')), fullText = actionsBlock?.[1]?.trim() ?? responseText.trim();
+  let actions, confidence = 0.5;
+  try {
+    const parsed = JSON.parse(fullText);
+    if (!Array.isArray(parsed.actions))
+      throw new Error("actions is not an array");
+    actions = parsed.actions;
+    confidence = parsed.confidence ?? 0.5;
+  } catch {
+    const actionsStr = extractBalancedArray(fullText, "actions");
+    if (!actionsStr) {
+      logger.warn("[executive] No actions found in response \u2014 using fallback");
+      return buildFallbackOutput(state);
+    }
+    try {
+      actions = JSON.parse(actionsStr);
+    } catch {
+      logger.warn("[executive] Failed to parse actions array \u2014 using fallback");
+      return buildFallbackOutput(state);
+    }
+    const confidenceMatch = fullText.match(/"confidence"\s*:\s*([\d.]+)/);
+    confidence = confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.5;
+  }
+  const full = parseTaggedBlocks({ actions, reasoning: fullText, confidence });
+  const replyText = extractTextBlock(responseText, REPLY_TEXT_TAG);
+  if (replyText) full.replyText = replyText;
+  if (responseText.includes(NO_MESSAGE_OPEN))
+    full.noMessage = extractTextBlock(responseText, NO_MESSAGE_TAG) ?? "(no reason given)";
+  return full;
+}
+function parseIdeation(responseText) {
+  const codeBlocks = [...responseText.matchAll(/```(?:json)?\s*\n?([\s\S]*?)\n?```/g)], block = codeBlocks.find((m) => m[1].includes('"candidates"')), text = block?.[1]?.trim() ?? responseText.trim();
+  const coerce = (raw) => {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((c) => {
+      const o = c ?? {};
+      return {
+        approach: String(o.approach ?? "").trim(),
+        description: String(o.description ?? "").trim(),
+        upside: String(o.upside ?? "").trim(),
+        risk: String(o.risk ?? "").trim()
+      };
+    }).filter((c) => c.approach.length > 0 || c.description.length > 0);
+  };
+  try {
+    const parsed = JSON.parse(text);
+    const candidates = coerce(parsed.candidates);
+    if (candidates.length > 0) return { candidates };
+  } catch {
+  }
+  const arrStr = extractBalancedArray(text, "candidates");
+  if (arrStr) {
+    try {
+      return { candidates: coerce(JSON.parse(arrStr)) };
+    } catch {
+    }
+  }
+  logger.warn("[executive] ideation parse failed \u2014 no candidates (deliberate pass proceeds without an injected set)");
+  return { candidates: [] };
+}
+function extractBalancedArray(text, key) {
+  const keyMatch = text.match(new RegExp(`"${key}"\\s*:\\s*(\\[)`));
+  if (!keyMatch || keyMatch.index === void 0) return null;
+  const start = keyMatch.index + keyMatch[0].length - 1;
+  let depth = 0, inString = false, escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "[" || ch === "{") depth++;
+    else if (ch === "]" || ch === "}") {
+      depth--;
+      if (depth === 0)
+        return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+function parseTaggedBlocks(minimal, state) {
+  const full = {
+    actions: minimal.actions,
+    reasoning: minimal.reasoning,
+    confidence: minimal.confidence
+  }, text = minimal.reasoning, taggedTypes = [
+    "PLANS",
+    "BELIEFS",
+    "INTROSPECTION",
+    "NARRATIVE",
+    "IDENTITY",
+    "KNOWN_ENTITIES",
+    "GOALS_NEW",
+    "GOALS_ABANDON",
+    "GOALS_REPRIORITIZE",
+    "EFFECTORS",
+    "SELF_OBS",
+    "SKILLS"
+  ], found = taggedTypes.filter((t) => text.includes(`[${t}]`));
+  if (found.length > 0) {
+    const closed = found.map((t) => `${t}: ${text.includes(`[/${t}]`) ? "CLOSED" : "UNCLOSED"}`).join(", ");
+    logger.info(`[executive] TAGGED BLOCKS: ${closed}`);
+  }
+  const parseJsonBlock = (tag) => {
+    const block = extractBlock(text, tag);
+    if (!block) return null;
+    const trimmed = block.trim();
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+    }
+    try {
+      const repaired = trimmed.replace(/\\"/g, '"').replace(/\\n/g, "\n").replace(/\\\\/g, "\\");
+      return JSON.parse(repaired);
+    } catch {
+      return null;
+    }
+  };
+  try {
+    const plansData = parseJsonBlock("PLANS");
+    if (plansData?.plans) full.plans = plansData.plans;
+  } catch {
+  }
+  try {
+    const beliefsData = parseJsonBlock("BELIEFS");
+    if (beliefsData?.newBeliefs) full.newBeliefs = beliefsData.newBeliefs;
+  } catch {
+  }
+  try {
+    const introspectionData = parseJsonBlock("INTROSPECTION");
+    if (introspectionData?.introspection) full.introspection = introspectionData.introspection;
+  } catch {
+  }
+  try {
+    const narrativeData = parseJsonBlock("NARRATIVE");
+    if (narrativeData) {
+      if (narrativeData.narrative) full.narrative = narrativeData.narrative;
+      if (narrativeData.narrativeThemes) full.narrativeThemes = narrativeData.narrativeThemes;
+      if (narrativeData.currentSelfView) full.currentSelfView = narrativeData.currentSelfView;
+    }
+  } catch {
+  }
+  try {
+    const identityData = parseJsonBlock("IDENTITY");
+    if (identityData?.identityUpdates) full.identityUpdates = identityData.identityUpdates;
+    const knownEntityData = parseJsonBlock("KNOWN_ENTITIES");
+    if (knownEntityData?.knownEntityUpdates) full.knownEntityUpdates = knownEntityData.knownEntityUpdates;
+  } catch {
+  }
+  try {
+    const goalsNewData = parseJsonBlock("GOALS_NEW");
+    if (goalsNewData?.newGoals) full.newGoals = goalsNewData.newGoals;
+  } catch {
+  }
+  try {
+    const goalsAbandonData = parseJsonBlock("GOALS_ABANDON");
+    if (goalsAbandonData?.goalsToAbandon) full.goalsToAbandon = goalsAbandonData.goalsToAbandon;
+  } catch {
+  }
+  try {
+    const goalsReprioritizeData = parseJsonBlock("GOALS_REPRIORITIZE");
+    if (goalsReprioritizeData?.goalsToReprioritize) full.goalsToReprioritize = goalsReprioritizeData.goalsToReprioritize;
+  } catch {
+  }
+  try {
+    const selfObsData = parseJsonBlock("SELF_OBS");
+    if (selfObsData?.selfObservations) full.selfObservations = selfObsData.selfObservations;
+  } catch {
+  }
+  try {
+    const skillsData = parseJsonBlock("SKILLS");
+    if (skillsData?.newSkills) full.newSkills = skillsData.newSkills;
+  } catch {
+  }
+  return full;
+}
+function extractBlock(text, tag) {
+  const regex = new RegExp(`\\[${tag}\\]\\s*\\n?([\\s\\S]*?)\\n?\\[/${tag}\\]`, "i");
+  const match = text.match(regex);
+  return match?.[1]?.trim() ?? null;
+}
+function extractTextBlock(text, tag) {
+  const open = `[${tag}]`;
+  const close = `[/${tag}]`;
+  const openIdx = text.indexOf(open);
+  if (openIdx === -1) return null;
+  const contentStart = openIdx + open.length;
+  const closeIdx = text.indexOf(close, contentStart);
+  const content = closeIdx !== -1 ? text.slice(contentStart, closeIdx) : text.slice(contentStart);
+  return stripProtocolMarkers(content) || null;
+}
+function buildFallbackOutput(state, _recentActionTypes) {
+  const energy = state.metrics.get("energy.level") ?? 100;
+  const sleepPressure = state.metrics.get("sleep.pressure") ?? 0;
+  const stressLoad = state.metrics.get("stress.load") ?? 0;
+  const reflex = energy < 20 ? { type: "rest", reasoning: "Energy critically low \u2014 I let myself recover." } : sleepPressure > 60 ? { type: "rest", reasoning: "Sleep pressure high \u2014 I let myself recover." } : stressLoad > 70 ? { type: "withdraw", reasoning: "Stress elevated \u2014 I pull back from the press of things." } : null;
+  return {
+    actions: reflex ? [{ type: reflex.type, reasoning: reflex.reasoning, expectedOutcome: "The body settles" }] : [],
+    reasoning: reflex ? `Heuristic fallback \u2014 my reasoning did not come back. ${reflex.reasoning}` : "Heuristic fallback \u2014 my reasoning did not come back, and nothing about my state is pressing. I intend nothing in particular; my body goes on choosing.",
+    confidence: 0.4
+  };
+}
+
+// src/cognition/faculties/executive.engine/effort.gate.ts
+var W_UNCERTAINTY = 0.3;
+var W_LOW_CONFIDENCE = 0.25;
+var W_NOVELTY = 0.2;
+var W_PENDING = 0.15;
+var W_STRESS = 0.1;
+var DELIBERATE_THRESHOLD = 0.5;
+var clamp013 = (x) => Math.max(0, Math.min(1, x));
+function selectProcess(signals, threshold = DELIBERATE_THRESHOLD) {
+  const contributions = [
+    ["uncertainty", W_UNCERTAINTY * clamp013(signals.epistemicUncertainty)],
+    ["low_confidence", W_LOW_CONFIDENCE * (1 - clamp013(signals.priorConfidence))],
+    ["novelty", W_NOVELTY * clamp013(signals.novelty)],
+    ["pending_reply", W_PENDING * (signals.hasPendingMessage ? 1 : 0)],
+    ["load", W_STRESS * clamp013(signals.stressLoad / 100)]
+  ];
+  const effortScore = contributions.reduce((sum, [, v]) => sum + v, 0);
+  const dominant = contributions.reduce((a, b) => b[1] > a[1] ? b : a)[0];
+  const deliberate = effortScore >= threshold;
+  return {
+    process: deliberate ? "deliberate" : "fast",
+    effortScore,
+    reason: deliberate ? `deliberate:${dominant}` : "fast"
+  };
+}
+var IDEATION_TEMP_MIN = 0.6;
+var IDEATION_TEMP_MAX = 1;
+function ideationTemperature(creativity) {
+  return IDEATION_TEMP_MIN + clamp013(creativity) * (IDEATION_TEMP_MAX - IDEATION_TEMP_MIN);
+}
+
+// src/cognition/faculties/executive.engine/deliberate.reasoning.ts
+async function proposeCandidates(params) {
+  try {
+    const result = await params.director.call(
+      params.systemPrompt,
+      params.ideationUserMessage,
+      params.tick,
+      params.proposeTemperature,
+      params.meta ?? { category: "executive", attribute: "master", process: "ideation", function: "-" }
+    );
+    const candidates = parseIdeation(result.text).candidates;
+    return candidates.length > 0 ? candidates : void 0;
+  } catch {
+    return void 0;
+  }
+}
+
 // src/cognition/faculties/executive.engine/deferred.effects.ts
 var DeferredEffectQueue = class {
   _entries = [];
@@ -14590,6 +14156,440 @@ var EscalationBuffer = class {
     const requester = first ? { entityId: first.subjectEntityId, threadId: first.threadId ?? "" } : void 0;
     this._pending = [];
     return { percepts, requester };
+  }
+};
+
+// src/cognition/faculties/executive.engine/facet.ts
+var ExecutiveFacet = class {
+  facetId;
+  _bus;
+  _llmDirector;
+  _contextDeps;
+  _promptDeps;
+  _willId;
+  _listeners = /* @__PURE__ */ new Set();
+  _destroyed = false;
+  _sessionLogger = null;
+  /**
+   * Tick-boundary landing (see cognition/completion.inbox.ts). When present,
+   * subscriber notification is STAGED at LLM-promise resolution and applied by
+   * the CognitiveOrchestrator in Phase 2 — so PlanningEngine / AuditionEngine
+   * effects (plan mutations, outbox writes) never interleave with a tick in
+   * flight. Null = legacy direct notification (bare facets in unit tests).
+   */
+  _inbox = null;
+  /**
+   * Reports waiting for the per-tick pump (tick-discipline mode only). Reasoning
+   * launches from pump(), never from report() — see report() for why.
+   */
+  _pendingReports = [];
+  /** Current focus for this facet — set by creator (PlanningEngine, etc.) */
+  _currentFocus = null;
+  /** Accumulated reasoning history for continuity across report() calls */
+  _facetReasoningHistory = [];
+  _masterSyncHistory = [];
+  /**
+   * This facet's own prior reasoning, for the supervisor to carry to whichever
+   * facet takes over the same keyed thread. Continuity belongs to the thread, not
+   * to the instance holding it: a facet reaped mid-conversation used to take the
+   * mind's private thinking about that person with it.
+   */
+  get reasoningHistory() {
+    return [...this._facetReasoningHistory];
+  }
+  /** Resume a thread's reasoning on spawn (supervisor-only; see FacetSpawnDeps.key). */
+  restoreReasoningHistory(history) {
+    this._facetReasoningHistory = [...history];
+  }
+  /** Confidence of this facet's *previous* decision — a dual-process gate signal. */
+  _lastConfidence = 0.5;
+  /** Current state reference (updated by orchestrator each tick) */
+  _currentStateRef = null;
+  /**
+   * Sim tick of the last activity (report). Used by FacetSupervisor's idle
+   * reaper + LRU eviction. Sim tick (deterministic), never wallClock.
+   */
+  _lastActiveTick = 0;
+  get lastActiveTick() {
+    return this._lastActiveTick;
+  }
+  /** Stamp activity at `tick` (called at spawn and on each report). */
+  markActive(tick) {
+    this._lastActiveTick = tick;
+  }
+  /** _reason() calls currently in flight — a real LLM call spans many ticks. */
+  _inflight = 0;
+  /**
+   * True while the facet has work the reaper must not discard: queued reports
+   * awaiting the pump, or an in-flight _reason() whose decision hasn't landed.
+   * The idle TTL only measures *quiet* facets — reaping a busy one destroys the
+   * listeners its pending decision needs, silently dropping a conversation reply.
+   */
+  get busy() {
+    return this._inflight > 0 || this._pendingReports.length > 0;
+  }
+  /**
+   * Per-facet chunk handler — fires for every LLM token during _reason().
+   * Set by the creating engine (e.g. AuditionEngine) for entity-scoped streaming.
+   * Independent from the master's global _chunkBroadcaster.
+   */
+  _chunkHandler = null;
+  constructor(facetId, bus, llmDirector, contextDeps, promptDeps, willId, inbox = null) {
+    this.facetId = facetId;
+    this._bus = bus;
+    this._llmDirector = llmDirector;
+    this._contextDeps = contextDeps;
+    this._promptDeps = promptDeps;
+    this._willId = willId;
+    this._inbox = inbox;
+    this._bus.subscribe(
+      `executive-facet-${facetId}`,
+      ["executive.master.sync"],
+      this._onMasterSync
+    );
+    logger.info(`[executive.facet] ${facetId} created`);
+  }
+  // ── Public API ─────────────────────────────────────────────
+  /**
+   * Set the focus for this facet.
+   * Called by the creator (PlanningEngine, etc.) before first report.
+   */
+  setFocus(focus) {
+    this._currentFocus = focus;
+  }
+  /**
+   * Set the current state reference.
+   * Called by the orchestrator each tick to keep facet in sync.
+   */
+  setStateRef(state) {
+    this._currentStateRef = state;
+  }
+  attachSessionLogger(logger2) {
+    this._sessionLogger = logger2;
+  }
+  /** Register a per-facet chunk handler for entity-scoped token streaming. */
+  setChunkHandler(handler) {
+    this._chunkHandler = handler;
+  }
+  async report(report) {
+    if (this._destroyed) return;
+    this.markActive(this._currentStateRef?.tick ?? this._lastActiveTick);
+    logger.info(
+      `[executive.facet] ${this.facetId} received report: type=${report.type}`
+    );
+    if (this._inbox) {
+      this._pendingReports.push(report);
+      return;
+    }
+    this._launchReason(report);
+  }
+  /**
+   * Launch _reason() with in-flight accounting. `busy` must hold for the whole
+   * span (a real LLM call is 10–30s ≈ many ticks) so the supervisor's idle
+   * reaper never destroys a facet whose decision is still coming — that would
+   * clear its listeners and silently drop the reply. Completion re-stamps
+   * activity so the idle TTL measures quiet time *after* the decision, not
+   * after the report that started it.
+   */
+  _launchReason(report) {
+    this._inflight++;
+    this._reason(report).catch((err) => logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err)).finally(() => {
+      this._inflight--;
+      this.markActive(this._currentStateRef?.tick ?? this._lastActiveTick);
+    });
+  }
+  /**
+   * Per-tick pump — called by the FacetSupervisor from the ExecutiveEngine's
+   * react() with the tick's FROZEN snapshot. Refreshes the state reference,
+   * then launches reasoning for every queued report, FIFO. The launch happens
+   * at a fixed point in the serial engine order, so prompt inputs are a pure
+   * function of (tick, seed, recorded external inputs) — replayable.
+   */
+  pump(state) {
+    if (this._destroyed) return;
+    this.setStateRef(state);
+    if (this._pendingReports.length === 0) return;
+    const batch = this._pendingReports;
+    this._pendingReports = [];
+    for (const report of batch)
+      this._launchReason(report);
+  }
+  subscribe(listener) {
+    this._listeners.add(listener);
+    return () => {
+      this._listeners.delete(listener);
+    };
+  }
+  destroy() {
+    if (this._destroyed) return;
+    this._destroyed = true;
+    this._bus.unsubscribe(`executive-facet-${this.facetId}`);
+    this._listeners.clear();
+    logger.info(`[executive.facet] ${this.facetId} destroyed`);
+  }
+  // ── Master sync ────────────────────────────────────────────
+  _onMasterSync = (event) => {
+    if (this._destroyed) return;
+    const payload = event.payload;
+    if (payload.facetId && payload.facetId !== this.facetId) return;
+    logger.info(`[executive.facet] ${this.facetId} synced from master (tick=${payload.tick})`);
+    if (payload.reasoning)
+      this._masterSyncHistory.push(`[tick ${payload.tick}] ${payload.reasoning.slice(0, 400)}`);
+    if (this._masterSyncHistory.length > 5)
+      this._masterSyncHistory = this._masterSyncHistory.slice(-5);
+  };
+  // ── Reasoning ──────────────────────────────────────────────
+  async _reason(report) {
+    if (!this._currentStateRef)
+      throw new Error(`[executive.facet] ${this.facetId} no state reference available`);
+    const reportFocus = report.focus ?? this._currentFocus;
+    if (!reportFocus)
+      throw new Error(`[executive.facet] ${this.facetId} no focus set. Call setFocus() before report().`);
+    const currentState = this._currentStateRef;
+    const execContext = await PromptFactory.buildFreshContext(this._contextDeps, currentState, reportFocus.recallQuery);
+    const qualityModulation = PromptFactory.computeQualityModulation(currentState);
+    const epistemicUncertainty = PromptFactory.computeEpistemicUncertainty(execContext, currentState);
+    const focus = this._masterSyncHistory.length > 0 ? {
+      ...reportFocus,
+      content: `${reportFocus.content}
+
+## What I've Been Turning Over
+${this._masterSyncHistory.join("\n")}`
+    } : reportFocus;
+    const systemPrompt = PromptFactory.buildSystemPrompt({
+      context: execContext,
+      focus,
+      deps: this._promptDeps,
+      mode: "facet"
+    });
+    const continuityBlock = this._facetReasoningHistory.length > 0 ? `## Where My Thinking Had Got To
+${this._facetReasoningHistory.join("\n")}` : "";
+    const reportContent = [
+      continuityBlock,
+      report.instructions ?? ""
+    ].filter(Boolean).join("\n\n") || void 0;
+    const deliberateThreshold = readEffectiveParams(currentState, "engine-config-executive").deliberateThreshold ?? DELIBERATE_THRESHOLD;
+    const processSelection = selectProcess({
+      epistemicUncertainty,
+      priorConfidence: this._lastConfidence,
+      novelty: currentState.metrics.get("perception.novelty") ?? 0,
+      stressLoad: currentState.metrics.get("stress.load") ?? 0,
+      // A facet's "stakes-bearing moment" is a live message awaiting reply (conversation
+      // facets set focus.recallQuery to it); planning/other facets rely on uncertainty.
+      hasPendingMessage: !!reportFocus.recallQuery
+    }, deliberateThreshold);
+    let ideationCandidates;
+    if (processSelection.process === "deliberate") {
+      const proposeTemperature = ideationTemperature(execContext.identity.traits["creativity"] ?? 0.5);
+      const ideationUserMessage = PromptFactory.buildUserMessage({
+        context: execContext,
+        state: currentState,
+        qualityModulation,
+        epistemicUncertainty,
+        focus,
+        deps: this._promptDeps,
+        recentActionTypes: [],
+        mode: "facet",
+        reportContent,
+        outputFormat: PromptFactory.buildIdeationFormatInstruction()
+      });
+      ideationCandidates = await proposeCandidates({
+        director: this._llmDirector,
+        systemPrompt,
+        ideationUserMessage,
+        tick: currentState.tick,
+        proposeTemperature,
+        meta: {
+          category: "executive",
+          attribute: "facet",
+          process: "ideation",
+          function: reportFocus.function ?? "-",
+          scope: this.facetId,
+          demand: processSelection.effortScore
+        }
+      });
+      logger.info(
+        `[executive.facet] ${this.facetId} \u25C6 deliberate propose tick=${currentState.tick}  candidates=${ideationCandidates?.length ?? 0}  temp=${proposeTemperature.toFixed(2)}`
+      );
+    }
+    const userMessage = PromptFactory.buildUserMessage({
+      context: execContext,
+      state: currentState,
+      qualityModulation,
+      epistemicUncertainty,
+      focus,
+      deps: this._promptDeps,
+      recentActionTypes: [],
+      mode: "facet",
+      reportContent,
+      outputFormat: focus.outputFormat,
+      ideationCandidates
+    });
+    this._sessionLogger?.write({
+      type: "executive.facet.call",
+      tick: currentState.tick,
+      facetId: this.facetId,
+      promptChars: systemPrompt.length + userMessage.length,
+      promptTokensEst: Math.round((systemPrompt.length + userMessage.length) / 4),
+      systemChars: systemPrompt.length,
+      userChars: userMessage.length
+    });
+    let output;
+    const llmStart = wallClock();
+    try {
+      const facetMeta = {
+        category: "executive",
+        attribute: "facet",
+        process: "decision",
+        // A focus that declares no function is making its decision call, the
+        // facet's analogue of master's 'decision'. This previously fell back to
+        // 'facet' — an *attribute* value, which quietly created a bogus bucket
+        // in the by-function cost breakdown. The typed axes caught it.
+        function: reportFocus.function ?? "-",
+        scope: this.facetId,
+        demand: processSelection.effortScore
+      };
+      const result = this._chunkHandler ? await this._llmDirector.callStream(systemPrompt, userMessage, currentState.tick, this._chunkHandler, void 0, facetMeta) : await this._llmDirector.call(systemPrompt, userMessage, currentState.tick, void 0, facetMeta);
+      output = parseResponse(result.text, currentState, []);
+      if (ideationCandidates && ideationCandidates.length > 0)
+        output.consideredAlternatives = ideationCandidates.map((c) => c.approach || c.description);
+      logger.info(
+        `[executive.facet] ${this.facetId} \u2713 tick=${currentState.tick}  in=${result.inputTok} tok  out=${result.outputTok} tok  cache=${result.cacheReadTok ?? 0}r/${result.cacheWriteTok ?? 0}w  latency=${wallClock() - llmStart}ms`
+      );
+      this._sessionLogger?.write({
+        type: "executive.facet.response",
+        tick: currentState.tick,
+        facetId: this.facetId,
+        latencyMs: wallClock() - llmStart,
+        responseChars: result.text.length,
+        promptTokens: result.inputTok,
+        completionTokens: result.outputTok,
+        cacheReadTokens: result.cacheReadTok ?? 0,
+        cacheWriteTokens: result.cacheWriteTok ?? 0,
+        responseExcerpt: result.text.slice(0, 600)
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`[executive.facet] ${this.facetId} LLM call failed: ${msg.slice(0, 200)}`);
+      this._sessionLogger?.write({
+        type: "executive.facet.response",
+        tick: currentState.tick,
+        facetId: this.facetId,
+        latencyMs: wallClock() - llmStart,
+        error: msg.slice(0, 300)
+      });
+      output = buildFallbackOutput(currentState);
+    }
+    this._sessionLogger?.write({
+      type: "executive.facet.output",
+      tick: currentState.tick,
+      facetId: this.facetId,
+      confidence: output.confidence,
+      reasoning: output.reasoning.slice(0, 500),
+      actions: output.actions,
+      newBeliefs: output.newBeliefs ?? [],
+      plansCount: output.plans?.length ?? 0,
+      goalsNew: output.newGoals ?? [],
+      goalsAbandon: output.goalsToAbandon ?? [],
+      hasIntrospection: !!output.introspection,
+      hasNarrative: !!output.narrative
+    });
+    this._lastConfidence = output.confidence;
+    this._facetReasoningHistory.push(`[Report: ${report.type}] ${output.reasoning.slice(0, 400)}`);
+    if (this._facetReasoningHistory.length > 10)
+      this._facetReasoningHistory = this._facetReasoningHistory.slice(-10);
+    const decision = {
+      facetId: this.facetId,
+      respondingToType: report.type,
+      decision: this._extractDecisionPayload(output, focus),
+      reasoning: output.reasoning,
+      confidence: output.confidence,
+      tick: currentState.tick
+    };
+    const dec = typeof decision.decision === "object" && decision.decision !== null ? decision.decision : {};
+    this._bus.publish({
+      type: "executive.facet.progress",
+      version: 1,
+      sourceEngine: `executive-facet-${this.facetId}`,
+      salience: Math.max(0.5, decision.confidence),
+      payload: {
+        facetId: this.facetId,
+        respondingToType: report.type,
+        decision: decision.decision,
+        // promoted for GoalManager
+        goalId: dec["goalId"],
+        goalProgress: dec["goalProgress"],
+        newGoals: dec["newGoals"],
+        goalsToAbandon: dec["goalsToAbandon"],
+        // promoted for SemanticIntegrator
+        newBeliefs: dec["newBeliefs"],
+        // promoted for SemanticIntegrator (learned facts about others → keid-tagged beliefs)
+        knownEntityUpdates: dec["knownEntityUpdates"],
+        contextId: report.contextId,
+        tick: currentState.tick
+      }
+    });
+    const keUpdates = dec["knownEntityUpdates"];
+    if (keUpdates) {
+      for (const u of keUpdates)
+        if (u.keid && u.keid !== "agent-self" && (u.name || u.feeling != null || u.sameAs))
+          this._bus.publish({
+            type: "known.entity.learned",
+            version: 1,
+            sourceEngine: `executive-facet-${this.facetId}`,
+            salience: u.sameAs ? 0.7 : 0.5,
+            payload: { keid: u.keid, name: u.name, feeling: u.feeling, sameAs: u.sameAs }
+          });
+    }
+    this._bus.publish({
+      type: "executive.facet.sync",
+      version: 1,
+      sourceEngine: `executive-facet-${this.facetId}`,
+      salience: Math.max(0.5, decision.confidence),
+      payload: {
+        facetId: this.facetId,
+        reasoning: output.reasoning,
+        confidence: output.confidence,
+        actionTypes: output.actions.map((a) => a.type),
+        // WHO this facet is engaged with (FocusSection.subject*). The master keeps
+        // the singular seat, so it needs the person, not just the facet number.
+        ...focus.subjectEntityId ? { subjectEntityId: focus.subjectEntityId } : {},
+        ...focus.subjectName ? { subjectName: focus.subjectName } : {},
+        tick: currentState.tick
+      }
+    });
+    const notify = () => {
+      for (const listener of this._listeners)
+        try {
+          listener(decision);
+        } catch (err) {
+          logger.error(`[executive.facet] ${this.facetId} listener error:`, err);
+        }
+    };
+    if (this._inbox) this._inbox.enqueue(`${this.facetId}:decision`, notify);
+    else notify();
+  }
+  /**
+   * Extract the decision payload from the executive output.
+   *
+   * If the creating engine supplied a `focus.extractDecision` callback, delegate
+   * entirely to it — the engine knows what fields it needs and how to derive them
+   * from the LLM output (e.g. reading action type as a directive, computing
+   * goalProgress from plan state, etc.).
+   *
+   * If no callback is provided, fall back to a generic passthrough of the
+   * LLM's raw actions and goal-mutation lists. This is safe for any facet that
+   * doesn't need domain-specific decision routing.
+   */
+  _extractDecisionPayload(output, focus) {
+    if (focus.extractDecision) return focus.extractDecision(output);
+    return {
+      actions: output.actions,
+      newGoals: output.newGoals,
+      goalsToAbandon: output.goalsToAbandon,
+      newBeliefs: output.newBeliefs,
+      knownEntityUpdates: output.knownEntityUpdates
+    };
   }
 };
 
@@ -15622,11 +15622,6 @@ var ExecutiveEngine = class extends AsyncEngine {
       plansCount: executiveOutput.plans?.length ?? 0,
       goalsNew: executiveOutput.newGoals ?? [],
       goalsAbandon: executiveOutput.goalsToAbandon ?? [],
-      replies: (executiveOutput.conversationReplies ?? []).map((r) => ({
-        targetEntityId: r.targetEntityId,
-        targetEntityName: r.targetEntityName,
-        messages: r.messages
-      })),
       hasIntrospection: !!executiveOutput.introspection,
       hasNarrative: !!executiveOutput.narrative
     });
@@ -20625,7 +20620,7 @@ var BaseSenseEngine = class {
    * the domain-specific work to `_perceive()`. Subclasses never re-handle gating
    * or filtering — they only implement `_perceive()`.
    */
-  async ingest(input) {
+  async sense(input) {
     if (this.gateEffector && this._grants && !this._grants.isAllowed(this.gateEffector)) return;
     if (!this.acceptedKinds.has(input.kind)) return;
     await this._perceive(input);
@@ -25646,7 +25641,7 @@ var OpenAICompatibleEmbedder = class {
     this.dimensions = config.dimensions;
     this._apiUrl = config.apiUrl;
     this._apiKey = config.apiKey ?? null;
-    this._maxConcurrency = Math.max(1, config.maxConcurrency ?? config.batchSize ?? 4);
+    this._maxConcurrency = Math.max(1, config.maxConcurrency ?? 4);
     this._gate = new LLMSemaphore(this._maxConcurrency);
     this._timeoutMs = config.timeoutMs ?? 3e4;
     this._tokenTracker = config.tokenTracker ?? null;
@@ -28874,7 +28869,7 @@ var TransportController = class {
   /**
    * Emit drained external effector invocations over the transport (2.4). Called
    * by the tick loop after `pendingEffectorInvocations` is spliced. The peer
-   * executes each and returns a result-ack (correlationId = decisionRecordId),
+   * executes each and returns a result-ack (correlationId = intentId),
    * which inbound dispatch routes to `confirmExecution`.
    */
   emitInvocations(instance, invocations) {
@@ -28883,7 +28878,7 @@ var TransportController = class {
       this._emit(instance, {
         channel: "effector_invocation",
         willId: instance.config.id,
-        correlationId: invocation.decisionRecordId,
+        correlationId: invocation.intentId,
         seq: this._nextSeq(instance.config.id),
         wallTime: wallClock(),
         invocation
@@ -28959,7 +28954,7 @@ var TransportController = class {
           provenance: "unknown",
           ...env.speakerName ? { speakerName: env.speakerName } : {}
         };
-        void instance.cognition.auditionEngine.ingest(input);
+        void instance.cognition.auditionEngine.sense(input);
         break;
       }
       case "inbound_percept":
@@ -29395,7 +29390,7 @@ var effectorController = class {
    * Buffer a host-owned effector invocation for delivery. Called from the WillStem
    * `agency.invocation` bus subscription with the event payload
    * (`{ schema, intentId, targetEntityId, parameters, tick }`). The awaiting
-   * `agency.intent` id is the **correlation handle** (`decisionRecordId`): the host
+   * `agency.intent` id is the **correlation handle** (`intentId`): the host
    * echoes it on its result-ack, and `confirmExecution` uses it to find the intent.
    *
    * Policy sits between here and the wire — see `PolicyEnforcement.evaluate`.
@@ -29430,7 +29425,7 @@ var effectorController = class {
     const intentId = payload.intentId ?? "";
     instance.pendingEffectorInvocations.push({
       id: intentId,
-      decisionRecordId: intentId,
+      intentId,
       // correlation handle — the awaiting agency.intent id
       effectorName: payload.schema ?? "",
       parameters: payload.parameters ?? {},
@@ -29455,7 +29450,7 @@ var effectorController = class {
   /**
    * Called by the host/WorldInterface after executing a host-owned effector.
    * `invocationId` is the correlation handle the host echoed — the awaiting
-   * `agency.intent`'s id (= the `decisionRecordId` field of the effectorInvocation).
+   * `agency.intent`'s id (= the `intentId` field of the effectorInvocation).
    *
    * It reconciles the ack into an `agency.outcome` (via `reconcileInvocation`),
    * carrying the intent's efference copy (predicted reward/valence) so surprise is
@@ -29483,7 +29478,7 @@ var effectorController = class {
       reconcileInvocation(invocationId, schema, result, tick, predicted, planLink)
     );
     if (result.observation !== void 0 && result.observation !== null)
-      void instance.cognition.somatosensationEngine.ingest({
+      void instance.cognition.somatosensationEngine.sense({
         kind: "system",
         signal: schema,
         provenance: "reafferent",
@@ -29554,14 +29549,14 @@ var SensoryController = class {
    * LanguagePercept publication, conversation-facet spawn/reuse, and LLM
    * reply generation. Reply delivery is async via the outbox / SSE channel.
    */
-  async ingestText(instance, input) {
-    await instance.cognition.auditionEngine.ingest(input);
+  async senseText(instance, input) {
+    await instance.cognition.auditionEngine.sense(input);
   }
   /**
    * Route a raw SensoryInput to the appropriate sense engine by domain.
    * Used by the debug `POST /senses/:domain/ingest` route.
    */
-  async ingestSensory(instance, domain, input) {
+  async senseSignal(instance, domain, input) {
     const cog = instance.cognition;
     const engineMap = {
       audition: cog.auditionEngine,
@@ -29572,7 +29567,7 @@ var SensoryController = class {
     };
     const engine = engineMap[domain];
     if (!engine) throw Object.assign(new Error(`Unknown sense domain: ${domain}`), { code: 400 });
-    await engine.ingest(input);
+    await engine.sense(input);
   }
   /**
    * Inject a percept or external event into the Will's world.
@@ -30114,7 +30109,7 @@ var WillStem = class {
       const offlineMs = Date.now() - instance.pausedAt.getTime();
       const offlineMins = Math.round(offlineMs / 6e4);
       const duration = offlineMins < 2 ? "a moment" : offlineMins < 60 ? `${offlineMins} minutes` : `${Math.round(offlineMins / 60)} hours`;
-      void instance.cognition.somatosensationEngine.ingest({
+      void instance.cognition.somatosensationEngine.sense({
         kind: "system",
         signal: "WAKE",
         provenance: "exafferent",
@@ -30446,8 +30441,8 @@ var WillStem = class {
    * @param id     Will ID
    * @param input  TextMessage — `{ kind: 'text', entityId, threadId, content, speakerName? }`
    */
-  async ingestText(id, input) {
-    await this._sensory.ingestText(this._get(id), input);
+  async senseText(id, input) {
+    await this._sensory.senseText(this._get(id), input);
   }
   /**
    * Terminate the conversation session for an entity.
@@ -30495,10 +30490,10 @@ var WillStem = class {
   /**
    * Route a raw SensoryInput to the appropriate sense engine by domain.
    * Used by the debug `POST /senses/:domain/ingest` route.
-   * Audition inputs are gated by the 'listen' effector like ingestText().
+   * Audition inputs are gated by the 'listen' effector like senseText().
    */
-  async ingestSensory(id, domain, input) {
-    await this._sensory.ingestSensory(this._get(id), domain, input);
+  async senseSignal(id, domain, input) {
+    await this._sensory.senseSignal(this._get(id), domain, input);
   }
   listWills() {
     return Array.from(this._wills.entries()).map(([id, inst]) => ({
@@ -30928,7 +30923,7 @@ var Will = class _Will {
    */
   async sense(stimulus) {
     const from = stimulus.from ?? "user";
-    await this.stem.ingestText(this.id, {
+    await this.stem.senseText(this.id, {
       kind: "text",
       entityId: from,
       threadId: stimulus.thread ?? from,
@@ -30950,18 +30945,6 @@ var Will = class _Will {
       provenance: stimulus.provenance,
       ...stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {}
     });
-  }
-  /**
-   * @deprecated Renamed to `sense()` (SIGNAL_BOUNDARY P3) — see `sense` for why. Kept for one minor so a host upgrades on its own schedule; it
-   * delegates, so there is no second code path to drift.
-   *
-   * Note that `Stimulus.provenance` became REQUIRED in the same release, so a
-   * host that only renames the call still has one field to add. That pairing is
-   * deliberate: the two breaks were held back to land together rather than
-   * making the same host migrate twice.
-   */
-  async perceive(stimulus) {
-    return this.sense(stimulus);
   }
   /**
    * Sense from the default user. Sugar over `sense`.
@@ -31130,10 +31113,9 @@ var Will = class _Will {
   _buildConfig(id, opts) {
     const mode = opts.llm ?? detectProvider();
     const useMock = mode === "mock";
-    const llmConfig = useMock && !opts.llmConfig && opts.model === void 0 ? void 0 : {
+    const llmConfig = useMock && !opts.llmConfig ? void 0 : {
       ...mode !== "mock" ? { provider: mode } : {},
-      ...opts.llmConfig,
-      ...opts.llmConfig?.model !== void 0 ? { model: opts.llmConfig.model } : opts.model !== void 0 ? { model: opts.model } : {}
+      ...opts.llmConfig
     };
     return {
       id,
@@ -31191,7 +31173,7 @@ var Will = class _Will {
   async _runEffector(inv) {
     const handler = this._effectors.get(inv.effectorName);
     if (!handler) {
-      this.stem.confirmEffectorExecution(this.id, inv.decisionRecordId, {
+      this.stem.confirmEffectorExecution(this.id, inv.intentId, {
         success: false,
         description: `No handler registered for effector "${inv.effectorName}"`
       });
@@ -31201,9 +31183,10 @@ var Will = class _Will {
       const raw = await handler(inv.parameters, {
         reasoning: inv.reasoning,
         // The correlation handle, so a handler that feeds its own result back in
-        // can say WHICH act caused it. Already in scope — it is the id the ack
-        // is matched on — it just was not being passed on.
-        intentId: inv.decisionRecordId,
+        // can say WHICH act caused it. This line used to read
+        // `intentId: inv.decisionRecordId` — the translation that proved the
+        // wire name was already wrong.
+        intentId: inv.intentId,
         targetEntityId: inv.targetEntityId,
         // Which of the host's own ids that referent is — without it a handler
         // gets an opaque anchor and nothing it can look up.
@@ -31211,10 +31194,10 @@ var Will = class _Will {
         ...inv.description ? { description: inv.description } : {}
       });
       const result = typeof raw === "string" ? { success: true, description: raw } : raw;
-      this.stem.confirmEffectorExecution(this.id, inv.decisionRecordId, result);
+      this.stem.confirmEffectorExecution(this.id, inv.intentId, result);
     } catch (err) {
       this._emitError(err instanceof Error ? err : new Error(String(err)));
-      this.stem.confirmEffectorExecution(this.id, inv.decisionRecordId, {
+      this.stem.confirmEffectorExecution(this.id, inv.intentId, {
         success: false,
         description: `Effector "${inv.effectorName}" threw: ${err.message}`
       });

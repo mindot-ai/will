@@ -39,7 +39,7 @@ const baseConfig = {
 console.log('⚡ Life 1 — creating Memo…')
 const life1 = await stem.createWill({ ...baseConfig, id: 'memo-life-1', name: 'Memo' })
 
-await stem.ingestText( life1, {
+await stem.senseText( life1, {
   kind:        'text',
   entityId:    'ada',
   threadId:    'ada-thread',

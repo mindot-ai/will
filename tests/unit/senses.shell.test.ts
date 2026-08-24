@@ -65,7 +65,7 @@ describe('VisionEngine (shell)', () => {
   it('ingest(image) logs a warning and does not throw', async () => {
     const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
     const input = makeInput( { kind: 'image' as const, entityId: 'e1', data: Buffer.from(''), mimeType: 'image/png' } )
-    await expect( engine.ingest( input ) ).resolves.toBeUndefined()
+    await expect( engine.sense( input ) ).resolves.toBeUndefined()
     expect( warn ).toHaveBeenCalledWith( expect.stringContaining('vision-engine') )
     warn.mockRestore()
   } )
@@ -73,14 +73,14 @@ describe('VisionEngine (shell)', () => {
   it('ingest(video) logs a warning and does not throw', async () => {
     const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
     const input = makeInput( { kind: 'video' as const, entityId: 'e1', frames: [], durationMs: 1000 } )
-    await expect( engine.ingest( input ) ).resolves.toBeUndefined()
+    await expect( engine.sense( input ) ).resolves.toBeUndefined()
     expect( warn ).toHaveBeenCalled()
     warn.mockRestore()
   } )
 
   it('ingest(non-visual kind) returns silently without warning', async () => {
     const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
-    await expect( engine.ingest( TEXT_INPUT ) ).resolves.toBeUndefined()
+    await expect( engine.sense( TEXT_INPUT ) ).resolves.toBeUndefined()
     expect( warn ).not.toHaveBeenCalled()
     warn.mockRestore()
   } )
@@ -111,7 +111,7 @@ describe('OlfactionEngine (shell)', () => {
   it('ingest(ambient) warns and does not throw', async () => {
     const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
     const input = makeInput( { kind: 'ambient' as const, metricKey: 'cpu', value: 0.8, trend: 'rising' as const } )
-    await expect( engine.ingest( input ) ).resolves.toBeUndefined()
+    await expect( engine.sense( input ) ).resolves.toBeUndefined()
     expect( warn ).toHaveBeenCalledWith( expect.stringContaining('olfaction-engine') )
     warn.mockRestore()
   } )
@@ -119,14 +119,14 @@ describe('OlfactionEngine (shell)', () => {
   it('ingest(background) warns and does not throw', async () => {
     const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
     const input = makeInput( { kind: 'background' as const, category: 'idle-mode', data: {} } )
-    await expect( engine.ingest( input ) ).resolves.toBeUndefined()
+    await expect( engine.sense( input ) ).resolves.toBeUndefined()
     expect( warn ).toHaveBeenCalled()
     warn.mockRestore()
   } )
 
   it('ingest(non-olfactory kind) returns silently', async () => {
     const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
-    await expect( engine.ingest( TEXT_INPUT ) ).resolves.toBeUndefined()
+    await expect( engine.sense( TEXT_INPUT ) ).resolves.toBeUndefined()
     expect( warn ).not.toHaveBeenCalled()
     warn.mockRestore()
   } )
@@ -153,7 +153,7 @@ describe('GustationEngine (shell)', () => {
   it('ingest(self-eval) warns and does not throw', async () => {
     const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
     const input = makeInput( { kind: 'self-eval' as const, context: 'post-action', trigger: 'auto' } )
-    await expect( engine.ingest( input ) ).resolves.toBeUndefined()
+    await expect( engine.sense( input ) ).resolves.toBeUndefined()
     expect( warn ).toHaveBeenCalledWith( expect.stringContaining('gustation-engine') )
     warn.mockRestore()
   } )
@@ -161,14 +161,14 @@ describe('GustationEngine (shell)', () => {
   it('ingest(assessment) warns and does not throw', async () => {
     const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
     const input = makeInput( { kind: 'assessment' as const, checkType: 'identity-alignment' } )
-    await expect( engine.ingest( input ) ).resolves.toBeUndefined()
+    await expect( engine.sense( input ) ).resolves.toBeUndefined()
     expect( warn ).toHaveBeenCalled()
     warn.mockRestore()
   } )
 
   it('ingest(non-gustatory kind) returns silently', async () => {
     const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
-    await expect( engine.ingest( TEXT_INPUT ) ).resolves.toBeUndefined()
+    await expect( engine.sense( TEXT_INPUT ) ).resolves.toBeUndefined()
     expect( warn ).not.toHaveBeenCalled()
     warn.mockRestore()
   } )

@@ -24,7 +24,7 @@ function base( correlationId: string ){
 
 function makeFixture(){
   const transport = new LoopbackTransport()
-  const ingest    = vi.fn().mockResolvedValue( undefined )
+  const sense     = vi.fn().mockResolvedValue( undefined )
   const captured: {
     replyCb:        (( e: string, t: string, b: string[] ) => void) | null
     chunkCb:        (( e: string, t: string, c: string ) => void) | null
@@ -39,7 +39,7 @@ function makeFixture(){
     _transportUnsub: null,
     cognition: {
       auditionEngine: {
-        ingest,
+        sense,
         attachReplyCallback: ( cb: any ) => { captured.replyCb = cb },
         addChunkCallback:    ( cb: any ) => { captured.chunkCb = cb; return () => { captured.chunkCb = null } },
       },
@@ -55,7 +55,7 @@ function makeFixture(){
     sensory: { injectEvent:      vi.fn() },
   }
 
-  return { ctrl: new TransportController(), transport, instance, deps, ingest, captured }
+  return { ctrl: new TransportController(), transport, instance, deps, sense, captured }
 }
 
 describe('TransportController', () => {
@@ -68,19 +68,19 @@ describe('TransportController', () => {
     f.transport.injectInbound({ channel: 'inbound_message', kind: 'text', entityId: 'a', threadId: 't', content: 'hi', ...base('m1') })
 
     expect( f.instance.inbound.size ).toBe( 1 )   // buffered, not applied
-    expect( f.ingest ).not.toHaveBeenCalled()
+    expect( f.sense ).not.toHaveBeenCalled()
   } )
 
-  it('applyInbound() dispatches inbound_message → auditionEngine.ingest', () => {
+  it('applyInbound() dispatches inbound_message → auditionEngine.sense', () => {
     f.ctrl.attach( f.instance )
     f.transport.injectInbound({ channel: 'inbound_message', kind: 'text', entityId: 'alice', threadId: 't1', content: 'hello', speakerName: 'Alice', ...base('m1') })
 
     f.ctrl.applyInbound( f.instance, 7, f.deps as any )
 
-    expect( f.ingest ).toHaveBeenCalledTimes( 1 )
+    expect( f.sense ).toHaveBeenCalledTimes( 1 )
     // 'unknown', not 'exafferent': the envelope has no provenance field, so the
     // stem cannot say — and says that rather than guessing on a host's behalf.
-    expect( f.ingest ).toHaveBeenCalledWith({ kind: 'text', entityId: 'alice', threadId: 't1', content: 'hello', provenance: 'unknown', speakerName: 'Alice' })
+    expect( f.sense ).toHaveBeenCalledWith({ kind: 'text', entityId: 'alice', threadId: 't1', content: 'hello', provenance: 'unknown', speakerName: 'Alice' })
     expect( f.instance.inbound.size ).toBe( 0 )   // drained
   } )
 
@@ -90,7 +90,7 @@ describe('TransportController', () => {
 
     f.ctrl.applyInbound( f.instance, 1, f.deps as any )
 
-    expect( f.ingest ).toHaveBeenCalledWith({ kind: 'voice', entityId: 'a', threadId: 't', transcription: 'spoken words', provenance: 'unknown' })
+    expect( f.sense ).toHaveBeenCalledWith({ kind: 'voice', entityId: 'a', threadId: 't', transcription: 'spoken words', provenance: 'unknown' })
   } )
 
   it('dispatches a result-ack → effector.confirmExecution (reafference)', () => {
@@ -129,20 +129,20 @@ describe('TransportController', () => {
     f.transport.injectInbound({ channel: 'inbound_message', kind: 'text', entityId: 'a', threadId: 't', content: 'two', ...base('m2') })
 
     f.ctrl.applyInbound( f.instance, 1, f.deps as any )
-    expect( f.ingest.mock.calls.map( c => c[0].content ) ).toEqual( ['one', 'two'] )
+    expect( f.sense.mock.calls.map( c => c[0].content ) ).toEqual( ['one', 'two'] )
 
     f.ctrl.applyInbound( f.instance, 2, f.deps as any )   // nothing left
-    expect( f.ingest ).toHaveBeenCalledTimes( 2 )
+    expect( f.sense ).toHaveBeenCalledTimes( 2 )
   } )
 
   it('a dispatch error does not abort the rest of the batch', () => {
     f.ctrl.attach( f.instance )
-    f.ingest.mockImplementationOnce( () => { throw new Error('boom') } )
+    f.sense.mockImplementationOnce( () => { throw new Error('boom') } )
     f.transport.injectInbound({ channel: 'inbound_message', kind: 'text', entityId: 'a', threadId: 't', content: 'bad',  ...base('m1') })
     f.transport.injectInbound({ channel: 'inbound_message', kind: 'text', entityId: 'a', threadId: 't', content: 'good', ...base('m2') })
 
     expect( () => f.ctrl.applyInbound( f.instance, 1, f.deps as any ) ).not.toThrow()
-    expect( f.ingest ).toHaveBeenCalledTimes( 2 )   // second still ran
+    expect( f.sense ).toHaveBeenCalledTimes( 2 )   // second still ran
   } )
 
   it('detach() unsubscribes and clears the queue', () => {
@@ -201,11 +201,11 @@ describe('TransportController', () => {
   // ── Outbound: effector-invocation bridge (2.4) ───────────────
 
   const inv = ( id: string, effector: string ) => ({
-    id, decisionRecordId: id, effectorName: effector,
+    id, intentId: id, effectorName: effector,
     parameters: {}, targetEntityId: undefined, reasoning: '', tick: 0, timestamp: 0,
   })
 
-  it('emitInvocations() emits one effector_invocation per invocation, correlation = decisionRecordId', () => {
+  it('emitInvocations() emits one effector_invocation per invocation, correlation = intentId', () => {
     f.ctrl.attach( f.instance )
     f.ctrl.emitInvocations( f.instance, [ inv('dr1', 'send_email'), inv('dr2', 'post') ] as any )
 
@@ -374,6 +374,6 @@ describe('TransportController', () => {
     f.transport.injectInbound({ channel: 'inbound_message', kind: 'text', entityId: 'a', threadId: 't', content: 'hi', ...base('m1') })
     // No recorder registered → applyInbound dispatches but records nothing (no throw).
     expect( () => f.ctrl.applyInbound( f.instance, 1, f.deps as any ) ).not.toThrow()
-    expect( f.ingest ).toHaveBeenCalledTimes( 1 )
+    expect( f.sense ).toHaveBeenCalledTimes( 1 )
   } )
 } )

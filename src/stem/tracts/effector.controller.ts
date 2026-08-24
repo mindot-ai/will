@@ -84,7 +84,7 @@ export class effectorController {
    * Buffer a host-owned effector invocation for delivery. Called from the WillStem
    * `agency.invocation` bus subscription with the event payload
    * (`{ schema, intentId, targetEntityId, parameters, tick }`). The awaiting
-   * `agency.intent` id is the **correlation handle** (`decisionRecordId`): the host
+   * `agency.intent` id is the **correlation handle** (`intentId`): the host
    * echoes it on its result-ack, and `confirmExecution` uses it to find the intent.
    *
    * Policy sits between here and the wire — see `PolicyEnforcement.evaluate`.
@@ -122,7 +122,7 @@ export class effectorController {
     const intentId = ( payload.intentId as string ) ?? ''
     instance.pendingEffectorInvocations.push({
       id:               intentId,
-      decisionRecordId: intentId,   // correlation handle — the awaiting agency.intent id
+      intentId: intentId,   // correlation handle — the awaiting agency.intent id
       effectorName:      ( payload.schema as string ) ?? '',
       parameters:       ( payload.parameters as Record<string, unknown> ) ?? {},
       targetEntityId:   payload.targetEntityId as string | undefined,
@@ -149,7 +149,7 @@ export class effectorController {
   /**
    * Called by the host/WorldInterface after executing a host-owned effector.
    * `invocationId` is the correlation handle the host echoed — the awaiting
-   * `agency.intent`'s id (= the `decisionRecordId` field of the effectorInvocation).
+   * `agency.intent`'s id (= the `intentId` field of the effectorInvocation).
    *
    * It reconciles the ack into an `agency.outcome` (via `reconcileInvocation`),
    * carrying the intent's efference copy (predicted reward/valence) so surprise is
@@ -214,7 +214,7 @@ export class effectorController {
     // Fire-and-forget for the same reason the wake is: `ingest` is async and the
     // tick boundary is not. Audition has ingested off-tick since it existed.
     if( result.observation !== undefined && result.observation !== null )
-      void instance.cognition.somatosensationEngine.ingest({
+      void instance.cognition.somatosensationEngine.sense({
         kind:           'system',
         signal:         schema,
         provenance:     'reafferent',

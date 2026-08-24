@@ -243,8 +243,8 @@ describe('Will facade — subject surface', () => {
     it('what the host asserts is what the stem receives — nothing rewrites it', async () => {
       const will = await Will.create( { ...base, name: 'Echo', identity: { prompt: 'I listen.' } } )
       const seen: Array<Record<string, unknown>> = []
-      const real = will.stem.ingestText.bind( will.stem )
-      will.stem.ingestText = async ( id: string, input: never ) => {
+      const real = will.stem.senseText.bind( will.stem )
+      will.stem.senseText = async ( id: string, input: never ) => {
         seen.push( input as unknown as Record<string, unknown> )
         return real( id, input )
       }
@@ -267,8 +267,8 @@ describe('Will facade — subject surface', () => {
       // labelled honestly would not have.
       const will = await Will.create( { ...base, name: 'Unsure', identity: { prompt: 'I listen.' } } )
       const seen: Array<Record<string, unknown>> = []
-      const real = will.stem.ingestText.bind( will.stem )
-      will.stem.ingestText = async ( id: string, input: never ) => {
+      const real = will.stem.senseText.bind( will.stem )
+      will.stem.senseText = async ( id: string, input: never ) => {
         seen.push( input as unknown as Record<string, unknown> )
         return real( id, input )
       }
@@ -280,26 +280,4 @@ describe('Will facade — subject surface', () => {
     }, 30_000 )
   } )
 
-  describe('perceive() — the deprecated alias', () => {
-    it('still delivers, and delivers identically', async () => {
-      // Kept for one minor. It DELEGATES rather than duplicating, so there is no
-      // second path to drift; this pins that the old name still reaches the stem
-      // with the host's assertion intact, so an unmigrated host is deprecated
-      // rather than broken.
-      const will = await Will.create( { ...base, name: 'Older', identity: { prompt: 'I listen.' } } )
-      const seen: Array<Record<string, unknown>> = []
-      const real = will.stem.ingestText.bind( will.stem )
-      will.stem.ingestText = async ( id: string, input: never ) => {
-        seen.push( input as unknown as Record<string, unknown> )
-        return real( id, input )
-      }
-      try {
-        await will.perceive( { from: 'ada', text: 'Hello there.', provenance: 'exafferent' } )
-        expect( seen ).toHaveLength( 1 )
-        expect( seen[0]!['provenance'] ).toBe('exafferent')
-        expect( seen[0]!['entityId'] ).toBe('ada')
-      }
-      finally { await will.stop() }
-    }, 30_000 )
-  } )
 } )

@@ -42,7 +42,7 @@ function makeFixture(){
     _transportUnsub: null,
     cognition: {
       auditionEngine: {
-        ingest: ( i: any ) => { trace.push(`msg:${i.entityId}:${i.content ?? i.transcription}`); return Promise.resolve() },
+        sense: ( i: any ) => { trace.push(`msg:${i.entityId}:${i.content ?? i.transcription}`); return Promise.resolve() },
         attachReplyCallback: () => {},
         addChunkCallback:    () => () => {},
       },

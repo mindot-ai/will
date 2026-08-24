@@ -4,7 +4,7 @@
 /**
  * Conversation-path replay equivalence — the peer to replay.equivalence (R2-d),
  * which exercises only the MASTER executive. Here a scripted conversation
- * (auditionEngine.ingest → conversation facet → [REPLY_TEXT] → outbox) runs
+ * (auditionEngine.sense → conversation facet → [REPLY_TEXT] → outbox) runs
  * with the LLM in the loop:
  *
  *   Run A (record)  — mock LLM, ingest "Hello…" at a fixed tick, run N ticks;
@@ -158,7 +158,7 @@ describe('Replay equivalence — scripted conversation (audition path)', () => {
     const { simulation, cognition, outbox } = assembleMind( WILL_ID, makeConfig( testMode ) )
     await stepSettled( simulation, INGEST_TICK, counter )
 
-    const turn = cognition.auditionEngine.ingest( {
+    const turn = cognition.auditionEngine.sense( {
       kind: 'text', entityId: 'sam', threadId: 't1', content: MESSAGE, speakerName: 'Sam',
     } as never ) as unknown as Promise<void>
 

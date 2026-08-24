@@ -51,7 +51,7 @@ describe('AuditionEngine — chunk fan-out (Section 2.2)', () => {
     engine.addChunkCallback( ( e, t, c ) => a.push( [e, t, c] ) )
     engine.addChunkCallback( ( _e, _t, c ) => b.push( c ) )
 
-    await engine.ingest( text('hi') )
+    await engine.sense( text('hi') )
 
     exec.drive('[REPLY_TEXT]Hello')
     exec.drive(' world[/REPLY_TEXT]')
@@ -69,7 +69,7 @@ describe('AuditionEngine — chunk fan-out (Section 2.2)', () => {
 
     const got: string[] = []
     engine.addChunkCallback( ( _e, _t, c ) => got.push( c ) )
-    await engine.ingest( text('hi') )
+    await engine.sense( text('hi') )
 
     exec.drive('```json\n{"actions":[]}\n```\n[REPLY_TEXT]Hi[/REPLY_TEXT]')
     expect( got.join('') ).toBe('Hi')   // only the reply leaked
@@ -81,7 +81,7 @@ describe('AuditionEngine — chunk fan-out (Section 2.2)', () => {
     engine.attachBus( createTestBus() )
     engine.attachExecutiveEngine( exec.engine as any )
 
-    await engine.ingest( text('hi') )            // no addChunkCallback → no pipe registered
+    await engine.sense( text('hi') )            // no addChunkCallback → no pipe registered
     expect( () => exec.drive('[REPLY_TEXT]x[/REPLY_TEXT]') ).not.toThrow()
   } )
 
@@ -94,7 +94,7 @@ describe('AuditionEngine — chunk fan-out (Section 2.2)', () => {
     const got: string[] = []
     const unsub = engine.addChunkCallback( ( _e, _t, c ) => got.push( c ) )
     engine.addChunkCallback( () => {} )            // keep size > 0 so the pipe registers
-    await engine.ingest( text('hi') )
+    await engine.sense( text('hi') )
 
     unsub()
     exec.drive('[REPLY_TEXT]nope[/REPLY_TEXT]')

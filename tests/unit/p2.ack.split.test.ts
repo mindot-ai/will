@@ -54,7 +54,7 @@ describe('an observation reaches the mind whole, in any shape', () => {
   it('a long answer is not cut — this is its only copy', async () => {
     const answer = 'Ada joined 2026-04-02. '.repeat( 60 )   // ~1380 chars
     const { e, seen } = wired()
-    await e.ingest( { kind: 'system', signal: 'discord_lookup_member',
+    await e.sense( { kind: 'system', signal: 'discord_lookup_member',
                       provenance: 'reafferent', sourceIntentId: 'i-1', data: answer } )
     // `data` is the host's and is never bounded. `summary` is the ENGINE'S label
     // for it and may be — bounding its own words destroys nobody's only copy.
@@ -71,7 +71,7 @@ describe('an observation reaches the mind whole, in any shape', () => {
       notes: Array.from( { length: 40 }, ( _, i ) => `note ${ i }: something worth keeping` ),
     }
     const { e, seen } = wired()
-    await e.ingest( { kind: 'system', signal: 'discord_lookup_member',
+    await e.sense( { kind: 'system', signal: 'discord_lookup_member',
                       provenance: 'reafferent', sourceIntentId: 'i-2', data: record } )
     // The object itself, not a rendering of it. Nothing was chosen for the mind.
     expect( seen[0]!.data ).toEqual( record )
@@ -82,7 +82,7 @@ describe('an observation reaches the mind whole, in any shape', () => {
     // asking it to also say what the measurement MEANS puts the mind's own work
     // on the wrong side of the integration boundary.
     const { e, seen } = wired()
-    await e.ingest( { kind: 'system', signal: 'lidar.scan', provenance: 'reafferent',
+    await e.sense( { kind: 'system', signal: 'lidar.scan', provenance: 'reafferent',
                       data: { ranges: [ 1.2, 1.4, 0.9 ], frame: 'base_link' } } )
     expect( seen[0]!.summary ).toContain('lidar.scan')          // the name is the hint
     expect( seen[0]!.data ).toEqual( { ranges: [ 1.2, 1.4, 0.9 ], frame: 'base_link' } )
@@ -90,7 +90,7 @@ describe('an observation reaches the mind whole, in any shape', () => {
 
   it("a host's own words are used when it happens to have them — an option, not a duty", async () => {
     const { e, seen } = wired()
-    await e.ingest( { kind: 'system', signal: 'x', provenance: 'reafferent',
+    await e.sense( { kind: 'system', signal: 'x', provenance: 'reafferent',
                       data: { summary: 'Ada has been here three months.', roles: [ 'moderator' ] } } )
     expect( seen[0]!.summary ).toBe('Ada has been here three months.')
     // …and the data is still there underneath it. The summary is a reading aid,
@@ -100,7 +100,7 @@ describe('an observation reaches the mind whole, in any shape', () => {
 
   it('is reafferent and tied to the act that caused it', async () => {
     const { e, seen } = wired()
-    await e.ingest( { kind: 'system', signal: 'discord_lookup_member',
+    await e.sense( { kind: 'system', signal: 'discord_lookup_member',
                       provenance: 'reafferent', sourceIntentId: 'agency-intent-9', data: 'found' } )
     expect( seen[0]!.provenance ).toBe('reafferent')
     expect( seen[0]!.sourceIntentId ).toBe('agency-intent-9')
@@ -110,7 +110,7 @@ describe('an observation reaches the mind whole, in any shape', () => {
     const circular: Record<string, unknown> = { a: 1 }
     circular['self'] = circular
     const { e, seen } = wired()
-    await expect( e.ingest( { kind: 'system', signal: 'x', provenance: 'reafferent',
+    await expect( e.sense( { kind: 'system', signal: 'x', provenance: 'reafferent',
                               data: circular } ) ).resolves.toBeUndefined()
     expect( seen[0]!.summary ).toContain('x')   // falls back to the signal's name
   } )
@@ -206,7 +206,7 @@ describe('the evidence reaches state, memory and the prompt', () => {
     e.attachPerceptTrace( x => traced.push( x as never ), () => 7 )
 
     const record = { name: 'Mindot HQ', memberCount: 3, channels: [ 'general', 'watch' ] }
-    await e.ingest( { kind: 'system', signal: 'discord_server_snapshot',
+    await e.sense( { kind: 'system', signal: 'discord_server_snapshot',
                       provenance: 'reafferent', sourceIntentId: 'i-3', data: record } )
 
     expect( traced[0]!.metadata['data'] ).toEqual( record )

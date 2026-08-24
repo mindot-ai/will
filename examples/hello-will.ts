@@ -82,7 +82,7 @@ await new Promise( r => setTimeout( r, 5_000 ) )
 
 console.log('\n💬 You: "Hello! Who are you?"\n')
 
-await stem.ingestText( willId, {
+await stem.senseText( willId, {
   kind:        'text',
   entityId:    'visitor',
   threadId:    'hello-thread',

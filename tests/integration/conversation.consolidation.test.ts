@@ -54,7 +54,7 @@ async function captureExchangeEntity( inbound: string, reply: string ): Promise<
   engine.attachMemorySink( e => captured.push( e ) )
 
   const msg: TextMessage = { kind: 'text', entityId: 'alice', threadId: 't1', content: inbound, provenance: 'exafferent' }
-  await engine.ingest( msg )
+  await engine.sense( msg )
 
   // The sink also receives the inbound social signal (conversation.received);
   // the exchange is the working_memory.item among them.
@@ -106,7 +106,7 @@ describe('conversation → episodic, through the REAL memory sink', () => {
     engine.attachExecutiveEngine( syncExecutive('Sure — whenever works for you.') as any )
     engine.attachMemorySink( e => sm.setEntity( e ) )        // the production wiring
 
-    await engine.ingest( {
+    await engine.sense( {
       kind: 'text', entityId: 'alice', threadId: 't1',
       content: 'Not ready to talk now. Can we connect later?',
     } as TextMessage )
@@ -155,7 +155,7 @@ describe('conversation → episodic, through the REAL memory sink', () => {
     engine.attachExecutiveEngine( syncExecutive('Sure — whenever works for you.') as any )
     engine.attachMemorySink( e => sm.setEntity( e ) )
 
-    await engine.ingest( {
+    await engine.sense( {
       kind: 'text', entityId: 'alice', threadId: 't1',
       content: 'Not ready to talk now. Can we connect later?',
     } as TextMessage )

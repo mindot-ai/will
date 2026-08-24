@@ -426,6 +426,43 @@ should move only once, deliberately, with aliases.
 - **P3** disambiguates the `action.outcome` naming collision.
 - Nothing else touches them.
 
+## 3d. The clock — decided, and why it is not a config value
+
+Not a phase; a consequence. It surfaced while P1 was in flight, as three faults
+stacked in one rendered line — `Time: 12.0h (night, circadian: 3.00)` — and the
+fix for the third one is a boundary question, which is why it is recorded here.
+
+**A body's rhythm and a clock reading are different claims.** The oscillator's
+`timeOfDay` is free-running from the tick unless a host entrains it, so it is
+what the BODY reads. A jet-lagged body saying night at noon is not lying; it is
+reporting itself. What it must never do is present that as the hour, which is a
+fact about the world.
+
+**So the hour left the prompt, and became something a mind ACTS to get.**
+`check-time` is an innate, `external`, `binds: 'none'` schema on the floor beside
+`orient` and `rest`. Every mind can ask; whether anything answers depends on
+there being a world with a clock in it.
+
+- **Rejected: a per-host injected clock.** The oscillator already accepts
+  `setClock()`, and reading it into the prompt would have been three lines. It
+  makes the hour a fact one Will silently has and another silently lacks, with
+  no way for either to tell which — *"same input for all, no hack for some"*.
+  Entrainment stays (a body entrained by its environment is what a circadian
+  rhythm IS); what is gone is presenting the entrained phase as a clock reading.
+- **The answer comes back on the ACK, as P2 made possible.** A host returns
+  `observation` in whatever shape it keeps time; the engine turns it into a
+  reafferent percept stamped with the intent that sought it. The host is not
+  asked to phrase it. This is why the work waited for P2 — before it, the only
+  way to answer was the `perceive()` laundering P1 removed.
+- **Unanswered is an honest outcome.** Through the SDK an unregistered effector
+  is acked failed inside the tick; through the raw stem the intent sits awaiting
+  until `AWAIT_TIMEOUT`. Either way the mind learns time is unavailable here
+  rather than being handed a fiction. That path had **no test coverage at all**
+  while two schema comments rested their whole degradation story on it; it does
+  now.
+
+---
+
 ## 4. Open questions — decide before P1
 
 - **Is interoception a fourth species?** Body signals have no external cause and
@@ -439,10 +476,16 @@ should move only once, deliberately, with aliases.
   agency pipeline and the replay tape. **Leaning: feed, not replace.** The
   envelope becomes the thing the gate writes; `agency.outcome` becomes a
   *projection* of a reafferent envelope carrying `sourceIntentId`.
-- **What is the cap, and who owns it?** One named constant with a rationale,
-  replacing 120/300/700. Sizing note: 6 action records × 120 chars is ~0.6% of a
+- ~~**What is the cap, and who owns it?**~~ **DECIDED in P2 — there is no cap on
+  what a host sends.** The question assumed the answer was a better number. It
+  was not: a cap at this boundary is the engine deciding how much of an answer a
+  mind may have, applied to the only copy. 120 / 300 / 700 were all deleted, and
+  size is *documented* at `EffectorAck.observation` rather than enforced. The one
+  survivor is `PERCEPT_SUMMARY_CAP`, which bounds the label the ENGINE composes —
+  legitimate precisely because bounding its own words destroys nobody's only copy.
+  (Sizing note, kept for the record: 6 action records × 120 chars is ~0.6% of a
   ~5,400-token prompt, so 120 was never a budget decision — it was an unexamined
-  number.
+  number.)
 - **Do renames go in the public API?** `ConsequenceDescriptor`, `agency.outcome`
   and `effectorInvocation` are exported. A rename epoch touching them is a
   breaking change for hosts. **Leaning: rename internals freely, keep public

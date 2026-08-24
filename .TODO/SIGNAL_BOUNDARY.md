@@ -761,17 +761,44 @@ the same word for `{ planId, stepId }` (`reconcile.learning.ts:71`,
   matters directly for the compass (§0a): a robot over a socket is exactly the
   case this door serves.
 
-### P1a — Decompose the efference crossing
-- [ ] Split `effector.controller.ts`'s seven jobs along their real seams. A first
-      cut: **policy enforcement** (arbiter, verdicts, refusals) · **escalation
-      lifecycle** (hold, resolve, expire) · **agency↔host translation** (buffer,
-      drain, ack). `_voiceEscalation` belongs to none of the three — speech is the
-      outbox's job and the escalation should *ask* for an utterance, not compose
-      one.
-- [ ] Pure move first, no behaviour change, gated by `replay.equivalence` — the
-      same discipline that made the planning.engine split safe (will #6:
-      "mechanical/verbatim; import surface unchanged").
+### P1a — Decompose the efference crossing — ✅ **SHIPPED 2026-08-23**
+- [x] Split along the three seams. **The seams were verified before the cut, not
+      assumed:** a field→method map showed no method touching both the policy
+      fields (`_arbiter`, `_pendingRefusals`) and the escalation fields
+      (`_newEscalations`, `_activeEscalations`, `_pendingResolutions`) — except
+      `_applyVerdict`, which is the ROUTER (deny one way, escalate the other). A
+      router across a seam is the seam working, not a tangle.
+
+      | file | lines | owns |
+      | :--- | ---: | :--- |
+      | `effector/policy.enforcement.ts` | 261 | arbiter · verdicts · refusals |
+      | `effector/escalation.lifecycle.ts` | 183 | hold · resolve · expire |
+      | `effector/types.ts` | 80 | the shapes they pass |
+      | `effector.controller.ts` | **576 → 241** | agency↔host · tick ordering |
+
+- [x] Pure move, no behaviour change. Import surface unchanged —
+      `effectorController` is still the export, so no caller moved.
+- [x] The cycle (policy raises an escalation → an escalation queues a refusal) is
+      wired with arrow closures in the controller rather than a shared `this`,
+      so neither class imports the other and resolution defers to call time.
+- [x] `applyPolicyOutcomes` **stays in the controller.** The four-step tick
+      ordering is load-bearing and neither collaborator owns the tick.
+- [ ] `_voiceEscalation` still belongs to none of the three, and moving it is
+      **not a file-boundary question** — it is about who authors the words.
+      `escalationAsk` is a string template standing in for a facet that would say
+      it in the Will's own voice. Deliberately left in place by a pure move.
 - [ ] Only then consider whether the pieces want different lifetimes.
+
+> Cost, stated plainly: 576 → 765 lines across four files. The split is not free;
+> most of the growth is headers and the two deps interfaces. What it buys is that
+> P1 and P2 both add work to this crossing, and they now have somewhere to add it.
+
+**Verified by coverage, not by a green suite.** A pure move makes the whole suite
+pass by construction, so passing proves nothing on its own. Mutations were
+injected into both new files — the escalation TTL zeroed, the allow branch
+disabled — and existing tests failed in each case (2 of 6 in
+`policy.escalation`, 2 of 23 in `policy.arbiter`), which is what shows the moved
+code is genuinely exercised where it now lives.
 
 ### P1 — Route the bypasses through the doors
 - [ ] `inspect` stops laundering — same finding, now `provenance: 'reafferent'`

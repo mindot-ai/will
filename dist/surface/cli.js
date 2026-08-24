@@ -28293,14 +28293,17 @@ function getVerdictSource(willId) {
   return _sources3.get(willId);
 }
 
-// src/stem/tracts/effector.controller.ts
+// src/stem/tracts/effector/policy.enforcement.ts
 var ARBITER_FAULT_VERDICT = Object.freeze({
   decision: "deny",
   reasonCode: "ARBITER_UNAVAILABLE",
   finality: "context"
 });
-var ESCALATION_TTL_TICKS = 30;
-var effectorController = class {
+var PolicyEnforcement = class {
+  constructor(_deps) {
+    this._deps = _deps;
+  }
+  _deps;
   /** The Policy Decision Point consulted before an invocation reaches the world.
    *  Defaults to the no-op arbiter, so an unconfigured Will is byte-identical. */
   _arbiter = NULL_ARBITER;
@@ -28311,12 +28314,6 @@ var effectorController = class {
    * `simulation.step` determinism and is regenerated on any re-execution.
    */
   _pendingRefusals = /* @__PURE__ */ new Map();
-  /** Escalations awaiting their first application (mark intent + voice the ask). */
-  _newEscalations = /* @__PURE__ */ new Map();
-  /** Escalations currently held, keyed by intent id — the resolvable set. */
-  _activeEscalations = /* @__PURE__ */ new Map();
-  /** Host answers awaiting application at the next tick boundary. */
-  _pendingResolutions = /* @__PURE__ */ new Map();
   /**
    * Install a Policy Decision Point (POLICY_REAFFERENCE P0). Passing null
    * restores the no-op default. The arbiter sees only the proposed act — never
@@ -28327,34 +28324,27 @@ var effectorController = class {
     this._arbiter = arbiter ?? NULL_ARBITER;
   }
   /**
-   * Update the set of allowed communication effectors at runtime via AccessGrants
-   * (the permission / sense gate the senses + reply path read).
+   * Consult the PDP for this invocation and enforce the answer. Falls through to
+   * a plain buffer when no policy is configured — the byte-identical fast path.
+   *
+   * `toPolicyInvocation` is supplied by the caller so the projection onto the
+   * policy boundary stays with the translation seam that owns the payload shape.
    */
-  setAllowed(instance, effectors) {
-    instance.cognition.accessGrants.setAllowed(effectors);
-  }
-  /**
-   * Buffer a host-owned effector invocation for delivery. Called from the WillStem
-   * `agency.invocation` bus subscription with the event payload
-   * (`{ schema, intentId, targetEntityId, parameters, tick }`). The awaiting
-   * `agency.intent` id is the **correlation handle** (`decisionRecordId`): the host
-   * echoes it on its result-ack, and `confirmExecution` uses it to find the intent.
-   */
-  bufferInvocation(instance, payload) {
+  evaluate(instance, payload, project) {
     const willId = instance.config.id;
     const source = getVerdictSource(willId);
     if (source) {
-      const invocation2 = toPolicyInvocation(instance, payload);
+      const invocation2 = project(instance, payload);
       const record = source.verdictFor(invocation2.tick, invocation2.intentId);
       if (record) this._applyVerdict(instance, payload, invocation2, recordToVerdict(record));
-      else this._buffer(instance, payload);
+      else this._deps.buffer(instance, payload);
       return;
     }
     if (isNullArbiter(this._arbiter)) {
-      this._buffer(instance, payload);
+      this._deps.buffer(instance, payload);
       return;
     }
-    const invocation = toPolicyInvocation(instance, payload);
+    const invocation = project(instance, payload);
     let verdict;
     try {
       verdict = this._arbiter.evaluate(invocation);
@@ -28393,7 +28383,8 @@ var effectorController = class {
     this._applyVerdict(instance, payload, invocation, verdict);
   }
   /**
-   * Enforce a verdict (POLICY_REAFFERENCE P1).
+   * Enforce a verdict (POLICY_REAFFERENCE P1). THE ROUTER, and the one method
+   * that reaches across both seams by design:
    *
    *   • allow    → hand the invocation to the world.
    *   • deny     → queue a refusal ack, applied at the next tick boundary via
@@ -28411,7 +28402,7 @@ var effectorController = class {
    */
   _applyVerdict(instance, payload, invocation, verdict) {
     if (verdict.decision === "allow") {
-      this._buffer(instance, payload);
+      this._deps.buffer(instance, payload);
       return;
     }
     const cf = verdict.counterfactual;
@@ -28430,8 +28421,7 @@ var effectorController = class {
       this._pendingRefusals.set(instance.config.id, queue);
       return;
     }
-    const escalations = this._newEscalations.get(instance.config.id) ?? [];
-    escalations.push({
+    this._deps.raiseEscalation(instance, {
       intentId: invocation.intentId,
       schema: invocation.schema,
       reasonCode: verdict.reasonCode ?? "APPROVAL_REQUIRED",
@@ -28439,6 +28429,57 @@ var effectorController = class {
       expiresAt: 0
       // stamped when applied (we don't have the current tick here)
     });
+  }
+  /** Push a refusal onto the queue drained by `applyRefusals` this same tick. */
+  queueRefusal(instance, intentId, schema, reasonCode, finality) {
+    const queue = this._pendingRefusals.get(instance.config.id) ?? [];
+    queue.push({ intentId, schema, reasonCode, finality });
+    this._pendingRefusals.set(instance.config.id, queue);
+  }
+  /** Drain queued refusals into failure acks (POLICY_REAFFERENCE P1). */
+  applyRefusals(instance) {
+    const queue = this._pendingRefusals.get(instance.config.id);
+    if (!queue || queue.length === 0) return;
+    this._pendingRefusals.set(instance.config.id, []);
+    for (const refusal of queue)
+      this._deps.confirmExecution(instance, refusal.intentId, {
+        success: false,
+        refused: true,
+        finality: refusal.finality,
+        ...refusal.counterfactual ? { counterfactual: refusal.counterfactual } : {},
+        description: `refused by policy: ${refusal.reasonCode} (${refusal.finality})`
+      });
+  }
+};
+function recordToVerdict(record) {
+  return {
+    decision: record.decision,
+    ...record.reasonCode ? { reasonCode: record.reasonCode } : {},
+    ...record.finality ? { finality: record.finality } : {},
+    ...record.counterfactual ? { counterfactual: record.counterfactual } : {}
+  };
+}
+
+// src/stem/tracts/effector/types.ts
+var ESCALATION_TTL_TICKS = 30;
+
+// src/stem/tracts/effector/escalation.lifecycle.ts
+var EscalationLifecycle = class {
+  constructor(_deps) {
+    this._deps = _deps;
+  }
+  _deps;
+  /** Escalations awaiting their first application (mark intent + voice the ask). */
+  _newEscalations = /* @__PURE__ */ new Map();
+  /** Escalations currently held, keyed by intent id — the resolvable set. */
+  _activeEscalations = /* @__PURE__ */ new Map();
+  /** Host answers awaiting application at the next tick boundary. */
+  _pendingResolutions = /* @__PURE__ */ new Map();
+  /** Raise a new escalation, applied (marked + voiced) at the next boundary.
+   *  Called by policy enforcement when a verdict says 'escalate'. */
+  raise(instance, esc) {
+    const escalations = this._newEscalations.get(instance.config.id) ?? [];
+    escalations.push(esc);
     this._newEscalations.set(instance.config.id, escalations);
   }
   /**
@@ -28447,55 +28488,13 @@ var effectorController = class {
    * approve dispatches the held invocation to the world; deny refuses it. A
    * no-op if the intent id is not (or no longer) an active escalation.
    */
-  resolveEscalation(instance, intentId, approved) {
+  resolve(instance, intentId, approved) {
     const queue = this._pendingResolutions.get(instance.config.id) ?? [];
     queue.push({ intentId, approved });
     this._pendingResolutions.set(instance.config.id, queue);
   }
-  /**
-   * Apply queued policy refusals as failure acks (POLICY_REAFFERENCE P1).
-   * Called by the tick loop at the same boundary as inbound acks — BEFORE the
-   * step, stamped to this tick — so a denial reconciled here is the exact
-   * lifecycle of a host rejection that arrived between ticks.
-   */
-  applyPolicyOutcomes(instance) {
-    const tick = instance.tickCount;
-    this._applyResolutions(instance);
-    this._expireEscalations(instance, tick);
-    this._applyNewEscalations(instance, tick);
-    this._applyRefusals(instance);
-  }
-  /** Drain queued refusals into failure acks (POLICY_REAFFERENCE P1). */
-  _applyRefusals(instance) {
-    const queue = this._pendingRefusals.get(instance.config.id);
-    if (!queue || queue.length === 0) return;
-    this._pendingRefusals.set(instance.config.id, []);
-    for (const refusal of queue)
-      this.confirmExecution(instance, refusal.intentId, {
-        success: false,
-        refused: true,
-        finality: refusal.finality,
-        ...refusal.counterfactual ? { counterfactual: refusal.counterfactual } : {},
-        description: `refused by policy: ${refusal.reasonCode} (${refusal.finality})`
-      });
-  }
-  /** Raise each newly-escalated intent (POLICY_REAFFERENCE P4): mark it held in
-   *  simulation state, voice the ask ONCE, and move it to the resolvable set. */
-  _applyNewEscalations(instance, tick) {
-    const pending = this._newEscalations.get(instance.config.id);
-    if (!pending || pending.length === 0) return;
-    this._newEscalations.set(instance.config.id, []);
-    const active = this._activeEscalations.get(instance.config.id) ?? /* @__PURE__ */ new Map();
-    for (const esc of pending) {
-      esc.expiresAt = tick + ESCALATION_TTL_TICKS;
-      this._markEscalated(instance, esc.intentId, esc.expiresAt);
-      this._voiceEscalation(instance, esc);
-      active.set(esc.intentId, esc);
-    }
-    this._activeEscalations.set(instance.config.id, active);
-  }
   /** Apply host answers to active escalations (POLICY_REAFFERENCE P4). */
-  _applyResolutions(instance) {
+  applyResolutions(instance) {
     const queue = this._pendingResolutions.get(instance.config.id);
     if (!queue || queue.length === 0) return;
     this._pendingResolutions.set(instance.config.id, []);
@@ -28506,10 +28505,10 @@ var effectorController = class {
       active.delete(intentId);
       this._clearEscalated(instance, intentId);
       if (approved) {
-        this._buffer(instance, esc.payload);
+        this._deps.buffer(instance, esc.payload);
         logger.info(`[policy] escalation APPROVED \u2192 dispatching "${esc.schema}" intent "${intentId}"`);
       } else {
-        this._queueRefusal(instance, esc.intentId, esc.schema, esc.reasonCode, "class");
+        this._deps.queueRefusal(instance, esc.intentId, esc.schema, esc.reasonCode, "class");
         logger.info(`[policy] escalation DENIED \u2192 refusing "${esc.schema}" intent "${intentId}"`);
       }
     }
@@ -28524,22 +28523,31 @@ var effectorController = class {
    * 'class' would be a lie (nobody said never) and 'context' would teach
    * nothing, leaving the mind to escalate forever into an empty room.
    */
-  _expireEscalations(instance, tick) {
+  expire(instance, tick) {
     const active = this._activeEscalations.get(instance.config.id);
     if (!active || active.size === 0) return;
     for (const [intentId, esc] of active) {
       if (tick < esc.expiresAt) continue;
       active.delete(intentId);
       this._clearEscalated(instance, intentId);
-      this._queueRefusal(instance, esc.intentId, esc.schema, "ESCALATION_EXPIRED", "parameter");
+      this._deps.queueRefusal(instance, esc.intentId, esc.schema, "ESCALATION_EXPIRED", "parameter");
       logger.info(`[policy] escalation EXPIRED \u2192 refusing "${esc.schema}" intent "${intentId}"`);
     }
   }
-  /** Push a refusal onto the queue drained by _applyRefusals this same tick. */
-  _queueRefusal(instance, intentId, schema, reasonCode, finality) {
-    const queue = this._pendingRefusals.get(instance.config.id) ?? [];
-    queue.push({ intentId, schema, reasonCode, finality });
-    this._pendingRefusals.set(instance.config.id, queue);
+  /** Raise each newly-escalated intent (POLICY_REAFFERENCE P4): mark it held in
+   *  simulation state, voice the ask ONCE, and move it to the resolvable set. */
+  applyNew(instance, tick) {
+    const pending = this._newEscalations.get(instance.config.id);
+    if (!pending || pending.length === 0) return;
+    this._newEscalations.set(instance.config.id, []);
+    const active = this._activeEscalations.get(instance.config.id) ?? /* @__PURE__ */ new Map();
+    for (const esc of pending) {
+      esc.expiresAt = tick + ESCALATION_TTL_TICKS;
+      this._markEscalated(instance, esc.intentId, esc.expiresAt);
+      this._voiceEscalation(instance, esc);
+      active.set(esc.intentId, esc);
+    }
+    this._activeEscalations.set(instance.config.id, active);
   }
   /** Mark the awaiting intent held: the executor stops timing it out (P4). */
   _markEscalated(instance, intentId, expiresAt) {
@@ -28560,7 +28568,16 @@ var effectorController = class {
     delete meta3["escalationExpiresAt"];
     instance.simulation.stateManager.setEntity({ id: intent.id, type: intent.type, metadata: meta3 });
   }
-  /** Voice the escalation as a first-person broadcast ask — once, at raise time. */
+  /**
+   * Voice the escalation as a first-person broadcast ask — once, at raise time.
+   *
+   * THIS DOES NOT BELONG HERE, and the P1a note says so: speech is the outbox's
+   * job, and an escalation should *ask for* an utterance rather than compose
+   * one. `escalationAsk` below is a string template standing in for a facet
+   * that would say it in the Will's own voice. Left in place by this cut, which
+   * is a pure move — relocating it is a behaviour question about who authors
+   * the words, not a question about where the file boundary goes.
+   */
   _voiceEscalation(instance, esc) {
     try {
       instance.cognition.outboxWriter.enqueue({
@@ -28571,6 +28588,85 @@ var effectorController = class {
     } catch (err) {
       logger.warn(`[policy] escalation voice failed for "${esc.schema}": ${errMsg2(err)}`);
     }
+  }
+};
+function escalationAsk(schema, reasonCode) {
+  const meaning = ESCALATION_MEANINGS[reasonCode] ?? "I need your approval before I can do this";
+  return `I want to ${schema}, but ${meaning}. May I go ahead?`;
+}
+var ESCALATION_MEANINGS = {
+  APPROVAL_REQUIRED: "I need your approval before I can on my own",
+  WRITE_REQUIRES_APPROVAL: "it writes to the world and I shouldn't on my own",
+  PAYMENT_REQUIRES_APPROVAL: "it moves money and I must not do that unattended",
+  DEPLOY_REQUIRES_APPROVAL: "it ships something and needs a human to sign off"
+};
+function errMsg2(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+
+// src/stem/tracts/effector.controller.ts
+var effectorController = class {
+  // The two collaborators are wired with arrow closures rather than a shared
+  // `this` reference, which is what lets the cycle exist without either class
+  // importing the other: policy raises an escalation, an escalation queues a
+  // refusal. Resolution is deferred to call time, so field order does not matter.
+  _escalations = new EscalationLifecycle({
+    buffer: (i, p) => this._buffer(i, p),
+    confirmExecution: (i, id, r) => this.confirmExecution(i, id, r),
+    queueRefusal: (i, id, s, rc, f) => this._policy.queueRefusal(i, id, s, rc, f)
+  });
+  _policy = new PolicyEnforcement({
+    buffer: (i, p) => this._buffer(i, p),
+    confirmExecution: (i, id, r) => this.confirmExecution(i, id, r),
+    raiseEscalation: (i, esc) => this._escalations.raise(i, esc)
+  });
+  /**
+   * Install a Policy Decision Point (POLICY_REAFFERENCE P0). Passing null
+   * restores the no-op default.
+   */
+  setArbiter(arbiter) {
+    this._policy.setArbiter(arbiter);
+  }
+  /**
+   * Update the set of allowed communication effectors at runtime via AccessGrants
+   * (the permission / sense gate the senses + reply path read).
+   */
+  setAllowed(instance, effectors) {
+    instance.cognition.accessGrants.setAllowed(effectors);
+  }
+  /**
+   * Buffer a host-owned effector invocation for delivery. Called from the WillStem
+   * `agency.invocation` bus subscription with the event payload
+   * (`{ schema, intentId, targetEntityId, parameters, tick }`). The awaiting
+   * `agency.intent` id is the **correlation handle** (`decisionRecordId`): the host
+   * echoes it on its result-ack, and `confirmExecution` uses it to find the intent.
+   *
+   * Policy sits between here and the wire — see `PolicyEnforcement.evaluate`.
+   */
+  bufferInvocation(instance, payload) {
+    this._policy.evaluate(instance, payload, toPolicyInvocation);
+  }
+  /**
+   * Record a host's answer to an escalation (POLICY_REAFFERENCE P4). Applied at
+   * the next tick boundary. A no-op if the intent id is not (or no longer) an
+   * active escalation.
+   */
+  resolveEscalation(instance, intentId, approved) {
+    this._escalations.resolve(instance, intentId, approved);
+  }
+  /**
+   * The tick-boundary ordering both collaborators depend on, and the reason this
+   * stays in the controller: neither of them owns the tick, and the sequence is
+   * load-bearing. Called by the tick loop at the same boundary as inbound acks —
+   * BEFORE the step, stamped to this tick — so a denial reconciled here has the
+   * exact lifecycle of a host rejection that arrived between ticks.
+   */
+  applyPolicyOutcomes(instance) {
+    const tick = instance.tickCount;
+    this._escalations.applyResolutions(instance);
+    this._escalations.expire(instance, tick);
+    this._escalations.applyNew(instance, tick);
+    this._policy.applyRefusals(instance);
   }
   /** Queue an approved invocation for the delivery layer. */
   _buffer(instance, payload) {
@@ -28650,27 +28746,6 @@ var effectorController = class {
 };
 function num6(v, fallback) {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
-}
-function escalationAsk(schema, reasonCode) {
-  const meaning = ESCALATION_MEANINGS[reasonCode] ?? "I need your approval before I can do this";
-  return `I want to ${schema}, but ${meaning}. May I go ahead?`;
-}
-var ESCALATION_MEANINGS = {
-  APPROVAL_REQUIRED: "I need your approval before I can on my own",
-  WRITE_REQUIRES_APPROVAL: "it writes to the world and I shouldn't on my own",
-  PAYMENT_REQUIRES_APPROVAL: "it moves money and I must not do that unattended",
-  DEPLOY_REQUIRES_APPROVAL: "it ships something and needs a human to sign off"
-};
-function errMsg2(err) {
-  return err instanceof Error ? err.message : String(err);
-}
-function recordToVerdict(record) {
-  return {
-    decision: record.decision,
-    ...record.reasonCode ? { reasonCode: record.reasonCode } : {},
-    ...record.finality ? { finality: record.finality } : {},
-    ...record.counterfactual ? { counterfactual: record.counterfactual } : {}
-  };
 }
 function toPolicyInvocation(instance, payload) {
   return {

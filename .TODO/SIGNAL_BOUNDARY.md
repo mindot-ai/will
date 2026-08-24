@@ -1003,6 +1003,62 @@ And the MCP bridge was doing it worst: the entire tool result went into
 so it rides `observation` now — whole, including what a tool says when it
 fails, because an error message is information about the world too.
 
+#### The host sends DATA, not meaning — decided 2026-08-24
+
+The first cut of `observation` reached the mind as a *summary* and the
+structured payload was **discarded**: it lived on the bus `Percept.raw` for one
+tick and never entered state, memory, recall or the prompt. Truncation had been
+removed and discarding left standing — the same act in a different costume, and
+arguably worse, since truncation at least leaves a visible stump.
+
+> **A host says what it handed over. The mind says what it means.**
+>
+> Making meaning by connecting pieces of information is the mind's entire job,
+> and a host that hands over a conclusion has done that work on the wrong side
+> of the boundary. A robot's vision layer reports
+> `{ object: 'ball', confidence: 0.9, bbox: […] }` — demanding it also write
+> *"I see a red ball on the table"* is asking the arm to do the thinking, and it
+> makes every integration carry cognitive work it has no business carrying.
+
+- [x] **`Percept.data`** — the host's payload, whole, beside `summary`.
+- [x] **`summary` is a LABEL the ENGINE composes**, never required of a host. The
+      signal's own name is the hint and it is free — `discord_server_snapshot`,
+      `WAKE`, `lidar.scan` already say what kind of thing arrived. A host that
+      happens to have words may put `summary` on its data and they are used
+      instead; an option, never an obligation. `PERCEPT_SUMMARY_CAP` legitimately
+      bounds it, because the engine bounding its own words destroys nobody's
+      only copy.
+- [x] **Five links, all of which had to carry it**, and each was a separate
+      silent loss: the percept, the entity, the prompt's percept block, working
+      memory's stored item, and the ruminations block that renders memory. A
+      percept is swept after 2 ticks and the executive fires on its own
+      schedule, so **memory is often where a mind actually meets an
+      observation** — dropping it there loses it as completely as never storing
+      it, one step later.
+- [x] Size is documented at the field, not enforced. What a host sends lands in
+      the percepts and briefly the prompt; a cap would be the engine deciding
+      how much of an answer a mind may have, and that is not its decision.
+- [x] The label is not printed twice — a host `summary` used as the label is
+      omitted from the rendered data. Not reshaping: the stored data keeps every
+      field, the render only declines to repeat one.
+
+**Verified live** — her prompt, both blocks:
+
+```
+## Percepts (What I Notice)
+- [somatosensation] Mindot HQ: 3 people, rooms include general, General, meet-lora, watch. (salience: 0.75)
+    {"name":"Mindot HQ","memberCount":3,"premiumTier":0,"boostCount":0,"channels":[…]}
+
+## Active Ruminations (retrieved memories & thoughts)
+- [percept] Mindot HQ: 3 people, rooms include general, General, meet-lora, watch. (activation: 0.59)
+    {"name":"Mindot HQ","memberCount":3,"premiumTier":0,"boostCount":0,"channels":[…]}
+```
+
+> Three of the five links shipped uncovered on the first pass, and the two
+> prompt renderers each needed their LINE made a unit before a mutation could
+> reach them — testing the data renderer in isolation left the call site free to
+> drop it, exactly as `labelForHour` did. That is now three times in this epoch.
+
 #### `observation` takes any shape — decided 2026-08-24
 
 `unknown`, not `string`. A host with a member record sends the record, not a

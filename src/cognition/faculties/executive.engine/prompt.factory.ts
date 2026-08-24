@@ -123,6 +123,65 @@ const TRAIT_NORM_BAND = 0.12  // deviation from personal baseline to read as abo
  * label and the hour come from the same number, so `Time: 12.0h (night)` cannot
  * be written again. It was, on every prompt a Will ever rendered.
  */
+/**
+ * One percept, as the mind reads it: the engine's LABEL, and beneath it the
+ * EVIDENCE the host actually sent.
+ *
+ * The whole line is one unit on purpose. Rendering the label and the data
+ * separately let a mutation that dropped the data from the call site pass every
+ * test — the data renderer stayed correct while the prompt stopped showing it,
+ * which is exactly the state this fix exists to leave behind. Same lesson as
+ * `temporalLine`.
+ */
+export function perceptLine(
+  p: { category: string; summary: string; salience: number; data?: unknown },
+): string {
+  return `- [${ p.category }] ${ p.summary } (salience: ${ p.salience.toFixed( 2 ) })${ perceptData( p.data ) }`
+}
+
+/**
+ * One working-memory item, as the mind reads it — label, then evidence.
+ *
+ * A sibling of `perceptLine` and a unit for the same reason: rendering the data
+ * inline let a mutation that dropped it pass every test. A percept entity is
+ * swept after 2 ticks and the executive fires on its own schedule, so MEMORY is
+ * often where a mind actually meets an observation — dropping the evidence here
+ * loses it just as completely as never storing it, one step later.
+ */
+export function ruminationLine(
+  w: { type: string; summary: string; activation: number; data?: unknown },
+): string {
+  return `- [${ w.type }] ${ w.summary } (activation: ${ w.activation.toFixed( 2 ) })${ perceptData( w.data ) }`
+}
+
+/**
+ * A percept's own data, rendered under its label — what the host actually sent.
+ *
+ * The label is the engine's words about the signal; this is the evidence. A mind
+ * that only ever sees labels is being handed conclusions, and the whole job of a
+ * mind is to make meaning by connecting pieces of information it can see.
+ *
+ * Indented on its own line rather than inlined: it can be long, and a host is
+ * explicitly not asked to keep it short — what it sent is what it sent.
+ */
+function perceptData( data: unknown ): string {
+  if( data === undefined || data === null ) return ''
+  if( typeof data === 'string') return data.length > 0 ? `\n    ${ data }` : ''
+
+  try {
+    // A host's own `summary`, when it offered one, is already the label on the
+    // line above. Repeating it underneath is noise, and noise in a percept is
+    // not free — it is read every tick the percept is alive. NOT reshaping: the
+    // stored data keeps every field, this only declines to print one twice.
+    const shown = Array.isArray( data )
+      ? data
+      : Object.fromEntries( Object.entries( data as Record<string, unknown> ).filter( ( [ k ] ) => k !== 'summary') )
+    const json = JSON.stringify( shown )
+    return json === '{}' || json === '[]' ? '' : `\n    ${ json }`
+  }
+  catch { return '' }
+}
+
 export function temporalLine( timeOfDay: number, circadian: number ): string {
   return `Time: ${ timeOfDay.toFixed( 1 ) }h (${ labelForHour( timeOfDay ) }, circadian: ${ circadian.toFixed( 2 ) })`
 }
@@ -738,7 +797,7 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       : ''
 
     const perceptsBlock = has('percepts')
-      ? `## Percepts (What I Notice)\n${context.percepts.slice( 0, 10 ).map( p => `- [${p.category}] ${p.summary} (salience: ${p.salience.toFixed( 2 )})`).join('\n') || 'Nothing notable'}`
+      ? `## Percepts (What I Notice)\n${context.percepts.slice( 0, 10 ).map( perceptLine ).join('\n') || 'Nothing notable'}`
       : ''
 
     // Host abilities afforded right now + what each is for. Framed as
@@ -751,7 +810,7 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       : ''
 
     const ruminationsBlock = has('ruminations')
-      ? `## Active Ruminations (retrieved memories & thoughts)\n${context.workingMemory.map( w => `- [${w.type}] ${w.summary} (activation: ${w.activation.toFixed( 2 )})`).join('\n') || 'Nothing actively held in mind'}`
+      ? `## Active Ruminations (retrieved memories & thoughts)\n${context.workingMemory.map( ruminationLine ).join('\n') || 'Nothing actively held in mind'}`
       : ''
 
     const memoriesBlock = has('memories')

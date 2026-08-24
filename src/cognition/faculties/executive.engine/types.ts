@@ -254,8 +254,11 @@ export interface ExecutiveContext {
   relevantPlanIds: string[]
   percepts: Array<{
     category: string
+    /** The engine's label for the signal. */
     summary: string
     salience: number
+    /** What the host actually sent, whole — the evidence under the label. */
+    data?: unknown
   }>
   /**
    * Host-declared abilities afforded to the Will *right now* — what it can do in
@@ -272,8 +275,11 @@ export interface ExecutiveContext {
   }>
   workingMemory: Array<{
     type: string
+    /** The engine's label for the item. */
     summary: string
     activation: number
+    /** What a host sent, whole — carried through memory, not only into it. */
+    data?: unknown
   }>
   memories: Array<{
     content: string

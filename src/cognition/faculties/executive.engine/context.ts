@@ -63,7 +63,12 @@ export async function buildExecutiveContext(
   const workingMemory = wmItems.map( item => ({
     type: item.type,
     summary: extractSummary( item.content ),
-    activation: item.activation
+    activation: item.activation,
+    // Storing the evidence in memory and then rendering only the label would
+    // lose it just as completely, one step later. A percept entity is swept
+    // after 2 ticks and the executive fires on its own schedule, so memory is
+    // often where the mind meets an observation at all.
+    ...( itemData( item.content ) !== undefined ? { data: itemData( item.content ) } : {} ),
   }))
 
   // Episodic memory — semantic query for relevant memories based on current goals
@@ -611,6 +616,13 @@ function mapEpisodeToMemory( ep: {
   }
 }
 
+/** A working-memory item's host payload, when it carries one. */
+function itemData( content: unknown ): unknown {
+  if( content && typeof content === 'object')
+    return ( content as Record<string, unknown> )['data']
+  return undefined
+}
+
 function extractSummary( content: unknown ): string {
   if( typeof content === 'string')
     return content.slice( 0, 120 )
@@ -626,8 +638,8 @@ function extractSummary( content: unknown ): string {
   return String( content ?? '').slice( 0, 120 )
 }
 
-function extractPercepts( state: ReadonlySimulationState ): Array<{ category: string; summary: string; salience: number }> {
-  const percepts: Array<{ category: string; summary: string; salience: number }> = []
+function extractPercepts( state: ReadonlySimulationState ): Array<{ category: string; summary: string; salience: number; data?: unknown }> {
+  const percepts: Array<{ category: string; summary: string; salience: number; data?: unknown }> = []
 
   for( const entity of state.entities.values() ){
     if( entity.type !== 'percept' && entity.type !== 'percept.social') continue
@@ -640,6 +652,10 @@ function extractPercepts( state: ReadonlySimulationState ): Array<{ category: st
     percepts.push({
       category: (entity.metadata?.category as string) ?? 'general',
       summary,
+      // What the host actually sent, beside the label the engine wrote. A mind
+      // reasoning only from labels is reasoning from somebody else's summary of
+      // the evidence.
+      ...( entity.metadata?.data !== undefined ? { data: entity.metadata.data } : {} ),
       salience: (entity.metadata?.salience as number) ?? 0
     })
   }

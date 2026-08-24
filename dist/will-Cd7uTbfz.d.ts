@@ -7271,17 +7271,35 @@ interface Percept extends SensorySignal {
     salience: number;
     raw: unknown;
     /**
-     * What was sensed, in words. REQUIRED, because it is the only field the rest
-     * of the mind can read: `extractPercepts` renders `summary` (falling back to
-     * `content`) and skips a percept without one, and `working.memory` ingests on
-     * the same field. A sense that cannot say what it sensed produces a percept
-     * that exists and is invisible — which is what every shell sense would have
-     * done the moment it was implemented.
+     * A LABEL for what was sensed. Required, so a percept is never invisible —
+     * `extractPercepts` skips one without it.
      *
-     * Not `raw`, which is the original input object and is for a consumer that
-     * knows the modality. This is for the ones that do not.
+     * A label, not the payload, and not a meaning. The engine composes it from
+     * what it has (the signal's name, a compact rendering) — A HOST IS NEVER
+     * ASKED TO WRITE ONE. Demanding prose from an integration puts the mind's own
+     * work on the wrong side of the boundary: a robot's vision system reports
+     * `object_detected, confidence 0.9, bbox […]`, and making it also write
+     * "I see a red ball on the table" is asking the arm to do the thinking.
+     *
+     * Because the ENGINE composes this, `PERCEPT_SUMMARY_CAP` may bound it —
+     * bounding its own words destroys nobody's only copy. `data` beside it is the
+     * host's, and is never bounded.
      */
     summary: string;
+    /**
+     * What the host actually sent, in the shape it had it — whole, unreshaped,
+     * uncapped.
+     *
+     * The mind's job is to make meaning by connecting pieces of information, and
+     * it cannot do that from a sentence somebody else wrote about the pieces. A
+     * host reporting `memberCount: 47` under a summary saying "a few people"
+     * leaves a mind that can never recover 47.
+     *
+     * Distinct from `raw`, which is the whole `SensoryInput` envelope and is
+     * engine-internal — never persisted. This is, and it reaches state, working
+     * memory and the prompt.
+     */
+    data?: unknown;
 }
 interface TextMessage extends SensorySignal {
     kind: 'text';
@@ -9588,9 +9606,26 @@ type EffectorResult = string | {
      *              description: 'Looked up Ada.',              // how it went
      *              observation: 'Ada joined 3 months ago, …' } // what I found
      *
-     * Any shape — a string, a record, a list — and carried WHOLE. Send what you
-     * have rather than a paragraph about it; flattening your own data to prose is
-     * a quieter kind of cutting, and nothing truncates this on the way in.
+     * Any shape — a string, a record, a list — and carried WHOLE.
+     *
+     * SEND WHAT YOU HAVE, NOT WHAT IT MEANS. You are not asked to summarise, and
+     * you should not: making meaning by connecting pieces of information is the
+     * mind's entire job, and a host that hands over a conclusion has done that
+     * work on the wrong side of the boundary. A robot's vision layer reports
+     * `{ object: 'ball', confidence: 0.9, bbox: […] }`; it has no business
+     * deciding whether that is worth reacting to.
+     *
+     * The mind labels it with the ability's own name, and sees the data itself in
+     * its percepts — state, working memory and the prompt all carry it. If you
+     * happen to have a one-line `summary` on your object it is used as the label,
+     * but that is a convenience and never a requirement.
+     *
+     * SIZE IS YOURS TO JUDGE, AND NOTHING TRUNCATES IT. What you send lands in
+     * the mind's percepts and, briefly, its prompt — so a very large payload
+     * costs tokens on the ticks it is alive. The engine will not second-guess you
+     * by cutting it: a cap here decides for a mind how much of an answer it may
+     * have, and that decision is not the engine's to make. Send the record; send
+     * the field you would want it to notice.
      *
      * Before this, a host with facts to hand back had to return the ack AND call
      * `perceive()` separately — two calls for one act, and the second one had to

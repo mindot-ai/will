@@ -56,8 +56,10 @@ describe('an observation reaches the mind whole, in any shape', () => {
     const { e, seen } = wired()
     await e.ingest( { kind: 'system', signal: 'discord_lookup_member',
                       provenance: 'reafferent', sourceIntentId: 'i-1', data: answer } )
-    expect( seen[0]!.summary ).toBe( answer )
-    expect( seen[0]!.summary.length ).toBeGreaterThan( 700 )   // past every old cap
+    // `data` is the host's and is never bounded. `summary` is the ENGINE'S label
+    // for it and may be — bounding its own words destroys nobody's only copy.
+    expect( seen[0]!.data ).toBe( answer )
+    expect( String( seen[0]!.data ).length ).toBeGreaterThan( 700 )   // past every old cap
   } )
 
   it('a RECORD keeps its structure — flattening to prose is its own cutting', async () => {
@@ -71,15 +73,29 @@ describe('an observation reaches the mind whole, in any shape', () => {
     const { e, seen } = wired()
     await e.ingest( { kind: 'system', signal: 'discord_lookup_member',
                       provenance: 'reafferent', sourceIntentId: 'i-2', data: record } )
-    // Complete and round-trippable: nothing was chosen for the mind.
-    expect( JSON.parse( seen[0]!.summary ) ).toEqual( record )
+    // The object itself, not a rendering of it. Nothing was chosen for the mind.
+    expect( seen[0]!.data ).toEqual( record )
   } )
 
-  it("a host's own words win over rendering its shape", async () => {
+  it('a host is NEVER required to write prose — the signal name is the label', async () => {
+    // The point of the split. A robot's control layer reports what it measured;
+    // asking it to also say what the measurement MEANS puts the mind's own work
+    // on the wrong side of the integration boundary.
+    const { e, seen } = wired()
+    await e.ingest( { kind: 'system', signal: 'lidar.scan', provenance: 'reafferent',
+                      data: { ranges: [ 1.2, 1.4, 0.9 ], frame: 'base_link' } } )
+    expect( seen[0]!.summary ).toContain('lidar.scan')          // the name is the hint
+    expect( seen[0]!.data ).toEqual( { ranges: [ 1.2, 1.4, 0.9 ], frame: 'base_link' } )
+  } )
+
+  it("a host's own words are used when it happens to have them — an option, not a duty", async () => {
     const { e, seen } = wired()
     await e.ingest( { kind: 'system', signal: 'x', provenance: 'reafferent',
                       data: { summary: 'Ada has been here three months.', roles: [ 'moderator' ] } } )
     expect( seen[0]!.summary ).toBe('Ada has been here three months.')
+    // …and the data is still there underneath it. The summary is a reading aid,
+    // never a replacement: a mind told "a few people" can never recover 47.
+    expect( seen[0]!.data ).toEqual( { summary: 'Ada has been here three months.', roles: [ 'moderator' ] } )
   } )
 
   it('is reafferent and tied to the act that caused it', async () => {
@@ -96,7 +112,7 @@ describe('an observation reaches the mind whole, in any shape', () => {
     const { e, seen } = wired()
     await expect( e.ingest( { kind: 'system', signal: 'x', provenance: 'reafferent',
                               data: circular } ) ).resolves.toBeUndefined()
-    expect( seen[0]!.summary ).toContain('Something happened')
+    expect( seen[0]!.summary ).toContain('x')   // falls back to the signal's name
   } )
 } )
 
@@ -142,5 +158,112 @@ describe('a host\'s own words reach action.record, not a stock sentence', () => 
     expect( outcome!.payload['description'] ).toBe('Looked up Ada.')
     // and NOT the phrase that used to be hardcoded here for every act alike
     expect( outcome!.payload['description'] ).not.toBe('The world confirmed the action.')
+  } )
+} )
+
+// ── the data survives to where the mind can use it ────────────
+//
+// Carrying it onto the percept is not enough on its own. A percept entity is
+// swept after 2 ticks, so if working memory keeps only the label, the evidence
+// is gone from anything the mind can recall — and it would be gone silently.
+
+describe('the evidence reaches state, memory and the prompt', () => {
+  it('the percept entity carries the data, not only the label', async () => {
+    const traced: Array<{ metadata: Record<string, unknown> }> = []
+    const e = new SomatosensationEngine()
+    e.attachBus( { publish: () => {}, subscribe: () => {} } as never )
+    e.attachPerceptTrace( x => traced.push( x as never ), () => 7 )
+
+    const record = { name: 'Mindot HQ', memberCount: 3, channels: [ 'general', 'watch' ] }
+    await e.ingest( { kind: 'system', signal: 'discord_server_snapshot',
+                      provenance: 'reafferent', sourceIntentId: 'i-3', data: record } )
+
+    expect( traced[0]!.metadata['data'] ).toEqual( record )
+    expect( typeof traced[0]!.metadata['summary'] ).toBe('string')
+  } )
+
+  it('working memory keeps the data, so it outlives the 2-tick sweep', async () => {
+    const { WorkingMemory } = await import('#faculties/working.memory')
+    const wm = new WorkingMemory()
+    const record = { memberCount: 47 }
+    const state = {
+      tick: 1, time: 0, metrics: new Map(),
+      entities: new Map( [ [ 'p-1', { id: 'p-1', type: 'percept', createdAt: 0, updatedAt: 0,
+        metadata: { tick: 1, salience: 0.7, category: 'somatosensation',
+                    summary: 'discord_lookup_member', provenance: 'reafferent', data: record } } ] ] ),
+    } as never
+
+    await wm.react( 0, 1 as never, state, {} as never )
+    const items = ( wm as unknown as { _items: Array<{ content: Record<string, unknown> }> } )._items
+    const percept = items.find( i => ( i.content as Record<string, unknown> )['entityId'] === 'p-1')
+
+    expect( percept ).toBeDefined()
+    // The evidence, not a sentence about it. A mind that remembers only the
+    // label cannot answer a question it already had the answer to.
+    expect( percept!.content['data'] ).toEqual( record )
+  } )
+} )
+
+describe('the prompt shows the evidence, not only the label', () => {
+  it('renders the data beneath the label', async () => {
+    const { perceptLine } = await import('#faculties/executive.engine/prompt.factory')
+    const line = perceptLine( {
+      category: 'somatosensation',
+      summary:  'discord_server_snapshot',
+      salience: 0.75,
+      data:     { name: 'Mindot HQ', memberCount: 3, channels: [ 'general', 'watch' ] },
+    } )
+    expect( line ).toContain('[somatosensation] discord_server_snapshot')
+    // The numbers themselves, which no summary could have preserved.
+    expect( line ).toContain('"memberCount":3')
+    expect( line ).toContain('Mindot HQ')
+  } )
+
+  it('renders a label alone when there is no data', async () => {
+    const { perceptLine } = await import('#faculties/executive.engine/prompt.factory')
+    const line = perceptLine( { category: 'audition', summary: 'Ada said something', salience: 0.4 } )
+    expect( line ).toBe('- [audition] Ada said something (salience: 0.40)')
+  } )
+} )
+
+describe('memory shows the evidence too', () => {
+  it('a rumination renders its data beneath its label', async () => {
+    // Where a mind usually meets an observation: percepts are swept after 2
+    // ticks and the executive fires on its own schedule, so the copy that
+    // reaches it is often the one in memory.
+    const { ruminationLine } = await import('#faculties/executive.engine/prompt.factory')
+    const line = ruminationLine( {
+      type: 'percept', summary: 'discord_lookup_member', activation: 0.74,
+      data: { displayName: 'Fabrice', activeWarnings: 0, isOwner: true },
+    } )
+    expect( line ).toContain('[percept] discord_lookup_member')
+    expect( line ).toContain('"activeWarnings":0')
+    expect( line ).toContain('Fabrice')
+  } )
+} )
+
+describe('the label is never printed twice', () => {
+  it('a host summary used as the label is not repeated in the data', async () => {
+    // Observed live: the wake percept rendered
+    //   - [somatosensation] I was offline for 29 minutes…
+    //       {"summary":"I was offline for 29 minutes…","offlineMs":1751649}
+    // Noise, and a percept's noise is read on every tick it is alive.
+    const { perceptLine } = await import('#faculties/executive.engine/prompt.factory')
+    const line = perceptLine( {
+      category: 'somatosensation', summary: 'I was offline for 29 minutes.', salience: 0.75,
+      data: { summary: 'I was offline for 29 minutes.', offlineMs: 1751649 },
+    } )
+    expect( line.match( /I was offline for 29 minutes\./g ) ).toHaveLength( 1 )
+    // …and the field beside it still shows. Declining to print a duplicate is
+    // not reshaping — the stored data keeps every field.
+    expect( line ).toContain('1751649')
+  } )
+
+  it('a data object that is ONLY a summary renders nothing underneath', async () => {
+    const { perceptLine } = await import('#faculties/executive.engine/prompt.factory')
+    const line = perceptLine( {
+      category: 'somatosensation', summary: 'Done.', salience: 0.5, data: { summary: 'Done.' },
+    } )
+    expect( line ).toBe('- [somatosensation] Done. (salience: 0.50)')
   } )
 } )

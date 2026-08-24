@@ -38,6 +38,7 @@ import { TransportController } from '#stem/tracts/transport.controller'
 import { InboundQueue } from '#stem/tracts/inbound.queue'
 import type { ExternalTransport } from '#stem/tracts/transport'
 import { effectorController } from '#stem/tracts/effector.controller'
+import type { EffectorAck } from '#stem/tracts/effector/types'
 import type { PolicyArbiter } from '#stem/policy/arbiter'
 import { externalSchemas } from '#agency/schemas/external'
 import { inFlightOnRestore } from '#agency/restart'
@@ -914,15 +915,20 @@ export class WillStem {
    * `agency.intent` id). Reconciles it into an `agency.outcome` the ReafferenceEngine
    * consumes — learning the result, freeing the intent, and advancing the plan it
    * served (if any). See effectorController.confirmExecution.
+   *
+   * Takes the full `EffectorAck`. It used to declare its own narrower shape —
+   * `{ success, description, metrics? }` — which P2 left behind: the controller
+   * has routed `observation` into a reafferent percept since #150, but a host
+   * driving the stem DIRECTLY could not typecheck one, so the facts half of the
+   * ack was reachable only through the SDK facade. A type that silently withholds
+   * half a boundary from the hosts most likely to need it — a robot control
+   * layer, a game loop, anything not using the facade — is the same defect class
+   * as a comment that outlives its claim, with a compiler enforcing it.
    */
   confirmEffectorExecution(
     id:           string,
     invocationId: string,
-    result: {
-      success:     boolean
-      description: string
-      metrics?:    Record<string, number>
-    },
+    result:       EffectorAck,
   ): void {
     this._effector.confirmExecution( this._get( id ), invocationId, result )
   }

@@ -206,8 +206,9 @@ export class effectorController {
     //
     // This is what replaces the two-call dance a host used to need — return the
     // ack, then separately call `perceive()` and dress the answer up as
-    // something somebody said. `discord_inspect_channel` still does that; it can
-    // stop once it moves onto this.
+    // something somebody said. `discord_inspect_channel` was the last host doing
+    // that and moved onto this in #151; nothing in the package launders an act's
+    // own result into news from the world any more.
     //
     // Fire-and-forget for the same reason the wake is: `ingest` is async and the
     // tick boundary is not. Audition has ingested off-tick since it existed.

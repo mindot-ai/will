@@ -117,13 +117,6 @@ export function traitEmphasis( value: number ): TraitEmphasis | null {
 const TRAIT_NORM_BAND = 0.12  // deviation from personal baseline to read as above/below my norm
 
 /**
- * What a 24-hour clock reading is CALLED, in the words a mind would use.
- *
- * Bands are the ordinary ones — the point is not their precision but that the
- * label and the hour come from the same number, so `Time: 12.0h (night)` cannot
- * be written again. It was, on every prompt a Will ever rendered.
- */
-/**
  * One percept, as the mind reads it: the engine's LABEL, and beneath it the
  * EVIDENCE the host actually sent.
  *
@@ -182,8 +175,23 @@ function perceptData( data: unknown ): string {
   catch { return '' }
 }
 
+/**
+ * What a phase of the cycle is CALLED, in the words a mind would use.
+ *
+ * NOT the clock. The hour this is computed from is the oscillator's own — free-
+ * running from the tick unless a host entrains it — so it is what the BODY
+ * reads, which is a different claim from what time it is. A jet-lagged body
+ * says night at noon and is not lying; it is reporting itself.
+ *
+ * The prompt used to render the raw hour beside this, and the two disagreed on
+ * every tick of every Will ever run (`Time: 12.0h (night)`). The hour is gone
+ * from the prompt entirely now: it is a fact about the world, and a fact about
+ * the world is something a mind goes and gets — see the `check-time` schema.
+ */
 export function temporalLine( timeOfDay: number, circadian: number ): string {
-  return `Time: ${ timeOfDay.toFixed( 1 ) }h (${ labelForHour( timeOfDay ) }, circadian: ${ circadian.toFixed( 2 ) })`
+  return `Body rhythm: it feels like ${ labelForHour( timeOfDay ) } to me`
+       + ` (my own cycle, not a clock — I use \`check-time\` to find out the actual hour).`
+       + ` Circadian phase: ${ circadian.toFixed( 2 ) }.`
 }
 
 /**

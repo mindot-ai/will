@@ -9093,6 +9093,49 @@ declare class InboundQueue {
     clear(): void;
 }
 
+/** What a host says came back. */
+interface EffectorAck {
+    success: boolean;
+    /**
+     * How the act WENT. The fate of the attempt — landed, refused, failed — which
+     * is what the mind learns competence from. Not what the act revealed.
+     */
+    description: string;
+    /**
+     * What the act REVEALED: new information about the world, as distinct from how
+     * the act went (SIGNAL_BOUNDARY P2).
+     *
+     * Present ⇒ this ack is ALSO afference. It arrives as a reafferent percept
+     * carrying `sourceIntentId`, so the mind perceives it, remembers it and can
+     * recall it — rather than only learning from it. `lookup`, `list_warnings`,
+     * `snapshot` carry one; `kick`, `warn`, a refusal do not.
+     *
+     * WHY THE HOST DECIDES, AND WHY THIS IS NOT INFERRED FROM `description`.
+     * An ack is not *always* new world information, and nothing inside the mind
+     * can tell "the kick landed" from "there are 47 people here" — both are
+     * strings that came back from an act. Only the host knows which it wrote.
+     * Same contract as `provenance`: asserted at the boundary, never guessed.
+     *
+     * Forcing every ack through the sense door would be the over-unification this
+     * epoch warns about — a mind perceiving "the kick landed" as a fresh event in
+     * the world, every time it kicks.
+     *
+     * ANY SHAPE, AND CARRIED WHOLE. A host with a member record, a channel
+     * snapshot, a list of warnings sends the record — not a paragraph about it.
+     * Making a host flatten its own data to prose is a quieter kind of cutting:
+     * it destroys the structure rather than the tail. Nothing here is truncated
+     * at any point on the way in; what the host sent is what the mind gets.
+     */
+    observation?: unknown;
+    metrics?: Record<string, number>;
+    /** POLICY_REAFFERENCE P2 — set when the ack is a policy refusal, so the
+     *  ReafferenceEngine routes it to availability rather than competence. */
+    refused?: boolean;
+    finality?: DenialFinality;
+    /** ENVELOPE_NARROWING P0 — the bound that was exceeded, if the arbiter said. */
+    counterfactual?: PolicyCounterfactual;
+}
+
 type WillStatus = 'initializing' | 'active' | 'paused' | 'archived';
 type StateSnapshot = ReturnType<DefaultSimulation['stateManager']['snapshot']>;
 type TickListener = (snapshot: SimulationState, tick: number, outboxMessages: OutboxMessage[], effectorInvocations: effectorInvocation[]) => void;
@@ -9386,12 +9429,17 @@ declare class WillStem {
      * `agency.intent` id). Reconciles it into an `agency.outcome` the ReafferenceEngine
      * consumes — learning the result, freeing the intent, and advancing the plan it
      * served (if any). See effectorController.confirmExecution.
+     *
+     * Takes the full `EffectorAck`. It used to declare its own narrower shape —
+     * `{ success, description, metrics? }` — which P2 left behind: the controller
+     * has routed `observation` into a reafferent percept since #150, but a host
+     * driving the stem DIRECTLY could not typecheck one, so the facts half of the
+     * ack was reachable only through the SDK facade. A type that silently withholds
+     * half a boundary from the hosts most likely to need it — a robot control
+     * layer, a game loop, anything not using the facade — is the same defect class
+     * as a comment that outlives its claim, with a compiler enforcing it.
      */
-    confirmEffectorExecution(id: string, invocationId: string, result: {
-        success: boolean;
-        description: string;
-        metrics?: Record<string, number>;
-    }): void;
+    confirmEffectorExecution(id: string, invocationId: string, result: EffectorAck): void;
     /**
      * Resolve a policy escalation the Will raised (POLICY_REAFFERENCE P4).
      * `approved` dispatches the held invocation to the world; otherwise it is

@@ -123,6 +123,37 @@ describe('nothing on the way in truncates a host', () => {
   } )
 } )
 
+describe('every host can send the facts half, not only the SDK ones', () => {
+  it('a host driving the STEM directly may ack with an observation', async () => {
+    // The COMPILE is the assertion. `WillStem.confirmEffectorExecution` declared
+    // its own narrower result shape — `{ success, description, metrics? }` — so
+    // this call did not typecheck, and a host wiring the stem directly (a robot
+    // control layer, a game loop, anything not using the SDK facade) could not
+    // send an observation at all. The controller had routed one since #150; the
+    // public type withheld it. Narrow it again and this file stops compiling.
+    const { Will } = await import('#surface/sdk/will')
+    const will = await Will.create( { llm: 'mock', anatomy: 'mind', tickMs: 10, seed: 3,
+                                      name: 'Raw', identity: { prompt: 'I act.' } } )
+    try {
+      // Passed as a fresh OBJECT LITERAL on purpose. Handing it over as a
+      // pre-typed `EffectorAck` variable proves nothing: TypeScript only runs
+      // excess-property checking on literals, so a narrowed parameter would
+      // accept the variable happily and this test would pass against the very
+      // regression it exists to catch. Verified by re-narrowing the parameter —
+      // with a literal the compile fails, with a variable it does not.
+      //
+      // A straggler id is dropped with a warning by design (the 15-tick await may
+      // already have abandoned it) — what is pinned here is that the ack SHAPE is
+      // accepted, not that this particular id reconciles.
+      expect( () => will.stem.confirmEffectorExecution( will.id, 'no-such-intent', {
+        success: true, description: 'Looked at the clock.',
+        observation: { iso: '2026-08-24T15:42:00Z', zone: 'Europe/Paris' },
+      } ) ).not.toThrow()
+    }
+    finally { await will.stop() }
+  }, 30_000 )
+} )
+
 // ── the fate reaches the prompt at all ────────────────────────
 //
 // Written because mutation testing said nothing covered it. Reverting BOTH

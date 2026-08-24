@@ -10,6 +10,7 @@
 
 import { describe, it, expect, afterAll } from 'vitest'
 import { Will } from '#surface/sdk/will'
+import type { Stimulus } from '#surface/sdk/will'
 import { setLogger, resetLogger } from '#core/logger'
 
 setLogger( { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } )
@@ -206,10 +207,10 @@ describe('Will facade — subject surface', () => {
     finally { await will.stop() }
   }, 30_000 )
 
-  it('perceive() is the intake say/tell route through, and does not stall ticking', async () => {
+  it('sense() is the intake say/tell route through, and does not stall ticking', async () => {
     const will = await Will.create( { ...base, name: 'Ears', identity: { prompt: 'I listen.' } } )
     try {
-      await will.perceive( { from: 'ada', speaker: 'Ada', text: 'Hello there.', provenance: 'exafferent' } )
+      await will.sense( { from: 'ada', speaker: 'Ada', text: 'Hello there.', provenance: 'exafferent' } )
       await will.say('noted')
       await will.tell('bob', 'Bob', 'and hello from Bob')
       await new Promise( r => setTimeout( r, 150 ) )
@@ -218,31 +219,28 @@ describe('Will facade — subject surface', () => {
     finally { await will.stop() }
   }, 30_000 )
 
-  // ── The one surviving default, on a clock ──────────────────────
+  // ── The four-state hole, closed at the last door ───────────────
   //
-  // `provenance` is REQUIRED on `SensoryInput` and `Percept`; `Stimulus` alone
-  // stays lenient so a host migrates once, at P3, when `perceive()` becomes
-  // `sense()`. These two pin that leniency precisely, so P3 removing the `??`
-  // trips a test instead of silently changing what a quiet host means.
-  describe('Stimulus.provenance — optional until P3', () => {
-    it('an omitted provenance still reaches the stem as a full TextMessage', async () => {
-      const will = await Will.create( { ...base, name: 'Lenient', identity: { prompt: 'I listen.' } } )
-      const seen: Array<Record<string, unknown>> = []
-      const real = will.stem.ingestText.bind( will.stem )
-      will.stem.ingestText = async ( id: string, input: never ) => {
-        seen.push( input as unknown as Record<string, unknown> )
-        return real( id, input )
-      }
-      try {
-        // No `provenance` — the pre-P3 host shape.
-        await will.perceive( { from: 'ada', text: 'Hello there.' } )
-        expect( seen ).toHaveLength( 1 )
-        expect( seen[0]!['provenance'] ).toBe('exafferent')
-      }
-      finally { await will.stop() }
-    }, 30_000 )
+  // These tests used to pin the OPPOSITE: `Stimulus.provenance` was optional
+  // and an omission defaulted to 'exafferent'. That leniency existed so a host
+  // migrated once — at P3, when `perceive()` became `sense()` — instead of
+  // twice, and it was pinned precisely so removing it would trip a test rather
+  // than silently change what a quiet host means. It did: making the field
+  // required broke the compile of the test below, which is the whole reason
+  // those two existed.
+  describe('Stimulus.provenance — required since P3', () => {
+    it('a stimulus with no provenance does not compile', async () => {
+      // The COMPILE is the assertion, and `@ts-expect-error` is what makes it
+      // one: if `provenance` ever goes optional again, this line stops erroring
+      // and `@ts-expect-error` itself becomes the error. A runtime assertion
+      // could not catch it — the omission was never a crash, it was a claim
+      // nobody made being recorded as one they did.
+      // @ts-expect-error — provenance is required; omitting it is the hole P3 closed.
+      const withoutProvenance: Stimulus = { from: 'ada', text: 'Hello there.' }
+      expect( withoutProvenance.text ).toBe('Hello there.')
+    } )
 
-    it('an explicit provenance is never overwritten by the default', async () => {
+    it('what the host asserts is what the stem receives — nothing rewrites it', async () => {
       const will = await Will.create( { ...base, name: 'Echo', identity: { prompt: 'I listen.' } } )
       const seen: Array<Record<string, unknown>> = []
       const real = will.stem.ingestText.bind( will.stem )
@@ -251,12 +249,55 @@ describe('Will facade — subject surface', () => {
         return real( id, input )
       }
       try {
-        await will.perceive( {
+        await will.sense( {
           from: 'self', text: '[I looked into #general: 3 people are in it.]',
           provenance: 'reafferent', sourceIntentId: 'intent-9',
         } )
         expect( seen[0]!['provenance'] ).toBe('reafferent')
         expect( seen[0]!['sourceIntentId'] ).toBe('intent-9')
+      }
+      finally { await will.stop() }
+    }, 30_000 )
+
+    it("'unknown' survives the door as itself — it is not quietly promoted", async () => {
+      // The distinction the default used to destroy. `unknown` and `exafferent`
+      // are different claims and the mind treats them differently: the rupture
+      // gate in `action.selector` counts only `exafferent` percepts, so a signal
+      // promoted from `unknown` can interrupt a train of thought that a signal
+      // labelled honestly would not have.
+      const will = await Will.create( { ...base, name: 'Unsure', identity: { prompt: 'I listen.' } } )
+      const seen: Array<Record<string, unknown>> = []
+      const real = will.stem.ingestText.bind( will.stem )
+      will.stem.ingestText = async ( id: string, input: never ) => {
+        seen.push( input as unknown as Record<string, unknown> )
+        return real( id, input )
+      }
+      try {
+        await will.sense( { from: 'relay', text: 'Something came through.', provenance: 'unknown' } )
+        expect( seen[0]!['provenance'] ).toBe('unknown')
+      }
+      finally { await will.stop() }
+    }, 30_000 )
+  } )
+
+  describe('perceive() — the deprecated alias', () => {
+    it('still delivers, and delivers identically', async () => {
+      // Kept for one minor. It DELEGATES rather than duplicating, so there is no
+      // second path to drift; this pins that the old name still reaches the stem
+      // with the host's assertion intact, so an unmigrated host is deprecated
+      // rather than broken.
+      const will = await Will.create( { ...base, name: 'Older', identity: { prompt: 'I listen.' } } )
+      const seen: Array<Record<string, unknown>> = []
+      const real = will.stem.ingestText.bind( will.stem )
+      will.stem.ingestText = async ( id: string, input: never ) => {
+        seen.push( input as unknown as Record<string, unknown> )
+        return real( id, input )
+      }
+      try {
+        await will.perceive( { from: 'ada', text: 'Hello there.', provenance: 'exafferent' } )
+        expect( seen ).toHaveLength( 1 )
+        expect( seen[0]!['provenance'] ).toBe('exafferent')
+        expect( seen[0]!['entityId'] ).toBe('ada')
       }
       finally { await will.stop() }
     }, 30_000 )

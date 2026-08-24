@@ -1119,22 +1119,46 @@ saying nothing, so the signal's own name is used instead.
 > mutations, four gaps, one pass each.
 
 ### P3 — Rename to the vocabulary
-- [ ] `will.perceive()` → **`will.sense()`** (or `receive`). It has never been
-      perception; audition runs first and *produces* the percept. The name has
-      misled every reader of this flow, including this file's first draft.
-      Keep `perceive` as a deprecated alias for one minor.
-- [ ] **`Stimulus.provenance` becomes required, and the `?? 'exafferent'` in
-      `perceive()` is deleted.** Held back from P0a-b deliberately so this and
-      the rename are ONE host migration. It is the last surviving instance of
-      the four-state hole in the package, kept alive on purpose and on a clock.
-      Pinned by *"Stimulus.provenance — optional until P3"* in
-      `sdk.facade.test.ts` — those two tests must change with it, which is the
-      point of them.
+
+#### P3a — the host-facing door — ✅ **SHIPPED 2026-08-24**
+- [x] `will.perceive()` → **`will.sense()`**. It has never been perception;
+      a sense engine runs afterwards and *produces* the percept, which may not
+      resemble what arrived and may not happen at all. `perceive` is kept as a
+      **delegating** deprecated alias for one minor — delegating, so there is no
+      second path to drift.
+- [x] **`Stimulus.provenance` is required; the `?? 'exafferent'` is deleted.**
+      The last surviving instance of the four-state hole is closed. Held back
+      from P0a-b deliberately so this and the rename are ONE host migration, and
+      that is how they shipped.
+- [x] The two tests that pinned the leniency did what they existed to do: making
+      the field required broke their **compile**, not an assertion. They now pin
+      the opposite — `@ts-expect-error` guards the requiredness (a runtime test
+      cannot: the omission was never a crash, it was a claim nobody made being
+      recorded as one they did), plus `'unknown'` surviving the door as itself,
+      plus the alias still delivering identically.
+- [x] Migrated in-package: `discord.ts` ×2, `whatsapp.ts`, `mcp/server.ts`,
+      `serve/server.ts`. All five already asserted provenance (P0a), so the
+      break was the name only.
+
+> **The typechecker did not catch the test doubles.** 36 tests failed at runtime
+> after the rename because the channel fakes duck-type the Will rather than
+> implementing it. Worth stating for hosts: a wrapper that structurally mimics a
+> Will gets no compile error from this rename either — only a real `Will`
+> reference does.
+
+#### P3b — the rest
 - [ ] Internal renames toward the four terms; public aliases retained one minor.
 - [ ] **Disambiguate the overloaded `provenance`.** The agency pipeline uses the
       word for `{ planId, stepId }` (`reconcile.learning.ts`, `plan.frontier.ts`)
       — an unrelated concept sharing the name with `SignalProvenance`. One of
       the two must give it up; the signal sense is the one the vocabulary needs.
+- [ ] **Disambiguate `action.outcome`.** §3c decided this belongs to P3 and the
+      checklist did not carry it — recording it here so it is not lost. One
+      string names three unrelated shapes: the bus event (6 subscribers), the
+      session-log record, and the near-collision with the `action.record` entity
+      the prompt section is actually named after. The bus event is the
+      highest-blast-radius rename in the epoch; it moves once, deliberately,
+      with aliases.
 - [ ] Update `EXAFFERENCE.md` / `POLICY_REAFFERENCE.md` cross-references.
 
 ### P4 — Delete what the doors subsumed

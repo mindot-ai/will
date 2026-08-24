@@ -30187,8 +30187,16 @@ var Will = class _Will {
    * *delivered*, NOT once the Will has responded: a response (if any) is a
    * projection that arrives later on the `message` event, or via
    * `nextUtterance()`. The Will may also stay silent — that is not an error.
+   *
+   * NAMED `sense`, NOT `perceive` (SIGNAL_BOUNDARY P3). What happens here is
+   * *transduction*: a signal crosses into the mind. PERCEPTION is what a sense
+   * engine does afterwards — audition runs, judges salience, and produces a
+   * `Percept`, which may not resemble what arrived and may not happen at all
+   * (a gated sense drops it). Calling the door `perceive` said the caller had
+   * already done the mind's work, and it misled every reader of this flow,
+   * including the first draft of the epoch that renamed it.
    */
-  async perceive(stimulus) {
+  async sense(stimulus) {
     const from = stimulus.from ?? "user";
     await this.stem.ingestText(this.id, {
       kind: "text",
@@ -30206,31 +30214,39 @@ var Will = class _Will {
       // Omitted when the channel does not know — a room with no name stays
       // unnamed, the same way a person does, rather than being labelled with its id.
       ...stimulus.threadName ? { threadName: stimulus.threadName } : {},
-      // The one surviving default at the surface, and it is a DEPRECATION, not
-      // a design: `SensoryInput.provenance` is required, so this line exists
-      // solely to keep pre-P3 hosts compiling. It reintroduces the four-state
-      // hole for exactly one hop — an omission becomes a claim nobody made —
-      // which is tolerable only because it is scheduled to die at P3 alongside
-      // the `perceive` → `sense` rename, so a host migrates once instead of
-      // twice. Deleting this `??` is a P3 checklist item.
-      provenance: stimulus.provenance ?? "exafferent",
+      // No default. `Stimulus.provenance` is required now, so there is nothing
+      // left to fall back to — the four-state hole is closed at every door into
+      // this mind, which was the point of the epoch.
+      provenance: stimulus.provenance,
       ...stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {}
     });
   }
   /**
-   * Perceive from the default user. Sugar over `perceive`.
+   * @deprecated Renamed to `sense()` (SIGNAL_BOUNDARY P3) — see `sense` for why. Kept for one minor so a host upgrades on its own schedule; it
+   * delegates, so there is no second code path to drift.
+   *
+   * Note that `Stimulus.provenance` became REQUIRED in the same release, so a
+   * host that only renames the call still has one field to add. That pairing is
+   * deliberate: the two breaks were held back to land together rather than
+   * making the same host migrate twice.
+   */
+  async perceive(stimulus) {
+    return this.sense(stimulus);
+  }
+  /**
+   * Sense from the default user. Sugar over `sense`.
    *
    * Supplies `provenance: 'exafferent'` — that is not a default sneaking back
    * in, it is what the verb MEANS. "Say" is somebody speaking to the Will; a
-   * caller who wants to feed back the Will's own act reaches for `perceive` and
+   * caller who wants to feed back the Will's own act reaches for `sense` and
    * says so. The assertion lives in the function name.
    */
   async say(text) {
-    return this.perceive({ text, from: "user", provenance: "exafferent" });
+    return this.sense({ text, from: "user", provenance: "exafferent" });
   }
-  /** Perceive from a specific interlocutor (multi-party). Sugar over `perceive` — see `say` on provenance. */
+  /** Sense from a specific interlocutor (multi-party). Sugar over `sense` — see `say` on provenance. */
   async tell(entityId, speakerName, text) {
-    return this.perceive({ text, from: entityId, speaker: speakerName, provenance: "exafferent" });
+    return this.sense({ text, from: entityId, speaker: speakerName, provenance: "exafferent" });
   }
   /**
    * Await the Will's *next spontaneous utterance* — a thin, honest adapter over
@@ -30239,7 +30255,7 @@ var Will = class _Will {
    * 5000). `null` is a real outcome — the Will chose not to speak — not a
    * failure. Pass `to` to only accept an utterance addressed to that entity.
    *
-   *   await will.perceive( { from: 'ada', text: 'Hi!' } )
+   *   await will.sense( { from: 'ada', text: 'Hi!', provenance: 'exafferent' } )
    *   const reply = await will.nextUtterance( { to: 'ada', within: 3000 } )
    *   // reply is a WillMessage, or null if Ada got the silent treatment.
    */
@@ -30814,7 +30830,7 @@ function buildWillMcpServer(will, opts = {}) {
       )
     }
   }, async ({ text, from, speaker, provenance }) => {
-    await will.perceive({
+    await will.sense({
       text,
       provenance: asProvenance(provenance),
       ...from ? { from } : {},
@@ -30932,7 +30948,7 @@ data: ${JSON.stringify(data)}
         const body = await readJsonBody(req);
         const text = typeof body.text === "string" ? body.text : "";
         if (!text) return json(res, 400, { error: "text is required" });
-        await will.perceive({
+        await will.sense({
           text,
           // Untyped ingress — a JSON body cannot be type-checked, and a client
           // that predates the field has not claimed anything. asProvenance()
@@ -31144,7 +31160,7 @@ async function connectDiscord(will, opts) {
     const who = user.displayName ?? user.username;
     const said = (msg.cleanContent || msg.content || "").trim().slice(0, REACTION_QUOTE_CHARS);
     const text = said ? `[${who ?? "someone"} reacted ${emoji} to what I said: "${said}"]` : `[${who ?? "someone"} reacted ${emoji} to something I said]`;
-    await will.perceive({
+    await will.sense({
       text,
       from: `discord:${user.id}`,
       thread: `discord:${msg.channelId}`,
@@ -31185,7 +31201,7 @@ async function connectDiscord(will, opts) {
       opts.readAttachments === false ? void 0 : fetchAttachmentText
     );
     const text = [said, shared].filter(Boolean).join("\n");
-    await will.perceive({
+    await will.sense({
       text,
       from: entityId,
       thread: `discord:${message.channelId}`,
@@ -31429,7 +31445,7 @@ async function connectWhatsApp(will, opts = {}) {
     });
     const text = textOf(m);
     if (!text.trim()) return;
-    await will.perceive({
+    await will.sense({
       // Somebody messaged her. Baileys filters `fromMe` upstream, so as with
       // Discord nothing reafferent reaches this bridge today.
       provenance: "exafferent",

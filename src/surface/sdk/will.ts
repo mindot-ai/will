@@ -151,6 +151,18 @@ export type EffectorHandler = (
   args: Record<string, unknown>,
   ctx: {
     reasoning: string
+    /**
+     * The `agency.intent` this handler is running under — the correlation handle
+     * the Will will match an ack to (SIGNAL_BOUNDARY P1).
+     *
+     * Pass it as `sourceIntentId` on any `perceive()` you make from inside a
+     * handler, and the resulting percept is a *reafference* the mind can tie back
+     * to the act that caused it, rather than an unexplained arrival. Before this
+     * existed, `discord_inspect_channel` had to say so in English — a bracketed
+     * `[I looked into #general: …]` that only the LLM could read — because the
+     * fact had nowhere structural to live.
+     */
+    intentId: string
     targetEntityId?: string
     /**
      * The addresses this host knows `targetEntityId` by — a channel id, a user id.
@@ -702,6 +714,10 @@ export class Will {
     try {
       const raw = await handler( inv.parameters, {
         reasoning: inv.reasoning,
+        // The correlation handle, so a handler that feeds its own result back in
+        // can say WHICH act caused it. Already in scope — it is the id the ack
+        // is matched on — it just was not being passed on.
+        intentId: inv.decisionRecordId,
         targetEntityId: inv.targetEntityId,
         // Which of the host's own ids that referent is — without it a handler
         // gets an opaque anchor and nothing it can look up.

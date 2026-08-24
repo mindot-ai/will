@@ -75,14 +75,14 @@ describe('buildMcpHandler — enaction → tool → reafference', () => {
   it('calls the tool with schema-filtered args and returns its outcome', async () => {
     const handler = buildMcpHandler( client, searchTool )
     // Invocation params carry situation extras the tool never declared — filtered out.
-    const res = await handler( { query: 'tick loop', targetEntityName: 'Ada' }, { reasoning: '' } )
+    const res = await handler( { query: 'tick loop', targetEntityName: 'Ada' }, { reasoning: '', intentId: 'i-test' } )
     expect( res ).toMatchObject( { success: true, description: '3 results for "tick loop"' } )
     expect( calls.at( -1 ) ).toEqual( { tool: 'search_docs', query: 'tick loop' } )
   } )
 
   it('fails informatively when required args are missing (habitual enaction)', async () => {
     const handler = buildMcpHandler( client, searchTool )
-    const res = await handler( {}, { reasoning: '' } ) as { success: boolean; description: string }
+    const res = await handler( {}, { reasoning: '', intentId: 'i-test' } ) as { success: boolean; description: string }
     expect( res.success ).toBe( false )
     expect( res.description ).toContain('needs query')
     expect( res.description ).toContain('args')        // teaches deliberate articulation
@@ -90,7 +90,7 @@ describe('buildMcpHandler — enaction → tool → reafference', () => {
 
   it('maps a tool error onto a failed outcome (not a throw)', async () => {
     const handler = buildMcpHandler( client, { name: 'always_fails' } )
-    const res = await handler( {}, { reasoning: '' } ) as { success: boolean; description: string }
+    const res = await handler( {}, { reasoning: '', intentId: 'i-test' } ) as { success: boolean; description: string }
     expect( res.success ).toBe( false )
     expect( res.description ).toContain('boom')
   } )

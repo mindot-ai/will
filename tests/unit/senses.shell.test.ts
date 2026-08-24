@@ -22,7 +22,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 import { VisionEngine }          from '#senses/vision.engine'
-import { SomatosensationEngine } from '#senses/somatosensation.engine'
 import { OlfactionEngine }       from '#senses/olfaction.engine'
 import { GustationEngine }       from '#senses/gustation.engine'
 import { ThreadDigestManager }   from '#senses/audition.engine/engine'
@@ -89,45 +88,7 @@ describe('VisionEngine (shell)', () => {
 
 // ── SomatosensationEngine ─────────────────────────────────────
 
-describe('SomatosensationEngine (shell)', () => {
-  let engine: SomatosensationEngine
-  beforeEach( () => { engine = new SomatosensationEngine() } )
 
-  it('has domain "somatosensation"', () => {
-    expect( engine.domain ).toBe('somatosensation')
-  } )
-
-  it('snapshot() reports status "shell"', () => {
-    expect( engine.snapshot() ).toMatchObject( { status: 'shell' } )
-  } )
-
-  it('publishes() declares senses.somatosensation.percept', () => {
-    expect( engine.publishes()[0]?.type ).toBe('senses.somatosensation.percept')
-  } )
-
-  it('ingest(webhook) warns and does not throw', async () => {
-    const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
-    const input = makeInput( { kind: 'webhook' as const, source: 'github', payload: {}, headers: {} } )
-    await expect( engine.ingest( input ) ).resolves.toBeUndefined()
-    expect( warn ).toHaveBeenCalledWith( expect.stringContaining('somatosensation-engine') )
-    warn.mockRestore()
-  } )
-
-  it('ingest(system) warns and does not throw', async () => {
-    const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
-    const input = makeInput( { kind: 'system' as const, signal: 'STARTUP', data: {} } )
-    await expect( engine.ingest( input ) ).resolves.toBeUndefined()
-    expect( warn ).toHaveBeenCalled()
-    warn.mockRestore()
-  } )
-
-  it('ingest(non-soma kind) returns silently', async () => {
-    const warn = vi.spyOn( console, 'warn').mockImplementation( () => {} )
-    await expect( engine.ingest( TEXT_INPUT ) ).resolves.toBeUndefined()
-    expect( warn ).not.toHaveBeenCalled()
-    warn.mockRestore()
-  } )
-} )
 
 // ── OlfactionEngine ───────────────────────────────────────────
 

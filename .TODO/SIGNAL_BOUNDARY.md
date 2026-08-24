@@ -839,16 +839,57 @@ disabled — and existing tests failed in each case (2 of 6 in
 `policy.escalation`, 2 of 23 in `policy.arbiter`), which is what shows the moved
 code is genuinely exercised where it now lives.
 
-### P1 — Route the bypasses through the doors
-- [ ] `inspect` stops laundering — same finding, now `provenance: 'reafferent'`
-      + `sourceIntentId`, and the prose bracket becomes decoration rather than
-      the mechanism.
-- [ ] Wake event → a `SystemSignal` through door 1, `'exafferent'`.
-- [ ] `working.memory` / `escalation.buffer` — audit whether these are afference
-      at all, or internal re-entry that should never have been percept-shaped.
-      **Suspect the latter; deleting is a valid outcome.**
-- [ ] Test each: what reaches cognition is unchanged in content, changed only in
-      that provenance is now stated.
+### P1 — Route the bypasses through the doors — ✅ **SHIPPED 2026-08-23**
+
+- [x] **`inspect` stops laundering.** `EffectorHandler`'s `ctx` gains `intentId`
+      — the correlation handle, which was already in scope at the call site
+      (`inv.decisionRecordId`) and simply not passed on. `discord_inspect_channel`
+      now sends `sourceIntentId: ctx.intentId` alongside its `'reafferent'`, so
+      the echo is tied to the act by an id. The bracketed `[I looked into …]`
+      stays, but it is decoration now rather than the mechanism.
+- [x] **Wake event → a `SystemSignal` through door 1, `'exafferent'`** — which
+      required the door to exist. `SomatosensationEngine` is no longer a shell:
+      it transduces `system` and `webhook` inputs into percepts, and everything
+      downstream reaches them because they are percepts, not because anyone
+      wired five faculties to a wake event. `stem/index.ts` no longer builds an
+      entity by hand.
+
+      A host may put `summary` and `salience` on the signal's `data`; absent
+      those it gets `SYSTEM_SIGNAL_SALIENCE` (0.75 — above exteroception's
+      ambient 0.3, above the rupture gate's 0.4, because a signal means something
+      happened TO the mind) and `Something happened: WAKE.`
+
+- [x] **`working.memory` / `escalation.buffer` audited — NOT deleted, and the
+      reason is worth keeping.** The doc suspected internal re-entry, and it was
+      right: `escalation.buffer`'s own header says *"the master reads these as
+      things IT noticed about its own situation — NEVER as incoming messages."*
+      That is not afference.
+
+      But it is not deletable either, and "percept-shaped" is not the defect.
+      It is the ONLY path a focused facet has to the singular seat, and it is
+      percept-shaped because `extractPercepts` renders `summary` and the
+      executive context renders nothing else — a documented workaround, stated
+      in that file twice. Deleting it removes the handoff; the real fix is
+      giving the executive a section for *what my own parts handed me*, which is
+      a prompt-surface change and not P1's business.
+
+      P0 step 2 already removed the harm by tagging them `'reafferent'`, so they
+      cannot rupture. `working.memory`'s `type: 'percept'` is a WM **item**, not
+      a state entity, and was never in scope.
+
+- [x] Tests: `senses.somatosensation.test.ts` (7) and `p1.doors.test.ts` (3).
+
+> **Both P1 behaviour changes shipped uncovered on the first pass, and mutation
+> testing is what said so.** Flipping the wake signal to `'reafferent'`, and
+> blanking the intent id handed to a handler, each passed the entire 1826-test
+> suite. Two changes with no test behind them are two changes that can be
+> silently undone — and the wake one is the exact bug P0 step 2 had to fix by
+> hand. `p1.doors.test.ts` exists because of that, and both mutations now fail.
+
+> Also corrected: `agency.rupture.test.ts` was asserting a wake percept shaped
+> `{ id: 'percept-wake-event', category: 'system' }`, which nothing produces any
+> more. A test pinned to a shape no writer emits is a test that cannot fail for
+> the right reason.
 
 ### P2 — Effector acks split by what they carry
 - [ ] **Facts** (`lookup`, `list_warnings`, `snapshot`) arrive through a sense,

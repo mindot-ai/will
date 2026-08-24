@@ -445,14 +445,17 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
       from:   address,
       thread: address,
       direct: false,
-      // REAFFERENT — the one place in this bridge where it is. She enacted
-      // `discord_inspect_channel` and this is the consequence coming back to
-      // her own senses. Until the field existed, that fact lived only in the
-      // English of the bracketed prose above, where nothing but the LLM could
-      // read it. No `sourceIntentId`: an effector handler is not given the
-      // invocation id it is running under, which is the gap ACT_EXPECTATIONS
-      // has to close before the echo can be matched to the act mechanically.
-      provenance: 'reafferent',
+      // REAFFERENT — the one place in this bridge where it is. The mind enacted
+      // `inspect` and this is the consequence arriving back at its own senses.
+      // Until the field existed, that fact lived only in the English of the
+      // bracketed prose above, where nothing but the LLM could read it.
+      //
+      // `sourceIntentId` closes the other half (SIGNAL_BOUNDARY P1): the echo is
+      // now tied to the act that caused it by an id, so a later mechanism can
+      // ask "is this the echo of that?" without reading prose. The bracket stays,
+      // but it is decoration now rather than the mechanism.
+      provenance:     'reafferent',
+      sourceIntentId: ctx.intentId,
       ...( label ? { threadName: label } : {} ),
     } )
 

@@ -2396,7 +2396,22 @@ interface CircadianConfig {
     /** Whether external light signals entrain the oscillator */
     entrainable?: boolean;
     /** Current simulated time of day in hours (0-24). If not provided, derived from tick. */
-    timeOfDayHours?: number;
+    /**
+     * The hour of day, 0–24. A NUMBER freezes it; a FUNCTION is read every tick,
+     * which is what a host with a real clock should pass.
+     *
+     * WHY THIS IS THE HOST'S TO SUPPLY. Left unset, the oscillator derives the
+     * hour from the tick count (1 tick = 1 second), which makes it *hours since
+     * tick zero, mod 24* — and after a snapshot restore, tick zero is an
+     * arbitrary point in a previous life. A mind reasoning about whether anyone
+     * is awake right now was reasoning from that.
+     *
+     * A circadian oscillator is a BODY RHYTHM, not a clock. It models what a body
+     * does over a day; it cannot know what day it is or where on Earth it runs.
+     * What time it is, is a fact about the world — afference — and arrives the
+     * way `environment.light_level` already does: from whoever can see it.
+     */
+    timeOfDayHours?: number | (() => number);
     bus?: CognitiveBus;
 }
 declare class CircadianOscillator implements SimulationEngine, CognitiveEngine {
@@ -2419,6 +2434,8 @@ declare class CircadianOscillator implements SimulationEngine, CognitiveEngine {
      * Set the current time of day explicitly (for scenarios with controlled time).
      */
     setTimeOfDay(hours: number): void;
+    /** Read a live clock every tick instead of holding a fixed hour. */
+    setClock(clock: (() => number) | null): void;
     /**
      * Get the current circadian phase.
      */

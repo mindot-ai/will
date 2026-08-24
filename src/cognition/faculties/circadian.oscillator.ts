@@ -41,7 +41,22 @@ export interface CircadianConfig {
   /** Whether external light signals entrain the oscillator */
   entrainable?: boolean
   /** Current simulated time of day in hours (0-24). If not provided, derived from tick. */
-  timeOfDayHours?: number
+  /**
+   * The hour of day, 0–24. A NUMBER freezes it; a FUNCTION is read every tick,
+   * which is what a host with a real clock should pass.
+   *
+   * WHY THIS IS THE HOST'S TO SUPPLY. Left unset, the oscillator derives the
+   * hour from the tick count (1 tick = 1 second), which makes it *hours since
+   * tick zero, mod 24* — and after a snapshot restore, tick zero is an
+   * arbitrary point in a previous life. A mind reasoning about whether anyone
+   * is awake right now was reasoning from that.
+   *
+   * A circadian oscillator is a BODY RHYTHM, not a clock. It models what a body
+   * does over a day; it cannot know what day it is or where on Earth it runs.
+   * What time it is, is a fact about the world — afference — and arrives the
+   * way `environment.light_level` already does: from whoever can see it.
+   */
+  timeOfDayHours?: number | ( () => number )
   bus?: CognitiveBus
 }
 
@@ -51,7 +66,7 @@ export class CircadianOscillator implements SimulationEngine, CognitiveEngine {
   private _periodHours: number
   private _phaseOffsetHours: number
   private _entrainable: boolean
-  private _timeOfDayHours?: number
+  private _timeOfDayHours?: number | ( () => number )
 
   private _bus: CognitiveBus | null = null
 
@@ -100,8 +115,11 @@ export class CircadianOscillator implements SimulationEngine, CognitiveEngine {
     events:   Array<Omit<SimulationEvent, 'id' | 'timestamp' | 'tick'>> = [],
     commands: StateCommands = { metrics: [] }
 
-    // Determine current time of day
-    let timeOfDay = this._timeOfDayHours
+    // Determine current time of day. A function is re-read every tick — a host
+    // clock moves; a config value does not.
+    let timeOfDay = typeof this._timeOfDayHours === 'function'
+      ? normalizeHour( this._timeOfDayHours() )
+      : this._timeOfDayHours
 
     if( timeOfDay === undefined ){
       // Derive from tick, assuming 1 tick = 1 second
@@ -278,17 +296,28 @@ export class CircadianOscillator implements SimulationEngine, CognitiveEngine {
    * Set the current time of day explicitly (for scenarios with controlled time).
    */
   setTimeOfDay( hours: number ): void {
-    this._timeOfDayHours = ( hours % 24 + 24 ) % 24
+    this._timeOfDayHours = normalizeHour( hours )
+  }
+
+  /** Read a live clock every tick instead of holding a fixed hour. */
+  setClock( clock: ( () => number ) | null ): void {
+    this._timeOfDayHours = clock ?? undefined
   }
 
   /**
    * Get the current circadian phase.
    */
   getPhase(): CircadianPhase {
-    const h = this._timeOfDayHours ?? 12
+    const h = typeof this._timeOfDayHours === 'function'
+      ? normalizeHour( this._timeOfDayHours() )
+      : this._timeOfDayHours ?? 12
     return h >= 6 && h < 12 ? 'morning'
          : h >= 12 && h < 17 ? 'afternoon'
          : h >= 17 && h < 21 ? 'evening'
          : 'night'
   }
+}
+/** 0–24, wrapping — a host clock that hands over 25 or −1 must not poison the rhythm. */
+function normalizeHour( h: number ): number {
+  return Number.isFinite( h ) ? ( ( h % 24 ) + 24 ) % 24 : 12
 }

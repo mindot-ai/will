@@ -337,7 +337,11 @@ export async function buildExecutiveContext(
       sleepPressure: state.metrics.get('sleep.pressure') ?? 0,
       stressLoad: state.metrics.get('stress.load') ?? 0,
       circadianPhase: state.metrics.get('circadian.phase') ?? 0,
-      timeOfDay: state.metrics.get('time.of_day') ?? 12,
+      // `circadian.time_of_day`, not `time.of_day`. The oscillator has always
+      // written the first and this has always read the second, so the fallback
+      // fired on EVERY tick a Will has ever run: the prompt said `Time: 12.0h`
+      // — noon, permanently — beside a phase label that disagreed with it.
+      timeOfDay: state.metrics.get('circadian.time_of_day') ?? 12,
       // Tonic threat representation — survives event habituation (guardrail).
       threatLevel: state.metrics.get('threat.level') ?? 0
     },

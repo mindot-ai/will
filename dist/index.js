@@ -4322,7 +4322,7 @@ var CircadianOscillator = class {
   async react(delta, tick, state, context) {
     this._readConfigFromState(state);
     const events = [], commands = { metrics: [] };
-    let timeOfDay = this._timeOfDayHours;
+    let timeOfDay = typeof this._timeOfDayHours === "function" ? normalizeHour(this._timeOfDayHours()) : this._timeOfDayHours;
     if (timeOfDay === void 0) {
       const totalSeconds = tick, totalHours = totalSeconds / 3600, dayFraction = totalHours % this._periodHours / this._periodHours;
       timeOfDay = (dayFraction * 24 + this._phaseOffsetHours) % 24;
@@ -4422,16 +4422,23 @@ var CircadianOscillator = class {
    * Set the current time of day explicitly (for scenarios with controlled time).
    */
   setTimeOfDay(hours) {
-    this._timeOfDayHours = (hours % 24 + 24) % 24;
+    this._timeOfDayHours = normalizeHour(hours);
+  }
+  /** Read a live clock every tick instead of holding a fixed hour. */
+  setClock(clock) {
+    this._timeOfDayHours = clock ?? void 0;
   }
   /**
    * Get the current circadian phase.
    */
   getPhase() {
-    const h = this._timeOfDayHours ?? 12;
+    const h = typeof this._timeOfDayHours === "function" ? normalizeHour(this._timeOfDayHours()) : this._timeOfDayHours ?? 12;
     return h >= 6 && h < 12 ? "morning" : h >= 12 && h < 17 ? "afternoon" : h >= 17 && h < 21 ? "evening" : "night";
   }
 };
+function normalizeHour(h) {
+  return Number.isFinite(h) ? (h % 24 + 24) % 24 : 12;
+}
 
 // src/cognition/percept.entity.ts
 var PERCEPT_TYPE = "percept";
@@ -11393,7 +11400,11 @@ async function buildExecutiveContext(state, deps, recallQuery) {
       sleepPressure: state.metrics.get("sleep.pressure") ?? 0,
       stressLoad: state.metrics.get("stress.load") ?? 0,
       circadianPhase: state.metrics.get("circadian.phase") ?? 0,
-      timeOfDay: state.metrics.get("time.of_day") ?? 12,
+      // `circadian.time_of_day`, not `time.of_day`. The oscillator has always
+      // written the first and this has always read the second, so the fallback
+      // fired on EVERY tick a Will has ever run: the prompt said `Time: 12.0h`
+      // — noon, permanently — beside a phase label that disagreed with it.
+      timeOfDay: state.metrics.get("circadian.time_of_day") ?? 12,
       // Tonic threat representation — survives event habituation (guardrail).
       threatLevel: state.metrics.get("threat.level") ?? 0
     },
@@ -11616,6 +11627,13 @@ function traitEmphasis(value) {
   return { adverb: band.adverb, direction: value >= 0.5 ? "high" : "low", rank: band.rank };
 }
 var TRAIT_NORM_BAND = 0.12;
+function temporalLine(timeOfDay, circadian) {
+  return `Time: ${timeOfDay.toFixed(1)}h (${labelForHour(timeOfDay)}, circadian: ${circadian.toFixed(2)})`;
+}
+function labelForHour(h) {
+  const hour = (h % 24 + 24) % 24;
+  return hour < 2 ? "deep night" : hour < 5 ? "late night" : hour < 8 ? "early morning" : hour < 11 ? "morning" : hour < 14 ? "midday" : hour < 17 ? "afternoon" : hour < 21 ? "evening" : "night";
+}
 function normEmphasis(value, mean) {
   const d = value - mean;
   if (d >= TRAIT_NORM_BAND) return "above";
@@ -11857,7 +11875,6 @@ ${cappedSummary}` : "";
     const circadian = context.worldState.circadianPhase;
     const timeOfDay = context.worldState.timeOfDay;
     const threatLevel = context.worldState.threatLevel;
-    const phaseLabel = circadian < 0.083 ? "deep night" : circadian < 0.208 ? "late night" : circadian < 0.333 ? "early morning" : circadian < 0.458 ? "morning" : circadian < 0.583 ? "midday" : circadian < 0.708 ? "afternoon" : circadian < 0.833 ? "evening" : "night";
     const energyGuidance = this._buildEnergyGuidance(energy);
     const stressGuidance = this._buildStressGuidance(stress);
     const sleepGuidance = this._buildSleepGuidance(sleepPressure);
@@ -11887,7 +11904,7 @@ Choose among (or improve on) these, then in "reasoning" say briefly why I reject
 Energy: ${energy.toFixed(1)}/100
 Sleep Pressure: ${sleepPressure.toFixed(1)}/100
 Stress: ${stress.toFixed(1)}/100${threatLine}
-Time: ${timeOfDay.toFixed(1)}h (${phaseLabel}, circadian: ${circadian.toFixed(2)})
+${temporalLine(timeOfDay, circadian)}
 Cognitive capacity:${capacityNote}
 Epistemic uncertainty: ${(epistemicUncertainty * 100).toFixed(0)}%${uncertaintyLabel}
 Tick: ${state.tick}

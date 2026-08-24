@@ -116,6 +116,33 @@ export function traitEmphasis( value: number ): TraitEmphasis | null {
 // low" yet "above my norm" (low overall, but high for me lately).
 const TRAIT_NORM_BAND = 0.12  // deviation from personal baseline to read as above/below my norm
 
+/**
+ * What a 24-hour clock reading is CALLED, in the words a mind would use.
+ *
+ * Bands are the ordinary ones — the point is not their precision but that the
+ * label and the hour come from the same number, so `Time: 12.0h (night)` cannot
+ * be written again. It was, on every prompt a Will ever rendered.
+ */
+export function temporalLine( timeOfDay: number, circadian: number ): string {
+  return `Time: ${ timeOfDay.toFixed( 1 ) }h (${ labelForHour( timeOfDay ) }, circadian: ${ circadian.toFixed( 2 ) })`
+}
+
+/**
+ * The label, from the hour. Kept separate from `temporalLine` only so the bands
+ * are readable; nothing outside this file should need it.
+ */
+export function labelForHour( h: number ): string {
+  const hour = ( ( h % 24 ) + 24 ) % 24
+  return hour <  2 ? 'deep night'
+       : hour <  5 ? 'late night'
+       : hour <  8 ? 'early morning'
+       : hour < 11 ? 'morning'
+       : hour < 14 ? 'midday'
+       : hour < 17 ? 'afternoon'
+       : hour < 21 ? 'evening'
+       : 'night'
+}
+
 export function normEmphasis( value: number, mean: number ): 'above' | 'below' | null {
   const d = value - mean
   if( d >=  TRAIT_NORM_BAND ) return 'above'
@@ -616,16 +643,6 @@ completionType guide:
     const timeOfDay     = context.worldState.timeOfDay
     const threatLevel   = context.worldState.threatLevel
 
-    // Map raw circadian phase (0–1) to a human-readable label for full temporal awareness.
-    // 0 = midnight, 0.5 = noon, 1 = midnight.
-    const phaseLabel = circadian < 0.083 ? 'deep night'
-                     : circadian < 0.208 ? 'late night'
-                     : circadian < 0.333 ? 'early morning'
-                     : circadian < 0.458 ? 'morning'
-                     : circadian < 0.583 ? 'midday'
-                     : circadian < 0.708 ? 'afternoon'
-                     : circadian < 0.833 ? 'evening'
-                     : 'night'
 
     const energyGuidance = this._buildEnergyGuidance( energy )
     const stressGuidance = this._buildStressGuidance( stress )
@@ -676,7 +693,7 @@ completionType guide:
 Energy: ${energy.toFixed( 1 )}/100
 Sleep Pressure: ${sleepPressure.toFixed( 1 )}/100
 Stress: ${stress.toFixed( 1 )}/100${threatLine}
-Time: ${timeOfDay.toFixed( 1 )}h (${phaseLabel}, circadian: ${circadian.toFixed( 2 )})
+${temporalLine( timeOfDay, circadian )}
 Cognitive capacity:${capacityNote}
 Epistemic uncertainty: ${( epistemicUncertainty * 100 ).toFixed( 0 )}%${uncertaintyLabel}
 Tick: ${state.tick}

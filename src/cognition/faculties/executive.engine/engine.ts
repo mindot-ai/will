@@ -504,7 +504,17 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       type, status,
       tick: typeof p?.tick === 'number' ? p.tick : 0,
       ...( typeof p?.targetEntityId === 'string' ? { targetEntityId: p.targetEntityId } : {} ),
-      outcome: typeof p?.description === 'string' ? p.description.slice( 0, 120 ) : '',
+      // WHOLE. 120 here, 300 at the session log and 700 at the MCP boundary were
+      // three unexamined numbers cutting the same string, and the cut was the
+      // engine deciding how much of what a host said the mind was allowed to
+      // keep. What a host sends is consumed in its entirety; what the engine
+      // itself composes it may bound (see `PERCEPT_SUMMARY_CAP`), because there
+      // it is not destroying anyone's only copy.
+      //
+      // Safe to leave unbounded only because P2 split fate from facts: this
+      // carries a FATE, which is short by nature. The answer to a lookup leaves
+      // through `observation` and reaches the mind as a percept.
+      outcome: typeof p?.description === 'string' ? p.description : '',
       ...( typeof p?.planId === 'string' ? { planId: p.planId } : {} ),
     })
 

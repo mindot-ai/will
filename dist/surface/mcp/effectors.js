@@ -3,7 +3,6 @@ import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotoc
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 // src/surface/mcp/effectors.ts
-var RESULT_DESCRIPTION_CAP = 700;
 var MEANING_CAP = 300;
 function describeMcpTool(tool) {
   const props = tool.inputSchema?.properties ?? {};
@@ -31,8 +30,15 @@ function buildMcpHandler(client, tool) {
     try {
       const res = await client.callTool({ name: tool.name, arguments: filtered });
       const text = (res.content ?? []).filter((c) => c.type === "text" && typeof c.text === "string").map((c) => c.text).join("\n").trim() || (res.isError ? "The tool reported an error." : "Done (no output).");
-      const bounded = text.length > RESULT_DESCRIPTION_CAP ? `${text.slice(0, RESULT_DESCRIPTION_CAP - 1)}\u2026` : text;
-      return { success: !res.isError, description: bounded };
+      return {
+        success: !res.isError,
+        description: res.isError ? `${tool.name} reported an error.` : `${tool.name} ran.`,
+        // Whatever it said — including what it said when it failed. An error
+        // message is information about the world too, and cutting it or folding
+        // it into the fate is how a mind ends up knowing that something went
+        // wrong without ever learning what.
+        observation: text
+      };
     } catch (err) {
       return { success: false, description: `${tool.name} failed: ${err instanceof Error ? err.message : String(err)}` };
     }

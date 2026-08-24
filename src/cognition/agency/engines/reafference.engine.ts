@@ -282,7 +282,7 @@ export class ReafferenceEngine implements CognitiveEngine {
       // action.outcome already), so this never double-advances.
       const planId = str( m['planId'] )
       if( planId )
-        this._emitPlanOutcome( planId, str( m['stepId'] ), schema, m['success'] === true, num( m['outcomeQuality'], 0 ), num( m['surprise'], 0 ), tick )
+        this._emitPlanOutcome( planId, str( m['stepId'] ), schema, m['success'] === true, num( m['outcomeQuality'], 0 ), num( m['surprise'], 0 ), tick, str( m['description'] ) )
 
       // Discovery: the first time the Will enacts a schema, it becomes a known part
       // of its repertoire (the new model's "discovered" — earned by doing, not catalogued).
@@ -464,6 +464,9 @@ export class ReafferenceEngine implements CognitiveEngine {
   private _emitPlanOutcome(
     planId: string, stepId: string | undefined, schema: string,
     success: boolean, outcomeQuality: number, surprise: number, tick: Tick,
+    /** The host's own words for what happened. Absent on withheld/refused paths,
+     *  where there was no host and nothing to say beyond the fate. */
+    description?: string,
   ): void {
     if( !this._bus ) return
     try {
@@ -472,7 +475,14 @@ export class ReafferenceEngine implements CognitiveEngine {
         salience: Math.min( 1, outcomeQuality * 0.6 ),
         payload: {
           actionType: schema, domain: schema, success, outcomeQuality, surprise,
-          description: success ? 'The world confirmed the action.' : 'The world rejected the action.',
+          // The host's own words for what happened, not a stock sentence. This
+          // hardcoded `'The world confirmed the action.'` — and since
+          // `action.record` is built from this payload, that phrase (or nothing,
+          // from the executor's side) is ALL the prompt's `## Recent Action
+          // Outcomes` ever showed. The `agency.outcome` entity has carried the
+          // real description the whole time (`reconcile.learning.ts:89`); it was
+          // read here as `m['description']` and dropped on the floor.
+          description: description ?? ( success ? 'The world confirmed the action.' : 'The world rejected the action.'),
           planId,
           ...( stepId ? { stepId } : {} ),
           tick,

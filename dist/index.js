@@ -15128,7 +15128,17 @@ var ExecutiveEngine = class extends AsyncEngine {
       status,
       tick: typeof p?.tick === "number" ? p.tick : 0,
       ...typeof p?.targetEntityId === "string" ? { targetEntityId: p.targetEntityId } : {},
-      outcome: typeof p?.description === "string" ? p.description.slice(0, 120) : "",
+      // WHOLE. 120 here, 300 at the session log and 700 at the MCP boundary were
+      // three unexamined numbers cutting the same string, and the cut was the
+      // engine deciding how much of what a host said the mind was allowed to
+      // keep. What a host sends is consumed in its entirety; what the engine
+      // itself composes it may bound (see `PERCEPT_SUMMARY_CAP`), because there
+      // it is not destroying anyone's only copy.
+      //
+      // Safe to leave unbounded only because P2 split fate from facts: this
+      // carries a FATE, which is short by nature. The answer to a lookup leaves
+      // through `observation` and reaches the mind as a percept.
+      outcome: typeof p?.description === "string" ? p.description : "",
       ...typeof p?.planId === "string" ? { planId: p.planId } : {}
     });
     return { set: [record] };
@@ -21525,12 +21535,22 @@ var SomatosensationEngine = class extends BaseSenseEngine {
   }
 };
 function summaryOf(data) {
-  if (typeof data !== "object" || data === null) return void 0;
-  const s = data["summary"];
-  return typeof s === "string" && s.length > 0 ? s : void 0;
+  if (data === void 0 || data === null) return void 0;
+  if (typeof data === "string") return data.length > 0 ? data : void 0;
+  if (typeof data === "object") {
+    const s = data["summary"];
+    if (typeof s === "string" && s.length > 0) return s;
+    try {
+      const json = JSON.stringify(data);
+      return json === "{}" || json === "[]" ? void 0 : json;
+    } catch {
+      return void 0;
+    }
+  }
+  return String(data);
 }
 function salienceOf(data, fallback) {
-  if (typeof data !== "object" || data === null) return fallback;
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return fallback;
   const s = data["salience"];
   return typeof s === "number" && Number.isFinite(s) ? Math.max(0, Math.min(1, s)) : fallback;
 }
@@ -23022,7 +23042,14 @@ var MotorSchemaExecutor = class {
       del.push(id);
       this._emitEnacted(intent, timedOut, predicted, tick);
       if (intent.planId && intent.planStepId)
-        this._emitActionOutcome(intent, false, 0, 1, tick);
+        this._emitActionOutcome(
+          intent,
+          false,
+          0,
+          1,
+          tick,
+          `No answer came back \u2014 I gave up waiting after ${tick - dispatchedAt} ticks.`
+        );
       logger.info(`[motor] \u23F1 "${intent.schema}" timed out after ${tick - dispatchedAt} ticks`);
     }
     const selected = [...state.entities.entries()].filter(([, e]) => e.type === "agency.intent" && str7(e.metadata?.["status"]) === "selected").sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
@@ -23059,7 +23086,8 @@ var MotorSchemaExecutor = class {
           enaction.success,
           enaction.outcomeQuality,
           clamp0110(Math.abs(predicted.expectedReward - enaction.outcomeQuality)),
-          tick
+          tick,
+          enaction.description
         );
         if (intent.parentIntentId)
           this._advance(intent, enaction, state, tick, set, del);
@@ -23183,7 +23211,8 @@ var MotorSchemaExecutor = class {
       true,
       avgQuality,
       clamp0110(Math.abs(compIntent.expectedReward - avgQuality)),
-      tick
+      tick,
+      compEnaction.description
     );
   }
   _subIntent(parentId, targetEntityId, parameters, subSchemaId, k, tick) {
@@ -23291,7 +23320,8 @@ var MotorSchemaExecutor = class {
       result.success,
       result.feedback.outcomeQuality,
       clamp0110(Math.abs(predicted.expectedReward - result.feedback.outcomeQuality)),
-      tick
+      tick,
+      out.description
     );
     metrics.push(["agency.communicate.delivered", 1]);
     return true;
@@ -23380,7 +23410,7 @@ var MotorSchemaExecutor = class {
     del.push(willId);
     logger.info(`[motor] discharged the will behind "${intent.schema}" (${willId})`);
   }
-  _emitActionOutcome(intent, success, outcomeQuality, surprise, tick) {
+  _emitActionOutcome(intent, success, outcomeQuality, surprise, tick, description) {
     if (!this._bus) return;
     try {
       this._bus.publish({
@@ -23392,6 +23422,7 @@ var MotorSchemaExecutor = class {
           actionType: intent.schema,
           domain: intent.schema,
           confidence: intent.expectedReward,
+          ...description ? { description } : {},
           success,
           outcomeQuality,
           surprise,
@@ -23690,7 +23721,7 @@ var ReafferenceEngine = class {
       updates++;
       const planId = str8(m["planId"]);
       if (planId)
-        this._emitPlanOutcome(planId, str8(m["stepId"]), schema, m["success"] === true, num5(m["outcomeQuality"], 0), num5(m["surprise"], 0), tick);
+        this._emitPlanOutcome(planId, str8(m["stepId"]), schema, m["success"] === true, num5(m["outcomeQuality"], 0), num5(m["surprise"], 0), tick, str8(m["description"]));
       if (skill.enactments === 1) {
         discovered++;
         this._emitDiscovered(schema, tick);
@@ -23817,7 +23848,7 @@ var ReafferenceEngine = class {
    * enaction. Mirrors the executor's `_emitActionOutcome` payload so the
    * PlanningEngine's consumer can't tell which path produced it.
    */
-  _emitPlanOutcome(planId, stepId, schema, success, outcomeQuality, surprise, tick) {
+  _emitPlanOutcome(planId, stepId, schema, success, outcomeQuality, surprise, tick, description) {
     if (!this._bus) return;
     try {
       this._bus.publish({
@@ -23831,7 +23862,14 @@ var ReafferenceEngine = class {
           success,
           outcomeQuality,
           surprise,
-          description: success ? "The world confirmed the action." : "The world rejected the action.",
+          // The host's own words for what happened, not a stock sentence. This
+          // hardcoded `'The world confirmed the action.'` — and since
+          // `action.record` is built from this payload, that phrase (or nothing,
+          // from the executor's side) is ALL the prompt's `## Recent Action
+          // Outcomes` ever showed. The `agency.outcome` entity has carried the
+          // real description the whole time (`reconcile.learning.ts:89`); it was
+          // read here as `m['description']` and dropped on the floor.
+          description: description ?? (success ? "The world confirmed the action." : "The world rejected the action."),
           planId,
           ...stepId ? { stepId } : {},
           tick
@@ -29302,6 +29340,16 @@ var effectorController = class {
     instance.simulation.stateManager.setEntity(
       reconcileInvocation(invocationId, schema, result, tick, predicted, provenance)
     );
+    if (result.observation !== void 0 && result.observation !== null)
+      void instance.cognition.somatosensationEngine.ingest({
+        kind: "system",
+        signal: schema,
+        provenance: "reafferent",
+        sourceIntentId: invocationId,
+        // The observation itself, in whatever shape the host had it. The sense
+        // renders it for reading; nothing reshapes or shortens it here.
+        data: result.observation
+      });
     if (result.metrics)
       for (const [k, v] of Object.entries(result.metrics)) {
         if (typeof v === "number" && Number.isFinite(v))
@@ -29314,7 +29362,7 @@ var effectorController = class {
       tick,
       actionType: schema,
       success: result.success,
-      outcome: result.description.slice(0, 300),
+      outcome: result.description,
       outcomeQuality: result.success ? 0.8 : 0.2,
       confirmedExternally: true
     });

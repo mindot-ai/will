@@ -76,7 +76,14 @@ describe('buildMcpHandler — enaction → tool → reafference', () => {
     const handler = buildMcpHandler( client, searchTool )
     // Invocation params carry situation extras the tool never declared — filtered out.
     const res = await handler( { query: 'tick loop', targetEntityName: 'Ada' }, { reasoning: '', intentId: 'i-test' } )
-    expect( res ).toMatchObject( { success: true, description: '3 results for "tick loop"' } )
+    // The tool's output is what the act REVEALED, so it rides `observation`
+    // (SIGNAL_BOUNDARY P2). `description` carries how the call went — the fate.
+    // It used to be crammed into `description` and cut at 700.
+    expect( res ).toMatchObject( {
+      success:     true,
+      description: 'search_docs ran.',
+      observation: '3 results for "tick loop"',
+    } )
     expect( calls.at( -1 ) ).toEqual( { tool: 'search_docs', query: 'tick loop' } )
   } )
 
@@ -90,9 +97,14 @@ describe('buildMcpHandler — enaction → tool → reafference', () => {
 
   it('maps a tool error onto a failed outcome (not a throw)', async () => {
     const handler = buildMcpHandler( client, { name: 'always_fails' } )
-    const res = await handler( {}, { reasoning: '', intentId: 'i-test' } ) as { success: boolean; description: string }
+    const res = await handler( {}, { reasoning: '', intentId: 'i-test' } ) as
+      { success: boolean; description: string; observation?: unknown }
     expect( res.success ).toBe( false )
-    expect( res.description ).toContain('boom')
+    expect( res.description ).toBe('always_fails reported an error.')
+    // What it SAID when it failed is still information about the world, and the
+    // mind gets it whole — otherwise it learns that something went wrong
+    // without ever learning what.
+    expect( String( res.observation ) ).toContain('boom')
   } )
 } )
 

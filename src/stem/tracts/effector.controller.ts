@@ -184,9 +184,43 @@ export class effectorController {
 
     // Reconcile → agency.outcome. ReafferenceEngine consumes it next tick (learn +
     // free the intent + emit the plan's action.outcome when plan-tagged).
+    //
+    // This is the FATE half, and it is unchanged: what the mind learns about its
+    // own competence at this act.
     instance.simulation.stateManager.setEntity(
       reconcileInvocation( invocationId, schema, result, tick, predicted, provenance )
     )
+
+    // ── The FACTS half (SIGNAL_BOUNDARY P2) ────────────────────
+    //
+    // An ack that carries an `observation` is not only feedback about an act —
+    // it is new information about the world, and information about the world
+    // reaches this mind exactly one way: as afference it can weigh, remember and
+    // recall. So it goes in through a sense, tagged REAFFERENT and tied to the
+    // act by `sourceIntentId`, rather than being flattened into a description
+    // the executive reads at 120 characters and nothing ever stores.
+    //
+    // Somatosensation, because that is what it is for: "webhooks, system
+    // signals, and external API callbacks — awareness of interaction with
+    // external systems". An effector ack is precisely an external callback.
+    //
+    // This is what replaces the two-call dance a host used to need — return the
+    // ack, then separately call `perceive()` and dress the answer up as
+    // something somebody said. `discord_inspect_channel` still does that; it can
+    // stop once it moves onto this.
+    //
+    // Fire-and-forget for the same reason the wake is: `ingest` is async and the
+    // tick boundary is not. Audition has ingested off-tick since it existed.
+    if( result.observation !== undefined && result.observation !== null )
+      void instance.cognition.somatosensationEngine.ingest({
+        kind:           'system',
+        signal:         schema,
+        provenance:     'reafferent',
+        sourceIntentId: invocationId,
+        // The observation itself, in whatever shape the host had it. The sense
+        // renders it for reading; nothing reshapes or shortens it here.
+        data:           result.observation,
+      })
 
     // Optional host-supplied metric deltas (e.g. the world moved a body metric).
     // Validate each value is a finite number before it touches simulation state —
@@ -205,7 +239,7 @@ export class effectorController {
       tick,
       actionType:          schema,
       success:             result.success,
-      outcome:             result.description.slice( 0, 300 ),
+      outcome:             result.description,
       outcomeQuality:      result.success ? 0.8 : 0.2,
       confirmedExternally: true,
     } as never)

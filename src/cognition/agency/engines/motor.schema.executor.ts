@@ -395,7 +395,8 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       del.push( id )
       this._emitEnacted( intent, timedOut, predicted, tick )
       if( intent.planId && intent.planStepId )
-        this._emitActionOutcome( intent, false, 0, 1, tick )
+        this._emitActionOutcome( intent, false, 0, 1, tick,
+          `No answer came back — I gave up waiting after ${ tick - dispatchedAt } ticks.` )
       logger.info(`[motor] ⏱ "${ intent.schema }" timed out after ${ tick - dispatchedAt } ticks`)
     }
 
@@ -438,7 +439,8 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         enactedCount++
         this._emitEnacted( intent, enaction, predicted, tick )
         this._emitActionOutcome( intent, enaction.success, enaction.outcomeQuality,
-          clamp01( Math.abs( predicted.expectedReward - enaction.outcomeQuality ) ), tick )
+          clamp01( Math.abs( predicted.expectedReward - enaction.outcomeQuality ) ), tick,
+          enaction.description )
 
         // If this was a macro step, advance (or finalize) its parent.
         if( intent.parentIntentId )
@@ -586,7 +588,8 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     this._emitEnacted( compIntent, compEnaction,
       { expectedReward: compIntent.expectedReward, expectedValence: compIntent.expectedValence }, tick )
     this._emitActionOutcome( compIntent, true, avgQuality,
-      clamp01( Math.abs( compIntent.expectedReward - avgQuality ) ), tick )
+      clamp01( Math.abs( compIntent.expectedReward - avgQuality ) ), tick,
+      compEnaction.description )
   }
 
   private _subIntent(
@@ -731,7 +734,8 @@ export class MotorSchemaExecutor implements CognitiveEngine {
 
     this._emitEnacted( intent, out, predicted, tick )
     this._emitActionOutcome( intent, result.success, result.feedback.outcomeQuality,
-      clamp01( Math.abs( predicted.expectedReward - result.feedback.outcomeQuality ) ), tick )
+      clamp01( Math.abs( predicted.expectedReward - result.feedback.outcomeQuality ) ), tick,
+      out.description )
     metrics.push([ 'agency.communicate.delivered', 1 ])
     return true
   }
@@ -828,6 +832,14 @@ export class MotorSchemaExecutor implements CognitiveEngine {
 
   private _emitActionOutcome(
     intent: Intent, success: boolean, outcomeQuality: number, surprise: number, tick: Tick,
+    /**
+     * What happened, in words. This payload builds `action.record`, which the
+     * prompt renders as `## Recent Action Outcomes` — and until now this method
+     * published no description at all, so that section showed the action's NAME
+     * and nothing else. Sixty-five lookups rendered as sixty-five lines saying
+     * `discord_lookup_member` and never once what was found.
+     */
+    description?: string,
   ): void {
     if( !this._bus ) return
     try {
@@ -838,6 +850,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
           actionType:     intent.schema,
           domain:         intent.schema,
           confidence:     intent.expectedReward,
+          ...( description ? { description } : {} ),
           success,
           outcomeQuality,
           surprise,

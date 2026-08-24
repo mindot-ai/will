@@ -634,7 +634,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
 
     // Seed or preserve history.
     // If the belief arrives with an existing history (e.g. from a PMM load or
-    // snapshot restore), preserve it and append the load event so provenance
+    // snapshot restore), preserve it and append the load event so the lineage
     // is traceable without losing the full trajectory.
     // For brand-new beliefs (no prior history) seed a single creation entry.
     if( newBelief.history && newBelief.history.length > 0 ){

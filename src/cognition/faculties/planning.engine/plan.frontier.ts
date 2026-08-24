@@ -37,7 +37,7 @@ export function computeReadySet( plan: Plan ): PlanStep[] {
  * entities — the top-down bias the AffordanceSynthesizer reads. Rebuilt each tick
  * (cleared then re-emitted, like the affordance field), so a frontier that
  * advances or a plan that ends stops biasing automatically. The prior carries the
- * planId/stepId provenance that flows affordance → intent → action.outcome, and a
+ * planId/stepId plan link that flows affordance → intent → action.outcome, and a
  * `planBias` strength from the goal's importance ⊕ the plan's confidence. It never
  * forces an action — if a more pressing affordance wins, the plan re-projects next
  * tick (no orphaning).

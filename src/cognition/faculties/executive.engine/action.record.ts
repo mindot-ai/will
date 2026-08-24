@@ -4,16 +4,18 @@
 //
 // What became of what I did.
 //
-// The executive's prompt has a `## Recent Action Outcomes` section, a builder
+// The executive's prompt has a `## What Became Of What I Did` section (called
+// `## Recent Action Outcomes` until P3 renamed it after what it renders), a builder
 // for it, and a type for its data. `context.ts` fills it by scanning
 // `decision.record` entities that carry an `actionStatus`. Nothing in the engine
 // has ever written `actionStatus` — it is read in exactly one place and set in
 // none — so the section has never had a single row. Measured across every
-// prompt a live COO received over two runs: `## Recent Action Outcomes` appears
+// prompt a live COO received over two runs: that section appears
 // 0 times, while `## What I've Said Lately` appears in all of them.
 //
 // So the mind could see what it had SAID and never what it had DONE. Its only
-// other record of its own doing is `## Recent Actions`, which is fed from
+// other record of its own doing is `## What I Have Been Choosing` (`## Recent
+// Actions` at the time), which is fed from
 // `output.actions` — the executive's DECISIONS — and is therefore a list of
 // intentions wearing the name of a history.
 //

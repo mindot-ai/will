@@ -17,6 +17,7 @@
 
 import type { EntityInput, Tick } from '#core/types'
 import type { DenialFinality, PolicyCounterfactual } from '#stem/policy/arbiter'
+import type { PlanLink } from '#agency/types'
 
 export interface HostAckResult {
   success:        boolean
@@ -55,7 +56,7 @@ export interface HostAckResult {
  * `agency.invocation` payload); `predictedReward`/`predictedValence` are the
  * efference copy the executor persisted on the intent, so surprise is honest.
  *
- * `provenance` carries the awaiting intent's plan link (planId/stepId) when it was
+ * `planLink` carries the awaiting intent's plan step (planId/stepId) when it was
  * committed from a plan's frontier prior. It rides on the agency.outcome so the
  * ReafferenceEngine — the engine that consumes async-acked outcomes — can emit the
  * `action.outcome{planId,stepId}` the PlanningEngine advances on. (The executor
@@ -68,7 +69,7 @@ export function reconcileInvocation(
   result:   HostAckResult,
   tick:     Tick,
   predicted: { reward: number; valence: number } = { reward: 0.5, valence: 0 },
-  provenance: { planId?: string; stepId?: string } = {},
+  planLink: PlanLink = {},
 ): EntityInput {
   const outcomeQuality = result.outcomeQuality ?? ( result.success ? 0.8 : 0.1 )
   const valence        = result.valence ?? ( result.success ? 0.2 : -0.2 )
@@ -94,8 +95,8 @@ export function reconcileInvocation(
       // Only when the arbiter actually reported a bound — a refusal without one
       // writes no key at all, so the quiet path is unchanged.
       ...( result.refused && result.counterfactual ? { counterfactual: result.counterfactual } : {} ),
-      ...( provenance.planId ? { planId: provenance.planId } : {} ),
-      ...( provenance.stepId ? { stepId: provenance.stepId } : {} ),
+      ...( planLink.planId ? { planId: planLink.planId } : {} ),
+      ...( planLink.stepId ? { stepId: planLink.stepId } : {} ),
     },
   }
 }

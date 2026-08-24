@@ -1081,6 +1081,13 @@ Rest and sleep RESTORE energy. All other actions CONSUME energy. Do not let ener
    */
 
 
+  /**
+   * What the mind has been CHOOSING lately — action types, for the variety
+   * check. Not a history of what happened: nothing here says an act landed.
+   * Retitled from `## Recent Actions` at P3 for exactly that reason (see
+   * `_buildRecentOutcomesSection`) — it sat beside a real history under a name
+   * that claimed to be one.
+   */
   private static _buildActionDiversitySection( recentActionTypes: string[] ): string {
     if( recentActionTypes.length === 0 ) return ''
 
@@ -1090,14 +1097,27 @@ Rest and sleep RESTORE energy. All other actions CONSUME energy. Do not let ener
       ? `\n⚠️ **Action variety alert**: "${recent.filter( t => t === 'reflect' || t === 'observe').join('", "')}" dominated my last ${recent.length} cycles. Choose something DIFFERENT this cycle — e.g. learn, express_emotion, explore, communicate, set_goal, or rest.`
       : ''
 
-    return `## Recent Actions (last ${recent.length})
+    return `## What I Have Been Choosing (last ${recent.length})
 ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
 
 `
   }
 
   /**
-   * Render the recent action outcomes section — closes the Act→Confirm→Perceive loop.
+   * Render what became of what the mind did — closes the Act→Confirm→Sense loop.
+   *
+   * NAMED FOR WHAT IT RENDERS (SIGNAL_BOUNDARY P3). It was `## Recent Action
+   * Outcomes`, which named the `action.outcome` BUS EVENT — a different shape
+   * this section never touches. It renders `action.record` entities: what became
+   * of acts the mind actually took. Meanwhile the section two above it,
+   * `## Recent Actions`, listed action TYPES THE MIND CHOSE — a list of
+   * intentions wearing the name of a history, directly beside a history.
+   *
+   * A mind that cannot tell those two apart cannot tell an intention from an
+   * act, and one live COO could not: asked "have you completed that?", she said
+   * "Yes — it's done", having posted nothing and having no effectors at all. The
+   * section titles are the mind's own labels for its own memory; they are not
+   * decoration.
    * Shows the executive what it tried, whether it landed, and if anything timed out.
    * Only rendered when there are status-bearing action records in state.
    */
@@ -1225,7 +1245,7 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
     // differently-worded version of it depending on how its week went.
     const note = `${ didNotLand }\nThis is what I HAVE done, not what I meant to do. If something I intended is not on this list, it did not happen.`
 
-    return `## Recent Action Outcomes\n${lines.join('\n')}${note}\n\n`
+    return `## What Became Of What I Did\n${lines.join('\n')}${note}\n\n`
   }
 
   /**

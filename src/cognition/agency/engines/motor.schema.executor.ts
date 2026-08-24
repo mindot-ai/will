@@ -195,7 +195,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
    * The executor is plan-agnostic. A plan does NOT dispatch steps here — it biases
    * the affordance competition (see PLANNING_AS_PRIOR_TODO.md), so a plan-driven
    * action reaches the executor as an ordinary committed `agency.intent` the
-   * selector won. That intent already carries planId/stepId provenance (stamped by
+   * selector won. That intent already carries its planId/stepId link (stamped by
    * the selector from the winning affordance); `_emitActionOutcome` threads it back
    * out, which is how the PlanningEngine advances. Nothing plan-specific here.
    */
@@ -834,7 +834,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     intent: Intent, success: boolean, outcomeQuality: number, surprise: number, tick: Tick,
     /**
      * What happened, in words. This payload builds `action.record`, which the
-     * prompt renders as `## Recent Action Outcomes` — and until now this method
+     * prompt renders as `## What Became Of What I Did` — and until now this method
      * published no description at all, so that section showed the action's NAME
      * and nothing else. Sixty-five lookups rendered as sixty-five lines saying
      * `discord_lookup_member` and never once what was found.

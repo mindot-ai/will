@@ -282,7 +282,7 @@ export class PMADistiller {
    * @param willId     The Will's ID
    * @param willName   The Will's display name
    * @param state      Current simulation state (from stateManager.snapshot())
-   * @param sessionId  Active session ID — recorded as provenance
+   * @param sessionId  Active session ID — recorded on the snapshot as its origin
    * @param dataDir    Root data dir (defaults to WILL_DATA_DIR env or './data')
    * @param repertoire The agency competence layer (in-memory manager). When
    *                   provided, the Will's learned skills + composite schemas are

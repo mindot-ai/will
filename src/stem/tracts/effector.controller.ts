@@ -45,6 +45,7 @@ import type { WillInstance } from '#stem/index'
 import { PolicyEnforcement } from './effector/policy.enforcement'
 import { EscalationLifecycle } from './effector/escalation.lifecycle'
 import type { EffectorAck } from './effector/types'
+import type { PlanLink } from '#agency/types'
 
 export class effectorController {
   // The two collaborators are wired with arrow closures rather than a shared
@@ -152,7 +153,7 @@ export class effectorController {
    *
    * It reconciles the ack into an `agency.outcome` (via `reconcileInvocation`),
    * carrying the intent's efference copy (predicted reward/valence) so surprise is
-   * honest, and its plan provenance (planId/stepId) when it was a plan's frontier
+   * honest, and its plan link (planId/stepId) when it was a plan's frontier
    * step. The ReafferenceEngine consumes that next tick: it learns the real result,
    * frees the awaiting intent, and — for a plan-tagged outcome — emits the
    * `action.outcome` the PlanningEngine advances on. No decision.record, no legacy
@@ -180,7 +181,7 @@ export class effectorController {
       reward:  num( m['predictedReward'],  num( m['expectedReward'],  0.5 ) ),
       valence: num( m['predictedValence'], num( m['expectedValence'], 0 ) ),
     }
-    const provenance = { planId: m['planId'] as string | undefined, stepId: m['stepId'] as string | undefined }
+    const planLink: PlanLink = { planId: m['planId'] as string | undefined, stepId: m['stepId'] as string | undefined }
 
     // Reconcile → agency.outcome. ReafferenceEngine consumes it next tick (learn +
     // free the intent + emit the plan's action.outcome when plan-tagged).
@@ -188,7 +189,7 @@ export class effectorController {
     // This is the FATE half, and it is unchanged: what the mind learns about its
     // own competence at this act.
     instance.simulation.stateManager.setEntity(
-      reconcileInvocation( invocationId, schema, result, tick, predicted, provenance )
+      reconcileInvocation( invocationId, schema, result, tick, predicted, planLink )
     )
 
     // ── The FACTS half (SIGNAL_BOUNDARY P2) ────────────────────
@@ -235,15 +236,19 @@ export class effectorController {
           logger.warn(`[effector] confirmExecution: dropped non-finite metric "${k}"=${String( v )} from host ack (${schema})`)
       }
 
+    // No `as never` any more. The cast was load-bearing in the wrong direction:
+    // it opted this write out of `LogEntryType` entirely, so the string was never
+    // checked against the union it belongs to. Without it a typo — or a type that
+    // no longer exists — fails the build.
     instance.sessionLogger?.write({
-      type:                'action.outcome',
+      type:                'effector.acked',
       tick,
       actionType:          schema,
       success:             result.success,
       outcome:             result.description,
       outcomeQuality:      result.success ? 0.8 : 0.2,
       confirmedExternally: true,
-    } as never)
+    })
 
     logger.info(`[effector] ✓ reconciled ${result.success ? 'success' : 'failure'}: intent "${invocationId}" (${schema})`)
   }

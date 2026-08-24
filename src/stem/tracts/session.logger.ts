@@ -50,7 +50,12 @@ export type LogEntryType =
   | 'executive.facet.destroy'
   | 'action.execute'
   | 'action.error'
-  | 'action.outcome'
+  // A HOST ACKED AN EFFECTOR — not the `action.outcome` BUS EVENT, which is a
+  // different shape with six subscribers (SIGNAL_BOUNDARY P3). The two shared
+  // this string, and the prompt section named after it renders a third thing
+  // again. One word, three shapes; this is the one that gives it up, because
+  // "a host acked" is what it actually records and nothing else logs it.
+  | 'effector.acked'
   | 'belief.integrate'
   | 'conversation.in'
   | 'conversation.out'

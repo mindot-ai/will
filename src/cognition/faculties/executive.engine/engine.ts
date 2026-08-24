@@ -536,7 +536,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
     // What became of what I did.
     //
-    // `## Recent Action Outcomes` has existed — section, builder and type —
+    // the outcomes section has existed — section, builder and type —
     // since it was written, fed by `context.ts` scanning `decision.record` for
     // an `actionStatus` that nothing in the engine has ever set. It rendered 0
     // times across every prompt a live COO received. So the mind could see what

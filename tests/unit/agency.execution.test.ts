@@ -79,7 +79,7 @@ describe('MotorSchemaExecutor — action.outcome sink (calibrator + reward)', ()
     expect( ao!.payload ).not.toHaveProperty('planId')       // not a plan step
 
     // What HAPPENED, in words (SIGNAL_BOUNDARY P2). This payload builds
-    // `action.record`, which the prompt renders as `## Recent Action Outcomes`
+    // `action.record`, which the prompt renders as `## What Became Of What I Did`
     // — and this method published no description at all, so that section
     // showed the action's NAME and nothing else. Sixty-five lookups rendered
     // as sixty-five identical lines that never said what was found.

@@ -4,7 +4,7 @@
 /**
  * The guard the green suite did not have.
  *
- * `## Recent Action Outcomes` had a section, a builder, a type, and a place in
+ * The outcomes section had a builder, a type, and a place in
  * `FULL_AWARENESS`. Everything was tested except whether anything ever put data
  * in it — and nothing did: `context.ts` scanned `decision.record` for an
  * `actionStatus` that no engine writes. Zero rows in every prompt a live mind
@@ -78,7 +78,7 @@ describe('what the mind is told about its own doing', () => {
     const prompt = PromptFactory.buildUserMessage({ state, context, deps: DEPS, focus: FOCUS } as never )
 
     expect( prompt, 'the section was absent from every prompt a live mind received')
-      .toContain('## Recent Action Outcomes')
+      .toContain('## What Became Of What I Did')
     expect( prompt ).toContain('reach-out')
     expect( prompt ).toContain('express')
     // The line that answers the confabulation directly. Without it the mind reads
@@ -88,6 +88,41 @@ describe('what the mind is told about its own doing', () => {
       .toMatch( /If something I intended is not on this list, it did not happen/ )
   })
 
+  it('a history and a list of intentions do not wear the same name — P3', async () => {
+    // The collision this rename closes, asserted where the mind actually meets
+    // it: two adjacent prompt sections, one of them a record of what HAPPENED
+    // and the other a list of action types the mind CHOSE. They were
+    // `## Recent Action Outcomes` and `## Recent Actions` — near-identical
+    // labels on opposite claims, next to each other on the page.
+    //
+    // Live consequence, and the reason this is asserted rather than trusted:
+    // asked "have you completed that?", a COO answered "Yes — it's done. I
+    // drafted the full v0.1 spec… Posted it to FKEM." She had posted nothing and
+    // had no effectors at all. Her deliberation history said "I produce the
+    // scoping doc now" across twenty cycles, and nothing distinguished that from
+    // having done it.
+    const { PromptFactory } = await import('#faculties/executive.engine/prompt.factory')
+    const state   = stateWith([
+      { type: 'reach-out', status: 'completed', tick: 118, targetEntityId: 'ke:fkem', outcome: 'delivered' },
+    ])
+    const context = await buildExecutiveContext( state, DEPS )
+
+    // `recentActionTypes` is the executive's OWN running list of what it chose —
+    // it rides in on the build options, not the context, which is itself part of
+    // why the two sections were easy to confuse: they arrive from different
+    // places and only meet on the page.
+    const prompt = PromptFactory.buildUserMessage({
+      state, context, deps: DEPS, focus: FOCUS,
+      recentActionTypes: [ 'reflect', 'reflect', 'reach-out' ],
+    } as never )
+
+    expect( prompt ).toContain('## What Became Of What I Did')      // what happened
+    expect( prompt ).toContain('## What I Have Been Choosing')      // what was chosen
+    // Neither of the old names survives anywhere on the page. `Recent Actions`
+    // is a substring of nothing now — if either title comes back, this fails.
+    expect( prompt ).not.toContain('## Recent Action')
+  })
+
   it('says nothing at all when the mind has done nothing', async () => {
     // A newborn must not be handed an empty ceremonial heading.
     const { PromptFactory } = await import('#faculties/executive.engine/prompt.factory')
@@ -95,6 +130,6 @@ describe('what the mind is told about its own doing', () => {
     const context = await buildExecutiveContext( state, DEPS )
 
     expect( PromptFactory.buildUserMessage({ state, context, deps: DEPS, focus: FOCUS } as never ) )
-      .not.toContain('## Recent Action Outcomes')
+      .not.toContain('## What Became Of What I Did')
   })
 })

@@ -13,7 +13,7 @@
  * What made it urgent is narrower than the doc assumed: the string never
  * arrived at all. `reafference.engine` hardcoded "The world confirmed the
  * action." and `motor.schema.executor` published no description, so the
- * prompt\'s `## Recent Action Outcomes` showed action NAMES and nothing else.
+ * prompt\'s outcomes section showed action NAMES and nothing else.
  * Verified on a live Will before the fix.
  *
  * And nothing on the way in truncates a host\'s words any more. 700 at the MCP
@@ -161,7 +161,7 @@ describe('every host can send the facts half, not only the SDK ones', () => {
 // `motor.schema.executor` back to publishing no description — passed the entire
 // 1850-test suite. Those two lines are the whole 65-lookups bug: `action.record`
 // is built from this payload, and the prompt renders it as
-// `## Recent Action Outcomes`.
+// `## What Became Of What I Did`.
 
 describe('a host\'s own words reach action.record, not a stock sentence', () => {
   it('the async path carries the description off the agency.outcome it read', async () => {

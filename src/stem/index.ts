@@ -47,7 +47,6 @@ import { SensoryController } from '#stem/tracts/sensory.controller'
 import { BiographyWriter } from '#stem/tracts/biography.writer'
 import { HealthReporter } from '#stem/tracts/health.reporter'
 import { mergeIdentity } from '#cognition/identity.entity'
-import { perceptEntity } from '#cognition/percept.entity'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -577,26 +576,33 @@ export class WillStem {
           ? `${offlineMins} minutes`
           : `${Math.round( offlineMins / 60 )} hours`
 
-      // EXAFFERENT: time passed and the host brought me back. Nothing I did
-      // caused it, and that tag is load-bearing — `action.selector`'s rupture
-      // gate counts only exafferent percepts, so while this was untagged a mind
-      // returning after hours away could not be ruptured by noticing.
+      // Through the SENSE DOOR, not a hand-written percept (SIGNAL_BOUNDARY P1).
       //
-      // The `tick` was missing too, which made this the only percept in the
-      // system that never expired: at salience 0.75 it outranked most of what
-      // `extractPercepts` had to offer and stayed in the executive's slots
-      // permanently, still announcing an absence that ended long ago. It is
-      // ingested into working memory on the next tick, so it is noticed once
-      // and then, correctly, becomes something remembered rather than something
-      // still happening.
-      instance.simulation.stateManager.setEntity( perceptEntity( {
-        id:         'percept-wake-event',
-        tick:       instance.tickCount,
-        category:   'system',
-        summary:    `I was offline for ${duration}. I am now online again.`,
-        salience:   0.75,
-        provenance: 'exafferent',
-      }, { source: 'system', offlineMs } ) )
+      // This used to build a `percept` entity here, by hand, and every bug it
+      // had came from that: no tick (so it never expired, and told the executive
+      // "I was offline for 3 hours" for the rest of the mind's life), and no
+      // provenance (so `action.selector`'s rupture gate excluded it exactly as
+      // it excludes the mind's own echo — a mind returning after hours away
+      // could not be ruptured by noticing).
+      //
+      // Both were fixed by hand in P0 step 2. This removes the hand: waking is
+      // the world touching the mind, so it arrives as a `SystemSignal` through
+      // somatosensation like any other touch, and the sense supplies the tick,
+      // the trace, and the stamp because that is what a sense does. The wake
+      // event stops being special.
+      //
+      // Fire-and-forget: `ingest` is async and the resume path is not. The
+      // signal reaches state on the sense's own timing, exactly as an inbound
+      // message does.
+      void instance.cognition.somatosensationEngine.ingest({
+        kind:       'system',
+        signal:     'WAKE',
+        provenance: 'exafferent',   // time passed; nothing I did caused it
+        data: {
+          summary:  `I was offline for ${duration}. I am now online again.`,
+          offlineMs,
+        },
+      })
 
       instance.pausedAt = null
     }

@@ -21476,11 +21476,47 @@ var VisionEngine = class extends ShellSenseEngine {
 };
 
 // src/cognition/senses/somatosensation.engine.ts
-var SomatosensationEngine = class extends ShellSenseEngine {
+var SYSTEM_SIGNAL_SALIENCE = 0.75;
+var SomatosensationEngine = class extends BaseSenseEngine {
   name = "somatosensation-engine";
   domain = "somatosensation";
   acceptedKinds = /* @__PURE__ */ new Set(["webhook", "system"]);
+  async _perceive(input) {
+    const percept = input.kind === "system" ? this._fromSignal(input) : this._fromWebhook(input);
+    this.publishPercept(percept, input);
+  }
+  _fromSignal(s) {
+    return {
+      domain: this.domain,
+      // The signal IS the source: nothing in the world sent it, the substrate did.
+      sourceEntityId: `system:${s.signal}`,
+      timestamp: 0,
+      salience: salienceOf(s.data, SYSTEM_SIGNAL_SALIENCE),
+      summary: summaryOf(s.data) ?? `Something happened: ${s.signal}.`,
+      raw: s
+    };
+  }
+  _fromWebhook(w) {
+    return {
+      domain: this.domain,
+      sourceEntityId: `webhook:${w.source}`,
+      timestamp: 0,
+      salience: salienceOf(w.payload, SYSTEM_SIGNAL_SALIENCE),
+      summary: summaryOf(w.payload) ?? `${w.source} sent something.`,
+      raw: w
+    };
+  }
 };
+function summaryOf(data) {
+  if (typeof data !== "object" || data === null) return void 0;
+  const s = data["summary"];
+  return typeof s === "string" && s.length > 0 ? s : void 0;
+}
+function salienceOf(data, fallback) {
+  if (typeof data !== "object" || data === null) return fallback;
+  const s = data["salience"];
+  return typeof s === "number" && Number.isFinite(s) ? Math.max(0, Math.min(1, s)) : fallback;
+}
 
 // src/cognition/senses/olfaction.engine.ts
 var OlfactionEngine = class extends ShellSenseEngine {
@@ -27557,8 +27593,8 @@ var PMADistiller = class {
         stubs.set(keid, stub);
       }
     }
-    const salienceOf = (s) => (s.attachment?.attachmentStrength ?? 0) * 2 + (s.dossier?.familiarity ?? 0) + (s.dossier?.resolutionConfidence ?? 0) * 0.5 + Math.min(1, ((s.attachment?.interactionCount ?? 0) + (s.reputation?.interactionCount ?? 0)) * 0.02);
-    return Array.from(stubs.values()).sort((a, b) => salienceOf(b) - salienceOf(a)).slice(0, 20);
+    const salienceOf2 = (s) => (s.attachment?.attachmentStrength ?? 0) * 2 + (s.dossier?.familiarity ?? 0) + (s.dossier?.resolutionConfidence ?? 0) * 0.5 + Math.min(1, ((s.attachment?.interactionCount ?? 0) + (s.reputation?.interactionCount ?? 0)) * 0.02);
+    return Array.from(stubs.values()).sort((a, b) => salienceOf2(b) - salienceOf2(a)).slice(0, 20);
   }
   _readEmotionalBio(willId, dataDir) {
     const defaultBaseline = {
@@ -29871,14 +29907,16 @@ var WillStem = class {
       const offlineMs = Date.now() - instance.pausedAt.getTime();
       const offlineMins = Math.round(offlineMs / 6e4);
       const duration = offlineMins < 2 ? "a moment" : offlineMins < 60 ? `${offlineMins} minutes` : `${Math.round(offlineMins / 60)} hours`;
-      instance.simulation.stateManager.setEntity(perceptEntity({
-        id: "percept-wake-event",
-        tick: instance.tickCount,
-        category: "system",
-        summary: `I was offline for ${duration}. I am now online again.`,
-        salience: 0.75,
-        provenance: "exafferent"
-      }, { source: "system", offlineMs }));
+      void instance.cognition.somatosensationEngine.ingest({
+        kind: "system",
+        signal: "WAKE",
+        provenance: "exafferent",
+        // time passed; nothing I did caused it
+        data: {
+          summary: `I was offline for ${duration}. I am now online again.`,
+          offlineMs
+        }
+      });
       instance.pausedAt = null;
     }
     instance._sessionBehavior = {
@@ -30926,6 +30964,10 @@ var Will = class _Will {
     try {
       const raw = await handler(inv.parameters, {
         reasoning: inv.reasoning,
+        // The correlation handle, so a handler that feeds its own result back in
+        // can say WHICH act caused it. Already in scope — it is the id the ack
+        // is matched on — it just was not being passed on.
+        intentId: inv.decisionRecordId,
         targetEntityId: inv.targetEntityId,
         // Which of the host's own ids that referent is — without it a handler
         // gets an opaque anchor and nothing it can look up.

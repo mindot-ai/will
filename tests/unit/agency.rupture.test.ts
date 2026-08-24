@@ -10,6 +10,7 @@
 // byte-identical to pre-P3 (no stability metric, no rupture event).
 
 import { describe, it, expect } from 'vitest'
+import { SYSTEM_SIGNAL_SALIENCE } from '#senses/somatosensation.engine'
 import type { ReadonlySimulationState, SimulationContext } from '#core/types'
 import { ActionSelector } from '#agency/engines/action.selector'
 import { scoreAffordance, type BiasContext } from '#agency/selection.scoring'
@@ -85,15 +86,18 @@ describe('rupture — the quiet path is byte-identical to pre-P3', () => {
   })
 
   it('a WAKE percept now ruptures — the behaviour P0 step 2 changed', async () => {
-    // Written with the real shape `stem/index.ts` now produces: exafferent,
-    // salience 0.75, ticked. While it was untagged it failed this gate exactly
-    // as the mind's own echo does, so a mind returning after hours away could
-    // not be ruptured by noticing that. The gate is unchanged; the percept now
-    // answers it.
-    const wake = { id: 'percept-wake-event', type: 'percept', metadata: {
-      tick: 5, salience: 0.75, category: 'system',
+    // The real shape SomatosensationEngine now produces for a WAKE signal
+    // (SIGNAL_BOUNDARY P1): exafferent, salience SYSTEM_SIGNAL_SALIENCE, ticked,
+    // categorised by the sense that transduced it. `stem/index.ts` no longer
+    // hand-writes this — it ingests a `SystemSignal` and the sense builds it.
+    //
+    // While it was untagged it failed this gate exactly as the mind's own echo
+    // does, so a mind returning after hours away could not be ruptured by
+    // noticing that. The gate is unchanged; the percept now answers it.
+    const wake = { id: 'sense-somatosensation-5-1234', type: 'percept', metadata: {
+      tick: 5, salience: SYSTEM_SIGNAL_SALIENCE, category: 'somatosensation',
       summary: 'I was offline for 3 hours. I am now online again.',
-      provenance: 'exafferent', source: 'system', offlineMs: 10_800_000,
+      provenance: 'exafferent', entityId: 'system:WAKE',
     } } as Ent
     const s = makeState( 5, [ challenger('rest'), awaiting('wander', 0.9, 5 ), wake ] )
     const { res, events } = await run( s )
@@ -102,10 +106,10 @@ describe('rupture — the quiet path is byte-identical to pre-P3', () => {
   })
 
   it('the same wake percept UNTAGGED does not rupture — isolating the tag as the cause', async () => {
-    const untaggedWake = { id: 'percept-wake-event', type: 'percept', metadata: {
-      tick: 5, salience: 0.75, category: 'system',
+    const untaggedWake = { id: 'sense-somatosensation-5-1234', type: 'percept', metadata: {
+      tick: 5, salience: SYSTEM_SIGNAL_SALIENCE, category: 'somatosensation',
       summary: 'I was offline for 3 hours. I am now online again.',
-      source: 'system', offlineMs: 10_800_000,
+      entityId: 'system:WAKE',
     } } as Ent
     const s = makeState( 5, [ challenger('rest'), awaiting('wander', 0.9, 5 ), untaggedWake ] )
     const { events } = await run( s )

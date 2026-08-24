@@ -7180,10 +7180,32 @@ declare class VisionEngine extends ShellSenseEngine {
     protected readonly acceptedKinds: Set<"text" | "ambient" | "system" | "voice" | "image" | "video" | "webhook" | "background" | "self-eval" | "assessment">;
 }
 
-declare class SomatosensationEngine extends ShellSenseEngine {
+/**
+ * SomatosensationEngine — the sense that feels things happen TO the mind.
+ *
+ * Webhooks, system signals, external callbacks: not something said, not
+ * something seen, but the world touching the mind directly. It was the first
+ * shell to be implemented because the wake event needed a door — SIGNAL_BOUNDARY
+ * P1 — and a hand-written percept in `stem/index.ts` was the bypass that proved
+ * the door was missing.
+ *
+ * WHAT MAKES THIS A SENSE RATHER THAN A HELPER. It does nothing the other senses
+ * do not: transduce an input into a `Percept` with a salience and a summary, and
+ * hand it to `publishPercept`, which stamps provenance from the host's assertion
+ * and lays down the trace. Everything downstream — the rupture gate, working
+ * memory, the executive prompt, novelty — receives it because it is a percept,
+ * not because anyone wired those five places to a wake event.
+ *
+ * That is the whole point of a door: the wake event stops being special.
+ */
+
+declare class SomatosensationEngine extends BaseSenseEngine {
     readonly name = "somatosensation-engine";
     readonly domain: "somatosensation";
     protected readonly acceptedKinds: Set<"text" | "ambient" | "system" | "voice" | "image" | "video" | "webhook" | "background" | "self-eval" | "assessment">;
+    protected _perceive(input: SensoryInput): Promise<void>;
+    private _fromSignal;
+    private _fromWebhook;
 }
 
 declare class OlfactionEngine extends ShellSenseEngine {
@@ -9541,6 +9563,18 @@ type EffectorResult = string | {
 /** Your implementation of an ability the Will can choose to use. */
 type EffectorHandler = (args: Record<string, unknown>, ctx: {
     reasoning: string;
+    /**
+     * The `agency.intent` this handler is running under — the correlation handle
+     * the Will will match an ack to (SIGNAL_BOUNDARY P1).
+     *
+     * Pass it as `sourceIntentId` on any `perceive()` you make from inside a
+     * handler, and the resulting percept is a *reafference* the mind can tie back
+     * to the act that caused it, rather than an unexplained arrival. Before this
+     * existed, `discord_inspect_channel` had to say so in English — a bracketed
+     * `[I looked into #general: …]` that only the LLM could read — because the
+     * fact had nowhere structural to live.
+     */
+    intentId: string;
     targetEntityId?: string;
     /**
      * The addresses this host knows `targetEntityId` by — a channel id, a user id.

@@ -191,6 +191,7 @@ export abstract class BaseSenseEngine implements SenseEngine {
       provenance: p.provenance,
       entityId:   p.sourceEntityId,
       ...( p.sourceIntentId !== undefined ? { sourceIntentId: p.sourceIntentId } : {} ),
+      ...( p.data           !== undefined ? { data:           p.data           } : {} ),
     } ) )
   }
 }

@@ -6491,7 +6491,8 @@ function perceptEntity(facts, extra = {}) {
       ...facts.entityId !== void 0 ? { entityId: facts.entityId } : {},
       ...facts.changeType !== void 0 ? { changeType: facts.changeType } : {},
       ...facts.valence !== void 0 ? { valence: facts.valence } : {},
-      ...facts.valenceSource !== void 0 ? { valenceSource: facts.valenceSource } : {}
+      ...facts.valenceSource !== void 0 ? { valenceSource: facts.valenceSource } : {},
+      ...facts.data !== void 0 ? { data: facts.data } : {}
     }
   };
 }
@@ -9751,7 +9752,15 @@ var WorkingMemory = class {
       this._items.push({
         id: `wm-percept-${entity.id}`,
         type: "percept",
-        content: { summary, entityId: entity.id },
+        // The data too, not only the label. A percept entity is swept after 2
+        // ticks; WM is where it is remembered, and remembering a sentence about
+        // the evidence instead of the evidence is how a mind ends up unable to
+        // answer a question it already had the answer to.
+        content: {
+          summary,
+          entityId: entity.id,
+          ...entity.metadata?.data !== void 0 ? { data: entity.metadata.data } : {}
+        },
         activation: 0.75,
         attendedAt: [],
         createdAt: tick,
@@ -13259,7 +13268,12 @@ async function buildExecutiveContext(state, deps, recallQuery) {
   const workingMemory = wmItems.map((item) => ({
     type: item.type,
     summary: extractSummary(item.content),
-    activation: item.activation
+    activation: item.activation,
+    // Storing the evidence in memory and then rendering only the label would
+    // lose it just as completely, one step later. A percept entity is swept
+    // after 2 ticks and the executive fires on its own schedule, so memory is
+    // often where the mind meets an observation at all.
+    ...itemData(item.content) !== void 0 ? { data: itemData(item.content) } : {}
   }));
   let memories = [];
   let relevantPlanIds = [];
@@ -13591,6 +13605,11 @@ function mapEpisodeToMemory(ep) {
     tick: typeof ep.timestamp === "number" ? ep.timestamp : void 0
   };
 }
+function itemData(content) {
+  if (content && typeof content === "object")
+    return content["data"];
+  return void 0;
+}
 function extractSummary(content) {
   if (typeof content === "string")
     return content.slice(0, 120);
@@ -13609,6 +13628,10 @@ function extractPercepts(state) {
     percepts.push({
       category: entity.metadata?.category ?? "general",
       summary,
+      // What the host actually sent, beside the label the engine wrote. A mind
+      // reasoning only from labels is reasoning from somebody else's summary of
+      // the evidence.
+      ...entity.metadata?.data !== void 0 ? { data: entity.metadata.data } : {},
       salience: entity.metadata?.salience ?? 0
     });
   }
@@ -13645,6 +13668,25 @@ function traitEmphasis(value) {
   return { adverb: band.adverb, direction: value >= 0.5 ? "high" : "low", rank: band.rank };
 }
 var TRAIT_NORM_BAND = 0.12;
+function perceptLine(p) {
+  return `- [${p.category}] ${p.summary} (salience: ${p.salience.toFixed(2)})${perceptData(p.data)}`;
+}
+function ruminationLine(w) {
+  return `- [${w.type}] ${w.summary} (activation: ${w.activation.toFixed(2)})${perceptData(w.data)}`;
+}
+function perceptData(data) {
+  if (data === void 0 || data === null) return "";
+  if (typeof data === "string") return data.length > 0 ? `
+    ${data}` : "";
+  try {
+    const shown = Array.isArray(data) ? data : Object.fromEntries(Object.entries(data).filter(([k]) => k !== "summary"));
+    const json2 = JSON.stringify(shown);
+    return json2 === "{}" || json2 === "[]" ? "" : `
+    ${json2}`;
+  } catch {
+    return "";
+  }
+}
 function temporalLine(timeOfDay, circadian) {
   return `Time: ${timeOfDay.toFixed(1)}h (${labelForHour(timeOfDay)}, circadian: ${circadian.toFixed(2)})`;
 }
@@ -13946,14 +13988,14 @@ ${context.goals.map((g) => {
     const recentOutcomesBlock = has("recentActions") ? this._buildRecentOutcomesSection(context.recentActions, state.tick).trim() : "";
     const spokenBlock = has("recentActions") ? this._buildSpokenTurnsSection(context.spokenTurns).trim() : "";
     const perceptsBlock = has("percepts") ? `## Percepts (What I Notice)
-${context.percepts.slice(0, 10).map((p) => `- [${p.category}] ${p.summary} (salience: ${p.salience.toFixed(2)})`).join("\n") || "Nothing notable"}` : "";
+${context.percepts.slice(0, 10).map(perceptLine).join("\n") || "Nothing notable"}` : "";
     const abilitiesBlock = context.abilities && context.abilities.length > 0 ? `## Abilities Available Now
 Things I can do in this situation \u2014 name one as an action's "type" (with "args" for any specifics it needs) and my body enacts it:
 ${context.abilities.map(
       (a) => `- **${a.name}**${a.target ? ` (toward ${a.target})` : ""}${a.description ? ` \u2014 ${a.description}` : ""}`
     ).join("\n")}` : "";
     const ruminationsBlock = has("ruminations") ? `## Active Ruminations (retrieved memories & thoughts)
-${context.workingMemory.map((w) => `- [${w.type}] ${w.summary} (activation: ${w.activation.toFixed(2)})`).join("\n") || "Nothing actively held in mind"}` : "";
+${context.workingMemory.map(ruminationLine).join("\n") || "Nothing actively held in mind"}` : "";
     const memoriesBlock = has("memories") ? this._buildMemoriesSection(context.memories, state.tick) : "";
     const beliefsBlock = has("beliefs") ? `## My Beliefs
 ${context.beliefs.map((b) => `- [${b.category}] ${b.statement} (confidence: ${(b.confidence * 100).toFixed(0)}%)`).join("\n") || "No strong beliefs yet"}${context.beliefsOmitted > 0 ? `
@@ -21752,7 +21794,8 @@ var BaseSenseEngine = class {
       summary: p.summary,
       provenance: p.provenance,
       entityId: p.sourceEntityId,
-      ...p.sourceIntentId !== void 0 ? { sourceIntentId: p.sourceIntentId } : {}
+      ...p.sourceIntentId !== void 0 ? { sourceIntentId: p.sourceIntentId } : {},
+      ...p.data !== void 0 ? { data: p.data } : {}
     }));
   }
 };
@@ -22707,7 +22750,8 @@ var SomatosensationEngine = class extends BaseSenseEngine {
       sourceEntityId: `system:${s.signal}`,
       timestamp: 0,
       salience: salienceOf(s.data, SYSTEM_SIGNAL_SALIENCE),
-      summary: summaryOf(s.data) ?? `Something happened: ${s.signal}.`,
+      summary: labelFor(s.signal, s.data),
+      ...s.data !== void 0 && s.data !== null ? { data: s.data } : {},
       raw: s
     };
   }
@@ -22717,25 +22761,36 @@ var SomatosensationEngine = class extends BaseSenseEngine {
       sourceEntityId: `webhook:${w.source}`,
       timestamp: 0,
       salience: salienceOf(w.payload, SYSTEM_SIGNAL_SALIENCE),
-      summary: summaryOf(w.payload) ?? `${w.source} sent something.`,
+      summary: labelFor(w.source, w.payload),
+      ...w.payload !== void 0 && w.payload !== null ? { data: w.payload } : {},
       raw: w
     };
   }
 };
-function summaryOf(data) {
-  if (data === void 0 || data === null) return void 0;
+function labelFor(signal, data) {
+  const words = hostWords(data);
+  if (words) return words.length > PERCEPT_SUMMARY_CAP ? `${words.slice(0, PERCEPT_SUMMARY_CAP - 1)}\u2026` : words;
+  const rendered = compact(data);
+  const label = rendered ? `${signal}: ${rendered}` : `Something happened: ${signal}.`;
+  return label.length > PERCEPT_SUMMARY_CAP ? `${label.slice(0, PERCEPT_SUMMARY_CAP - 1)}\u2026` : label;
+}
+function hostWords(data) {
   if (typeof data === "string") return data.length > 0 ? data : void 0;
-  if (typeof data === "object") {
+  if (typeof data === "object" && data !== null && !Array.isArray(data)) {
     const s = data["summary"];
     if (typeof s === "string" && s.length > 0) return s;
-    try {
-      const json2 = JSON.stringify(data);
-      return json2 === "{}" || json2 === "[]" ? void 0 : json2;
-    } catch {
-      return void 0;
-    }
   }
-  return String(data);
+  return void 0;
+}
+function compact(data) {
+  if (data === void 0 || data === null) return void 0;
+  if (typeof data !== "object") return String(data);
+  try {
+    const json2 = JSON.stringify(data);
+    return json2 === "{}" || json2 === "[]" ? void 0 : json2;
+  } catch {
+    return void 0;
+  }
 }
 function salienceOf(data, fallback) {
   if (typeof data !== "object" || data === null || Array.isArray(data)) return fallback;

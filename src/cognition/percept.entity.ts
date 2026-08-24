@@ -79,6 +79,13 @@ export interface PerceptFacts {
   /** What it FELT like, and how much that says about it (registry #5). */
   valence?:       number
   valenceSource?: string
+  /**
+   * What a host sent, whole. Carried into state so it survives to working
+   * memory, recall and the prompt — `summary` is a label the engine wrote, and
+   * a mind reasoning only from labels is reasoning from somebody else's
+   * conclusions.
+   */
+  data?:          unknown
 }
 
 /** The write-side entity shape `stateManager.setEntity` accepts. */
@@ -109,6 +116,7 @@ export function perceptEntity( facts: PerceptFacts, extra: Record<string, unknow
       ...( facts.changeType     !== undefined ? { changeType:     facts.changeType     } : {} ),
       ...( facts.valence        !== undefined ? { valence:        facts.valence        } : {} ),
       ...( facts.valenceSource  !== undefined ? { valenceSource:  facts.valenceSource  } : {} ),
+      ...( facts.data           !== undefined ? { data:           facts.data           } : {} ),
     },
   }
 }

@@ -280,7 +280,12 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
       this._items.push({
         id: `wm-percept-${entity.id}`,
         type: 'percept',
-        content: { summary, entityId: entity.id },
+        // The data too, not only the label. A percept entity is swept after 2
+        // ticks; WM is where it is remembered, and remembering a sentence about
+        // the evidence instead of the evidence is how a mind ends up unable to
+        // answer a question it already had the answer to.
+        content: { summary, entityId: entity.id,
+                   ...( entity.metadata?.data !== undefined ? { data: entity.metadata.data } : {} ) },
         activation: 0.75,
         attendedAt: [],
         createdAt: tick,

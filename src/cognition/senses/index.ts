@@ -54,17 +54,35 @@ export interface Percept extends SensorySignal {
   salience:       number   // 0–1, computed by the sense engine
   raw:            unknown  // original input object
   /**
-   * What was sensed, in words. REQUIRED, because it is the only field the rest
-   * of the mind can read: `extractPercepts` renders `summary` (falling back to
-   * `content`) and skips a percept without one, and `working.memory` ingests on
-   * the same field. A sense that cannot say what it sensed produces a percept
-   * that exists and is invisible — which is what every shell sense would have
-   * done the moment it was implemented.
+   * A LABEL for what was sensed. Required, so a percept is never invisible —
+   * `extractPercepts` skips one without it.
    *
-   * Not `raw`, which is the original input object and is for a consumer that
-   * knows the modality. This is for the ones that do not.
+   * A label, not the payload, and not a meaning. The engine composes it from
+   * what it has (the signal's name, a compact rendering) — A HOST IS NEVER
+   * ASKED TO WRITE ONE. Demanding prose from an integration puts the mind's own
+   * work on the wrong side of the boundary: a robot's vision system reports
+   * `object_detected, confidence 0.9, bbox […]`, and making it also write
+   * "I see a red ball on the table" is asking the arm to do the thinking.
+   *
+   * Because the ENGINE composes this, `PERCEPT_SUMMARY_CAP` may bound it —
+   * bounding its own words destroys nobody's only copy. `data` beside it is the
+   * host's, and is never bounded.
    */
   summary:        string
+  /**
+   * What the host actually sent, in the shape it had it — whole, unreshaped,
+   * uncapped.
+   *
+   * The mind's job is to make meaning by connecting pieces of information, and
+   * it cannot do that from a sentence somebody else wrote about the pieces. A
+   * host reporting `memberCount: 47` under a summary saying "a few people"
+   * leaves a mind that can never recover 47.
+   *
+   * Distinct from `raw`, which is the whole `SensoryInput` envelope and is
+   * engine-internal — never persisted. This is, and it reaches state, working
+   * memory and the prompt.
+   */
+  data?:          unknown
 }
 
 /** Audition-specific percept — carries language content and thread context. */

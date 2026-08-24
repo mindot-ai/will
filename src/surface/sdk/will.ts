@@ -156,9 +156,26 @@ export type EffectorResult = string | {
    *              description: 'Looked up Ada.',              // how it went
    *              observation: 'Ada joined 3 months ago, …' } // what I found
    *
-   * Any shape — a string, a record, a list — and carried WHOLE. Send what you
-   * have rather than a paragraph about it; flattening your own data to prose is
-   * a quieter kind of cutting, and nothing truncates this on the way in.
+   * Any shape — a string, a record, a list — and carried WHOLE.
+   *
+   * SEND WHAT YOU HAVE, NOT WHAT IT MEANS. You are not asked to summarise, and
+   * you should not: making meaning by connecting pieces of information is the
+   * mind's entire job, and a host that hands over a conclusion has done that
+   * work on the wrong side of the boundary. A robot's vision layer reports
+   * `{ object: 'ball', confidence: 0.9, bbox: […] }`; it has no business
+   * deciding whether that is worth reacting to.
+   *
+   * The mind labels it with the ability's own name, and sees the data itself in
+   * its percepts — state, working memory and the prompt all carry it. If you
+   * happen to have a one-line `summary` on your object it is used as the label,
+   * but that is a convenience and never a requirement.
+   *
+   * SIZE IS YOURS TO JUDGE, AND NOTHING TRUNCATES IT. What you send lands in
+   * the mind's percepts and, briefly, its prompt — so a very large payload
+   * costs tokens on the ticks it is alive. The engine will not second-guess you
+   * by cutting it: a cap here decides for a mind how much of an answer it may
+   * have, and that decision is not the engine's to make. Send the record; send
+   * the field you would want it to notice.
    *
    * Before this, a host with facts to hand back had to return the ack AND call
    * `perceive()` separately — two calls for one act, and the second one had to

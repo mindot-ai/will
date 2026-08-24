@@ -568,6 +568,45 @@ Its `conversation.received` is untouched and is a **different trace for a
 different reader**: social, `SocialPerception`-shaped, and not the generic
 percept. The flag turns off only the second.
 
+#### Verified in production (2026-08-23) — 628 ticks on a live Will
+
+Reading a deployed Will's snapshot is what found the two undeclared entity
+types, so the fix was checked the same way rather than by the suite alone.
+
+**Before.** Lora's state at tick 11998 held 106 percepts, **105 of them
+immortal** — every one a `msg-delivered-<id>` at salience 0.35. Running
+`extractPercepts`'s exact logic against it: **nine of her ten executive percept
+slots held identical copies of "My message was delivered successfully."** Her
+`Recently observed:` line was two-thirds that one sentence. The tenth slot, and
+the loudest thing in her whole perceptual field at 0.5, was
+`New agency.enacted: agency-enacted-discord_lookup_…` — her own bookkeeping.
+
+**Repair.** 194 entities removed from her snapshot: the 105 tickless percepts
+and 89 orphaned `abandoned` goals (`GoalManager` skips both `abandoned` and
+`completed` when hydrating, so those were never loaded — dead weight only).
+Round-tripped through the real `DefaultSerializer`, because the checksum is
+verified on load and throws.
+
+**After, 628 ticks (11998 → 12626):**
+
+| | boot | stop |
+| :--- | ---: | ---: |
+| percepts in state | 0 | **0** |
+| immortal | 0 | **0** |
+| entities | 968 | 986 |
+| `agency.enacted` | 5 | 4 — and **zero** percepts from them |
+
+Bounded growth, no leak, window clear throughout. New `msg-delivered` percepts
+are ticked and swept on schedule.
+
+**What it did NOT fix, stated because the run makes it visible.** Her one active
+goal completed and `goalless_crisis` began firing (12064, 12082, 12100). Not
+caused by the repair — the deleted goals were never hydrated. It is the ratchet:
+the only goal-generating mechanism she has is a drive whose goals she can
+correctly identify as bad, and she does, in the abandonment reason —
+*"This goal's broad framing made it satisfiable by rumination."* A cog question,
+not a purpose question: a Will takes an identity, it is not issued one.
+
 #### Superseded — what P0 originally proposed, and why it is not that
 
 Once the base can write, **does audition opt in?** Its four shell siblings can

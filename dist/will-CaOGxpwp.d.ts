@@ -9574,7 +9574,29 @@ interface WillAffect {
  */
 type EffectorResult = string | {
     success: boolean;
+    /** How the act WENT — its fate. What the Will learns competence from. */
     description: string;
+    /**
+     * What the act REVEALED — new information about the world (SIGNAL_BOUNDARY P2).
+     *
+     * Return it and the Will *perceives* it: it arrives as a reafferent percept
+     * tied to the act by `sourceIntentId`, so it is remembered and recallable,
+     * not merely learned from. A lookup, a listing, a snapshot has one; a kick or
+     * a warning does not — those only have a fate.
+     *
+     *     return { success: true,
+     *              description: 'Looked up Ada.',              // how it went
+     *              observation: 'Ada joined 3 months ago, …' } // what I found
+     *
+     * Any shape — a string, a record, a list — and carried WHOLE. Send what you
+     * have rather than a paragraph about it; flattening your own data to prose is
+     * a quieter kind of cutting, and nothing truncates this on the way in.
+     *
+     * Before this, a host with facts to hand back had to return the ack AND call
+     * `perceive()` separately — two calls for one act, and the second one had to
+     * pretend somebody had spoken.
+     */
+    observation?: unknown;
     metrics?: Record<string, number>;
 };
 /** Your implementation of an ability the Will can choose to use. */

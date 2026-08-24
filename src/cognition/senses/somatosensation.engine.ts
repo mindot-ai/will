@@ -72,20 +72,46 @@ export class SomatosensationEngine extends BaseSenseEngine {
 }
 
 /**
- * A host may put `summary` on the signal's `data` to say, in words, what
- * happened. Without it the mind gets the signal NAME, which is honest but
- * thin — `Something happened: WAKE.` is not much to reason from, and the
- * summary is the only field the executive prompt renders.
+ * Render a signal's `data` into the words the mind reads — WHOLE, never cut.
+ *
+ * `summary` is the only field the executive prompt renders, so this is where an
+ * arbitrary payload becomes readable. Three shapes, in order of how much the
+ * host has told us:
+ *
+ *   • `data.summary` — the host said it in words. Use its words.
+ *   • a bare string  — it is already words.
+ *   • anything else  — JSON, complete. Ugly in a prompt and honest: a host that
+ *     wants prose sends prose, and one that has a record sends the record. What
+ *     it may not do is lose half of it on the way in, which is what a cap here
+ *     would mean — this is the only copy.
+ *
+ * Nothing is truncated. The engine bounds what the ENGINE composes
+ * (`PERCEPT_SUMMARY_CAP`, for summaries it writes about world-changes); it does
+ * not bound what a host sent.
  */
 function summaryOf( data: unknown ): string | undefined {
-  if( typeof data !== 'object' || data === null ) return undefined
-  const s = ( data as Record<string, unknown> )['summary']
-  return typeof s === 'string' && s.length > 0 ? s : undefined
+  if( data === undefined || data === null ) return undefined
+  if( typeof data === 'string') return data.length > 0 ? data : undefined
+
+  if( typeof data === 'object'){
+    const s = ( data as Record<string, unknown> )['summary']
+    if( typeof s === 'string' && s.length > 0 ) return s
+    try {
+      const json = JSON.stringify( data )
+      // `{}` and `[]` are a host saying nothing, not a host saying "nothing".
+      // Rendering them would put a pair of braces in front of the mind where
+      // the signal's own name is more informative.
+      return json === '{}' || json === '[]' ? undefined : json
+    }
+    catch { return undefined }   // circular — nothing readable to offer
+  }
+
+  return String( data )
 }
 
 /** Same door for salience: the host may say, otherwise the default stands. */
 function salienceOf( data: unknown, fallback: number ): number {
-  if( typeof data !== 'object' || data === null ) return fallback
+  if( typeof data !== 'object' || data === null || Array.isArray( data ) ) return fallback
   const s = ( data as Record<string, unknown> )['salience']
   return typeof s === 'number' && Number.isFinite( s ) ? Math.max( 0, Math.min( 1, s ) ) : fallback
 }

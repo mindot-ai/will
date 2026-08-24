@@ -53,25 +53,6 @@ export interface McpToolInfo {
   }
 }
 
-/**
- * Keep tool outcomes bounded. Corrected 2026-08-23 (SIGNAL_BOUNDARY P0a) — the
- * claim here used to be "feeds reafference + episodic memory", and the second
- * half was never true. Traced, a result `description` reaches exactly three
- * places and none of them is episodic memory:
- *
- *   • `agency.outcome` state, via `reconcileInvocation` — the reafference the
- *     ReafferenceEngine learns from next tick;
- *   • the executive prompt's `action.record`, **truncated to 120 chars**
- *     (`executive.engine.ts`);
- *   • the session log's `action.outcome`, capped at 300 — telemetry, not memory.
- *
- * So 700 is generous against the only consumer the mind actually reads with:
- * everything past the first 120 characters is written for a reader that does
- * not exist. The cap stays until the 120 is dealt with on its own terms — see
- * `.TODO/SIGNAL_BOUNDARY.md` — rather than being quietly tuned to match a
- * truncation that is itself the defect.
- */
-const RESULT_DESCRIPTION_CAP = 700
 /** Keep ability meanings bounded — they render into the executive prompt. */
 const MEANING_CAP = 300
 
@@ -122,8 +103,23 @@ export function buildMcpHandler( client: Client, tool: McpToolInfo ): EffectorHa
         .map( c => c.text as string )
         .join('\n')
         .trim() || ( res.isError ? 'The tool reported an error.' : 'Done (no output).')
-      const bounded = text.length > RESULT_DESCRIPTION_CAP ? `${ text.slice( 0, RESULT_DESCRIPTION_CAP - 1 ) }…` : text
-      return { success: !res.isError, description: bounded }
+      // The tool's output is what the act REVEALED, so it goes to `observation`
+      // and it goes WHOLE (SIGNAL_BOUNDARY P2). It used to be crammed into
+      // `description` and cut at 700 — a number nobody chose, deciding on the
+      // mind's behalf how much of an answer it was allowed to have, and doing
+      // it at the boundary where that was the only copy.
+      //
+      // `description` now carries what it is for: how the call went. Short by
+      // nature, because a fate is short.
+      return {
+        success:     !res.isError,
+        description: res.isError ? `${ tool.name } reported an error.` : `${ tool.name } ran.`,
+        // Whatever it said — including what it said when it failed. An error
+        // message is information about the world too, and cutting it or folding
+        // it into the fate is how a mind ends up knowing that something went
+        // wrong without ever learning what.
+        observation: text,
+      }
     }
     catch( err ){
       return { success: false, description: `${ tool.name } failed: ${ err instanceof Error ? err.message : String( err ) }` }

@@ -77,6 +77,14 @@ describe('MotorSchemaExecutor — action.outcome sink (calibrator + reward)', ()
     expect( ao!.payload['success'] ).toBe( true )
     expect( typeof ao!.payload['surprise'] ).toBe('number')  // |predicted − actual|
     expect( ao!.payload ).not.toHaveProperty('planId')       // not a plan step
+
+    // What HAPPENED, in words (SIGNAL_BOUNDARY P2). This payload builds
+    // `action.record`, which the prompt renders as `## Recent Action Outcomes`
+    // — and this method published no description at all, so that section
+    // showed the action's NAME and nothing else. Sixty-five lookups rendered
+    // as sixty-five identical lines that never said what was found.
+    expect( typeof ao!.payload['description'] ).toBe('string')
+    expect( ( ao!.payload['description'] as string ).length ).toBeGreaterThan( 0 )
   })
 
   it('RewardEvaluator + ConfidenceCalibrator consume action.outcome', () => {

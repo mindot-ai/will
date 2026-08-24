@@ -941,17 +941,83 @@ percept entity → working memory → prompt → used.
 > more. A test pinned to a shape no writer emits is a test that cannot fail for
 > the right reason.
 
-### P2 — Effector acks split by what they carry
-- [ ] **Facts** (`lookup`, `list_warnings`, `snapshot`) arrive through a sense,
-      reafferent, with `sourceIntentId` — so they are perceived, remembered, and
-      recallable, not just learned-from.
-- [ ] **Fate-only** acks (`kick`, `warn`, a refusal) stay on `agency.outcome`.
-      This split is the load-bearing decision of the phase: an ack is not
-      *always* new world information, and forcing both through one path would be
-      the same over-unification this file warns about.
-- [ ] Replace the three caps (120 / 300 / 700) with one named constant.
-- [ ] Test: a lookup's answer survives to the prompt intact — the 65-times bug
-      is expressible as a regression test.
+### P2 — Effector acks split by what they carry — ✅ **SHIPPED 2026-08-24**
+
+- [x] **Facts** arrive through a sense, reafferent, with `sourceIntentId`.
+      `EffectorAck.observation` is the seam: present ⇒ the ack is *also*
+      afference and is ingested through somatosensation, whose stated domain is
+      "external API callbacks" — which is what an effector ack is.
+- [x] **Fate-only** acks stay on `agency.outcome`, unchanged.
+- [x] Test: 9 in `p2.ack.split.test.ts`, plus the sync path pinned in
+      `agency.execution.test.ts`.
+
+**The host decides, and it is not inferred from `description`.** Nothing inside
+the mind can tell *"the kick landed"* from *"there are 47 people here"* — both
+are strings that came back from an act. Only the host knows which it wrote.
+Same contract as `provenance`.
+
+#### The bug was not the caps. The answer was never carried.
+
+The phase was written as "collapse the three caps so a lookup's answer
+survives". It did not survive because **nothing ever carried it**:
+
+| site | published |
+| :--- | :--- |
+| `reafference.engine:475` | `description: 'The world confirmed the action.'` — hardcoded |
+| `motor.schema.executor:835` | no `description` field at all |
+
+`action.record` is built from that payload, so `## Recent Action Outcomes`
+rendered action names and nothing else. Confirmed on a live Will:
+
+```
+## Recent Action Outcomes
+- ✓ **withdraw** (tick 13471, 8 ticks ago)
+- ✓ **express** (tick 13459, 20 ticks ago)
+```
+
+Sixty-five lookups would have rendered as sixty-five lines saying
+`discord_lookup_member` and never once what was found. **Both publish sites had
+the real words in scope** — `m['description']` off the `agency.outcome` entity,
+`enaction.description` on the sync path — and dropped them. `agency.outcome` has
+stored the host's description in full the whole time
+(`reconcile.learning.ts:89`).
+
+#### Nothing on the way in truncates a host — decided 2026-08-24
+
+The caps are **gone**, not consolidated. 700 at the MCP boundary, 300 at the
+session log, 120 at `action.record` were three unexamined numbers deciding how
+much of an answer a mind was allowed to have, at boundaries where that was the
+only copy.
+
+> **All information sent by a host is consumed in its integrality.** The engine
+> may bound what the ENGINE composes — `PERCEPT_SUMMARY_CAP` still applies to
+> the summaries exteroception writes about world-changes — because there it is
+> not destroying anyone's only copy. It may not bound what a host sent.
+
+This is only safe *because* of the split: `description` now carries a **fate**,
+which is short by nature. Before the split, cutting the description cut the
+answer.
+
+And the MCP bridge was doing it worst: the entire tool result went into
+`description` and was cut at 700. A tool's output is what the act **revealed**,
+so it rides `observation` now — whole, including what a tool says when it
+fails, because an error message is information about the world too.
+
+#### `observation` takes any shape — decided 2026-08-24
+
+`unknown`, not `string`. A host with a member record sends the record, not a
+paragraph about it; **making a host flatten its own data to prose is a quieter
+kind of cutting** — it destroys the structure rather than the tail.
+Somatosensation renders it for reading: the host's own `summary` if it gave
+one, a bare string as itself, anything else as complete JSON. Ugly in a prompt
+and honest — a host that wants prose sends prose. `{}` and `[]` read as a host
+saying nothing, so the signal's own name is used instead.
+
+> **Every behaviour change in this phase shipped uncovered on the first pass.**
+> Reverting *both* description-carrying fixes — the two lines that ARE the
+> lookup bug — passed all 1850 tests. So did cutting a record at 100 characters,
+> until the fixture was made bigger than the cap it was meant to catch. Four
+> mutations, four gaps, one pass each.
 
 ### P3 — Rename to the vocabulary
 - [ ] `will.perceive()` → **`will.sense()`** (or `receive`). It has never been

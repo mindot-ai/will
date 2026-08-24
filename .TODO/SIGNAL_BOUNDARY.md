@@ -877,7 +877,57 @@ code is genuinely exercised where it now lives.
       cannot rupture. `working.memory`'s `type: 'percept'` is a WM **item**, not
       a state entity, and was never in scope.
 
-- [x] Tests: `senses.somatosensation.test.ts` (7) and `p1.doors.test.ts` (3).
+- [x] Tests: `senses.somatosensation.test.ts` (7) and `p1.doors.test.ts` (5).
+
+#### The door was right and nothing walked through it (found by running a live Will)
+
+P1 routed the wake correctly and it **still never fired**, because the gate
+upstream of it had never been reachable on the lifecycle that matters:
+
+```
+Will.wake( pma )
+  → createWill( config, startPaused: true )   status = 'paused', pausedAt = NULL
+  → resumeWill( id )                          wake block gated on `if( instance.pausedAt )`
+```
+
+`pausedAt` is set **only** by `pauseWill()` — an in-session pause. A Will that
+hibernates and comes back has always had `pausedAt` null, so **the one lifecycle
+every deployed Will uses is the one the wake never fired on.** Lora had been
+hibernating and waking for weeks with no idea she had ever been away.
+
+The unit tests could not see it: both set `pausedAt` themselves, which is the
+kind of test that agrees with you instead of checking. It took booting her.
+
+- [x] **Fix:** `loadPMA` carries `pma.distilledAt` onto `pausedAt`. The PMA has
+      held the answer all along — `distilledAt` is when the mind was distilled,
+      i.e. when it stopped — and loading a PMA IS the statement *"this mind
+      existed before and has been away since then."* Guarded against a skewed
+      clock or a hand-edited artifact telling a mind it woke in 1970. A Will
+      born fresh never calls `loadPMA` and is never told it woke, which is
+      right: it was not away, it did not exist.
+
+**Verified end to end on the live Will** — `prompt-tick-013269.txt`, the first
+executive call after the wake:
+
+```
+## Percepts (What I Notice)
+- [somatosensation] I was offline for 6 minutes. I am now online again. (salience: 0.75)
+
+## Active Ruminations (retrieved memories & thoughts)
+- [percept] I was offline for 6 minutes. I am now online again. (activation: 0.74)
+```
+
+and in her reasoning that tick: *"I came back online after a brief outage."*
+The whole chain — `loadPMA` → `resumeWill` → `SystemSignal` → somatosensation →
+percept entity → working memory → prompt → used.
+
+> **Correction to what P0 step 2 claimed.** The wake percept was described there
+> as "permanent — it told the executive *I was offline for 3 hours* for the rest
+> of the mind's life." That was true only *if it fired*, and on the hibernate→wake
+> lifecycle it never did — which is why her snapshot had no wake percept, a fact
+> observed at the time and not chased. The immortality finding stands unchanged
+> for `msg-delivered` (105 of them, measured); the wake half was conditional and
+> was stated flatly.
 
 > **Both P1 behaviour changes shipped uncovered on the first pass, and mutation
 > testing is what said so.** Flipping the wake signal to `'reafferent'`, and

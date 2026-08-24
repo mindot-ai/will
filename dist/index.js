@@ -30032,7 +30032,11 @@ var WillStem = class {
    * Resume the Will after loading to start ticking with the seeded state.
    */
   loadPMA(id, pma) {
-    this._pma.load(id, this._get(id), pma);
+    const instance = this._get(id);
+    this._pma.load(id, instance, pma);
+    const distilled = pma.distilledAt;
+    if (typeof distilled === "number" && Number.isFinite(distilled) && distilled > 0 && distilled <= Date.now())
+      instance.pausedAt = new Date(distilled);
   }
   // ── Replay ─────────────────────────────────────────────────
   // Record/replay delegates to ReplayController (R5-a). `_get(id)` here both

@@ -746,7 +746,35 @@ export class WillStem {
    * Resume the Will after loading to start ticking with the seeded state.
    */
   loadPMA( id: string, pma: PMASnapshot ): void {
-    this._pma.load( id, this._get( id ), pma )
+    const instance = this._get( id )
+    this._pma.load( id, instance, pma )
+
+    // A MIND THAT WAKES SHOULD KNOW IT WAS AWAY (SIGNAL_BOUNDARY P1, follow-up).
+    //
+    // `resumeWill` has always raised a wake event, gated on `instance.pausedAt`
+    // — and `pausedAt` is set ONLY by `pauseWill()`, an in-session pause. The
+    // hibernate→wake lifecycle never touches it: `Will.wake` calls
+    // `createWill( config, startPaused: true )`, which sets `status = 'paused'`
+    // but leaves `pausedAt` null, and `resumeWill` then skips the whole block.
+    //
+    // So the one lifecycle every deployed Will actually uses was the one that
+    // never fired. Found by running a live Will after P1 routed the wake through
+    // the sense door: the door was correct and nothing walked through it. The
+    // unit test passed because it set `pausedAt` by hand — which is precisely
+    // the kind of test that agrees with you instead of checking.
+    //
+    // The PMA has carried the answer all along: `distilledAt` is when this mind
+    // was distilled, i.e. when it stopped. Loading a PMA IS the statement "this
+    // mind existed before and has been away since then", so this is where the
+    // fact belongs. A Will born fresh never calls this and is never told it
+    // woke, which is right — it was not away, it did not exist.
+    //
+    // Guarded: a clock skew or a hand-edited artifact must not tell a mind it
+    // has been away for negative time, or since 1970.
+    const distilled = pma.distilledAt
+    if( typeof distilled === 'number' && Number.isFinite( distilled )
+        && distilled > 0 && distilled <= Date.now() )
+      instance.pausedAt = new Date( distilled )
   }
 
   // ── Replay ─────────────────────────────────────────────────

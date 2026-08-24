@@ -24,6 +24,21 @@ function config( id: string ): WillConfig {
   } as unknown as WillConfig
 }
 
+
+/** A PMA with every field `PMALoader.load` reaches for — minimal, not realistic. */
+function pma( distilledAt: number ){
+  return {
+    schemaVersion: 1, willId: 'w', willName: 'X', distilledAt, sourceSessionId: 's',
+    identity: { prompt: 'I am.', values: [], traits: {}, style: 'quiet' },
+    beliefs: [], goals: [], relationships: [], episodicCount: 0,
+    emotionalBaseline: { avgValence: 0, avgArousal: 0.3, dominantEmotions: [] },
+    // `behavioral` is dereferenced unguarded by PMALoader (`pma.behavioral.riskTolerance`),
+    // so it must be present; `persona` and `competence` are guarded by `if( pma.X )`
+    // and a half-built one crashes where a missing one does not.
+    behavioral: {},
+  } as never
+}
+
 describe('the wake event arrives through the sense door', () => {
   it('resuming a paused Will ingests a WAKE SystemSignal, tagged exafferent', async () => {
     const stem = new WillStem()
@@ -69,6 +84,55 @@ describe('the wake event arrives through the sense door', () => {
 
     expect( spy ).not.toHaveBeenCalled()
     stem.pauseWill('wake-2')
+  }, 20_000 )
+} )
+
+describe('a mind woken from a PMA is told it was away', () => {
+  // The gap the two tests above could not see, because both SET `pausedAt`
+  // themselves. The real hibernate→wake path never sets it: `Will.wake` calls
+  // `createWill( config, startPaused: true )`, which sets `status = 'paused'`
+  // and leaves `pausedAt` null, so `resumeWill` skipped the wake entirely.
+  //
+  // Found by running a live Will, not by the suite. P1 had routed the wake
+  // through the sense door correctly and nothing walked through it.
+  it('loadPMA carries distilledAt across, so resume knows how long it slept', async () => {
+    const stem = new WillStem()
+    await stem.createWill( config('pma-wake'), true )
+    const instance = ( stem as unknown as { _get( id: string ): {
+      cognition: { somatosensationEngine: { ingest( i: SensoryInput ): Promise<void> } }
+      pausedAt: Date | null
+    } } )._get('pma-wake')
+
+    expect( instance.pausedAt ).toBeNull()   // the bug: nothing had said it was away
+
+    const seen: SensoryInput[] = []
+    const real = instance.cognition.somatosensationEngine.ingest.bind( instance.cognition.somatosensationEngine )
+    instance.cognition.somatosensationEngine.ingest = async ( i: SensoryInput ) => { seen.push( i ); return real( i ) }
+
+    const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000
+    stem.loadPMA('pma-wake', pma( twoHoursAgo ) )
+
+    expect( instance.pausedAt?.getTime() ).toBe( twoHoursAgo )
+    stem.resumeWill('pma-wake')
+
+    expect( seen ).toHaveLength( 1 )
+    const signal = seen[0] as SensoryInput & { data: Record<string, unknown> }
+    expect( String( signal.data['summary'] ) ).toContain('2 hours')
+    stem.pauseWill('pma-wake')
+  }, 20_000 )
+
+  it('a nonsense distilledAt does not tell a mind it woke in 1970', async () => {
+    // Clock skew, or a hand-edited artifact. A future timestamp would compute a
+    // negative absence; a zero one, fifty years of it.
+    const stem = new WillStem()
+    await stem.createWill( config('pma-bad'), true )
+    const instance = ( stem as unknown as { _get( id: string ): { pausedAt: Date | null } } )._get('pma-bad')
+
+    for( const distilledAt of [ 0, -1, Number.NaN, Date.now() + 60_000 ] ){
+      stem.loadPMA('pma-bad', pma( distilledAt ) )
+      expect( instance.pausedAt ).toBeNull()
+    }
+    // already 'paused' from createWill( …, true ) — nothing to pause
   }, 20_000 )
 } )
 

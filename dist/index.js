@@ -28961,13 +28961,19 @@ var TransportController = class {
   _dispatch(instance, env, deps) {
     switch (env.channel) {
       case "inbound_message": {
-        const input = env.kind === "voice" ? { kind: "voice", entityId: env.entityId, threadId: env.threadId, transcription: env.content, provenance: "unknown" } : {
+        const provenance = asProvenance(env.provenance);
+        const input = env.kind === "voice" ? { kind: "voice", entityId: env.entityId, threadId: env.threadId, transcription: env.content, provenance } : {
           kind: "text",
           entityId: env.entityId,
           threadId: env.threadId,
           content: env.content,
-          provenance: "unknown",
-          ...env.speakerName ? { speakerName: env.speakerName } : {}
+          provenance,
+          ...env.speakerName ? { speakerName: env.speakerName } : {},
+          // Omitted rather than defaulted, the same way the SDK door does
+          // it: an unknown room is not known to be public, and a room with
+          // no name stays unnamed rather than being labelled with its id.
+          ...env.direct !== void 0 ? { direct: env.direct } : {},
+          ...env.threadName ? { threadName: env.threadName } : {}
         };
         void instance.cognition.auditionEngine.sense(input);
         break;

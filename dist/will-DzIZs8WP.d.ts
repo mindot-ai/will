@@ -8362,6 +8362,25 @@ interface InboundMessageEnvelope extends BaseEnvelope {
     threadId: string;
     content: string;
     speakerName?: string;
+    /**
+     * Whose doing this was, as the SENDING host asserts it. Optional on the wire
+     * and only there: `SensoryInput.provenance` is required inside the package,
+     * but a wire type cannot make an older peer send a field, so absence has to
+     * be survivable. It is read through `asProvenance()`, which owns the
+     * direction for untyped ingress.
+     *
+     * This field is why the transport no longer says `'unknown'`. It used to,
+     * and correctly — the absence was STRUCTURAL, there was no field to fill —
+     * but `unknown` percepts are skipped by the rupture gate in `action.selector`,
+     * so a mind reached over a transport could not be interrupted by anyone
+     * speaking to it, while the same words in-process could interrupt it. Two
+     * transports, two different minds.
+     */
+    provenance?: SignalProvenance;
+    /** True when this thread is private — just this someone and the Will. */
+    direct?: boolean;
+    /** What the room is called, e.g. `#general`. A label, not an address. */
+    threadName?: string;
 }
 /** A non-conversational external percept (webhook, system signal, etc.). */
 interface InboundPerceptEnvelope extends BaseEnvelope {

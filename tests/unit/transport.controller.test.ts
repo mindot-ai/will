@@ -78,10 +78,52 @@ describe('TransportController', () => {
     f.ctrl.applyInbound( f.instance, 7, f.deps as any )
 
     expect( f.sense ).toHaveBeenCalledTimes( 1 )
-    // 'unknown', not 'exafferent': the envelope has no provenance field, so the
-    // stem cannot say — and says that rather than guessing on a host's behalf.
-    expect( f.sense ).toHaveBeenCalledWith({ kind: 'text', entityId: 'alice', threadId: 't1', content: 'hello', provenance: 'unknown', speakerName: 'Alice' })
+    // 'exafferent', not 'unknown'. This assertion used to be the other way, and
+    // it was right then: the envelope had no provenance field, so the absence
+    // was STRUCTURAL and the stem said so rather than guessing. The envelope
+    // carries the field now, so an omission is a caller's omission — which is
+    // what `asProvenance()` is for, and it errs toward the world.
+    //
+    // Not cosmetic: `'unknown'` percepts are skipped by the rupture gate, so
+    // under the old behaviour a mind reached over a transport could not be
+    // interrupted by anyone speaking to it, while the same words in-process
+    // could. The transport path is the default whenever one is bound.
+    expect( f.sense ).toHaveBeenCalledWith({ kind: 'text', entityId: 'alice', threadId: 't1', content: 'hello', provenance: 'exafferent', speakerName: 'Alice' })
     expect( f.instance.inbound.size ).toBe( 0 )   // drained
+  } )
+
+  it('carries the sending host\'s own assertion through, including "unknown"', () => {
+    // A host that CAN say gets to say. 'unknown' is still reachable — it is a
+    // real claim ("I looked and I cannot tell"), just no longer the only one
+    // this door can make.
+    f.ctrl.attach( f.instance )
+    f.transport.injectInbound({ channel: 'inbound_message', kind: 'text', entityId: 'self', threadId: 't1',
+                                content: 'an echo of my own words', provenance: 'reafferent', ...base('m1') })
+    f.transport.injectInbound({ channel: 'inbound_message', kind: 'text', entityId: 'relay', threadId: 't2',
+                                content: 'came through a relay', provenance: 'unknown', ...base('m2') })
+
+    f.ctrl.applyInbound( f.instance, 7, f.deps as any )
+
+    expect( f.sense.mock.calls[0]![0].provenance ).toBe('reafferent')
+    expect( f.sense.mock.calls[1]![0].provenance ).toBe('unknown')
+  } )
+
+  it('stops dropping `direct` and `threadName` — the other two the wire lost', () => {
+    // All three were one deliberate wire change, not three patches. Omitted
+    // rather than defaulted, the same way the SDK door does it: an unknown room
+    // is not known to be public, and a room with no name stays unnamed rather
+    // than being labelled with its id.
+    f.ctrl.attach( f.instance )
+    f.transport.injectInbound({ channel: 'inbound_message', kind: 'text', entityId: 'alice', threadId: 't1',
+                                content: 'hello', direct: true, threadName: '#general', ...base('m1') })
+    f.transport.injectInbound({ channel: 'inbound_message', kind: 'text', entityId: 'bob', threadId: 't2',
+                                content: 'hi', ...base('m2') })
+
+    f.ctrl.applyInbound( f.instance, 7, f.deps as any )
+
+    expect( f.sense.mock.calls[0]![0] ).toMatchObject({ direct: true, threadName: '#general' })
+    expect( f.sense.mock.calls[1]![0] ).not.toHaveProperty('direct')
+    expect( f.sense.mock.calls[1]![0] ).not.toHaveProperty('threadName')
   } )
 
   it('maps a voice message to a VoiceChunk (transcription)', () => {
@@ -90,7 +132,7 @@ describe('TransportController', () => {
 
     f.ctrl.applyInbound( f.instance, 1, f.deps as any )
 
-    expect( f.sense ).toHaveBeenCalledWith({ kind: 'voice', entityId: 'a', threadId: 't', transcription: 'spoken words', provenance: 'unknown' })
+    expect( f.sense ).toHaveBeenCalledWith({ kind: 'voice', entityId: 'a', threadId: 't', transcription: 'spoken words', provenance: 'exafferent' })
   } )
 
   it('dispatches a result-ack → effector.confirmExecution (reafference)', () => {

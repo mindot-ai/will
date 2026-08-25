@@ -1234,6 +1234,43 @@ place where two readers can be talking about different objects and not find out.
 `injectEvent` is untouched: it writes an entity straight into state, so it is not
 a door with a bad name — it is a bypass, and bypasses are P4.
 
+### P5 — The wire says who spoke — ✅ **SHIPPED 2026-08-25**
+
+Not a numbered phase when this file was written; it is the debt P1 named and
+deferred, and it turned out to be a behaviour bug rather than a tidiness one.
+
+`InboundMessageEnvelope` had no `provenance` field, so `transport.controller`
+tagged every transported message `'unknown'` — correctly, at the time: the
+absence was **structural**, and `asProvenance()`'s own comment says to say
+`'unknown'` explicitly at a site where the wire cannot carry the claim.
+
+**But `'unknown'` percepts are skipped by the rupture gate in `action.selector`.**
+So a Will reached over a transport *could not be interrupted by anyone speaking
+to it*, while the same words delivered in-process could interrupt it. Two
+transports, two different minds — and the transport path is the DEFAULT whenever
+one is bound, with the in-process call as the fallback.
+
+- [x] The envelope carries `provenance`, `direct` and `threadName` — all three
+      at once, as P1 said it should be: one deliberate wire change, not three
+      patches.
+- [x] Optional on the wire, and only there. A wire type cannot make an older
+      peer send a field, so absence has to be survivable; with the field
+      present an omission stops being structural and becomes a caller's
+      omission, which is exactly what `asProvenance()` is for.
+- [x] `direct` and `threadName` are omitted rather than defaulted, the same way
+      the SDK door does it: an unknown room is not known to be public, and a
+      room with no name stays unnamed rather than labelled with its id.
+- [x] The backend states `'exafferent'` at the point where it knows.
+
+> **Still a bypass, and now the only one: `inbound_percept` → `injectEvent`.**
+> It writes a `senses.<domain>` ENTITY straight into state rather than routing
+> through `senseSignal`. Worth knowing before anyone fixes it: the consumers of
+> `senses.*` are bus EVENTS named `senses.<domain>.percept`, and `action.selector`
+> requires the `.percept` suffix — so what this channel injects is close to
+> inert. Fixing it properly means giving the envelope a real `SensoryInput`
+> shape (a `kind`, a provenance), which is another wire change and a decision
+> about whether that channel is used at all.
+
 ### P4 — Delete what the doors subsumed — ✅ **SHIPPED 2026-08-24**
 
 Three bespoke writers existed, not the one this file assumed.

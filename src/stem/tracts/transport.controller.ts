@@ -23,6 +23,7 @@
 import { logger } from '#core/logger'
 import { wallClock } from '#core/wall.clock'
 import { getInboundRecorder, getInboundSource } from '#core/inbound.recorder'
+import { asProvenance } from '#senses/index'
 import type { SensoryInput } from '#senses/index'
 import type { effectorInvocation, OutboxMessage } from '#types'
 import type { WillInstance } from '#stem/index'
@@ -341,22 +342,37 @@ export class TransportController {
       case 'inbound_message': {
         // Fire-and-forget: AuditionEngine.sense() serializes per-entity
         // internally; the tick must not block on the LLM reply.
-        // 'unknown', not 'exafferent', and not routed through asProvenance():
-        // the absence here is STRUCTURAL, not a caller's omission. An
-        // InboundMessageEnvelope has no provenance field at all, so a remote
-        // host has no way to declare one however much it knows — the stem
-        // genuinely cannot say, and says that. (Same door already drops
-        // `direct` and `threadName`; all three are one deliberate fix on the
-        // wire contract, not three patches. See .TODO/SIGNAL_BOUNDARY.md.)
+        // THE FIX THIS COMMENT USED TO PROMISE. It said `'unknown'` was right
+        // because the absence was STRUCTURAL — the envelope had no provenance
+        // field, so a remote host could not declare one however much it knew —
+        // and that all three dropped fields were one deliberate wire change
+        // rather than three patches. This is that change: the envelope now
+        // carries `provenance`, `direct` and `threadName`.
+        //
+        // With the field there, an omission stops being structural and becomes
+        // a caller's omission, which is exactly what `asProvenance()` is for at
+        // an untyped boundary (its own comment sends this case here).
+        //
+        // It is not cosmetic. `'unknown'` percepts are skipped by the rupture
+        // gate in `action.selector`, so a mind reached over a transport COULD
+        // NOT BE INTERRUPTED by anyone speaking to it, while the same words
+        // in-process could interrupt it — and the transport path is the default
+        // whenever one is bound. Two transports, two different minds.
+        const provenance = asProvenance( env.provenance )
         const input: SensoryInput = env.kind === 'voice'
-          ? { kind: 'voice', entityId: env.entityId, threadId: env.threadId, transcription: env.content, provenance: 'unknown' }
+          ? { kind: 'voice', entityId: env.entityId, threadId: env.threadId, transcription: env.content, provenance }
           : {
               kind:       'text',
               entityId:   env.entityId,
               threadId:   env.threadId,
               content:    env.content,
-              provenance: 'unknown',
+              provenance,
               ...( env.speakerName ? { speakerName: env.speakerName } : {} ),
+              // Omitted rather than defaulted, the same way the SDK door does
+              // it: an unknown room is not known to be public, and a room with
+              // no name stays unnamed rather than being labelled with its id.
+              ...( env.direct     !== undefined ? { direct:     env.direct     } : {} ),
+              ...( env.threadName ? { threadName: env.threadName } : {} ),
             }
         void instance.cognition.auditionEngine.sense( input )
         break

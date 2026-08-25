@@ -111,3 +111,65 @@ this is not json at all {{{
     expect( out.newBeliefs ).toBeUndefined()
   })
 })
+
+// ── what `reasoning` actually holds ───────────────────────────
+//
+// It held `fullText` — the whole JSON blob — for every consumer downstream, and
+// that stayed invisible while nothing read it as prose. Three things do: the
+// session log, a facet handed the master's as "What I've Been Turning Over"
+// (clipped to 400 chars, so facets read the master's JSON truncated mid-object),
+// and the master reading a facet's back as what it worked out. Caught in a live
+// prompt: `What I worked out there: { "actions": [...`
+
+describe('reasoning is the mind\'s sentence, not its serialization', () => {
+  it('carries the JSON\'s own reasoning field when the response parses', () => {
+    const out = parseResponse(
+      `{"actions":[{"type":"observe","reasoning":"a","expectedOutcome":"b"}],`
+      + `"reasoning":"Approach 1. One warm line, floor handed back.","confidence":0.85}`,
+      emptyState(), [] )
+
+    expect( out.reasoning ).toBe('Approach 1. One warm line, floor handed back.')
+    // The tell that the bug is gone: no serialization leaking through.
+    expect( out.reasoning ).not.toContain('"actions"')
+    expect( out.reasoning ).not.toContain('expectedOutcome')
+  } )
+
+  it('takes the tagged blocks back OUT of the sentence, keeping what they carried', () => {
+    // The format tells the mind to embed structured output in this very field, so
+    // the sentence and the payload arrive as one string. Handing the whole thing
+    // back as "what I worked out" would move the serialization problem one level
+    // in rather than fixing it.
+    const out = parseResponse(
+      `{"actions":[{"type":"observe","reasoning":"a","expectedOutcome":"b"}],`
+      + `"reasoning":"I will look into it. [GOALS_NEW]{\\"newGoals\\":[{\\"description\\":\\"draft the spec\\",\\"priority\\":0.7}]}[/GOALS_NEW]",`
+      + `"confidence":0.6}`,
+      emptyState(), [] )
+
+    expect( out.reasoning ).toBe('I will look into it.')
+    expect( out.newGoals?.[0]?.description ).toBe('draft the spec')
+  } )
+
+  it('cuts an UNCLOSED block rather than leaving half an object in the prose', () => {
+    // A truncated `[PLANS]{…` is not prose either, and leaving it in puts half a
+    // JSON object in front of whoever reads this as the mind's thinking.
+    const out = parseResponse(
+      `{"actions":[{"type":"rest","reasoning":"a","expectedOutcome":"b"}],`
+      + `"reasoning":"I am going to rest. [PLANS][{\\"goal\\":\\"x\\"",`
+      + `"confidence":0.6}`,
+      emptyState(), [] )
+
+    expect( out.reasoning ).toBe('I am going to rest.')
+  } )
+
+  it('falls back to the raw text when the response never parsed', () => {
+    // Strategy 2 salvages an actions array out of malformed output; there is no
+    // trustworthy sentence in that case, and inventing one would be worse than
+    // showing the mind what it actually produced.
+    const out = parseResponse(
+      `garbage before {"actions":[{"type":"rest","reasoning":"a","expectedOutcome":"b"}] trailing`,
+      emptyState(), [] )
+
+    expect( out.actions[0]!.type ).toBe('rest')
+    expect( out.reasoning ).toContain('actions')
+  } )
+} )

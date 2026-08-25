@@ -130,6 +130,13 @@ export function readSettlement(
 export function liveSettlements(
   entities: ReadonlyMap<string, { type: string; metadata?: ReadonlyMap<string, unknown> | Record<string, unknown> }>,
   tick:     Tick,
+  /**
+   * alias id → anchor id. Settlement is keyed exactly as satiation is — see the
+   * note on `settlementForce` — so it has to share satiation's id space too, or a
+   * verdict reached about a person under one id would not hold about them under
+   * the other. A function, not the table: see `liveConsequences`.
+   */
+  canon?: ( id: string ) => string,
 ): SettlementDescriptor[] {
   const out: Array<{ id: string; d: SettlementDescriptor }> = []
 
@@ -142,7 +149,10 @@ export function liveSettlements(
     // settlement it ever made as freshly decided and cannot deliberate at all.
     // The same trap `liveConsequences` documents, and the same fix.
     if( d.tick > tick ) continue
-    if( tick < d.expiresAt ) out.push({ id, d })
+    if( tick < d.expiresAt )
+      out.push({ id, d: canon && d.targetEntityId
+        ? { ...d, targetEntityId: canon( d.targetEntityId ) }
+        : d })
   }
 
   return out.sort( ( a, b ) => ( a.id < b.id ? -1 : a.id > b.id ? 1 : 0 ) ).map( x => x.d )

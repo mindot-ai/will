@@ -156,6 +156,15 @@ export function enactedEntity( schema: string, targetEntityId: string, tick: Tic
  */
 export function enactedAtBySchemaTarget(
   entities: ReadonlyMap<string, { type: string; metadata?: ReadonlyMap<string, unknown> | Record<string, unknown> }>,
+  /**
+   * alias id → anchor id, when the caller has an alias table.
+   *
+   * A FUNCTION rather than the table itself because `social.identity` already
+   * imports `fnv1a` from this file, so importing `canonicalOf` back would close a
+   * cycle. The caller owns the id space and hands down the resolution; absent, ids
+   * are used as they were written, which is exactly the previous behaviour.
+   */
+  canon?: ( id: string ) => string,
 ): Map<string, number> {
   const out = new Map<string, number>()
   for( const [ , e ] of entities ){
@@ -165,7 +174,7 @@ export function enactedAtBySchemaTarget(
     const target = typeof meta['targetEntityId'] === 'string' ? meta['targetEntityId'] as string : undefined
     const tick   = typeof meta['tick'] === 'number' ? meta['tick'] as number : undefined
     if( !schema || !target || tick === undefined ) continue
-    out.set( enactedKey( schema, target ), tick )
+    out.set( enactedKey( schema, canon ? canon( target ) : target ), tick )
   }
   return out
 }
@@ -205,6 +214,15 @@ export function readConsequence(
 export function liveConsequences(
   entities: ReadonlyMap<string, { type: string; metadata?: ReadonlyMap<string, unknown> | Record<string, unknown> }>,
   tick:     Tick,
+  /**
+   * alias id → anchor id, when the caller has an alias table.
+   *
+   * A FUNCTION rather than the table itself because `social.identity` already
+   * imports `fnv1a` from this file, so importing `canonicalOf` back would close a
+   * cycle. The caller owns the id space and hands down the resolution; absent, ids
+   * are used as they were written, which is exactly the previous behaviour.
+   */
+  canon?: ( id: string ) => string,
 ): ConsequenceDescriptor[] {
   const out: ConsequenceDescriptor[] = []
   for( const [ , e ] of entities ){
@@ -220,7 +238,12 @@ export function liveConsequences(
     // reach-out to them and delivered nothing, and the P2 matcher would equally
     // have attenuated their genuine replies as its own echo.
     if( d.tick > tick ) continue
-    if( tick < d.expiresAt ) out.push( d )
+    if( tick < d.expiresAt )
+      // Canonical, so a descriptor written against a transport id and a candidate
+      // aimed at the anchor are recognised as the same act toward the same person.
+      out.push( canon && d.targetEntityId
+        ? { ...d, targetEntityId: canon( d.targetEntityId ) }
+        : d )
   }
   return out.sort( ( a, b ) => ( a.intentId < b.intentId ? -1 : a.intentId > b.intentId ? 1 : 0 ) )
 }
@@ -437,6 +460,15 @@ export function enactionFootprint(
  */
 export function spokenAtByEntity(
   entities: ReadonlyMap<string, { type: string; updatedAtTick?: number; tick?: number; metadata?: ReadonlyMap<string, unknown> | Record<string, unknown> }>,
+  /**
+   * alias id → anchor id, when the caller has an alias table.
+   *
+   * A FUNCTION rather than the table itself because `social.identity` already
+   * imports `fnv1a` from this file, so importing `canonicalOf` back would close a
+   * cycle. The caller owns the id space and hands down the resolution; absent, ids
+   * are used as they were written, which is exactly the previous behaviour.
+   */
+  canon?: ( id: string ) => string,
 ): Map<string, number> {
   const out = new Map<string, number>()
 
@@ -458,7 +490,14 @@ export function spokenAtByEntity(
              : typeof e.updatedAtTick    === 'number' ? e.updatedAtTick
              : typeof e.tick             === 'number' ? e.tick
              : 0
-    if( at > ( out.get( target ) ?? -Infinity ) ) out.set( target, at )
+    // Through the alias table, for the reason `readSpokenTurns` states plainly:
+    // a REPLY is addressed to the transport id the percept arrived with
+    // (`discord:1019…`) while a PROACTIVE message is addressed to the anchor the
+    // executive resolved (`ke:…`), and they are the same someone. The PROMPT half
+    // resolved that from the start; this half, the one that damps, never did — so
+    // having just answered a person did not damp reaching out to them.
+    const key = canon ? canon( target ) : target
+    if( at > ( out.get( key ) ?? -Infinity ) ) out.set( key, at )
   }
 
   return out

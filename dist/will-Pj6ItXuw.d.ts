@@ -8109,6 +8109,17 @@ declare class AffordanceSynthesizer implements CognitiveEngine {
     /** Tick of the last thing said to each entity — outlives the descriptor sweep. */
     private _spokenAt;
     private _spokeAnywhereAt;
+    /**
+     * alias id → anchor id, read once per tick.
+     *
+     * Every surface below is keyed by WHO an act was aimed at, and the mind meets
+     * one person under more than one id: a reply is addressed to the transport id
+     * the percept arrived with (`discord:1019…`), a self-initiated message to the
+     * anchor the executive resolved (`ke:…`). `readSpokenTurns` resolved that for
+     * the PROMPT from the start; nothing resolved it for the WEIGHTS, so having
+     * just answered someone did not damp reaching out to them a cycle later.
+     */
+    private _canon;
     private _bus;
     private _defaultCap;
     private _lastFieldSize;

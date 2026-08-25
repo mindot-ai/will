@@ -304,3 +304,115 @@ describe('an unprompted message to someone I am already talking to', () => {
     expect( ( await words ).bubbles ).toEqual( [ 'the unprompted thing' ] )
   } )
 } )
+
+// ── 3. an empty answer says so ────────────────────────────────
+
+/**
+ * The caller cannot tell "the mind reasoned and no words came" from "no pass
+ * ran" by looking at empty bubbles — and it must, because only the second is
+ * worth waiting on. `answered` is the half of that contract this engine owns;
+ * `agency.an-empty-answer-is-still-an-answer.test.ts` owns what the agency does
+ * with it. Both halves have to be pinned: the first cut of this fix taught the
+ * executor to read a flag nothing was setting, and every test stayed green.
+ */
+describe('authorOutreach — did a pass actually run?', () => {
+  it('says so when the facet answered, even with nothing to say', async () => {
+    const ctrl   = heldExecutive()
+    const engine = new AuditionEngine()
+    engine.attachExecutiveEngine( ctrl.engine as never )
+
+    const pass = engine.authorOutreach('fabrice', 'Fabrice')
+    await settle()
+    ctrl.release[0]!( [] )               // reasoned, and came back holding nothing
+
+    const result = await pass
+    expect( result.bubbles ).toEqual( [] )
+    expect( result.answered, 'a decision arrived — that is an answer').toBe( true )
+  } )
+
+  it('says so when the facet spoke', async () => {
+    const ctrl   = heldExecutive()
+    const engine = new AuditionEngine()
+    engine.attachExecutiveEngine( ctrl.engine as never )
+
+    const pass = engine.authorOutreach('fabrice', 'Fabrice')
+    await settle()
+    ctrl.release[0]!( [ 'Any movement on the RFC?' ] )
+
+    expect( ( await pass ).answered ).toBe( true )
+  } )
+
+  it('stays silent about it when the pass deferred to one in flight', async () => {
+    const ctrl   = heldExecutive()
+    const engine = new AuditionEngine()
+    engine.attachExecutiveEngine( ctrl.engine as never )
+
+    const first  = engine.authorOutreach('fabrice', 'Fabrice')
+    await settle()
+    const second = await engine.authorOutreach('fabrice', 'Fabrice')
+
+    expect( second.answered, 'nobody was asked, so nothing was answered').toBeFalsy()
+
+    ctrl.release[0]!( [ 'x' ] )
+    await first
+  } )
+
+  it('stays silent about it when there was no facet to ask', async () => {
+    const engine = new AuditionEngine()
+    engine.attachExecutiveEngine({
+      facetFor: () => undefined,
+      spawnFacet: () => ( { attention: 'full' as const, handle: undefined } ),
+    } as never )
+
+    const result = await engine.authorOutreach('fabrice', 'Fabrice')
+    expect( result.bubbles ).toEqual( [] )
+    expect( result.answered, 'a full budget is not an answer').toBeFalsy()
+  } )
+} )
+
+// ── 4. handing off is not sending ─────────────────────────────
+
+/**
+ * A conversation facet cannot open a channel to a third party, so it names them
+ * in a `reach-out` action and the agency takes it from there. The format used to
+ * describe that as arriving: the action "is handed to the part of me that owns
+ * whom I contact, AND IT REACHES THEM through their own conversation".
+ *
+ * She believed it. Asked to contact someone, a facet answered the person in
+ * front of her with "I've just sent FKEM a message" — seven seconds BEFORE the
+ * master first decided to, and while every authoring pass that followed produced
+ * no words at all. FKEM heard nothing for ninety seconds and then said hello on
+ * his own.
+ *
+ * That was not the mind inventing something. It was the mind reporting the
+ * contract it had been given. A handoff is a decision; whether it becomes a
+ * delivery is not knowable from inside the conversation that made it.
+ */
+describe('the reply contract does not promise a delivery it cannot make', () => {
+  const src    = readFileSync( join( process.cwd(), 'src/cognition/senses/audition.engine/engine.ts'), 'utf8')
+  const start  = src.indexOf('const CONVERSATION_OUTPUT_FORMAT')
+  const format = src.slice( start, src.indexOf('do NOT escalate. Just reply.', start ) )
+
+  it('never says the handoff reaches anyone', () => {
+    expect( format ).not.toMatch( /it reaches them/i )
+    expect( format ).not.toMatch( /reaches them through/i )
+  } )
+
+  it('says plainly what the action is: a decision, not a delivery', () => {
+    expect( format ).toMatch( /decision, not a delivery/i )
+    expect( format ).toMatch( /nothing has reached anyone/i )
+  } )
+
+  it('forbids reporting the contact as done, which is the sentence that lied', () => {
+    // The rule has to be about SPEECH, not about belief: the facet is not wrong
+    // to think a message is coming — it is wrong to tell someone it has gone.
+    expect( format ).toMatch( /never tell the person in front of me that I have contacted/i )
+    expect( format ).toMatch( /most I can truthfully say is that I mean to/i )
+  } )
+
+  it('still tells it how to reach a third party at all', () => {
+    // The fix must not cost the facet the mechanism — only the false promise.
+    expect( format ).toMatch( /reach-out/ )
+    expect( format ).toMatch( /\[REPLY_TEXT\] for the\s+person in front of me/ )
+  } )
+} )

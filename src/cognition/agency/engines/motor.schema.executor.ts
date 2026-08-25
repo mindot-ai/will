@@ -94,19 +94,36 @@ interface Intent {
  *
  * `bubbles` empty is AMBIGUOUS on its own — it is also what a timed-out facet, a
  * full facet budget, and a pass deferring to one already in flight all return.
- * `withheld` is the one case that is an ANSWER: the mind considered speaking and
- * declared silence. Only that resolves the intent; the others keep holding, and
- * the clock still abandons a genuinely dead author.
+ * `answered` is what disambiguates it: whether a facet actually reasoned and came
+ * back. An empty answer IS an answer; an empty non-answer means the pass never
+ * happened and is worth asking for again.
  */
 export interface OutreachResult {
   bubbles:   string[]
+  /** The mind considered speaking and declared silence — the strongest answer. */
   withheld?: boolean
+  /**
+   * A facet reasoned and its decision came back, whatever it held. Absent means
+   * no pass ran at all (no executive, budget full, deferring to one in flight,
+   * timed out, threw) — only THAT is worth asking again for.
+   *
+   * Without this the caller could not tell the two apart, so it re-asked on
+   * every tick. Observed live: nineteen authoring passes for one outreach, each
+   * returning an empty answer, none of them delivering a word, and the person
+   * she had decided to contact never heard from her.
+   */
+  answered?: boolean
 }
 
 /** Authors the words for a self-initiated communicate the agency selected (no inbound triggered it). */
 export interface OutreachAuthor {
   /** An array return is still honoured — it reads as "no words, and I am not saying why". */
   authorOutreach( entityId: string, entityName: string, gist?: string ): Promise<string[] | OutreachResult>
+  /**
+   * True while a turn with this person is still resolving — they spoke and the
+   * reply has not landed yet. Optional: an author that cannot say is not blocking.
+   */
+  isSpeakingTo?( entityId: string ): boolean
 }
 
 export class MotorSchemaExecutor implements CognitiveEngine {
@@ -652,6 +669,21 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       return true
     }
 
+    // ── Am I mid-sentence with them? ─────────────────────────────
+    // A reply and a self-initiated message are two paths to the same person, and
+    // neither can see the other. Observed live: a conversation facet answered a
+    // question and the agency delivered a proactive message to the same human in
+    // the SAME millisecond — one mind speaking to one person twice at once.
+    //
+    // Holding costs a tick and the words keep. If what they just said changes
+    // what I meant to say, `situationMoved` catches that on the way back round,
+    // which is the outcome we want anyway.
+    if( intent.targetEntityId && this._author?.isSpeakingTo?.( intent.targetEntityId ) ){
+      logger.debug(`[motor] holding "${ intent.schema }" — a turn with ${ intent.targetEntityId } is in flight`)
+      metrics.push([ 'agency.communicate.mid_turn', 1 ])
+      return false
+    }
+
     // Content authored upstream when present (host / host-facet), else words a facet
     // authored off-tick and landed since a previous tick asked for them. Neither ⇒
     // request authoring (never awaited here — see `_authoring`) and hold 'awaiting'.
@@ -757,6 +789,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       .then( result => {
         const bubbles  = Array.isArray( result ) ? result : result.bubbles
         const declared = !Array.isArray( result ) && result.withheld === true
+        const answered = !Array.isArray( result ) && result.answered === true
 
         if( bubbles.length > 0 ){ this._authored.set( id, bubbles ); return }
 
@@ -767,10 +800,24 @@ export class MotorSchemaExecutor implements CognitiveEngine {
           logger.debug(`[motor] "${ intent.schema }" withheld — the facet chose silence`)
           return
         }
-        // No words and no decision — a dead author, a full budget, or a pass
-        // deferring to one in flight. Keep holding: the clock is the right judge
-        // of those, and the deferring case wants to come back round.
-        logger.warn(`[motor] outreach authoring returned nothing for "${ intent.schema }"`)
+        // Asked, reasoned, and came back with nothing — neither words nor a
+        // declared silence. That is still an answer, and re-asking puts the same
+        // question to the same mind against the same situation, so it comes back
+        // the same way. Nineteen times, in the run this exists to prevent.
+        //
+        // Resolved as withheld rather than failed on purpose: nothing was said,
+        // and nothing should be taught about being bad at speaking — the #123
+        // regression. The reason is worded for what actually happened.
+        if( answered ){
+          this._withheld.set( id, 'I turned it over and came back with no words.')
+          logger.info(`[motor] "${ intent.schema }" withheld — the pass produced no words`)
+          return
+        }
+
+        // No pass ran at all — a dead author, a full budget, or one deferring to
+        // a pass already in flight. Keep holding: the clock is the right judge of
+        // those, and the deferring case wants to come back round.
+        logger.warn(`[motor] outreach authoring never ran for "${ intent.schema }"`)
       } )
       .catch( err => { logger.warn(`[motor] outreach authoring failed: ${ errMsg( err ) }`) } )
       .finally( () => { this._authoring.delete( id ) } )

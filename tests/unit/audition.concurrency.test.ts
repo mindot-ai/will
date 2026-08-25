@@ -156,3 +156,48 @@ describe('AuditionEngine — coalescing + per-entity serialization', () => {
     expect( ctrl.spawns ).toBe( 2 )   // independent facets
   } )
 } )
+
+/**
+ * The same in-flight turn, asked from outside.
+ *
+ * The agency delivers self-initiated messages down a path that cannot see this
+ * queue, so it asks before it speaks (OutreachAuthor.isSpeakingTo). Live, not
+ * asking put a reply and a proactive message in front of the same person in the
+ * same millisecond. This engine owns the answer; `agency.one-mouth-per-person`
+ * owns what the agency does with it — both halves pinned, because a flag that
+ * nothing sets reads exactly like a flag nothing needs.
+ */
+describe('AuditionEngine — am I mid-sentence with them?', () => {
+  let ctrl:   ReturnType<typeof makeControllableExecutive>
+  let engine: AuditionEngine
+
+  beforeEach( () => {
+    ctrl   = makeControllableExecutive()
+    engine = new AuditionEngine()
+    engine.attachBus( createTestBus() )
+    engine.attachExecutiveEngine( ctrl.engine as any )
+  } )
+
+  it('is true from the moment the turn starts until its decision lands', async () => {
+    expect( engine.isSpeakingTo('alice'), 'nobody has spoken yet').toBe( false )
+
+    const p = engine.sense( text('alice', 'A') )
+    await tick()
+    expect( engine.isSpeakingTo('alice'), 'a turn is in flight').toBe( true )
+
+    ctrl.flushOne()
+    await p
+    expect( engine.isSpeakingTo('alice'), 'the turn landed — the floor is free').toBe( false )
+  } )
+
+  it('is about that person, not about being busy', async () => {
+    const p = engine.sense( text('alice', 'A') )
+    await tick()
+
+    expect( engine.isSpeakingTo('alice') ).toBe( true )
+    expect( engine.isSpeakingTo('bob'), 'a turn with Alice must not mute Bob').toBe( false )
+
+    ctrl.flushOne()
+    await p
+  } )
+} )

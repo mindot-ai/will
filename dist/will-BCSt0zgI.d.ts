@@ -5093,6 +5093,10 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     private readonly _deferred;
     private _chunkBroadcaster;
     private readonly _escalations;
+    /** First tick of an unbroken `hasPendingWork` suppression; null when the seat is free. */
+    private _mutedSince;
+    /** Whether this suppression episode has already been reported. */
+    private _mutedWarned;
     /** Set/clear the chunk broadcaster (called by WillManager when SSE clients connect). */
     setChunkBroadcaster(fn: ((chunk: string) => void) | null): void;
     constructor(config?: ExecutiveEngineConfig);
@@ -7553,18 +7557,35 @@ declare class ProactiveCommunicator {
  *
  * `bubbles` empty is AMBIGUOUS on its own — it is also what a timed-out facet, a
  * full facet budget, and a pass deferring to one already in flight all return.
- * `withheld` is the one case that is an ANSWER: the mind considered speaking and
- * declared silence. Only that resolves the intent; the others keep holding, and
- * the clock still abandons a genuinely dead author.
+ * `answered` is what disambiguates it: whether a facet actually reasoned and came
+ * back. An empty answer IS an answer; an empty non-answer means the pass never
+ * happened and is worth asking for again.
  */
 interface OutreachResult {
     bubbles: string[];
+    /** The mind considered speaking and declared silence — the strongest answer. */
     withheld?: boolean;
+    /**
+     * A facet reasoned and its decision came back, whatever it held. Absent means
+     * no pass ran at all (no executive, budget full, deferring to one in flight,
+     * timed out, threw) — only THAT is worth asking again for.
+     *
+     * Without this the caller could not tell the two apart, so it re-asked on
+     * every tick. Observed live: nineteen authoring passes for one outreach, each
+     * returning an empty answer, none of them delivering a word, and the person
+     * she had decided to contact never heard from her.
+     */
+    answered?: boolean;
 }
 /** Authors the words for a self-initiated communicate the agency selected (no inbound triggered it). */
 interface OutreachAuthor {
     /** An array return is still honoured — it reads as "no words, and I am not saying why". */
     authorOutreach(entityId: string, entityName: string, gist?: string): Promise<string[] | OutreachResult>;
+    /**
+     * True while a turn with this person is still resolving — they spoke and the
+     * reply has not landed yet. Optional: an author that cannot say is not blocking.
+     */
+    isSpeakingTo?(entityId: string): boolean;
 }
 declare class MotorSchemaExecutor implements CognitiveEngine {
     readonly name = "motor-schema-executor";
@@ -7902,6 +7923,13 @@ declare class AuditionEngine extends BaseSenseEngine {
     private _beginTurn;
     /** Release the in-flight turn for an entity (idempotent). */
     private _endTurn;
+    /**
+     * True while a turn with this person is still resolving — they spoke and the
+     * reply has not landed yet. The agency asks before delivering a self-initiated
+     * message (see OutreachAuthor.isSpeakingTo), so one mind does not reach one
+     * person down two paths in the same tick.
+     */
+    isSpeakingTo(entityId: string): boolean;
     private _routeToFacet;
     private _pipeChunk;
     /** Fan a filtered reply-token out to all chunk subscribers, stamping the current thread. */

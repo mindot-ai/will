@@ -745,11 +745,24 @@ export class LLMDirector {
     onChunk:      ( chunk: string ) => void,
     temperature?: number,
   ): Promise<LLMCallResult> {
-    // First-byte deadline only: a hard timeout on the whole stream would
-    // truncate a healthy but long generation, so the timer is cleared once
-    // the response headers arrive.
+    // IDLE deadline, not a whole-response one. A hard cap on the total stream
+    // would truncate a healthy long generation; no cap at all lets a stalled
+    // socket hang forever. A live generation keeps emitting and a dead one goes
+    // quiet, so the clock is restarted by every chunk that arrives and fires
+    // only after `_timeoutMs` of silence — the first byte included.
+    //
+    // It used to be cleared the moment the response headers arrived, which left
+    // the read loop with no deadline at all. A mid-stream stall then never
+    // settled, and the reasoning promise it belonged to stayed in the executive's
+    // `_pending` map forever: `hasPendingWork` gated every cycle and the master
+    // seat went silent for the full 600-tick prune horizon. Observed live as ten
+    // minutes of a mind not deliberating, announced by nothing.
     const controller = new AbortController()
-    const timer = setTimeout( () => controller.abort(), this._timeoutMs )
+    let   timer = setTimeout( () => controller.abort(), this._timeoutMs )
+    const restartDeadline = (): void => {
+      clearTimeout( timer )
+      timer = setTimeout( () => controller.abort(), this._timeoutMs )
+    }
 
     let res: Response
     try {
@@ -774,10 +787,10 @@ export class LLMDirector {
       throw err
     }
 
-    clearTimeout( timer )
-
-    if( !res.ok )
+    if( !res.ok ){
+      clearTimeout( timer )
       throw new Error(`Anthropic stream ${res.status}: ${( await res.text() ).slice(0, 300)}`)
+    }
 
     const reader  = res.body!.getReader()
     const decoder = new TextDecoder()
@@ -790,6 +803,7 @@ export class LLMDirector {
       while( true ){
         const { done, value } = await reader.read()
         if( done ) break
+        restartDeadline()
         buffer += decoder.decode( value, { stream: true })
 
         const lines = buffer.split('\n')
@@ -835,7 +849,17 @@ export class LLMDirector {
         }
       }
     }
+    catch( err ){
+      // An abort here is the idle deadline, not a caller cancelling: nothing
+      // arrived for `_timeoutMs` while the stream was still open. Naming it is
+      // the whole point — a stall that throws is a pass that failed, and a pass
+      // that failed settles its promise and frees the seat.
+      if( controller.signal.aborted )
+        throw new Error(`LLM stream to ${ep.provider} stalled — no data for ${this._timeoutMs}ms`)
+      throw err
+    }
     finally {
+      clearTimeout( timer )
       reader.releaseLock()
     }
 

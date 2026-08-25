@@ -13470,7 +13470,11 @@ var LLMDirector = class {
   }
   async _callAnthropicStream(ep, systemPrompt, userMessage, onChunk, temperature) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this._timeoutMs);
+    let timer = setTimeout(() => controller.abort(), this._timeoutMs);
+    const restartDeadline = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => controller.abort(), this._timeoutMs);
+    };
     let res;
     try {
       res = await fetch(`${this._resolvedBase(ep)}/messages`, {
@@ -13492,9 +13496,10 @@ var LLMDirector = class {
         throw new Error(`LLM stream to ${ep.provider} timed out after ${this._timeoutMs}ms (no response)`);
       throw err;
     }
-    clearTimeout(timer);
-    if (!res.ok)
+    if (!res.ok) {
+      clearTimeout(timer);
       throw new Error(`Anthropic stream ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -13509,6 +13514,7 @@ var LLMDirector = class {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        restartDeadline();
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
@@ -13529,7 +13535,12 @@ var LLMDirector = class {
           }
         }
       }
+    } catch (err) {
+      if (controller.signal.aborted)
+        throw new Error(`LLM stream to ${ep.provider} stalled \u2014 no data for ${this._timeoutMs}ms`);
+      throw err;
     } finally {
+      clearTimeout(timer);
       reader.releaseLock();
     }
     return { text: fullText, ...tokens };
@@ -15107,6 +15118,10 @@ var ExecutiveEngine = class extends AsyncEngine {
   // The master reads them as Percepts — NEVER as incoming messages.
   // See EscalationBuffer for the full rationale (R5-g-2).
   _escalations = new EscalationBuffer();
+  /** First tick of an unbroken `hasPendingWork` suppression; null when the seat is free. */
+  _mutedSince = null;
+  /** Whether this suppression episode has already been reported. */
+  _mutedWarned = false;
   /** Set/clear the chunk broadcaster (called by WillManager when SSE clients connect). */
   setChunkBroadcaster(fn) {
     this._chunkBroadcaster = fn;
@@ -15487,6 +15502,18 @@ var ExecutiveEngine = class extends AsyncEngine {
     };
     const result = evaluateGating(state, tick, gatingDeps, this._gatingState);
     updateGatingState(this._gatingState, state, tick, result.shouldActivate, result.cleanedBuffer);
+    if (result.reason === "hasPendingWork") {
+      this._mutedSince ??= tick;
+      if (!this._mutedWarned && tick - this._mutedSince >= this._executiveInterval * 3) {
+        this._mutedWarned = true;
+        logger.warn(
+          `[executive] no cycle for ${tick - this._mutedSince} ticks \u2014 a reasoning pass has not settled and is holding the seat (tick=${tick})`
+        );
+      }
+    } else {
+      this._mutedSince = null;
+      this._mutedWarned = false;
+    }
     if (result.shouldActivate)
       logger.info(`[executive] activating \u2014 reason: ${result.reason} (tick=${tick})`);
     return result.shouldActivate;
@@ -20846,9 +20873,11 @@ To reach someone else I name them in an action:
  "args": {"content": "what I want to say to them"}}
 
 I am one conversation of a mind that is having several. Opening a channel is not mine to
-do \u2014 that action is handed to the part of me that owns whom I contact, and it reaches them
-through their own conversation, which may already be open. I keep [REPLY_TEXT] for the
-person in front of me.
+do \u2014 that action hands the intention to the part of me that owns whom I contact. It is a
+decision, not a delivery: at the moment I write it nothing has reached anyone, and it may
+yet come to nothing. So I never tell the person in front of me that I have contacted
+someone, or that a message is on its way. The most I can truthfully say is that I mean to.
+I keep [REPLY_TEXT] for the person in front of me.
 
 ## When to use GOALS_NEW (almost always)
 If the speaker requests, mentions, or implies something I should follow through on \u2014 embed [GOALS_NEW] in my reasoning.
@@ -21224,6 +21253,15 @@ var AuditionEngine = class extends BaseSenseEngine {
   _endTurn(entityId) {
     this._turnDone.get(entityId)?.();
   }
+  /**
+   * True while a turn with this person is still resolving — they spoke and the
+   * reply has not landed yet. The agency asks before delivering a self-initiated
+   * message (see OutreachAuthor.isSpeakingTo), so one mind does not reach one
+   * person down two paths in the same tick.
+   */
+  isSpeakingTo(entityId) {
+    return this._turnDone.has(entityId);
+  }
   // ── Facet lifecycle ─────────────────────────────────────────
   async _routeToFacet(percept, speakerName) {
     if (!this._executiveEngine) {
@@ -21448,7 +21486,11 @@ var AuditionEngine = class extends BaseSenseEngine {
         unsub = handle.subscribe((d) => {
           if (d.respondingToType !== "outreach") return;
           const decision = d.decision;
-          done({ bubbles: decision.replyBubbles ?? [], withheld: decision.withheld === true });
+          done({
+            bubbles: decision.replyBubbles ?? [],
+            withheld: decision.withheld === true,
+            answered: true
+          });
         });
         Promise.resolve(handle.report({ type: "outreach", payload: { entityId, gist }, focus: outreachFocus })).catch((err) => {
           logger.warn(`[audition-engine] outreach report failed for ${entityId}: ${err.message}`);
@@ -23483,6 +23525,11 @@ var MotorSchemaExecutor = class {
       metrics.push(["agency.communicate.blocked", 1]);
       return true;
     }
+    if (intent.targetEntityId && this._author?.isSpeakingTo?.(intent.targetEntityId)) {
+      logger.debug(`[motor] holding "${intent.schema}" \u2014 a turn with ${intent.targetEntityId} is in flight`);
+      metrics.push(["agency.communicate.mid_turn", 1]);
+      return false;
+    }
     const authored = str7(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]);
     const fromFacet = !authored;
     let bubbles = authored ? [authored] : this._authored.get(id) ?? [];
@@ -23564,6 +23611,7 @@ var MotorSchemaExecutor = class {
     void this._author.authorOutreach(intent.targetEntityId ?? "", name, str7(intent.parameters["gist"])).then((result) => {
       const bubbles = Array.isArray(result) ? result : result.bubbles;
       const declared = !Array.isArray(result) && result.withheld === true;
+      const answered = !Array.isArray(result) && result.answered === true;
       if (bubbles.length > 0) {
         this._authored.set(id, bubbles);
         return;
@@ -23573,7 +23621,12 @@ var MotorSchemaExecutor = class {
         logger.debug(`[motor] "${intent.schema}" withheld \u2014 the facet chose silence`);
         return;
       }
-      logger.warn(`[motor] outreach authoring returned nothing for "${intent.schema}"`);
+      if (answered) {
+        this._withheld.set(id, "I turned it over and came back with no words.");
+        logger.info(`[motor] "${intent.schema}" withheld \u2014 the pass produced no words`);
+        return;
+      }
+      logger.warn(`[motor] outreach authoring never ran for "${intent.schema}"`);
     }).catch((err) => {
       logger.warn(`[motor] outreach authoring failed: ${errMsg(err)}`);
     }).finally(() => {

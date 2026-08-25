@@ -1262,14 +1262,20 @@ one is bound, with the in-process call as the fallback.
       room with no name stays unnamed rather than labelled with its id.
 - [x] The backend states `'exafferent'` at the point where it knows.
 
-> **Still a bypass, and now the only one: `inbound_percept` → `injectEvent`.**
-> It writes a `senses.<domain>` ENTITY straight into state rather than routing
-> through `senseSignal`. Worth knowing before anyone fixes it: the consumers of
-> `senses.*` are bus EVENTS named `senses.<domain>.percept`, and `action.selector`
-> requires the `.percept` suffix — so what this channel injects is close to
-> inert. Fixing it properly means giving the envelope a real `SensoryInput`
-> shape (a `kind`, a provenance), which is another wire change and a decision
-> about whether that channel is used at all.
+> **`inbound_percept` → `injectEvent` is NOT a bypass — corrected 2026-08-25.**
+> An earlier note here called it the last one. Traced properly, it is not:
+> `injectEvent` writes a `senses.<domain>` ENTITY into the world, and
+> `exteroception` scans every entity outside `MIND_OWN_ENTITY_TYPES` and turns
+> appearances into percepts — so the percept is written by an ALLOWED writer, and
+> provenance is inferred there legitimately by the corollary-discharge matcher.
+>
+> A host putting something into the world and the mind noticing it through
+> exteroception is arguably the most honest shape available. Nothing to fix.
+>
+> Two true things about it worth recording instead: the channel has **no senders
+> anywhere** — not in this package, not in the backend, not in studio, only its
+> own test — and what it injects reaches the mind through the world rather than
+> through a sense door, which is a different route, not a missing one.
 
 ### P4 — Delete what the doors subsumed — ✅ **SHIPPED 2026-08-24**
 

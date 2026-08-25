@@ -371,7 +371,7 @@ export interface PromptBuildOptions {
     /** What the mind worked out in that thread — its own reasoning, come back. */
     concluded?: string
     /** Commitments it made there toward someone NOT in the thread. */
-    promised?: Array<{ target: string; gist?: string; tick: number }>
+    promised?: Array<{ what: string; target?: string; gist?: string; tick: number }>
   }[]
 }
 
@@ -897,8 +897,12 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
           const who       = `- ${c.name ?? 'someone'} (id: ${c.entityId})`
           const concluded = c.concluded ? `\n    What I worked out there: ${c.concluded.trim()}` : ''
           const promised  = ( c.promised ?? [] ).map( p =>
-            `\n    I said there that I would reach ${p.target}${ p.gist ? ` — about: "${p.gist}"` : '' }`
-            + `, at tick ${p.tick}. Saying it in that thread did not send it.`
+            `\n    I said there that I would ${p.what}${ p.gist ? ` — about: "${p.gist}"` : '' }`
+            + `, at tick ${p.tick}.`
+            // Only a CONTACT can be mistaken for already done by having been
+            // said, which is the confusion this clause exists to break. A
+            // promise about work carries no such ambiguity and gets no lecture.
+            + ( p.target ? ' Saying it in that thread did not send it.' : '')
           ).join('')
           return `${who}${concluded}${promised}`
         } ).join('\n')}\nThese threads are already open — I am in them. Reaching out to one of these people again starts a second, parallel thread with them.`

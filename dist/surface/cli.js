@@ -14460,7 +14460,7 @@ ${options.activeConversations.map((c) => {
     What I worked out there: ${c.concluded.trim()}` : "";
       const promised = (c.promised ?? []).map(
         (p) => `
-    I said there that I would reach ${p.target}${p.gist ? ` \u2014 about: "${p.gist}"` : ""}, at tick ${p.tick}. Saying it in that thread did not send it.`
+    I said there that I would ${p.what}${p.gist ? ` \u2014 about: "${p.gist}"` : ""}, at tick ${p.tick}.` + (p.target ? " Saying it in that thread did not send it." : "")
       ).join("");
       return `${who}${concluded}${promised}`;
     }).join("\n")}
@@ -15319,8 +15319,13 @@ function validateFacetHandoff(payload) {
   if (!body || typeof body !== "object") return "payload.body is required";
   const kind = body.kind;
   if (kind === "escalation") return null;
-  if (kind === "undertaking")
-    return typeof body.target === "string" && body.target.trim().length > 0 ? null : "undertaking handoff requires a non-empty target";
+  if (kind === "undertaking") {
+    const what = body.what;
+    if (typeof what !== "string" || what.trim().length === 0)
+      return "undertaking handoff requires a non-empty what";
+    const target = body.target;
+    return target === void 0 || typeof target === "string" && target.trim().length > 0 ? null : "undertaking handoff target, when present, must be a non-empty string";
+  }
   return `unknown handoff kind: ${String(kind)}`;
 }
 function whereItHappened(h) {
@@ -17207,7 +17212,7 @@ var ExecutiveEngine = class extends AsyncEngine {
     if (payload.body.kind === "undertaking") {
       const body = payload.body;
       if (!payload.facetId) {
-        logger.warn(`[executive] undertaking toward "${body.target}" arrived with no facetId \u2014 nowhere to file it`);
+        logger.warn(`[executive] commitment "${body.what}" arrived with no facetId \u2014 nowhere to file it`);
         return;
       }
       const at = this._facetSubjects.get(payload.facetId) ?? {
@@ -17216,13 +17221,20 @@ var ExecutiveEngine = class extends AsyncEngine {
         tick
       };
       at.promised = [
-        // One entry per target: restating the same promise is the same promise.
-        ...(at.promised ?? []).filter((p) => p.target !== body.target),
-        { target: body.target, ...body.gist ? { gist: body.gist } : {}, tick }
+        // Deduped on WHAT was promised, falling back to the target when two
+        // wordings mean the same contact: restating a promise is the same
+        // promise, and the master does not need telling twice.
+        ...(at.promised ?? []).filter((p) => p.what !== body.what && !(body.target !== void 0 && p.target === body.target)),
+        {
+          what: body.what,
+          ...body.target ? { target: body.target } : {},
+          ...body.gist ? { gist: body.gist } : {},
+          tick
+        }
       ];
       this._facetSubjects.set(payload.facetId, at);
       logger.info(
-        `[executive] filed undertaking from ${from} \u2192 reach ${body.target} (it reads this at its next cycle; what to do about it is its own call)`
+        `[executive] filed commitment from ${from} \u2192 "${body.what}" (it reads this at its next cycle; what to do about it is its own call)`
       );
       return;
     }
@@ -22814,6 +22826,13 @@ var AuditionEngine = class extends BaseSenseEngine {
           );
           handoff({
             kind: "undertaking",
+            // The commitment in the mind's own words. A contact is one KIND of
+            // promise, not the only kind the tract can carry — see
+            // UndertakingHandoff. This producer only makes contact-shaped ones,
+            // because a facet declares an outward intent by naming a
+            // communicate action; anything else it means to follow through on
+            // goes through [GOALS_NEW], which the format already asks for.
+            what: `reach ${intent.target}`,
             target: intent.target,
             reasoning: intent.reasoning ?? "",
             ...intent.gist ? { gist: intent.gist } : {}

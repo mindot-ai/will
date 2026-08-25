@@ -14,6 +14,9 @@
 // the method. Moving it is P1a's third bullet, not this cut.
 
 import { logger } from '#core/logger'
+// The record type, not a string literal: `## What I've Said Lately` is built by
+// reading it, and a second spelling here would be a contract kept in two places.
+import { SENT_TYPE } from '#agency/conversation.aim'
 import type { WillInstance } from '#stem/index'
 import {
   ESCALATION_TTL_TICKS,
@@ -115,7 +118,7 @@ export class EscalationLifecycle {
     for( const esc of pending ){
       esc.expiresAt = tick + ESCALATION_TTL_TICKS
       this._markEscalated( instance, esc.intentId, esc.expiresAt )
-      this._voiceEscalation( instance, esc )
+      this._voiceEscalation( instance, esc, tick )
       active.set( esc.intentId, esc )
     }
     this._activeEscalations.set( instance.config.id, active )
@@ -151,15 +154,53 @@ export class EscalationLifecycle {
    * is a pure move — relocating it is a behaviour question about who authors
    * the words, not a question about where the file boundary goes.
    */
-  private _voiceEscalation( instance: WillInstance, esc: Escalation ): void {
+  private _voiceEscalation( instance: WillInstance, esc: Escalation, tick: number ): void {
+    const content = escalationAsk( esc.schema, esc.reasonCode )
     try {
       instance.cognition.outboxWriter.enqueue({
         targetEntityId: '*',
-        content:        escalationAsk( esc.schema, esc.reasonCode ),
+        content,
         effectorName:    'broadcast',
       })
     }
-    catch( err ){ logger.warn(`[policy] escalation voice failed for "${esc.schema}": ${errMsg( err )}`) }
+    catch( err ){
+      logger.warn(`[policy] escalation voice failed for "${esc.schema}": ${errMsg( err )}`)
+      return
+    }
+
+    // Words that left the mind have to exist in its record of having said them.
+    //
+    // These did not. The ask goes out through the outbox directly — no intent,
+    // no `_deliver` — so nothing wrote the `conversation.sent` that
+    // `## What I've Said Lately` is built from, and the one thing she could not
+    // see was the one thing she was being asked about. Live: she broadcast
+    // "I want to discord_unban_member … May I go ahead?", was asked who she
+    // meant, and answered "I didn't send that. I've never asked to unban
+    // anyone" — seven times across four minutes, correctly, because from the
+    // inside she never had.
+    //
+    // Recorded AFTER the enqueue and skipped when it throws: a record of speech
+    // that never left is the same fault facing the other way.
+    try {
+      instance.simulation.stateManager.setEntity({
+        // Keyed by schema as well as tick — two intents can escalate on one
+        // tick, and a shared id would leave the mind remembering one ask.
+        id:   `conv-sent-escalation-${ esc.schema }-${ tick }`,
+        type: SENT_TYPE,
+        metadata: {
+          targetEntityId:   '*',
+          // She said it to the room. Naming it the way she would say it keeps
+          // the line readable next to the people in the same list.
+          targetEntityName: 'everyone here',
+          messageCount:     1,
+          preview:          content.slice( 0, 100 ),
+          effectorName:     'broadcast',
+          tick,
+          delivered:        false,
+        },
+      })
+    }
+    catch( err ){ logger.warn(`[policy] escalation record failed for "${esc.schema}": ${errMsg( err )}`) }
   }
 }
 

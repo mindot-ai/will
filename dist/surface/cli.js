@@ -28917,7 +28917,7 @@ var EscalationLifecycle = class {
     for (const esc of pending) {
       esc.expiresAt = tick + ESCALATION_TTL_TICKS;
       this._markEscalated(instance, esc.intentId, esc.expiresAt);
-      this._voiceEscalation(instance, esc);
+      this._voiceEscalation(instance, esc, tick);
       active.set(esc.intentId, esc);
     }
     this._activeEscalations.set(instance.config.id, active);
@@ -28951,15 +28951,38 @@ var EscalationLifecycle = class {
    * is a pure move — relocating it is a behaviour question about who authors
    * the words, not a question about where the file boundary goes.
    */
-  _voiceEscalation(instance, esc) {
+  _voiceEscalation(instance, esc, tick) {
+    const content = escalationAsk(esc.schema, esc.reasonCode);
     try {
       instance.cognition.outboxWriter.enqueue({
         targetEntityId: "*",
-        content: escalationAsk(esc.schema, esc.reasonCode),
+        content,
         effectorName: "broadcast"
       });
     } catch (err) {
       logger.warn(`[policy] escalation voice failed for "${esc.schema}": ${errMsg2(err)}`);
+      return;
+    }
+    try {
+      instance.simulation.stateManager.setEntity({
+        // Keyed by schema as well as tick — two intents can escalate on one
+        // tick, and a shared id would leave the mind remembering one ask.
+        id: `conv-sent-escalation-${esc.schema}-${tick}`,
+        type: SENT_TYPE,
+        metadata: {
+          targetEntityId: "*",
+          // She said it to the room. Naming it the way she would say it keeps
+          // the line readable next to the people in the same list.
+          targetEntityName: "everyone here",
+          messageCount: 1,
+          preview: content.slice(0, 100),
+          effectorName: "broadcast",
+          tick,
+          delivered: false
+        }
+      });
+    } catch (err) {
+      logger.warn(`[policy] escalation record failed for "${esc.schema}": ${errMsg2(err)}`);
     }
   }
 };

@@ -21,7 +21,6 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { OutboxMessage } from '#types'
-import { perceptEntity } from '#cognition/percept.entity'
 import type { WillInstance } from '#stem/index'
 
 /**
@@ -92,34 +91,39 @@ export class OutboxController {
       break
     }
 
-    // 2. Write a percept so Exteroception perceives delivery ("ear hears the word")
+    // 2. The world's answer about my own words — in through the sense door.
     //
-    // The `tick` is what stops this leaking, and it was missing since the day
-    // this was written. `exteroception._collectStalePerceptIds` is the only
-    // sweeper of this type and collects only entities whose `metadata.tick` is
-    // a number, so this one was IMMORTAL — one permanent entity per message the
-    // mind ever successfully sent. Worse than memory: `extractPercepts` ranks
-    // percepts by salience with NO recency filter, so a failed delivery at 0.6
-    // held an executive percept slot for the rest of the mind's life, offering
-    // a months-old failure as something just noticed.
+    // SIGNAL_BOUNDARY P4. This tract used to build the percept entity itself and
+    // `setEntity` it, which made it one of three places outside a sense that
+    // wrote a percept. It is reafference by construction ("the ear hears the
+    // word you spoke"): the message went out, and the world said whether it
+    // landed. That is precisely what the somatosensation door carries since P2,
+    // and going through it means the percept is stamped, traced and swept by the
+    // same machinery as every other one instead of by hand here.
     //
-    // Sweeping loses nothing. `working.memory._ingestPercepts` copies every
-    // percept into WM on the next tick, deduped by source id — state is the
-    // staging area, WM is where it is remembered.
-    instance.simulation.stateManager.setEntity( perceptEntity( {
-      id:         `msg-delivered-${messageId}`,
-      tick,
-      category:   'message-delivery',
-      summary:    delivered
-        ? `My message was delivered successfully.`
-        : `My message failed to reach the recipient.`,
-      salience:   delivered ? 0.35 : 0.6,
-      changeType: delivered ? 'delivered' : 'failed',
-      // Reafference by construction — this percept describes our own action's
-      // outcome ("ear hears the word"). Tagged, not attenuated: it is the ack
-      // surface, not a content echo (EXAFFERENCE P2).
+    // The facts go as `data`, not as prose. `delivered` and the id are what the
+    // mind has to reason from; the sentence it reads is the engine's business.
+    // Two deliveries in one tick stay distinct because `messageId` is in the
+    // data and the trace id hashes the label the data composes — identical
+    // payloads in one tick are what that hash is meant to collapse.
+    //
+    // `summary` here is a host-style hint, and the engine may bound it; the data
+    // beside it is never bounded. Salience keeps the old asymmetry — a failure
+    // is worth more attention than a success, because only one of them needs
+    // anything done about it.
+    void instance.cognition.somatosensationEngine.sense({
+      kind:       'system',
+      signal:     'message_delivery',
       provenance: 'reafferent',
-    }, { messageId } ) )
+      data: {
+        messageId,
+        delivered,
+        salience: delivered ? 0.35 : 0.6,
+        summary:  delivered
+          ? 'My message was delivered successfully.'
+          : 'My message failed to reach the recipient.',
+      },
+    })
 
     instance.sessionLogger?.write({
       type:      'conversation.delivery',

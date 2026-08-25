@@ -15312,67 +15312,83 @@ var EscalationBuffer = class {
    * Convert every buffered handoff into a high-salience percept entity and clear
    * the buffer. Returns the percepts plus the first handoff's requester context
    * (used to tag goals the master creates in response).
+   *
+   * WHY THESE DO NOT GO THROUGH A SENSE DOOR (SIGNAL_BOUNDARY P4).
+   *
+   * P4's rule is that only a sense or exteroception writes a percept, and these
+   * two are the standing exception. A sense door carries AFFERENCE: a signal
+   * crossing into the mind, either from the world (exafferent) or from the
+   * mind's own act returning THROUGH the world (reafferent). A facet handing off
+   * to the master crosses neither boundary — it never left the mind. Routing it
+   * through a sense would dress one part of a mind up as news from outside,
+   * which is precisely the laundering P1 removed from `inspect`, and §6 of the
+   * epoch names that class of over-unification as the thing not to do.
+   *
+   * They still had to stop being hand-rolled literals, and they have: everything
+   * goes through `perceptEntity()`, so the shape is the one shape.
+   *
+   * What is left open, and worth deciding rather than inheriting: a handoff is
+   * using the percept entity as a DELIVERY MECHANISM, because the percept block
+   * is what the executive prompt renders. A `self.handoff` type with its own
+   * section would say what this actually is. That is a prompt change and a
+   * `_reconcileUndertakings` change, so it is a decision, not a cleanup.
    */
   drainToPercepts() {
     const percepts = [];
     let seq = 0;
     for (const h of this._pending) {
       const id = `escalation-percept-${h.subjectEntityId ?? h.facetId ?? "self"}-${h.tick}-${seq++}`;
-      const common = {
+      const core = {
+        id,
+        tick: h.tick,
         salience: 0.85,
         // REAFFERENT. Nothing outside the mind produced this: a facet of it
-        // raised the handoff, and the master is now sensing its own part's
+        // raised the handoff, and the master is now noticing its own part's
         // doing. Tagging it costs no behaviour — the rupture gate excludes
         // reafferent and untagged alike — but it stops the exclusion being an
         // accident, and it is the honest answer rather than the convenient one.
         provenance: "reafferent",
+        ...h.subjectEntityId ? { entityId: h.subjectEntityId } : {}
+      };
+      const mine = {
         source: "executive-facet",
-        ...h.subjectEntityId ? { entityId: h.subjectEntityId } : {},
         ...h.threadId ? { threadId: h.threadId } : {},
         ...h.facetId ? { facetId: h.facetId } : {}
       };
-      percepts.push(h.body.kind === "undertaking" ? {
-        id,
-        type: "percept",
-        metadata: {
-          ...common,
-          category: "undertaking",
-          // First person: this is the mind noticing what IT said it would do, not
-          // a report handed to it. What makes it act is that the words are still
-          // unsent — an undertaking it has already honoured reads the same until
-          // it checks, which is exactly the check we want it making.
-          // Everything actionable goes in `summary`: that is the only field the
-          // executive context actually renders (context.ts extractPercepts reads
-          // summary/content and nothing else).
-          //
-          // The closing clause is the whole point. A mind that has SAID it will make
-          // contact remembers deciding, and cannot tell from the inside whether the
-          // words went out — so it follows up on a message it never sent. Naming the
-          // gap is what lets it check. It stays a decision either way: it may have
-          // changed its mind, or judge this the wrong moment, and a reach-out
-          // competes with everything else like any other action.
-          summary: `${whereItHappened(h)} I said I would reach ${h.body.target}` + (h.body.gist ? ` \u2014 what I meant to say: "${h.body.gist.slice(0, 220)}"` : "") + `. Nothing has gone to them yet; saying it in that conversation did not send it. If I still mean it, I reach out with target '${h.body.target}'. If I no longer do, I let it go \u2014 but I do not leave it half-done while telling them it is handled.`,
-          // Who was promised, and when the promise was made. The executive
-          // reconciles against these (see _reconcileUndertakings): once the mind
-          // has actually reached this target since `tick`, the percept is retired
-          // rather than left standing as a claim the words are still unsent.
-          undertakingTarget: h.body.target,
-          tick: h.tick
-        }
-      } : {
-        id,
-        type: "percept",
-        metadata: {
-          ...common,
-          category: "task-escalation",
-          // The steer lives IN the summary because that is the only field the
-          // executive context renders (context.ts extractPercepts reads
-          // summary/content and nothing else). It sat in a sibling `directive`
-          // field for its whole life and never once reached the master.
-          summary: `[Task from ${h.subjectName ?? h.subjectEntityId ?? "my own focused work"}] ${h.body.reasoning} \u2014 this is mine to plan or re-goal; the part of me that raised it handles the talking.`,
-          tick: h.tick
-        }
-      });
+      percepts.push(h.body.kind === "undertaking" ? perceptEntity({
+        ...core,
+        category: "undertaking",
+        // First person: this is the mind noticing what IT said it would do, not
+        // a report handed to it. What makes it act is that the words are still
+        // unsent — an undertaking it has already honoured reads the same until
+        // it checks, which is exactly the check we want it making.
+        // Everything actionable goes in `summary`: that is the only field the
+        // executive context actually renders (context.ts extractPercepts reads
+        // summary/content and nothing else).
+        //
+        // The closing clause is the whole point. A mind that has SAID it will make
+        // contact remembers deciding, and cannot tell from the inside whether the
+        // words went out — so it follows up on a message it never sent. Naming the
+        // gap is what lets it check. It stays a decision either way: it may have
+        // changed its mind, or judge this the wrong moment, and a reach-out
+        // competes with everything else like any other action.
+        summary: `${whereItHappened(h)} I said I would reach ${h.body.target}` + (h.body.gist ? ` \u2014 what I meant to say: "${h.body.gist.slice(0, 220)}"` : "") + `. Nothing has gone to them yet; saying it in that conversation did not send it. If I still mean it, I reach out with target '${h.body.target}'. If I no longer do, I let it go \u2014 but I do not leave it half-done while telling them it is handled.`
+      }, {
+        ...mine,
+        // Who was promised, and when the promise was made. The executive
+        // reconciles against these (see _reconcileUndertakings): once the mind
+        // has actually reached this target since `tick`, the percept is retired
+        // rather than left standing as a claim the words are still unsent.
+        undertakingTarget: h.body.target
+      }) : perceptEntity({
+        ...core,
+        category: "task-escalation",
+        // The steer lives IN the summary because that is the only field the
+        // executive context renders (context.ts extractPercepts reads
+        // summary/content and nothing else). It sat in a sibling `directive`
+        // field for its whole life and never once reached the master.
+        summary: `[Task from ${h.subjectName ?? h.subjectEntityId ?? "my own focused work"}] ${h.body.reasoning} \u2014 this is mine to plan or re-goal; the part of me that raised it handles the talking.`
+      }, mine));
     }
     const first = this._pending.find((h) => h.subjectEntityId);
     const requester = first ? { entityId: first.subjectEntityId, threadId: first.threadId ?? "" } : void 0;
@@ -28070,18 +28086,17 @@ var OutboxController = class {
       });
       break;
     }
-    instance.simulation.stateManager.setEntity(perceptEntity({
-      id: `msg-delivered-${messageId}`,
-      tick,
-      category: "message-delivery",
-      summary: delivered ? `My message was delivered successfully.` : `My message failed to reach the recipient.`,
-      salience: delivered ? 0.35 : 0.6,
-      changeType: delivered ? "delivered" : "failed",
-      // Reafference by construction — this percept describes our own action's
-      // outcome ("ear hears the word"). Tagged, not attenuated: it is the ack
-      // surface, not a content echo (EXAFFERENCE P2).
-      provenance: "reafferent"
-    }, { messageId }));
+    void instance.cognition.somatosensationEngine.sense({
+      kind: "system",
+      signal: "message_delivery",
+      provenance: "reafferent",
+      data: {
+        messageId,
+        delivered,
+        salience: delivered ? 0.35 : 0.6,
+        summary: delivered ? "My message was delivered successfully." : "My message failed to reach the recipient."
+      }
+    });
     instance.sessionLogger?.write({
       type: "conversation.delivery",
       tick,

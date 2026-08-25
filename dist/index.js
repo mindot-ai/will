@@ -13745,13 +13745,14 @@ var LLMDirector = class {
 // src/cognition/faculties/executive.engine/parser.ts
 function parseResponse(responseText, state, recentActionTypes) {
   const codeBlocks = [...responseText.matchAll(/```(?:json)?\s*\n?([\s\S]*?)\n?```/g)], actionsBlock = codeBlocks.find((m) => m[1].includes('"actions"')), fullText = actionsBlock?.[1]?.trim() ?? responseText.trim();
-  let actions, confidence = 0.5;
+  let actions, confidence = 0.5, stated;
   try {
     const parsed = JSON.parse(fullText);
     if (!Array.isArray(parsed.actions))
       throw new Error("actions is not an array");
     actions = parsed.actions;
     confidence = parsed.confidence ?? 0.5;
+    stated = typeof parsed.reasoning === "string" ? parsed.reasoning : void 0;
   } catch {
     const actionsStr = extractBalancedArray(fullText, "actions");
     if (!actionsStr) {
@@ -13768,6 +13769,7 @@ function parseResponse(responseText, state, recentActionTypes) {
     confidence = confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.5;
   }
   const full = parseTaggedBlocks({ actions, reasoning: fullText, confidence });
+  if (stated) full.reasoning = stripTaggedBlocks(stated);
   const replyText = extractTextBlock(responseText, REPLY_TEXT_TAG);
   if (replyText) full.replyText = replyText;
   if (responseText.includes(NO_MESSAGE_OPEN))
@@ -13832,6 +13834,28 @@ function extractBalancedArray(text, key) {
     }
   }
   return null;
+}
+var TAGGED_BLOCK_NAMES = [
+  "PLANS",
+  "BELIEFS",
+  "INTROSPECTION",
+  "NARRATIVE",
+  "IDENTITY",
+  "KNOWN_ENTITIES",
+  "GOALS_NEW",
+  "GOALS_ABANDON",
+  "GOALS_REPRIORITIZE",
+  "EFFECTORS",
+  "SELF_OBS",
+  "SKILLS",
+  "REPLY_TEXT",
+  "ACK"
+];
+function stripTaggedBlocks(reasoning) {
+  let out = reasoning;
+  for (const tag of TAGGED_BLOCK_NAMES)
+    out = out.replace(new RegExp(`\\[${tag}\\][\\s\\S]*?\\[/${tag}\\]`, "g"), "").replace(new RegExp(`\\[${tag}\\][\\s\\S]*$`, "g"), "");
+  return out.replace(/\n{3,}/g, "\n\n").trim();
 }
 function parseTaggedBlocks(minimal, state) {
   const full = {

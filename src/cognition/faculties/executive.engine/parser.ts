@@ -27,7 +27,9 @@ export function parseResponse(
 
   let
   actions: Array<{ type: string; reasoning: string; expectedOutcome: string }>,
-  confidence = 0.5
+  confidence = 0.5,
+  /** The mind's own sentence, when the response parsed as JSON and carried one. */
+  stated: string | undefined
 
   // Strategy 1: direct JSON.parse
   try {
@@ -41,6 +43,7 @@ export function parseResponse(
 
     actions = parsed.actions
     confidence = parsed.confidence ?? 0.5
+    stated = typeof parsed.reasoning === 'string' ? parsed.reasoning : undefined
   }
   catch {
     // Strategy 2: balanced-bracket extractor
@@ -60,8 +63,27 @@ export function parseResponse(
     confidence = confidenceMatch ? parseFloat( confidenceMatch[1]! ) : 0.5
   }
 
-  // Parse tagged blocks from the extracted JSON text
+  // Tagged blocks are scanned over the FULL text — they are documented as embedded
+  // in the reasoning field, but a model puts them wherever it likes and the scan
+  // has always been forgiving about that. Keep that surface.
   const full = parseTaggedBlocks({ actions, reasoning: fullText, confidence }, state )
+
+  // …but `reasoning` itself is the mind's SENTENCE, not its serialization.
+  //
+  // It was `fullText` — the whole JSON blob — for every consumer downstream, and
+  // that was invisible for as long as nothing read it as prose. Three things do:
+  // the session log records it, a facet is handed the master's as "What I've Been
+  // Turning Over" (clipped to 400 chars, so facets have been reading the master's
+  // JSON truncated mid-object), and the master now reads a facet's back as what it
+  // worked out. Seen live in a prompt: `What I worked out there: { "actions": [...
+  //
+  // The scan surface and the sentence were the same string only because nothing
+  // had ever needed them to be different.
+  // Stripped of the tagged blocks, because the format tells the mind to embed them
+  // IN this field — so the sentence and the structured payload arrive in one
+  // string, and handing the whole thing back as "what I worked out" would just
+  // move the serialization problem one level in.
+  if( stated ) full.reasoning = stripTaggedBlocks( stated )
 
   // [REPLY_TEXT] is a plain-text block that lives OUTSIDE the JSON code block.
   // Search the full response text so we find it even when the LLM used a code fence.
@@ -174,6 +196,29 @@ function extractBalancedArray( text: string, key: string ): string | null {
   }
 
   return null
+}
+
+/** Every block name the reasoning field may carry, for stripping it back to prose. */
+const TAGGED_BLOCK_NAMES = [
+  'PLANS', 'BELIEFS', 'INTROSPECTION', 'NARRATIVE', 'IDENTITY', 'KNOWN_ENTITIES',
+  'GOALS_NEW', 'GOALS_ABANDON', 'GOALS_REPRIORITIZE', 'EFFECTORS', 'SELF_OBS',
+  'SKILLS', 'REPLY_TEXT', 'ACK',
+] as const
+
+/**
+ * The sentence, with the structured payload taken back out of it.
+ *
+ * Unclosed blocks are cut to the end of the string on purpose: a truncated
+ * `[PLANS]{…` is not prose either, and leaving it in puts half a JSON object in
+ * front of whoever reads this as the mind's thinking.
+ */
+export function stripTaggedBlocks( reasoning: string ): string {
+  let out = reasoning
+  for( const tag of TAGGED_BLOCK_NAMES )
+    out = out
+      .replace( new RegExp( `\\[${ tag }\\][\\s\\S]*?\\[/${ tag }\\]`, 'g'), '')
+      .replace( new RegExp( `\\[${ tag }\\][\\s\\S]*$`, 'g'), '')
+  return out.replace( /\n{3,}/g, '\n\n').trim()
 }
 
 /**

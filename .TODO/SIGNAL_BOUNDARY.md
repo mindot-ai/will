@@ -1234,10 +1234,42 @@ place where two readers can be talking about different objects and not find out.
 `injectEvent` is untouched: it writes an entity straight into state, so it is not
 a door with a bad name — it is a bypass, and bypasses are P4.
 
-### P4 — Delete what the doors subsumed
-- [ ] Remove bespoke `percept` writers that now go through a sense.
-- [ ] Success condition: **every `type: 'percept'` write is inside a sense
-      engine or exteroception** — no faculty, tract, or host writes one directly.
+### P4 — Delete what the doors subsumed — ✅ **SHIPPED 2026-08-24**
+
+Three bespoke writers existed, not the one this file assumed.
+
+- [x] **`outbox.controller.confirmDelivery` — routed through the door.** A
+      delivery ack is reafference by construction: the words went out and the
+      world said whether they landed. It now goes in as a `message_delivery`
+      system signal carrying `{ messageId, delivered }` as DATA, so the percept
+      is stamped, traced and swept by the same machinery as every other one
+      instead of by hand in a tract. Two deliveries in one tick stay distinct
+      because `messageId` is in the data the trace id hashes.
+- [x] **`escalation.buffer.drainToPercepts` ×2 — built, not hand-rolled.** These
+      were the last `type: 'percept'` literals in the package.
+- [x] Success condition, **as amended**: every `type: 'percept'` ENTITY is built
+      by `perceptEntity()`, and the only writers are a sense engine,
+      exteroception, and the escalation buffer.
+
+**The success condition as originally written cannot be met honestly, and the
+reason matters more than the checkbox.** A sense door carries AFFERENCE — a
+signal crossing into the mind, from the world (exafferent) or from the mind's own
+act returning *through* the world (reafferent). A facet handing off to the master
+crosses neither: it never left the mind. Routing it through a sense would dress
+one part of a mind up as news from outside, which is exactly the laundering P1
+removed from `inspect`, and §6 names that class of over-unification as the thing
+not to do. So the rule is now *"only `perceptEntity()` builds one, and only three
+places call it"*, which is checkable and true, rather than a fourth door.
+
+> **Left open, deliberately.** An escalation handoff is using the percept entity
+> as a DELIVERY MECHANISM, because the percept block is what the executive prompt
+> renders. A `self.handoff` type with its own prompt section would say what it
+> actually is. That is a prompt change plus a `_reconcileUndertakings` change —
+> a decision, not a cleanup.
+
+**Not a P4 case, despite matching the grep:** `working.memory.ts` sets
+`type: 'percept'` on a working-memory ITEM, not a state entity. Different
+namespace, same word — worth knowing before someone "fixes" it.
 
 ---
 

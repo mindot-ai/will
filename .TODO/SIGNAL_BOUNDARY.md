@@ -1298,11 +1298,30 @@ removed from `inspect`, and §6 names that class of over-unification as the thin
 not to do. So the rule is now *"only `perceptEntity()` builds one, and only three
 places call it"*, which is checkable and true, rather than a fourth door.
 
-> **Left open, deliberately.** An escalation handoff is using the percept entity
-> as a DELIVERY MECHANISM, because the percept block is what the executive prompt
-> renders. A `self.handoff` type with its own prompt section would say what it
-> actually is. That is a prompt change plus a `_reconcileUndertakings` change —
-> a decision, not a cleanup.
+> **Followed up 2026-08-25 — and the real defect was not the entity type.**
+> Reviewing the harness, Fabrice: *"it feels too dictator, or behaviours the mind
+> was supposed to handle by itself."* Correct. Three things wore the same
+> first-person voice: the GAP (a fact, and one the master cannot perceive any
+> other way, since a facet formed the intention), an INSTRUCTION naming the
+> effector and its argument, and a VALUE JUDGEMENT — the last two written as the
+> mind's own words, so it could not disagree with either.
+>
+> The prose existed because the representation was missing: the comment said so
+> outright — *"everything actionable goes in `summary`: that is the only field
+> the executive context actually renders"* — so an instruction was written into
+> the one visible channel. P2 removed that constraint (`perceptLine` renders
+> `data`), and the mechanism the pull belonged in already existed: an undertaking
+> is an intention already formed, which is the **ideomotor leg**, and it
+> COMPETES. So "if I no longer mean it, I let it go" stops being a sentence
+> granting permission and becomes what happens when something more pressing wins.
+>
+> The percept now states the gap and carries the promise as `data`; a paired
+> `ideomotor.intent` (`origin: 'undertaking'`, retired by `_reconcileUndertakings`
+> on its own terms, since a percept is swept in 2 ticks while the pull must
+> stand) carries the pull. See [[build-cogs-not-behaviors]].
+>
+> The `self.handoff` entity type is still worth considering, but it is now a
+> naming question rather than a behaviour one.
 
 **Not a P4 case, despite matching the grep:** `working.memory.ts` sets
 `type: 'percept'` on a working-memory ITEM, not a state entity. Different

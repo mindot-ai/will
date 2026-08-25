@@ -102,9 +102,33 @@ export interface EscalationRequester {
 export interface DrainedEscalations {
   /** High-salience percept entities to merge into StateCommands.set. */
   percepts: EntityInput[]
+  /**
+   * `ideomotor.intent` entities for undertakings — one per promised target.
+   *
+   * This is the half that used to be a SENTENCE. The percept said "If I still
+   * mean it, I reach out with target 'X'", which is an instruction naming an
+   * effector and its argument, written in the mind's own voice so it could not
+   * disagree with it. An undertaking is an intention the mind already formed;
+   * the affordance field has a leg for exactly that, and it competes.
+   */
+  intents: EntityInput[]
   /** First handoff's requester context, or undefined when none carried one. */
   requester?: EscalationRequester
 }
+
+/**
+ * How hard an unkept promise pulls, as the `priority` an ideomotor intent carries
+ * into the competition (it sets both field admission and the selector's willBias).
+ *
+ * Below a deliberate executive decision (0.8 default) because the master did not
+ * make this call this cycle — a part of it did, earlier, while attending to
+ * something else. Above ambient, because a promise made to someone and not kept
+ * is a live obligation and the mind should feel it as one.
+ */
+export const UNDERTAKING_PRIORITY = 0.7
+
+/** Stable per-target id, so a promise restated each cycle is ONE standing intent. */
+export const undertakingIntentId = ( target: string ): string => `ideomotor-undertaking-${ target }`
 
 /** "in my conversation with X" when there was one, "while I was working" otherwise. */
 function whereItHappened( h: PendingHandoff ): string {
@@ -150,6 +174,7 @@ export class EscalationBuffer {
    */
   drainToPercepts(): DrainedEscalations {
     const percepts: EntityInput[] = []
+    const intents:  EntityInput[] = []
     let seq = 0
     for( const h of this._pending ){
       // Distinct ids per drain: two handoffs from one thread on one tick are two
@@ -189,25 +214,22 @@ export class EscalationBuffer {
         ? perceptEntity( {
           ...core,
           category: 'undertaking',
-          // First person: this is the mind noticing what IT said it would do, not
-          // a report handed to it. What makes it act is that the words are still
-          // unsent — an undertaking it has already honoured reads the same until
-          // it checks, which is exactly the check we want it making.
-          // Everything actionable goes in `summary`: that is the only field the
-          // executive context actually renders (context.ts extractPercepts reads
-          // summary/content and nothing else).
+          // THE GAP, AND ONLY THE GAP. First person because the mind is noticing
+          // what IT said it would do, not because it is being told what to do
+          // about it. A mind that has said it will make contact remembers
+          // deciding and cannot tell from the inside whether the words went out
+          // — so it follows up on a message it never sent. Naming the gap is
+          // what lets it check; naming the remedy was never this line's job.
           //
-          // The closing clause is the whole point. A mind that has SAID it will make
-          // contact remembers deciding, and cannot tell from the inside whether the
-          // words went out — so it follows up on a message it never sent. Naming the
-          // gap is what lets it check. It stays a decision either way: it may have
-          // changed its mind, or judge this the wrong moment, and a reach-out
-          // competes with everything else like any other action.
+          // What used to follow this sentence: "If I still mean it, I reach out
+          // with target 'X'. If I no longer do, I let it go — but I do not leave
+          // it half-done while telling them it is handled." An instruction
+          // naming an effector and its argument, and a value judgement, both
+          // written in the mind's own voice so it could not disagree with
+          // either. The pull now lives in the affordance field where it can be
+          // out-competed, and the judgement belongs to a persona, not a buffer.
           summary: `${whereItHappened( h )} I said I would reach ${h.body.target}`
-            + ( h.body.gist ? ` — what I meant to say: "${h.body.gist.slice( 0, 220 )}"` : '')
-            + `. Nothing has gone to them yet; saying it in that conversation did not send it.`
-            + ` If I still mean it, I reach out with target '${h.body.target}'.`
-            + ` If I no longer do, I let it go — but I do not leave it half-done while telling them it is handled.`,
+            + `. Nothing has gone to them since; saying it in that conversation did not send it.`,
         }, {
           ...mine,
           // Who was promised, and when the promise was made. The executive
@@ -215,17 +237,63 @@ export class EscalationBuffer {
           // has actually reached this target since `tick`, the percept is retired
           // rather than left standing as a claim the words are still unsent.
           undertakingTarget: h.body.target,
+          // The EVIDENCE, rendered beneath the label since P2 — which is what
+          // makes the prose above unnecessary. `gist` is what the mind meant to
+          // say; it is a fact about the promise, not a script for keeping it,
+          // and it is carried whole rather than clipped into a sentence.
+          data: {
+            target:     h.body.target,
+            promisedAt: h.tick,
+            ...( h.subjectName ?? h.subjectEntityId ? { promisedTo: h.subjectName ?? h.subjectEntityId } : {} ),
+            ...( h.body.gist ? { gist: h.body.gist } : {} ),
+            contactedSince: false,
+          },
         } )
         : perceptEntity( {
           ...core,
           category: 'task-escalation',
-          // The steer lives IN the summary because that is the only field the
-          // executive context renders (context.ts extractPercepts reads
-          // summary/content and nothing else). It sat in a sibling `directive`
-          // field for its whole life and never once reached the master.
-          summary: `[Task from ${h.subjectName ?? h.subjectEntityId ?? 'my own focused work'}] ${h.body.reasoning}`
-            + ' — this is mine to plan or re-goal; the part of me that raised it handles the talking.',
+          // What was raised, and by which part of me. It used to close with
+          // "this is mine to plan or re-goal; the part of me that raised it
+          // handles the talking" — a role instruction. Whether to plan it,
+          // re-goal it or drop it is the master's call, and it has a whole
+          // faculty for making it.
+          summary: `[Raised by ${h.subjectName ?? h.subjectEntityId ?? 'my own focused work'}] ${h.body.reasoning}`,
         }, mine ) )
+
+      // ── the pull, as a candidate rather than a command ──────────
+      //
+      // An undertaking is an intention the mind ALREADY FORMED — a facet of it
+      // decided to make contact while attending to something else. That is
+      // precisely what the ideomotor leg carries: the synthesizer admits it as a
+      // high-salience candidate BECAUSE it was willed, and the selector then
+      // makes it compete like anything else. It never bypasses the competition,
+      // so "if I no longer mean it, I let it go" stops being a sentence granting
+      // permission and becomes what happens when something more pressing wins.
+      //
+      // `origin: 'undertaking'`, NOT 'executive'. `commands.ts` deletes every
+      // executive-origin intent the executive does not re-imagine each cycle, so
+      // an executive-origin one here would be swept the moment the master's own
+      // actions did not name it — alive for a single tick and never enacted.
+      // This one is retired instead by `_reconcileUndertakings`, when the
+      // contact actually happens.
+      //
+      // Standing pull, damped rather than locked: `enactionFootprint` reduces
+      // `(reach-out, target)` right after acting and decays back on its own,
+      // which is the guard built after a standing intent sent the same words to
+      // the same person three times, ~21 ticks apart.
+      if( h.body.kind === 'undertaking')
+        intents.push({
+          id:   undertakingIntentId( h.body.target ),
+          type: 'ideomotor.intent',
+          metadata: {
+            schema:         'reach-out',
+            targetEntityId: h.body.target,
+            priority:       UNDERTAKING_PRIORITY,
+            origin:         'undertaking',
+            tick:           h.tick,
+            ...( h.body.gist ? { parameters: { gist: h.body.gist } } : {} ),
+          },
+        })
     }
 
     // Capture requester context before clearing — used to tag new goals. Only a
@@ -236,6 +304,6 @@ export class EscalationBuffer {
 
     this._pending = []
 
-    return { percepts, requester }
+    return { percepts, intents, requester }
   }
 }

@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest'
 import { effectorController } from '#stem/tracts/effector.controller'
 import { MotorSchemaExecutor } from '#agency/engines/motor.schema.executor'
+import { readSpokenTurns, SENT_TYPE } from '#agency/conversation.aim'
 import type { PolicyArbiter, Verdict } from '#stem/policy/arbiter'
 import type { WillInstance } from '#stem/index'
 import type {
@@ -151,5 +152,79 @@ describe('P4 — the executor holds an escalated intent past the await timeout',
 
     expect( s.entities.has('held') ).toBe( true )      // escalated → held, not reconciled
     expect( s.entities.has('plain') ).toBe( false )    // plain → timed out and freed
+  })
+})
+
+// ── the ask is a thing she said ───────────────────────────────────────────────
+
+/**
+ * An escalation is a speech act, and speech the mind cannot remember making is
+ * worse than silence.
+ *
+ * The ask goes out through the outbox directly — no intent, no `_deliver` — so
+ * nothing wrote the `conversation.sent` that `## What I've Said Lately` is built
+ * from. The one utterance missing from her record was the one she was being
+ * asked about.
+ *
+ * Live, at 15:31:02 she broadcast "I want to discord_unban_member, but I need
+ * your approval before I can do this. May I go ahead?" Asked who she meant, she
+ * answered "I didn't send that. I've never asked to unban anyone" — and again,
+ * and again, seven messages across four minutes. She was right every time. Her
+ * prompt listed her replies to him and did not contain the ask.
+ *
+ * Both halves are pinned here, because writing an entity nothing reads is the
+ * same bug wearing the other face: the record must be the one `readSpokenTurns`
+ * actually returns.
+ */
+describe('P4 — she remembers asking', () => {
+  it('records the ask as something she said, in the words she said it in', () => {
+    const { instance, entities, voiced } = stub('i-1')
+    const c = new effectorController(); c.setArbiter( escalateArbiter )
+    c.bufferInvocation( asInstance( instance ), payload() )
+    c.applyPolicyOutcomes( asInstance( instance ) )
+
+    const sent = [ ...entities.values() ].filter( e => e.type === SENT_TYPE )
+    expect( sent, 'the ask left the mind and nothing recorded it').toHaveLength( 1 )
+    // The SAME words, not a paraphrase of them — she is asked about what she said.
+    expect( String( sent[0]!.metadata!['preview'] ) ).toBe( voiced[0]!.content.slice( 0, 100 ) )
+  })
+
+  it('and the record is the one the prompt is built from', () => {
+    const { instance, entities } = stub('i-1')
+    const c = new effectorController(); c.setArbiter( escalateArbiter )
+    c.bufferInvocation( asInstance( instance ), payload() )
+    c.applyPolicyOutcomes( asInstance( instance ) )
+
+    const turns = readSpokenTurns( entities )
+    expect( turns, 'written, but not where the prompt looks').toHaveLength( 1 )
+    expect( turns[0]!.preview ).toContain('trade')
+    expect( turns[0]!.tick ).toBe( 8 )
+    // Not an ack: `## What I've Said Lately` filters those out, and an approval
+    // ask filtered out of her own record is the whole defect again.
+    expect( turns[0]!.isAck ).toBe( false )
+  })
+
+  it('two escalations on one tick are two things she said', () => {
+    // A shared id would leave her remembering one of them — the same overwrite
+    // that once left the mind with exactly one memory per person, forever.
+    const { instance, entities } = stub('i-1')
+    const c = new effectorController(); c.setArbiter( escalateArbiter )
+    c.bufferInvocation( asInstance( instance ), payload({ schema: 'trade' }) )
+    c.bufferInvocation( asInstance( instance ), payload({ intentId: 'i-2', schema: 'deploy' }) )
+    c.applyPolicyOutcomes( asInstance( instance ) )
+
+    expect( readSpokenTurns( entities ) ).toHaveLength( 2 )
+  })
+
+  it('records nothing when the words never left', () => {
+    const { instance, entities } = stub('i-1')
+    ;( instance.cognition as { outboxWriter: { enqueue: () => string } } ).outboxWriter.enqueue =
+      () => { throw new Error('outbox down') }
+    const c = new effectorController(); c.setArbiter( escalateArbiter )
+    c.bufferInvocation( asInstance( instance ), payload() )
+    c.applyPolicyOutcomes( asInstance( instance ) )
+
+    expect( readSpokenTurns( entities ),
+      'a memory of speech that never happened is the same fault mirrored').toHaveLength( 0 )
   })
 })

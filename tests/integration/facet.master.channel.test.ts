@@ -52,8 +52,9 @@ function wired(){
  * cast, and what is under test is the WIRING, not an interface.
  */
 const priv = ( e: ExecutiveEngine ) => e as unknown as {
-  _escalations: { drainToPercepts(): { percepts: { metadata: unknown }[]; intents: { metadata: Record<string, unknown> }[] } }
-  _facetSubjects: Map<string, { entityId: string; name?: string; tick: number }>
+  _escalations: { drainToPercepts(): { percepts: { metadata: unknown }[] } }
+  _facetSubjects: Map<string, { entityId: string; name?: string; tick: number
+                              concluded?: string; promised?: Array<{ target: string; gist?: string; tick: number }> }>
 }
 
 const publish = ( bus: ReturnType<typeof createTestBus>, type: string, payload: unknown, sourceEngine: string ) => {
@@ -76,34 +77,58 @@ describe('facet → master channel survives the orchestrator\'s subscription', (
       .toMatch( /they want the repo set up/ )
   } )
 
-  it('delivers an undertaking toward a third party — the FKEM case, end to end', () => {
-    const { bus, engine } = wired()
-
-    publish( bus, 'executive.facet.handoff', {
-      subjectEntityId: 'discord:1019', threadId: 't', confidence: 0.85,
-      body: { kind: 'undertaking', reasoning: '', target: 'FKEM', gist: 'can you coordinate the demo meeting?' },
-    }, 'audition-engine')
-
-    const drained = priv( engine )._escalations.drainToPercepts()
-    const m = drained.percepts[0]!.metadata as Record<string, unknown>
-    expect( m.category ).toBe('undertaking')
-    expect( m.summary ).toMatch( /I said I would reach FKEM/ )
-    expect( m.summary ).toMatch( /Nothing has gone to them since/ )
-    // The notice arrives with the pull beside it, as a competing candidate
-    // rather than as a sentence telling the master to enact `reach-out`.
-    expect( drained.intents[0]!.metadata!['targetEntityId'] ).toBe('FKEM')
-  } )
-
-  it('learns who each facet is with from the sync, not just that one reported', () => {
+  it('files an undertaking with the thread it was made in — the FKEM case, end to end', () => {
+    // It produces no percept and no standing intent now. A promise crosses on the
+    // same tract as everything else the facet worked out, and the master reads it
+    // at its next cycle.
     const { bus, engine } = wired()
 
     publish( bus, 'executive.facet.sync', {
-      facetId: 'facet-1', reasoning: 'r', confidence: 0.8, tick: 12,
+      facetId: 'facet-1', reasoning: 'He wants a demo; FKEM has to be in it.', confidence: 0.85, tick: 12,
       subjectEntityId: 'discord:1019', subjectName: 'Fabrice',
     }, 'executive-facet-facet-1')
 
-    expect( [ ...priv( engine )._facetSubjects.entries() ] )
-      .toEqual( [ [ 'facet-1', { entityId: 'discord:1019', name: 'Fabrice', tick: 12 } ] ] )
+    publish( bus, 'executive.facet.handoff', {
+      facetId: 'facet-1', subjectEntityId: 'discord:1019', threadId: 't', confidence: 0.85, tick: 13,
+      body: { kind: 'undertaking', reasoning: '', target: 'FKEM', gist: 'can you coordinate the demo meeting?' },
+    }, 'audition-engine')
+
+    // Nothing queued as work for the master — an undertaking is not a task.
+    expect( priv( engine )._escalations.drainToPercepts().percepts ).toHaveLength( 0 )
+
+    const at = priv( engine )._facetSubjects.get('facet-1')!
+    expect( at.promised ).toEqual( [ { target: 'FKEM', gist: 'can you coordinate the demo meeting?', tick: 13 } ] )
+  } )
+
+  it('files a promise even when it arrives before the first sync', () => {
+    // A facet can hand something up before it syncs. Requiring the entry to exist
+    // first made that promise vanish with nothing saying it ever existed.
+    const { bus, engine } = wired()
+
+    publish( bus, 'executive.facet.handoff', {
+      facetId: 'facet-9', subjectEntityId: 'discord:1019', threadId: 't', confidence: 0.8, tick: 5,
+      body: { kind: 'undertaking', reasoning: '', target: 'FKEM' },
+    }, 'audition-engine')
+
+    expect( priv( engine )._facetSubjects.get('facet-9')?.promised )
+      .toEqual( [ { target: 'FKEM', tick: 5 } ] )
+  } )
+
+  it('learns who each facet is with AND what it worked out there', () => {
+    // The return leg. `reasoning` has always been on this payload; the master read
+    // it into a local and dropped it, so its own thinking came back as a name.
+    const { bus, engine } = wired()
+
+    publish( bus, 'executive.facet.sync', {
+      facetId: 'facet-1', reasoning: 'He is asking for a demo and I think it is worth doing.',
+      confidence: 0.8, tick: 12,
+      subjectEntityId: 'discord:1019', subjectName: 'Fabrice',
+    }, 'executive-facet-facet-1')
+
+    expect( [ ...priv( engine )._facetSubjects.entries() ] ).toEqual( [ [ 'facet-1', {
+      entityId: 'discord:1019', name: 'Fabrice', tick: 12,
+      concluded: 'He is asking for a demo and I think it is worth doing.',
+    } ] ] )
   } )
 
   it('ignores the engine\'s own events without swallowing its facets\'', () => {
@@ -122,5 +147,43 @@ describe('facet → master channel survives the orchestrator\'s subscription', (
       subjectEntityId: 'discord:1525', subjectName: 'FKEM',
     }, 'executive-facet-facet-2')
     expect( priv( engine )._facetSubjects.size ).toBe( 1 )
+  } )
+} )
+
+describe('and the master actually reads it', () => {
+  it('renders what I worked out elsewhere, and what I promised there', async () => {
+    // The delivery half. Routing this through a percept could not have worked: a
+    // percept is swept at +2 ticks and decays out of working memory at about +9,
+    // while the master's own interval is 15 — so the notice was usually gone
+    // before the seat it was addressed to next ran. Held on the engine and
+    // rendered, it survives to that cycle by construction.
+    const { PromptFactory }      = await import('#faculties/executive.engine/prompt.factory')
+    const { buildExecutiveContext } = await import('#faculties/executive.engine/context')
+
+    const state = { tick: 120, time: 0, entities: new Map(),
+                    metrics: new Map([ [ 'energy.level', 70 ] ]) } as never
+    const deps  = { workingMemory:      { getItems: () => [] },
+                    goalManager:        { getActiveGoals: () => [] },
+                    semanticIntegrator: { getBeliefs: () => [] } } as never
+    const context = await buildExecutiveContext( state, deps )
+
+    const prompt = PromptFactory.buildUserMessage({
+      state, context, deps, focus: { title: '', content: '' },
+      activeConversations: [ {
+        entityId: 'discord:1019', name: 'Fabrice', sinceTick: 12,
+        concluded: 'He is asking for a demo and I think it is worth doing.',
+        promised:  [ { target: 'FKEM', gist: 'coordinate the demo meeting', tick: 13 } ],
+      } ],
+    } as never )
+
+    expect( prompt ).toContain('## In Conversation Now')
+    expect( prompt ).toContain('What I worked out there: He is asking for a demo')
+    expect( prompt ).toContain('I said there that I would reach FKEM')
+    expect( prompt ).toContain('Saying it in that thread did not send it.')
+
+    // Stated as a fact and left there. What to do about it — keep it, drop it,
+    // make a goal of it — is the mind's, and it has a faculty for that.
+    expect( prompt ).not.toMatch( /If I still mean it/ )
+    expect( prompt ).not.toMatch( /I reach out with target/ )
   } )
 } )

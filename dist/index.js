@@ -12436,9 +12436,16 @@ ${context.knownEntities.map((s) => {
       return `- ${who}${bits.length ? " \u2014 " + bits.join(", ") : ""}${reach}${doubt}`;
     }).join("\n")}` : "";
     const conversationsBlock = options.mode !== "facet" && options.activeConversations?.length ? `## In Conversation Now
-${options.activeConversations.map(
-      (c) => `- ${c.name ?? "someone"} (id: ${c.entityId})`
-    ).join("\n")}
+${options.activeConversations.map((c) => {
+      const who = `- ${c.name ?? "someone"} (id: ${c.entityId})`;
+      const concluded = c.concluded ? `
+    What I worked out there: ${c.concluded.trim()}` : "";
+      const promised = (c.promised ?? []).map(
+        (p) => `
+    I said there that I would reach ${p.target}${p.gist ? ` \u2014 about: "${p.gist}"` : ""}, at tick ${p.tick}. Saying it in that thread did not send it.`
+      ).join("");
+      return `${who}${concluded}${promised}`;
+    }).join("\n")}
 These threads are already open \u2014 I am in them. Reaching out to one of these people again starts a second, parallel thread with them.` : "";
     const focusBlock = context.currentFocus && context.currentFocus.focusTicks > 0 ? `## Task Focus
 I've been focused on ${context.currentFocus.goalDescription ? `"${context.currentFocus.goalDescription}"` : "a goal"} for ${context.currentFocus.focusTicks} tick(s). Switching to something else takes deliberate effort \u2014 ${context.currentFocus.switchCost > 0.45 ? "a strong pull to see this through before moving on" : context.currentFocus.switchCost > 0.3 ? "a real cost to breaking away" : "some inertia to overcome"}.` : "";
@@ -14070,8 +14077,6 @@ function validateFacetHandoff(payload) {
     return typeof body.target === "string" && body.target.trim().length > 0 ? null : "undertaking handoff requires a non-empty target";
   return `unknown handoff kind: ${String(kind)}`;
 }
-var UNDERTAKING_PRIORITY = 0.7;
-var undertakingIntentId = (target) => `ideomotor-undertaking-${target}`;
 function whereItHappened(h) {
   const who = h.subjectName ?? h.subjectEntityId;
   return who ? `In my conversation with ${who}` : "While I was working on something else";
@@ -14115,7 +14120,6 @@ var EscalationBuffer = class {
    */
   drainToPercepts() {
     const percepts = [];
-    const intents = [];
     let seq = 0;
     for (const h of this._pending) {
       const id = `escalation-percept-${h.subjectEntityId ?? h.facetId ?? "self"}-${h.tick}-${seq++}`;
@@ -14182,24 +14186,11 @@ var EscalationBuffer = class {
         // faculty for making it.
         summary: `[Raised by ${h.subjectName ?? h.subjectEntityId ?? "my own focused work"}] ${h.body.reasoning}`
       }, mine));
-      if (h.body.kind === "undertaking")
-        intents.push({
-          id: undertakingIntentId(h.body.target),
-          type: "ideomotor.intent",
-          metadata: {
-            schema: "reach-out",
-            targetEntityId: h.body.target,
-            priority: UNDERTAKING_PRIORITY,
-            origin: "undertaking",
-            tick: h.tick,
-            ...h.body.gist ? { parameters: { gist: h.body.gist } } : {}
-          }
-        });
     }
     const first = this._pending.find((h) => h.subjectEntityId);
     const requester = first ? { entityId: first.subjectEntityId, threadId: first.threadId ?? "" } : void 0;
     this._pending = [];
-    return { percepts, intents, requester };
+    return { percepts, requester };
   }
 };
 
@@ -15028,11 +15019,30 @@ var ExecutiveEngine = class extends AsyncEngine {
   // feed the gating salience buffer and are shared with the escalation path.
   _facetSupervisor = new FacetSupervisor();
   /**
-   * Who each live facet is engaged with, learned from `executive.facet.sync`.
-   * Keyed by facetId; the last sync wins. Rendered into the master's own prompt so
-   * the singular seat can reason across its conversations "as if they were sitting
-   * at the same table" — which it cannot do while it only knows facet numbers.
-   * Stale entries age out on read (see _activeConversations).
+   * Who each live facet is engaged with AND what it concluded there, learned from
+   * `executive.facet.sync`. Keyed by facetId; the last sync wins. Rendered into
+   * the master's own prompt so the singular seat can reason across its
+   * conversations "as if they were sitting at the same table" — which it cannot
+   * do while it only knows facet numbers. Stale entries age out on read (see
+   * _activeConversations).
+   *
+   * `concluded` IS THE RETURN LEG, and it did not exist. `executive.facet.sync`
+   * has always carried the facet's full `reasoning`; this handler received it and
+   * dropped it on the floor. So the sync was one-way: the master's thinking flows
+   * DOWN to facets as "What I've Been Turning Over", while what a facet worked out
+   * came back as identity and a salience spike — that attention had been engaged,
+   * and with whom, never what it concluded.
+   *
+   * A facet is the same mind with a focus, not a subordinate reporting in. A mind
+   * that cannot read back its own thinking from where its attention has been is
+   * split, and the prompt comment two files over already named the consequence:
+   * "telling one person it has contacted another when it has not".
+   *
+   * It is kept HERE, on the engine, rather than as a percept, because a percept is
+   * swept after 2 ticks and a working-memory item decays below the retrieval
+   * threshold in about 9 — while the master's own interval is 15. Anything routed
+   * that way is usually gone before the master next reads. This survives to the
+   * next cycle by construction.
    */
   _facetSubjects = /* @__PURE__ */ new Map();
   // ── Cognitive models ───────────────────────────────────────
@@ -15741,7 +15751,7 @@ var ExecutiveEngine = class extends AsyncEngine {
     logger.info(
       `[executive] reasoning complete \u2014 tick=${footprint.tickObserved}  actions=${executiveOutput.actions.length}  plans=${executiveOutput.plans?.length ?? 0}  beliefs=${executiveOutput.newBeliefs?.length ?? 0}  hasIntrospection=${!!executiveOutput.introspection}  hasNarrative=${!!executiveOutput.narrative}`
     );
-    const { percepts: escalationPercepts, intents: escalationIntents, requester: escalationRequester } = this._escalations.drainToPercepts();
+    const { percepts: escalationPercepts, requester: escalationRequester } = this._escalations.drainToPercepts();
     const commandDeps = {
       goalManager: this._goalManager,
       semanticIntegrator: this._semanticIntegrator,
@@ -15798,18 +15808,9 @@ var ExecutiveEngine = class extends AsyncEngine {
           tick: footprint.tickObserved
         }
       });
-    const { keep, discharge } = this._reconcileUndertakings(escalationPercepts, this._lastStateRef);
-    if (keep.length) {
+    if (escalationPercepts.length) {
       commands.set ??= [];
-      commands.set.push(...keep);
-    }
-    if (escalationIntents.length) {
-      commands.set ??= [];
-      commands.set.push(...escalationIntents);
-    }
-    if (discharge.length) {
-      commands.delete ??= [];
-      commands.delete.push(...discharge);
+      commands.set.push(...escalationPercepts);
     }
     if (this._cache) {
       commands.set ??= [];
@@ -15860,7 +15861,13 @@ var ExecutiveEngine = class extends AsyncEngine {
     const live = this._facetSupervisor.liveFacetIds();
     for (const id of [...this._facetSubjects.keys()])
       if (!live.has(id)) this._facetSubjects.delete(id);
-    return [...this._facetSubjects.values()].sort((a, b) => b.tick - a.tick).map((s) => ({ entityId: s.entityId, ...s.name ? { name: s.name } : {}, sinceTick: s.tick }));
+    return [...this._facetSubjects.values()].sort((a, b) => b.tick - a.tick).map((s) => ({
+      entityId: s.entityId,
+      ...s.name ? { name: s.name } : {},
+      sinceTick: s.tick,
+      ...s.concluded ? { concluded: s.concluded } : {},
+      ...s.promised?.length ? { promised: s.promised } : {}
+    }));
   }
   /**
    * Facet sync — remember WHO each facet is with, and wake the master.
@@ -15899,62 +15906,21 @@ var ExecutiveEngine = class extends AsyncEngine {
    * claim that the words are unsent; whether to say more to that person is then an
    * ordinary competition like any other.
    */
-  _reconcileUndertakings(incoming, state) {
-    const contacted = /* @__PURE__ */ new Map();
-    for (const [, e] of state.entities) {
-      if (e.type !== "conversation.sent") continue;
-      const m = e.metadata;
-      const target = typeof m?.["targetEntityId"] === "string" ? m["targetEntityId"] : void 0;
-      if (!target) continue;
-      const at = typeof m?.["tick"] === "number" ? m["tick"] : typeof e.tick === "number" ? e.tick : 0;
-      contacted.set(target, Math.max(contacted.get(target) ?? 0, at));
-    }
-    const honoured = (target, madeAt) => !!target && (contacted.get(target) ?? -1) >= madeAt;
-    const undertakingOf = (m) => m?.["category"] === "undertaking" ? {
-      target: typeof m["undertakingTarget"] === "string" ? m["undertakingTarget"] : void 0,
-      madeAt: typeof m["tick"] === "number" ? m["tick"] : 0
-    } : void 0;
-    const discharge = [];
-    const carrying = /* @__PURE__ */ new Set();
-    for (const [id, e] of state.entities) {
-      if (e.type !== "percept") continue;
-      const u = undertakingOf(e.metadata);
-      if (!u) continue;
-      if (!u.target) {
-        discharge.push(id);
-        continue;
-      }
-      if (honoured(u.target, u.madeAt)) discharge.push(id);
-      else carrying.add(u.target);
-    }
-    for (const [id, e] of state.entities) {
-      if (e.type !== "ideomotor.intent") continue;
-      const m = e.metadata;
-      if (m?.["origin"] !== "undertaking") continue;
-      const target = typeof m["targetEntityId"] === "string" ? m["targetEntityId"] : void 0;
-      const madeAt = typeof m["tick"] === "number" ? m["tick"] : 0;
-      if (!target || honoured(target, madeAt)) discharge.push(id);
-    }
-    const keep = incoming.filter((p) => {
-      const u = undertakingOf(p.metadata);
-      if (!u?.target) return true;
-      if (honoured(u.target, u.madeAt)) return false;
-      if (carrying.has(u.target)) return false;
-      carrying.add(u.target);
-      return true;
-    });
-    if (discharge.length)
-      logger.info(`[executive] ${discharge.length} undertaking(s) discharged \u2014 the contact was made`);
-    return { keep, discharge };
-  }
   _onFacetSync(event) {
     const payload = event.payload;
-    if (payload.facetId && payload.subjectEntityId)
+    if (payload.facetId && payload.subjectEntityId) {
+      const prior = this._facetSubjects.get(payload.facetId);
       this._facetSubjects.set(payload.facetId, {
         entityId: payload.subjectEntityId,
         ...payload.subjectName ? { name: payload.subjectName } : {},
-        tick: payload.tick ?? this._lastExecutiveTick ?? 0
+        tick: payload.tick ?? this._lastExecutiveTick ?? 0,
+        ...payload.reasoning ? { concluded: payload.reasoning } : {},
+        // Promises ride along rather than being re-derived: a commitment the facet
+        // DECLARED is a fact, while the same thing read back out of prose is a
+        // guess. Preserved across syncs until the master has read them.
+        ...prior?.promised?.length ? { promised: prior.promised } : {}
       });
+    }
     this._gatingState.salienceBuffer.push({
       event,
       tick: payload.tick ?? event.logicalTime ?? 0
@@ -15990,18 +15956,40 @@ var ExecutiveEngine = class extends AsyncEngine {
     const payload = event.payload;
     if (!payload?.body?.kind) return;
     const tick = payload.tick ?? this._currentTick;
+    this._gatingState.salienceBuffer.push({ event, tick });
+    const from = payload.subjectName ?? payload.subjectEntityId ?? payload.facetId ?? "a focus";
+    if (payload.body.kind === "undertaking") {
+      const body = payload.body;
+      if (!payload.facetId) {
+        logger.warn(`[executive] undertaking toward "${body.target}" arrived with no facetId \u2014 nowhere to file it`);
+        return;
+      }
+      const at = this._facetSubjects.get(payload.facetId) ?? {
+        entityId: payload.subjectEntityId ?? payload.facetId,
+        ...payload.subjectName ? { name: payload.subjectName } : {},
+        tick
+      };
+      at.promised = [
+        // One entry per target: restating the same promise is the same promise.
+        ...(at.promised ?? []).filter((p) => p.target !== body.target),
+        { target: body.target, ...body.gist ? { gist: body.gist } : {}, tick }
+      ];
+      this._facetSubjects.set(payload.facetId, at);
+      logger.info(
+        `[executive] filed undertaking from ${from} \u2192 reach ${body.target} (it reads this at its next cycle; what to do about it is its own call)`
+      );
+      return;
+    }
     this._escalations.push({
       tick,
       ...payload.facetId ? { facetId: payload.facetId } : {},
       ...payload.subjectEntityId ? { subjectEntityId: payload.subjectEntityId } : {},
       ...payload.subjectName ? { subjectName: payload.subjectName } : {},
       ...payload.threadId ? { threadId: payload.threadId } : {},
-      body: payload.body.kind === "undertaking" ? { ...payload.body, reasoning: (payload.body.reasoning ?? "").slice(0, 400) } : { ...payload.body, reasoning: (payload.body.reasoning ?? "").slice(0, 400) }
+      body: { ...payload.body, reasoning: (payload.body.reasoning ?? "").slice(0, 400) }
     });
-    this._gatingState.salienceBuffer.push({ event, tick });
-    const from = payload.subjectName ?? payload.subjectEntityId ?? payload.facetId ?? "a focus";
     logger.info(
-      payload.body.kind === "undertaking" ? `[executive] master queued undertaking from ${from} \u2192 reach ${payload.body.target} (confidence=${payload.confidence?.toFixed(2)})` : `[executive] master queued escalation percept from ${from} (confidence=${payload.confidence?.toFixed(2)})`
+      `[executive] master queued escalation percept from ${from} (confidence=${payload.confidence?.toFixed(2)})`
     );
   }
   // ── DeliberationCache wiring ───────────────────────────────

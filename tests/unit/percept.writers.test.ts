@@ -42,9 +42,20 @@ const percept = ( id: string, metadata: Record<string, unknown> ): SimulationEnt
   ( { id, type: 'percept', createdAt: 0, updatedAt: 0, metadata } as SimulationEntity )
 
 describe('the sweeper only ever saw percepts that carried a tick', () => {
-  it('a ticked percept is collected once it is stale', async () => {
+  it('a ticked percept is collected once it is stale — and NOT before', async () => {
     const stale = percept('p-ticked', { tick: 0, salience: 0.3, category: 'c', summary: 's', provenance: 'exafferent' } )
     expect( await swept( [ stale ], PERCEPT_STALE_AFTER_TICKS + 1 ) ).toContain('p-ticked')
+
+    // The other side of the boundary, and it is the half that makes this test
+    // mean anything. The sweeper carried its own literal `> 2` while
+    // `PERCEPT_STALE_AFTER_TICKS` was exported, documented, and governed nothing
+    // — and the assertion above could not tell, because it derives the age from
+    // the same constant, so both halves moved together. Two halves agreeing is
+    // how a green test proves nothing.
+    //
+    // Asserting the NOT-swept edge pins the constant to the behaviour: raise it
+    // and a percept at the old literal's age must survive.
+    expect( await swept( [ stale ], PERCEPT_STALE_AFTER_TICKS ) ).not.toContain('p-ticked')
   } )
 
   it('a TICKLESS percept is never collected, at any age — the shape of the old leak', async () => {

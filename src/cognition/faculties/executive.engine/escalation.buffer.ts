@@ -102,33 +102,9 @@ export interface EscalationRequester {
 export interface DrainedEscalations {
   /** High-salience percept entities to merge into StateCommands.set. */
   percepts: EntityInput[]
-  /**
-   * `ideomotor.intent` entities for undertakings — one per promised target.
-   *
-   * This is the half that used to be a SENTENCE. The percept said "If I still
-   * mean it, I reach out with target 'X'", which is an instruction naming an
-   * effector and its argument, written in the mind's own voice so it could not
-   * disagree with it. An undertaking is an intention the mind already formed;
-   * the affordance field has a leg for exactly that, and it competes.
-   */
-  intents: EntityInput[]
   /** First handoff's requester context, or undefined when none carried one. */
   requester?: EscalationRequester
 }
-
-/**
- * How hard an unkept promise pulls, as the `priority` an ideomotor intent carries
- * into the competition (it sets both field admission and the selector's willBias).
- *
- * Below a deliberate executive decision (0.8 default) because the master did not
- * make this call this cycle — a part of it did, earlier, while attending to
- * something else. Above ambient, because a promise made to someone and not kept
- * is a live obligation and the mind should feel it as one.
- */
-export const UNDERTAKING_PRIORITY = 0.7
-
-/** Stable per-target id, so a promise restated each cycle is ONE standing intent. */
-export const undertakingIntentId = ( target: string ): string => `ideomotor-undertaking-${ target }`
 
 /** "in my conversation with X" when there was one, "while I was working" otherwise. */
 function whereItHappened( h: PendingHandoff ): string {
@@ -174,7 +150,6 @@ export class EscalationBuffer {
    */
   drainToPercepts(): DrainedEscalations {
     const percepts: EntityInput[] = []
-    const intents:  EntityInput[] = []
     let seq = 0
     for( const h of this._pending ){
       // Distinct ids per drain: two handoffs from one thread on one tick are two
@@ -259,41 +234,6 @@ export class EscalationBuffer {
           // faculty for making it.
           summary: `[Raised by ${h.subjectName ?? h.subjectEntityId ?? 'my own focused work'}] ${h.body.reasoning}`,
         }, mine ) )
-
-      // ── the pull, as a candidate rather than a command ──────────
-      //
-      // An undertaking is an intention the mind ALREADY FORMED — a facet of it
-      // decided to make contact while attending to something else. That is
-      // precisely what the ideomotor leg carries: the synthesizer admits it as a
-      // high-salience candidate BECAUSE it was willed, and the selector then
-      // makes it compete like anything else. It never bypasses the competition,
-      // so "if I no longer mean it, I let it go" stops being a sentence granting
-      // permission and becomes what happens when something more pressing wins.
-      //
-      // `origin: 'undertaking'`, NOT 'executive'. `commands.ts` deletes every
-      // executive-origin intent the executive does not re-imagine each cycle, so
-      // an executive-origin one here would be swept the moment the master's own
-      // actions did not name it — alive for a single tick and never enacted.
-      // This one is retired instead by `_reconcileUndertakings`, when the
-      // contact actually happens.
-      //
-      // Standing pull, damped rather than locked: `enactionFootprint` reduces
-      // `(reach-out, target)` right after acting and decays back on its own,
-      // which is the guard built after a standing intent sent the same words to
-      // the same person three times, ~21 ticks apart.
-      if( h.body.kind === 'undertaking')
-        intents.push({
-          id:   undertakingIntentId( h.body.target ),
-          type: 'ideomotor.intent',
-          metadata: {
-            schema:         'reach-out',
-            targetEntityId: h.body.target,
-            priority:       UNDERTAKING_PRIORITY,
-            origin:         'undertaking',
-            tick:           h.tick,
-            ...( h.body.gist ? { parameters: { gist: h.body.gist } } : {} ),
-          },
-        })
     }
 
     // Capture requester context before clearing — used to tag new goals. Only a
@@ -304,6 +244,6 @@ export class EscalationBuffer {
 
     this._pending = []
 
-    return { percepts, intents, requester }
+    return { percepts, requester }
   }
 }

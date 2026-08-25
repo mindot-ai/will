@@ -11,7 +11,7 @@
  * ExecutiveFacet — one facet per entityId, kept alive for the session duration.
  *
  * Architecture:
- *   - External call: WillManager.ingestText() → audition.ingest(TextMessage)
+ *   - External call: WillManager.senseText() → audition.sense(TextMessage)
  *   - Percept published on bus:  senses.audition.percept
  *   - Facet handoffs to the seat: executive.facet.handoff  (escalation | undertaking)
  *   - GoalManager integration:   automatic via executive.facet.progress (bus)

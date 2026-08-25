@@ -272,12 +272,6 @@ export interface CreateWillOptions {
   identity: Partial<WillIdentity> & { prompt: string }
   /** 'mind' (default: the whole architecture) | 'reflex' (no-LLM shell). */
   anatomy?: Anatomy
-  /** Concrete LLM model id, or a per-role map ({ executive, summarizer?,
-   *  deliberation?, embedding? } — unset thinking roles fall back to executive).
-   *  Unset → env / provider default.
-   *  @deprecated Pass `llmConfig: { model }` instead — model and transport are
-   *  one concern. Still honoured; an explicit `llmConfig.model` wins. */
-  model?: string | WillModelConfig
   /** Per-Will LLM config: provider, model(s), BYO apiKey, baseUrl, caps.
    *  Unset fields fall back to WILL_LLM_* envs. apiKey stays in memory only.
    *  (Named llmConfig because `llm` is the provider MODE switch.) */
@@ -475,7 +469,7 @@ export class Will {
    */
   async sense( stimulus: Stimulus ): Promise<void> {
     const from = stimulus.from ?? 'user'
-    await this.stem.ingestText( this.id, {
+    await this.stem.senseText( this.id, {
       kind:        'text',
       entityId:    from,
       threadId:    stimulus.thread ?? from,
@@ -497,19 +491,6 @@ export class Will {
       provenance: stimulus.provenance,
       ...( stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {} ),
     } )
-  }
-
-  /**
-   * @deprecated Renamed to `sense()` (SIGNAL_BOUNDARY P3) — see `sense` for why. Kept for one minor so a host upgrades on its own schedule; it
-   * delegates, so there is no second code path to drift.
-   *
-   * Note that `Stimulus.provenance` became REQUIRED in the same release, so a
-   * host that only renames the call still has one field to add. That pairing is
-   * deliberate: the two breaks were held back to land together rather than
-   * making the same host migrate twice.
-   */
-  async perceive( stimulus: Stimulus ): Promise<void> {
-    return this.sense( stimulus )
   }
 
   /**
@@ -696,16 +677,14 @@ export class Will {
     const mode = opts.llm ?? detectProvider()
     const useMock = mode === 'mock'
     // `llm` selects the provider; an explicit llmConfig.provider still wins.
-    // Model rides with the transport: `llmConfig.model` is canonical, the
-    // top-level `opts.model` is the deprecated spelling of the same thing.
-    const llmConfig: WillLLMConfig | undefined = useMock && !opts.llmConfig && opts.model === undefined
+    // Model rides with the transport — `llmConfig.model`, and only that. The
+    // top-level `model` spelling is gone: two ways to say one thing is how a
+    // config grows a precedence rule nobody can remember.
+    const llmConfig: WillLLMConfig | undefined = useMock && !opts.llmConfig
       ? undefined
       : {
           ...( mode !== 'mock' ? { provider: mode } : {} ),
           ...opts.llmConfig,
-          ...( opts.llmConfig?.model !== undefined ? { model: opts.llmConfig.model }
-             : opts.model        !== undefined ? { model: opts.model }
-             : {} ),
         }
     return {
       id, name: opts.name,
@@ -763,7 +742,7 @@ export class Will {
     if( !handler ){
       // The Will chose an effector we have no handler for — report it as failed so
       // the reafference loop learns it doesn't work, rather than hanging on the await.
-      this.stem.confirmEffectorExecution( this.id, inv.decisionRecordId, {
+      this.stem.confirmEffectorExecution( this.id, inv.intentId, {
         success: false, description: `No handler registered for effector "${inv.effectorName}"`,
       } )
       return
@@ -773,9 +752,10 @@ export class Will {
       const raw = await handler( inv.parameters, {
         reasoning: inv.reasoning,
         // The correlation handle, so a handler that feeds its own result back in
-        // can say WHICH act caused it. Already in scope — it is the id the ack
-        // is matched on — it just was not being passed on.
-        intentId: inv.decisionRecordId,
+        // can say WHICH act caused it. This line used to read
+        // `intentId: inv.decisionRecordId` — the translation that proved the
+        // wire name was already wrong.
+        intentId: inv.intentId,
         targetEntityId: inv.targetEntityId,
         // Which of the host's own ids that referent is — without it a handler
         // gets an opaque anchor and nothing it can look up.
@@ -783,11 +763,11 @@ export class Will {
         ...( inv.description ? { description: inv.description } : {} ),
       } )
       const result = typeof raw === 'string' ? { success: true, description: raw } : raw
-      this.stem.confirmEffectorExecution( this.id, inv.decisionRecordId, result )
+      this.stem.confirmEffectorExecution( this.id, inv.intentId, result )
     }
     catch( err ){
       this._emitError( err instanceof Error ? err : new Error( String( err ) ) )
-      this.stem.confirmEffectorExecution( this.id, inv.decisionRecordId, {
+      this.stem.confirmEffectorExecution( this.id, inv.intentId, {
         success: false, description: `Effector "${inv.effectorName}" threw: ${( err as Error ).message}`,
       } )
     }

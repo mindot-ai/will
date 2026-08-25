@@ -32,7 +32,7 @@ describe('somatosensation transduces a system signal', () => {
     // `summary` is the only field the executive prompt renders, so a signal
     // without one reaches the mind as a name and nothing else.
     const { e, published } = wired()
-    await e.ingest( { kind: 'system', signal: 'WAKE', provenance: 'exafferent',
+    await e.sense( { kind: 'system', signal: 'WAKE', provenance: 'exafferent',
                       data: { summary: 'I was offline for 3 hours. I am now online again.' } } )
     expect( published[0]!.summary ).toBe('I was offline for 3 hours. I am now online again.')
     expect( published[0]!.sourceEntityId ).toBe('system:WAKE')
@@ -40,21 +40,21 @@ describe('somatosensation transduces a system signal', () => {
 
   it('falls back to the signal name when the host says nothing', async () => {
     const { e, published } = wired()
-    await e.ingest( { kind: 'system', signal: 'WAKE', provenance: 'exafferent', data: {} } )
+    await e.sense( { kind: 'system', signal: 'WAKE', provenance: 'exafferent', data: {} } )
     expect( published[0]!.summary ).toBe('Something happened: WAKE.')
   } )
 
   it('defaults loud enough to rupture, because something happened TO the mind', async () => {
     // Above exteroception's ambient 0.3 and above action.selector's gate (0.4).
     const { e, published } = wired()
-    await e.ingest( { kind: 'system', signal: 'WAKE', provenance: 'exafferent', data: {} } )
+    await e.sense( { kind: 'system', signal: 'WAKE', provenance: 'exafferent', data: {} } )
     expect( published[0]!.salience ).toBe( SYSTEM_SIGNAL_SALIENCE )
     expect( SYSTEM_SIGNAL_SALIENCE ).toBeGreaterThan( 0.4 )
   } )
 
   it('a host may override the salience, and it is clamped', async () => {
     const { e, published } = wired()
-    await e.ingest( { kind: 'system', signal: 'X', provenance: 'exafferent', data: { salience: 9 } } )
+    await e.sense( { kind: 'system', signal: 'X', provenance: 'exafferent', data: { salience: 9 } } )
     expect( published[0]!.salience ).toBe( 1 )
   } )
 } )
@@ -64,7 +64,7 @@ describe('the wake stops being special', () => {
     // The two things the hand-written version kept getting wrong, now supplied
     // by the machinery rather than remembered by a caller.
     const { e, traced } = wired()
-    await e.ingest( { kind: 'system', signal: 'WAKE', provenance: 'exafferent',
+    await e.sense( { kind: 'system', signal: 'WAKE', provenance: 'exafferent',
                       data: { summary: 'I was offline for 3 hours.' } } )
     expect( traced ).toHaveLength( 1 )
     expect( traced[0]!.metadata['tick'] ).toBe( 42 )              // sweepable
@@ -77,7 +77,7 @@ describe('the wake stops being special', () => {
     // The case the door exists for: not everything that touches the mind is the
     // world. Only the host can tell, so only the host says.
     const { e, traced } = wired()
-    await e.ingest( { kind: 'webhook', source: 'github', headers: {},
+    await e.sense( { kind: 'webhook', source: 'github', headers: {},
                       provenance: 'reafferent', sourceIntentId: 'intent-12',
                       payload: { summary: 'The push I made landed.' } } )
     expect( traced[0]!.metadata['provenance'] ).toBe('reafferent')
@@ -86,7 +86,7 @@ describe('the wake stops being special', () => {
 
   it('ignores a kind that is not its own, silently', async () => {
     const { e, published, traced } = wired()
-    await e.ingest( { kind: 'text', entityId: 'e', threadId: 't', content: 'hi', provenance: 'exafferent' } )
+    await e.sense( { kind: 'text', entityId: 'e', threadId: 't', content: 'hi', provenance: 'exafferent' } )
     expect( published ).toHaveLength( 0 )
     expect( traced ).toHaveLength( 0 )
   } )

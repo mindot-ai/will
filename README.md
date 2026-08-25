@@ -248,7 +248,7 @@ manager.addTickListener(willId, (snapshot, tick, outbox, invocations) => {
 })
 
 // Speak to the Will. The reply arrives on a later tick via the listener above.
-await manager.ingestText(willId, {
+await manager.senseText(willId, {
   kind:        'text',
   entityId:    'alice',
   content:     'How are you feeling about the night shift?',
@@ -256,7 +256,7 @@ await manager.ingestText(willId, {
 })
 ```
 
-There is **no synchronous reply** — `ingestText` returns immediately; the Will answers when it has reasoned. Subscribe to the tick listener *before* (or right after) sending, and treat the outbox as the single source of outbound messages and effector calls.
+There is **no synchronous reply** — `senseText` returns immediately; the Will answers when it has reasoned. Subscribe to the tick listener *before* (or right after) sending, and treat the outbox as the single source of outbound messages and effector calls.
 
 ---
 
@@ -366,7 +366,7 @@ registerProfile({
 manager.addTickListener(willId, (snap, tick, outbox, invocations) => {
   for (const inv of invocations) {
     const result = world.execute(inv)              // YOUR world runs the action
-    manager.confirmEffectorExecution(willId, inv.decisionRecordId, {
+    manager.confirmEffectorExecution(willId, inv.intentId, {
       success: result.ok, description: result.summary, metrics: result.metrics,
     })
   }
@@ -645,7 +645,7 @@ await manager.archiveWill(willId)   // stops tick loop, persists final snapshot
 // Every tick — drain outbox + effector invocations, push to SSE/WS clients
 const unsub = manager.addTickListener(willId, (snapshot, tick, outbox, invocations) => {
   for (const msg of outbox)        pushToClient(msg)      // .id .content .effectorName .targetEntityId .deliveryStatus
-  for (const inv of invocations)   dispatchToWorld(inv)   // .decisionRecordId ← correlation handle
+  for (const inv of invocations)   dispatchToWorld(inv)   // .intentId ← correlation handle
 })
 
 // Fine-grained simulation events (goal.formed, belief.updated, emotion.spike, …)
@@ -700,7 +700,7 @@ manager.loadPMA(willId, pma)
 const report = await manager.runPMAEval(willId, { behavioral: true })
 
 // Senses — route external input through the sense engines
-await manager.ingestText(willId, { kind: 'text', entityId, content, speakerName })
+await manager.senseText(willId, { kind: 'text', entityId, content, speakerName })
 manager.getSenseEngineStatus(willId)          // five domains; audition active
 
 // Health & recovery

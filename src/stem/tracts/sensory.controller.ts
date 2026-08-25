@@ -4,7 +4,7 @@
 //
 // SensoryController owns the senses input + LLM chunk-streaming output
 // boundary extracted from WillStem (R5-e):
-//   - input ingestion: ingestText / ingestSensory / injectEvent
+//   - input ingestion: senseText / senseSignal / injectEvent
 //   - real-time chunk streaming: addChunkListener / addSensoryChunkListener
 //     and their sync helpers (syncChunkBroadcaster + the addChunkCallback fan-out)
 //
@@ -34,17 +34,17 @@ export class SensoryController {
    * LanguagePercept publication, conversation-facet spawn/reuse, and LLM
    * reply generation. Reply delivery is async via the outbox / SSE channel.
    */
-  async ingestText( instance: WillInstance, input: TextMessage ): Promise<void> {
-    await instance.cognition.auditionEngine.ingest( input )
+  async senseText( instance: WillInstance, input: TextMessage ): Promise<void> {
+    await instance.cognition.auditionEngine.sense( input )
   }
 
   /**
    * Route a raw SensoryInput to the appropriate sense engine by domain.
    * Used by the debug `POST /senses/:domain/ingest` route.
    */
-  async ingestSensory( instance: WillInstance, domain: string, input: SensoryInput ): Promise<void> {
+  async senseSignal( instance: WillInstance, domain: string, input: SensoryInput ): Promise<void> {
     const cog = instance.cognition
-    const engineMap: Record<string, { ingest: (i: SensoryInput) => Promise<void> }> = {
+    const engineMap: Record<string, { sense: (i: SensoryInput) => Promise<void> }> = {
       audition:        cog.auditionEngine,
       vision:          cog.visionEngine,
       somatosensation: cog.somatosensationEngine,
@@ -53,7 +53,7 @@ export class SensoryController {
     }
     const engine = engineMap[ domain ]
     if( !engine ) throw Object.assign( new Error(`Unknown sense domain: ${domain}`), { code: 400 } )
-    await engine.ingest( input )
+    await engine.sense( input )
   }
 
   /**

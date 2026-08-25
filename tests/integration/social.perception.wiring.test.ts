@@ -57,7 +57,7 @@ async function inboundReaches( sm: DefaultStateManager, content: string ){
   engine.attachBus( createTestBus() )
   engine.attachExecutiveEngine( syncExecutive('noted') as any )
   engine.attachMemorySink( e => sm.setEntity( e ) )
-  await engine.ingest( { kind: 'text', entityId: 'alice', threadId: 't1', content } as TextMessage )
+  await engine.sense( { kind: 'text', entityId: 'alice', threadId: 't1', content } as TextMessage )
 }
 
 describe('#113 — an inbound message reaches social cognition', () => {

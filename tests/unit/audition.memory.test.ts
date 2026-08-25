@@ -51,7 +51,7 @@ describe('AuditionEngine — conversation memory (Section 5)', () => {
     engine.attachExecutiveEngine( syncExecutive() as any )
     engine.attachMemorySink( e => entities.push( e ) )
 
-    await engine.ingest( text('hello there') )
+    await engine.sense( text('hello there') )
 
     // The sink is a general state writer — it also carries the inbound social
     // signal (conversation.received) now, so select the exchange rather than
@@ -78,7 +78,7 @@ describe('AuditionEngine — conversation memory (Section 5)', () => {
     engine.attachExecutiveEngine( syncExecutive({ reply: '' }) as any )
     engine.attachMemorySink( e => entities.push( e ) )
 
-    await engine.ingest( text('remember this') )
+    await engine.sense( text('remember this') )
 
     const exchanges = entities.filter( x => x.type === 'working_memory.item')
     expect( exchanges ).toHaveLength( 1 )
@@ -94,7 +94,7 @@ describe('AuditionEngine — conversation memory (Section 5)', () => {
     engine.attachBus( createTestBus() )
     engine.attachExecutiveEngine( syncExecutive({ onFocus: f => focuses.push( f ) }) as any )
 
-    await engine.ingest( text('what about tomorrow?') )
+    await engine.sense( text('what about tomorrow?') )
 
     expect( focuses.length ).toBeGreaterThanOrEqual( 1 )
     expect( focuses[0].recallQuery ).toBe('what about tomorrow?')
@@ -106,7 +106,7 @@ describe('AuditionEngine — conversation memory (Section 5)', () => {
     engine.attachBus( createTestBus() )
     engine.attachExecutiveEngine( syncExecutive({ onFocus: f => focuses.push( f ) }) as any )
 
-    await engine.ingest( text('hi') )
+    await engine.sense( text('hi') )
 
     expect( focuses[0].content ).not.toContain('Relevant memories')
     expect( focuses[0].content ).not.toContain('recalled')
@@ -116,7 +116,7 @@ describe('AuditionEngine — conversation memory (Section 5)', () => {
     const engine = new AuditionEngine()
     engine.attachBus( createTestBus() )
     engine.attachExecutiveEngine( syncExecutive() as any )
-    await expect( engine.ingest( text('hi') ) ).resolves.toBeUndefined()
+    await expect( engine.sense( text('hi') ) ).resolves.toBeUndefined()
   } )
 } )
 
@@ -129,7 +129,7 @@ describe('AuditionEngine — reply fast-path callback (Section 2.1)', () => {
     engine.attachGrants({ isAllowed: () => true } as any )   // listen + talk allowed
     engine.attachReplyCallback( ( entityId, threadId, bubbles ) => replies.push({ entityId, threadId, bubbles }) )
 
-    await engine.ingest( text('hello') )
+    await engine.sense( text('hello') )
 
     expect( replies ).toHaveLength( 1 )
     expect( replies[0] ).toEqual({ entityId: 'alice', threadId: 't1', bubbles: ['Hi there'] })
@@ -143,7 +143,7 @@ describe('AuditionEngine — reply fast-path callback (Section 2.1)', () => {
     engine.attachGrants({ isAllowed: ( a: string ) => a === 'listen' } as any )   // talk denied
     engine.attachReplyCallback( ( e, t, b ) => replies.push({ e, t, b }) )
 
-    await engine.ingest( text('hello') )
+    await engine.sense( text('hello') )
 
     expect( replies ).toHaveLength( 0 )
   } )
@@ -159,7 +159,7 @@ describe('AuditionEngine — salience inputs (§3) + thread keying (§2)', () =>
     engine.attachAttachmentScore( id => { attachCalls.push( id ); return 0.9 } )
     engine.attachActiveGoalText( () => { goalCalls++; return ['ship it'] } )
 
-    await engine.ingest( text('hello') )
+    await engine.sense( text('hello') )
 
     expect( attachCalls ).toEqual( ['alice'] )
     expect( goalCalls ).toBeGreaterThanOrEqual( 1 )
@@ -173,8 +173,8 @@ describe('AuditionEngine — salience inputs (§3) + thread keying (§2)', () =>
     engine.attachGrants({ isAllowed: () => true } as any )
     engine.attachReplyCallback( ( _e, threadId ) => threads.push( threadId ) )
 
-    await engine.ingest({ kind: 'text', entityId: 'alice', threadId: 't1', content: 'hi', provenance: 'exafferent' })
-    await engine.ingest({ kind: 'text', entityId: 'alice', threadId: 't2', content: 'hi again', provenance: 'exafferent' })
+    await engine.sense({ kind: 'text', entityId: 'alice', threadId: 't1', content: 'hi', provenance: 'exafferent' })
+    await engine.sense({ kind: 'text', entityId: 'alice', threadId: 't2', content: 'hi again', provenance: 'exafferent' })
 
     // Same facet (reused), but the reply follows the current turn's thread —
     // not the spawn-time thread 't1'.

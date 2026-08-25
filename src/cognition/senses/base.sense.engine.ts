@@ -41,7 +41,7 @@ export abstract class BaseSenseEngine implements SenseEngine {
   /**
    * The `SensoryInput.kind` values this engine consumes. Inputs of any other
    * kind are ignored silently by `ingest()` (no warning, no work) — this is how
-   * a single `ingestSensory(domain, input)` call can be routed leniently.
+   * a single `senseSignal(domain, input)` call can be routed leniently.
    */
   protected abstract readonly acceptedKinds: ReadonlySet<SensoryInput['kind']>
 
@@ -107,7 +107,7 @@ export abstract class BaseSenseEngine implements SenseEngine {
    * the domain-specific work to `_perceive()`. Subclasses never re-handle gating
    * or filtering — they only implement `_perceive()`.
    */
-  async ingest( input: SensoryInput ): Promise<void> {
+  async sense( input: SensoryInput ): Promise<void> {
     // Permission gate — AccessGrants decides whether this sense may ingest.
     if( this.gateEffector && this._grants && !this._grants.isAllowed( this.gateEffector ) ) return
     if( !this.acceptedKinds.has( input.kind ) ) return

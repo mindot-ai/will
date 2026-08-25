@@ -124,7 +124,7 @@ async function main(): Promise<void> {
     if( tick === HELLO_TICK && !helloSent ){
       helloSent = true
       console.log(`\n  🧑‍🔬 [Dr. Chen → William] ${HELLO}\n`)
-      m.ingestText( WILL_ID, mkMsg( HELLO ) ).catch( e => console.error('[ingest err]', e ) )
+      m.senseText( WILL_ID, mkMsg( HELLO ) ).catch( e => console.error('[ingest err]', e ) )
     }
   } )
 

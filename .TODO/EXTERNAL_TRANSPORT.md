@@ -202,7 +202,7 @@ below MUST honor:
 
 - [x] Tick loop calls `TransportController.emitInvocations()` after
   `pendingEffectorInvocations` is spliced — one `effector_invocation` envelope each,
-  `correlationId = decisionRecordId`. Result-acks route back via inbound → `confirmExecution`.
+  `correlationId = intentId`. Result-acks route back via inbound → `confirmExecution`.
 
 ### 2.5 Activity projection (observability) ✅
 **Files**: `planning.engine.ts` (`'*'` wildcard), `transport.controller.ts`
@@ -218,7 +218,7 @@ below MUST honor:
 **Location**: `src/stem/tracts/ack.reconciler.ts`, `transport.controller.ts`
 
 ### 3.1 Correlation ids ✅
-- [x] Every outbound envelope carries `correlationId` (outbox message id / invocation decisionRecordId).
+- [x] Every outbound envelope carries `correlationId` (outbox message id / invocation intentId).
 
 ### 3.2 Emit-callback path (fast, best-effort) ✅
 - [x] `transport.emit()` ack → `_emit()` marshals it onto the `InboundQueue` as an `ack` envelope.

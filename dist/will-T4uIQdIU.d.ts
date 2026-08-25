@@ -1759,8 +1759,6 @@ declare class OpenAICompatibleEmbedder implements EmbeddingProvider {
          * and return "no recall" while a mind with six live facets was asking.
          */
         maxConcurrency?: number;
-        /** @deprecated use maxConcurrency — kept as its fallback for back-compat. */
-        batchSize?: number;
         /** Per-request timeout in ms before the connection is aborted. Default 30s. */
         timeoutMs?: number;
         /**
@@ -4722,15 +4720,6 @@ interface ExecutiveOutputFull {
      */
     noMessage?: string;
     /**
-     * @deprecated Legacy JSON reply format — no longer emitted by conversation facets.
-     * Kept for backward compatibility with any tests/tooling that inspect parsed output.
-     */
-    conversationReplies?: Array<{
-        targetEntityId: string;
-        targetEntityName: string;
-        messages: string[];
-    }>;
-    /**
      * System 2 only — the distinct approaches the master generated and weighed before
      * committing, retained for explainability/auditability (and a future regret /
      * counterfactual substrate). Populated on the deliberate (propose→evaluate) path;
@@ -6881,9 +6870,15 @@ interface effectorInvocation {
     id: string;
     /** Correlation handle — the awaiting `agency.intent` id. Echo it when POSTing to
      *  `POST /v1/wills/:id/effectors/invoked/ack`; the Will reconciles the result onto
-     *  that intent. (Field name kept for wire-contract stability; no longer a
-     *  `decision.record` id since the agency cutover.) */
-    decisionRecordId: string;
+     *  that intent.
+     *
+     *  Called `decisionRecordId` until the aliases came out. It stopped being a
+     *  `decision.record` id at the agency cutover and was kept anyway "for
+     *  wire-contract stability" — so the wire was stable and wrong, naming a
+     *  record type that no longer exists, while the SDK translated it to
+     *  `intentId` one hop later for the handler. Stability that preserves a false
+     *  name is preserving the wrong thing. */
+    intentId: string;
     effectorName: string;
     parameters: Record<string, unknown>;
     targetEntityId: string | undefined;
@@ -7404,7 +7399,7 @@ type SensoryInput = TextMessage | VoiceChunk | ImageFrame | VideoSegment | Webho
 interface SenseEngine extends CognitiveEngine {
     readonly domain: SenseDomain;
     attachBus(bus: CognitiveBus): void;
-    ingest(input: SensoryInput): Promise<void>;
+    sense(input: SensoryInput): Promise<void>;
 }
 
 declare abstract class BaseSenseEngine implements SenseEngine {
@@ -7413,7 +7408,7 @@ declare abstract class BaseSenseEngine implements SenseEngine {
     /**
      * The `SensoryInput.kind` values this engine consumes. Inputs of any other
      * kind are ignored silently by `ingest()` (no warning, no work) — this is how
-     * a single `ingestSensory(domain, input)` call can be routed leniently.
+     * a single `senseSignal(domain, input)` call can be routed leniently.
      */
     protected abstract readonly acceptedKinds: ReadonlySet<SensoryInput['kind']>;
     /**
@@ -7464,7 +7459,7 @@ declare abstract class BaseSenseEngine implements SenseEngine {
      * the domain-specific work to `_perceive()`. Subclasses never re-handle gating
      * or filtering — they only implement `_perceive()`.
      */
-    ingest(input: SensoryInput): Promise<void>;
+    sense(input: SensoryInput): Promise<void>;
     /** Domain-specific perception. Invoked only for accepted kinds, past the gate. */
     protected abstract _perceive(input: SensoryInput): Promise<void>;
     /**
@@ -8295,7 +8290,7 @@ interface BaseEnvelope {
     /**
      * Stable id used to match an outbound envelope to its ack(s).
      * For messages this is the OutboxMessage id; for effector invocations the
-     * decisionRecordId; for replies/chunks a generated id.
+     * intentId; for replies/chunks a generated id.
      */
     correlationId: string;
     /** Monotonic per-Will sequence number — ordering + dedup at the peer. */
@@ -9502,7 +9497,7 @@ declare class WillStem {
      * @param id     Will ID
      * @param input  TextMessage — `{ kind: 'text', entityId, threadId, content, speakerName? }`
      */
-    ingestText(id: string, input: TextMessage): Promise<void>;
+    senseText(id: string, input: TextMessage): Promise<void>;
     /**
      * Terminate the conversation session for an entity.
      *
@@ -9532,9 +9527,9 @@ declare class WillStem {
     /**
      * Route a raw SensoryInput to the appropriate sense engine by domain.
      * Used by the debug `POST /senses/:domain/ingest` route.
-     * Audition inputs are gated by the 'listen' effector like ingestText().
+     * Audition inputs are gated by the 'listen' effector like senseText().
      */
-    ingestSensory(id: string, domain: string, input: SensoryInput): Promise<void>;
+    senseSignal(id: string, domain: string, input: SensoryInput): Promise<void>;
     listWills(): WillSummary[];
     private _runTickLoop;
     private _get;
@@ -9773,12 +9768,6 @@ interface CreateWillOptions {
     };
     /** 'mind' (default: the whole architecture) | 'reflex' (no-LLM shell). */
     anatomy?: Anatomy;
-    /** Concrete LLM model id, or a per-role map ({ executive, summarizer?,
-     *  deliberation?, embedding? } — unset thinking roles fall back to executive).
-     *  Unset → env / provider default.
-     *  @deprecated Pass `llmConfig: { model }` instead — model and transport are
-     *  one concern. Still honoured; an explicit `llmConfig.model` wins. */
-    model?: string | WillModelConfig;
     /** Per-Will LLM config: provider, model(s), BYO apiKey, baseUrl, caps.
      *  Unset fields fall back to WILL_LLM_* envs. apiKey stays in memory only.
      *  (Named llmConfig because `llm` is the provider MODE switch.) */
@@ -9873,16 +9862,6 @@ declare class Will {
      * including the first draft of the epoch that renamed it.
      */
     sense(stimulus: Stimulus): Promise<void>;
-    /**
-     * @deprecated Renamed to `sense()` (SIGNAL_BOUNDARY P3) — see `sense` for why. Kept for one minor so a host upgrades on its own schedule; it
-     * delegates, so there is no second code path to drift.
-     *
-     * Note that `Stimulus.provenance` became REQUIRED in the same release, so a
-     * host that only renames the call still has one field to add. That pairing is
-     * deliberate: the two breaks were held back to land together rather than
-     * making the same host migrate twice.
-     */
-    perceive(stimulus: Stimulus): Promise<void>;
     /**
      * Sense from the default user. Sugar over `sense`.
      *

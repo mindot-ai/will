@@ -242,7 +242,7 @@ export class TransportController {
   /**
    * Emit drained external effector invocations over the transport (2.4). Called
    * by the tick loop after `pendingEffectorInvocations` is spliced. The peer
-   * executes each and returns a result-ack (correlationId = decisionRecordId),
+   * executes each and returns a result-ack (correlationId = intentId),
    * which inbound dispatch routes to `confirmExecution`.
    */
   emitInvocations( instance: WillInstance, invocations: effectorInvocation[] ): void {
@@ -254,7 +254,7 @@ export class TransportController {
       this._emit( instance, {
         channel:       'effector_invocation',
         willId:        instance.config.id,
-        correlationId: invocation.decisionRecordId,
+        correlationId: invocation.intentId,
         seq:           this._nextSeq( instance.config.id ),
         wallTime:      wallClock(),
         invocation,
@@ -339,7 +339,7 @@ export class TransportController {
   private _dispatch( instance: WillInstance, env: InboundEnvelope, deps: InboundApplyDeps ): void {
     switch( env.channel ){
       case 'inbound_message': {
-        // Fire-and-forget: AuditionEngine.ingest() serializes per-entity
+        // Fire-and-forget: AuditionEngine.sense() serializes per-entity
         // internally; the tick must not block on the LLM reply.
         // 'unknown', not 'exafferent', and not routed through asProvenance():
         // the absence here is STRUCTURAL, not a caller's omission. An
@@ -358,7 +358,7 @@ export class TransportController {
               provenance: 'unknown',
               ...( env.speakerName ? { speakerName: env.speakerName } : {} ),
             }
-        void instance.cognition.auditionEngine.ingest( input )
+        void instance.cognition.auditionEngine.sense( input )
         break
       }
 

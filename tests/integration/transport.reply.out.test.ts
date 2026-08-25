@@ -6,7 +6,7 @@
  *
  * The whole inbound→reply path, end to end on the real seam:
  *   peer injects an inbound_message → InboundQueue → applyInbound() dispatches it
- *   to AuditionEngine.ingest() → the facet decides → the reply fast-path (2.1)
+ *   to AuditionEngine.sense() → the facet decides → the reply fast-path (2.1)
  *   fires the instant the decision lands → TransportController bridges it to
  *   transport.emit({ channel:'reply' }).
  *
@@ -96,7 +96,7 @@ describe('transport — message in → reply envelope out (§7.2)', () => {
     // Nothing is emitted before the inbound is applied.
     expect( transport.sentOn('reply') ).toHaveLength( 0 )
 
-    // Apply the inbound at tick 1 — dispatches to AuditionEngine.ingest (async).
+    // Apply the inbound at tick 1 — dispatches to AuditionEngine.sense (async).
     ctrl.applyInbound( instance, 1, deps )
     await flush()
 

@@ -4052,7 +4052,7 @@ var OpenAICompatibleEmbedder = class {
     this.dimensions = config.dimensions;
     this._apiUrl = config.apiUrl;
     this._apiKey = config.apiKey ?? null;
-    this._maxConcurrency = Math.max(1, config.maxConcurrency ?? config.batchSize ?? 4);
+    this._maxConcurrency = Math.max(1, config.maxConcurrency ?? 4);
     this._gate = new LLMSemaphore(this._maxConcurrency);
     this._timeoutMs = config.timeoutMs ?? 3e4;
     this._tokenTracker = config.tokenTracker ?? null;
@@ -13162,6 +13162,372 @@ var AsyncEngine = class {
   }
 };
 
+// src/cognition/cache/fingerprint.ts
+var FINGERPRINT_DIM = 36;
+var FINGERPRINT_VERSION = 1;
+function extractFingerprint(state) {
+  const vec = new Float32Array(FINGERPRINT_DIM);
+  let idx = 0;
+  vec[idx++] = _norm(_metric(state, "energy.level", 50), 0, 100);
+  vec[idx++] = _norm(_metric(state, "sleep.pressure", 0), 0, 100);
+  vec[idx++] = _norm(_metric(state, "stress.load", 0), 0, 100);
+  vec[idx++] = _clamp01((_metric(state, "affect.valence", 0) + 1) / 2);
+  vec[idx++] = _clamp01(_metric(state, "affect.arousal", 0.3));
+  vec[idx++] = _clamp01(_metric(state, "affect.dominance", 0.5));
+  idx = _topEntityScalars(state, "goal", "priority", 0, vec, idx, 10);
+  idx = _topEntityScalars(state, "belief", "confidence", 0.5, vec, idx, 10);
+  idx = _topEntityScalars(state, "working_memory.item", "activation", 0, vec, idx, 10);
+  while (idx < FINGERPRINT_DIM) vec[idx++] = 0;
+  return vec;
+}
+function _topEntityScalars(state, type, field, fallback, vec, idx, count) {
+  const vals = [];
+  for (const e of state.entities.values()) {
+    if (e.type !== type) continue;
+    const raw = e.metadata?.[field];
+    vals.push(typeof raw === "number" ? raw : fallback);
+  }
+  vals.sort((a, b) => b - a);
+  for (let i = 0; i < count; i++)
+    vec[idx++] = _clamp01(vals[i] ?? 0);
+  return idx;
+}
+function _metric(state, key, fallback) {
+  const v = state.metrics.get(key);
+  return typeof v === "number" ? v : fallback;
+}
+function _norm(v, min, max) {
+  return Math.max(0, Math.min(1, (v - min) / (max - min)));
+}
+function _clamp01(v) {
+  if (Number.isNaN(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
+function fingerprintSimilarity(a, b) {
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < FINGERPRINT_DIM; i++) {
+    const ai = a[i] ?? 0;
+    const bi = b[i] ?? 0;
+    dot += ai * bi;
+    na += ai * ai;
+    nb += bi * bi;
+  }
+  const denom = Math.sqrt(na) * Math.sqrt(nb);
+  return denom === 0 ? 0 : dot / denom;
+}
+
+// src/cognition/cache/composition.ts
+function composeOutput(neighbors, tau, scopes) {
+  const weights = _softmaxWeights(neighbors, tau);
+  const anchor = neighbors[0].pattern.output;
+  const out = {
+    actions: [],
+    reasoning: anchor.reasoning ?? "",
+    confidence: anchor.confidence ?? 0.5
+  };
+  if (scopes.includes("actions")) {
+    const composed = _composeActions(neighbors, weights);
+    out.actions = composed.actions;
+    out.reasoning = composed.reasoning;
+    out.confidence = composed.confidence;
+  } else {
+    out.actions = _clone(anchor.actions ?? []);
+  }
+  if (scopes.includes("goals"))
+    out.newGoals = _composeGoals(neighbors, weights);
+  if (scopes.includes("beliefs"))
+    out.newBeliefs = _composeBeliefs(neighbors, weights);
+  return out;
+}
+function _softmaxWeights(neighbors, tau) {
+  const t = tau > 0 ? tau : 1e-6;
+  const sims = neighbors.map((n) => n.similarity);
+  const maxSim = Math.max(...sims);
+  const exps = sims.map((s) => Math.exp((s - maxSim) / t));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  return exps.map((e) => sum === 0 ? 1 / exps.length : e / sum);
+}
+function _composeActions(neighbors, weights) {
+  const typeWeight = /* @__PURE__ */ new Map();
+  for (let i = 0; i < neighbors.length; i++) {
+    const acts = neighbors[i].pattern.output.actions ?? [];
+    const primary = acts[0]?.type;
+    if (primary === void 0) continue;
+    typeWeight.set(primary, (typeWeight.get(primary) ?? 0) + (weights[i] ?? 0));
+  }
+  let winningType = null;
+  let bestWeight = -1;
+  for (let i = 0; i < neighbors.length; i++) {
+    const primary = neighbors[i].pattern.output.actions?.[0]?.type;
+    if (primary === void 0) continue;
+    const w = typeWeight.get(primary) ?? 0;
+    if (w > bestWeight) {
+      bestWeight = w;
+      winningType = primary;
+    }
+  }
+  let source = neighbors[0];
+  for (let i = 0; i < neighbors.length; i++) {
+    if (neighbors[i].pattern.output.actions?.[0]?.type === winningType) {
+      source = neighbors[i];
+      break;
+    }
+  }
+  const src = source.pattern.output;
+  return {
+    actions: _clone(src.actions ?? []),
+    reasoning: src.reasoning ?? "",
+    confidence: src.confidence ?? 0.5
+  };
+}
+function _composeGoals(neighbors, weights) {
+  const byDesc = /* @__PURE__ */ new Map();
+  for (let i = 0; i < neighbors.length; i++) {
+    const w = weights[i] ?? 0;
+    for (const g of neighbors[i].pattern.output.newGoals ?? []) {
+      const cur = byDesc.get(g.description);
+      if (cur) {
+        cur.weight += w;
+        cur.priority += g.priority * w;
+        if (w > cur.bestW) {
+          cur.bestW = w;
+          cur.tags = g.tags;
+          cur.completionType = g.completionType;
+          cur.completionCondition = g.completionCondition;
+        }
+      } else {
+        byDesc.set(g.description, {
+          weight: w,
+          priority: g.priority * w,
+          tags: g.tags,
+          completionType: g.completionType,
+          completionCondition: g.completionCondition,
+          bestW: w
+        });
+      }
+    }
+  }
+  const result = [];
+  for (const [description, a] of byDesc) {
+    result.push({
+      description,
+      priority: a.weight === 0 ? 0 : a.priority / a.weight,
+      tags: [...a.tags],
+      completionType: a.completionType,
+      ...a.completionCondition !== void 0 ? { completionCondition: a.completionCondition } : {}
+    });
+  }
+  result.sort((x, y) => y.priority - x.priority);
+  return result.slice(0, 3);
+}
+function _composeBeliefs(neighbors, weights) {
+  const byStmt = /* @__PURE__ */ new Map();
+  for (let i = 0; i < neighbors.length; i++) {
+    const w = weights[i] ?? 0;
+    for (const b of neighbors[i].pattern.output.newBeliefs ?? []) {
+      const cur = byStmt.get(b.statement);
+      if (cur) {
+        cur.weight += w;
+        cur.confidence += b.confidence * w;
+        if (w > cur.bestW) {
+          cur.bestW = w;
+          cur.category = b.category;
+          cur.evidence = b.evidence;
+          cur.tags = b.tags;
+        }
+      } else {
+        byStmt.set(b.statement, {
+          weight: w,
+          confidence: b.confidence * w,
+          category: b.category,
+          evidence: b.evidence,
+          tags: b.tags,
+          bestW: w
+        });
+      }
+    }
+  }
+  const result = [];
+  for (const [statement, a] of byStmt) {
+    result.push({
+      statement,
+      category: a.category,
+      confidence: a.weight === 0 ? 0 : a.confidence / a.weight,
+      evidence: a.evidence,
+      tags: [...a.tags]
+    });
+  }
+  return result;
+}
+function _clone(v) {
+  return JSON.parse(JSON.stringify(v));
+}
+
+// src/cognition/cache/deliberation.cache.ts
+var DEFAULT_CONFIG = {
+  maxPatterns: 5e3,
+  k: 5,
+  minSimilarity: 0.75,
+  theta: 0.7,
+  tau: 0.5,
+  eta: 0.1,
+  decayPerCycle: 0.999,
+  verifyEveryNHits: 5,
+  scopes: ["actions"]
+};
+var DeliberationCache = class {
+  name = "deliberation-cache";
+  _patterns = [];
+  _config;
+  _hitCount = 0;
+  _missCount = 0;
+  _verifyCounter = 0;
+  constructor(config = {}) {
+    this._config = { ...DEFAULT_CONFIG, ...config };
+  }
+  get size() {
+    return this._patterns.length;
+  }
+  get hitCount() {
+    return this._hitCount;
+  }
+  get missCount() {
+    return this._missCount;
+  }
+  // ── Retrieval + composition ──────────────────────────────
+  /**
+   * Retrieve neighbors of `queryFp` and, if confident, compose an output.
+   * Confidence ρ = max over neighbors of (competence × similarity), per the
+   * research sketch §2.2 — a diffuse cloud of weak matches never triggers a hit.
+   */
+  retrieve(queryFp, _tick) {
+    const neighbors = this._retrieveNeighbors(queryFp);
+    if (neighbors.length === 0) {
+      this._missCount++;
+      return { output: null, confidence: 0, neighbors: [], hit: false };
+    }
+    let confidence = 0;
+    for (const n of neighbors) {
+      const score = n.pattern.competence * n.similarity;
+      if (score > confidence) confidence = score;
+    }
+    const hit = confidence >= this._config.theta;
+    if (hit) this._hitCount++;
+    else this._missCount++;
+    const output = hit ? composeOutput(neighbors, this._config.tau, this._config.scopes) : null;
+    return { output, confidence, neighbors, hit };
+  }
+  /** Store a new (fingerprint, output) pair from the slow (LLM) path. */
+  learn(queryFp, output, tick) {
+    this._evictIfFull(tick);
+    this._patterns.push({
+      fingerprint: new Float32Array(queryFp),
+      output,
+      competence: 0.5,
+      storedAtTick: tick,
+      retrievalCount: 0,
+      successCount: 0
+    });
+  }
+  /**
+   * Update the competence of the pattern nearest to `queryFp`, from a reafference
+   * reward in [0,1]. Called after an action outcome is confirmed.
+   */
+  updateCompetence(queryFp, reward, _tick) {
+    const best = this._findBestMatch(queryFp);
+    if (!best) return;
+    const r = Math.max(0, Math.min(1, reward));
+    best.retrievalCount++;
+    if (r > 0.5) best.successCount++;
+    const a = this._config.eta;
+    best.competence = Math.max(0, Math.min(1, best.competence * (1 - a) + r * a));
+  }
+  /** Decay all competences one executive cycle. Slowly forgets stale patterns. */
+  decay() {
+    const f = this._config.decayPerCycle;
+    if (f >= 1) return;
+    for (const p of this._patterns) p.competence *= f;
+  }
+  /** Deterministic 1-in-N verify schedule. Increments a counter each call. */
+  shouldVerify() {
+    if (this._config.verifyEveryNHits <= 0) return false;
+    this._verifyCounter++;
+    return this._verifyCounter % this._config.verifyEveryNHits === 0;
+  }
+  // ── Snapshot / restore (entity persistence + tests) ──────
+  snapshot() {
+    return {
+      version: FINGERPRINT_VERSION,
+      patterns: this._patterns.map((p) => ({
+        fingerprint: Array.from(p.fingerprint),
+        output: p.output,
+        competence: p.competence,
+        storedAtTick: p.storedAtTick,
+        retrievalCount: p.retrievalCount,
+        successCount: p.successCount
+      })),
+      hitCount: this._hitCount,
+      missCount: this._missCount,
+      verifyCounter: this._verifyCounter
+    };
+  }
+  restore(snap) {
+    if (snap.version !== FINGERPRINT_VERSION) return;
+    this._patterns = snap.patterns.map((p) => ({
+      fingerprint: new Float32Array(p.fingerprint),
+      output: p.output,
+      competence: p.competence,
+      storedAtTick: p.storedAtTick,
+      retrievalCount: p.retrievalCount,
+      successCount: p.successCount
+    }));
+    this._hitCount = snap.hitCount ?? 0;
+    this._missCount = snap.missCount ?? 0;
+    this._verifyCounter = snap.verifyCounter ?? 0;
+  }
+  // ── Internal ─────────────────────────────────────────────
+  _retrieveNeighbors(queryFp) {
+    const scored = [];
+    for (const p of this._patterns) {
+      const similarity = fingerprintSimilarity(queryFp, p.fingerprint);
+      if (similarity >= this._config.minSimilarity)
+        scored.push({ pattern: p, similarity });
+    }
+    scored.sort((a, b) => {
+      const sa = a.similarity * a.pattern.competence;
+      const sb = b.similarity * b.pattern.competence;
+      if (sa !== sb) return sb - sa;
+      return a.pattern.storedAtTick - b.pattern.storedAtTick;
+    });
+    return scored.slice(0, this._config.k);
+  }
+  _findBestMatch(queryFp) {
+    let best = null;
+    let bestSim = -1;
+    for (const p of this._patterns) {
+      const sim = fingerprintSimilarity(queryFp, p.fingerprint);
+      if (sim > bestSim) {
+        bestSim = sim;
+        best = p;
+      }
+    }
+    return best;
+  }
+  _evictIfFull(_tick) {
+    if (this._patterns.length < this._config.maxPatterns) return;
+    let evictIdx = 0;
+    let best = this._patterns[0];
+    for (let i = 1; i < this._patterns.length; i++) {
+      const p = this._patterns[i];
+      if (p.competence < best.competence || p.competence === best.competence && p.storedAtTick < best.storedAtTick) {
+        best = p;
+        evictIdx = i;
+      }
+    }
+    this._patterns.splice(evictIdx, 1);
+  }
+};
+
 // src/cognition/identity.entity.ts
 var IDENTITY_ENTITY_ID = "identity-self";
 var IDENTITY_ENTITY_TYPE = "will.identity";
@@ -14463,6 +14829,134 @@ PromptFactory.buildOutputFormatInstruction.bind(PromptFactory);
 PromptFactory.computeQualityModulation.bind(PromptFactory);
 PromptFactory.computeEpistemicUncertainty.bind(PromptFactory);
 
+// src/cognition/faculties/executive.engine/config.ts
+var WORKSPACE_THRESHOLD = 0.4;
+var BUFFER_SALIENCE_TRIGGER = 2.5;
+var BUFFER_MAX_AGE_TICKS = 30;
+var DEFAULT_EXECUTIVE_INTERVAL = 15;
+var DEFAULT_COOLDOWN_TICKS = 5;
+function readRuntimeConfig(state, base) {
+  const cfg = state.entities.get("engine-config-executive");
+  if (!cfg)
+    return {
+      executiveInterval: base.executiveInterval ?? DEFAULT_EXECUTIVE_INTERVAL,
+      cooldownTicks: base.cooldownTicks ?? DEFAULT_COOLDOWN_TICKS
+    };
+  const p = cfg.metadata?.params;
+  if (!p)
+    return {
+      executiveInterval: base.executiveInterval ?? DEFAULT_EXECUTIVE_INTERVAL,
+      cooldownTicks: base.cooldownTicks ?? DEFAULT_COOLDOWN_TICKS
+    };
+  return {
+    executiveInterval: p.executiveInterval ?? base.executiveInterval ?? DEFAULT_EXECUTIVE_INTERVAL,
+    cooldownTicks: p.cooldownTicks ?? base.cooldownTicks ?? DEFAULT_COOLDOWN_TICKS
+  };
+}
+
+// src/cognition/faculties/executive.engine/gating.ts
+function hasPendingInstructions(state) {
+  for (const entity of state.entities.values())
+    if (entity.type === "percept" || entity.type === "percept.social") {
+      const salience = entity.metadata?.salience ?? 0;
+      if (salience > 0.7) return true;
+    }
+  return false;
+}
+function evaluateGating(state, tick, deps, gs) {
+  if (deps.hasPendingWork)
+    return {
+      shouldActivate: false,
+      reason: "hasPendingWork",
+      cleanedBuffer: gs.salienceBuffer
+    };
+  if (tick - gs.lastExecutiveTick < gs.cooldownTicks)
+    return {
+      shouldActivate: false,
+      reason: "cooldown",
+      cleanedBuffer: gs.salienceBuffer
+    };
+  const energy = state.metrics.get("energy.level") ?? 100;
+  const isResting = state.metrics.get("state.resting") ?? 0;
+  const isSleeping = state.metrics.get("state.sleeping") ?? 0;
+  const isForcedRest = state.metrics.get("state.forced_rest") ?? 0;
+  const novelty2 = state.metrics.get("perception.novelty") ?? 0;
+  const sleepPressure = state.metrics.get("sleep.pressure") ?? 0;
+  const stressLoad = state.metrics.get("stress.load") ?? 0;
+  const valence = state.metrics.get("affect.valence") ?? 0;
+  const cleanedBuffer = gs.salienceBuffer.filter((e) => tick - e.tick < BUFFER_MAX_AGE_TICKS);
+  const totalSalience = cleanedBuffer.reduce((s, e) => s + (e.event.salience ?? 0), 0);
+  const salienceCharged = totalSalience >= BUFFER_SALIENCE_TRIGGER;
+  if (isForcedRest > 0)
+    return {
+      shouldActivate: false,
+      reason: "forced_rest",
+      cleanedBuffer
+    };
+  if (isResting > 0 || isSleeping > 0) {
+    const significantEvent = novelty2 > 0.8, hasPending = hasPendingInstructions(state);
+    if (significantEvent || hasPending)
+      return {
+        shouldActivate: true,
+        reason: `awakened_from_${isSleeping > 0 ? "sleep" : "rest"}`,
+        cleanedBuffer
+      };
+    return {
+      shouldActivate: false,
+      reason: "resting",
+      cleanedBuffer
+    };
+  }
+  let activeGoalCount = 0;
+  for (const entity of state.entities.values())
+    if (entity.type === "goal" && entity.metadata?.status === "active")
+      activeGoalCount++;
+  if (sleepPressure > 65)
+    return { shouldActivate: true, reason: "sleep_pressure_critical", cleanedBuffer };
+  if (stressLoad > 75)
+    return { shouldActivate: true, reason: "stress_overload", cleanedBuffer };
+  if (energy < 15)
+    return { shouldActivate: true, reason: "energy_critical", cleanedBuffer };
+  if (tick - gs.lastExecutiveTick >= gs.executiveInterval) {
+    const energyErr = deps.generativeModel.observe("energy.level", energy);
+    const stressErr = deps.generativeModel.observe("stress.load", stressLoad);
+    const noveltyErr = deps.generativeModel.observe("perception.novelty", novelty2);
+    const valenceErr = deps.generativeModel.observe("affect.valence", valence);
+    const allGated = energyErr.gated && stressErr.gated && noveltyErr.gated && valenceErr.gated;
+    const overdue = tick - gs.lastExecutiveTick >= gs.executiveInterval * 1.5;
+    if (allGated && !overdue && !salienceCharged)
+      return { shouldActivate: false, reason: "prediction_gated", cleanedBuffer };
+    return {
+      shouldActivate: true,
+      reason: salienceCharged ? "salience_charged" : "interval_elapsed",
+      cleanedBuffer
+    };
+  }
+  if (salienceCharged)
+    return { shouldActivate: true, reason: "salience_charged", cleanedBuffer };
+  const goallessTicks = activeGoalCount === 0 ? gs.goallessTickCount + 1 : 0;
+  const lowValenceTicks = valence < -0.4 ? gs.lowValenceTickCount + 1 : 0;
+  if (goallessTicks > 20)
+    return { shouldActivate: true, reason: "goalless_crisis", cleanedBuffer };
+  if (lowValenceTicks > 30)
+    return { shouldActivate: true, reason: "low_valence_crisis", cleanedBuffer };
+  if (novelty2 > 0.7)
+    return { shouldActivate: true, reason: "high_novelty", cleanedBuffer };
+  return { shouldActivate: false, reason: "no_trigger", cleanedBuffer };
+}
+function updateGatingState(gs, state, _tick, didActivate, cleanedBuffer) {
+  gs.salienceBuffer = cleanedBuffer;
+  let activeGoalCount = 0;
+  for (const entity of state.entities.values())
+    if (entity.type === "goal" && entity.metadata?.status === "active")
+      activeGoalCount++;
+  const valence = state.metrics.get("affect.valence") ?? 0;
+  gs.goallessTickCount = activeGoalCount === 0 ? gs.goallessTickCount + 1 : 0;
+  gs.lowValenceTickCount = valence < -0.4 ? gs.lowValenceTickCount + 1 : 0;
+  if (didActivate)
+    gs.lastExecutiveTick = _tick;
+}
+
 // src/cognition/faculties/executive.engine/parser.ts
 function parseResponse(responseText, state, recentActionTypes) {
   const codeBlocks = [...responseText.matchAll(/```(?:json)?\s*\n?([\s\S]*?)\n?```/g)], actionsBlock = codeBlocks.find((m) => m[1].includes('"actions"')), fullText = actionsBlock?.[1]?.trim() ?? responseText.trim();
@@ -14724,6 +15218,168 @@ async function proposeCandidates(params) {
     return void 0;
   }
 }
+
+// src/cognition/faculties/executive.engine/deferred.effects.ts
+var DeferredEffectQueue = class {
+  _entries = [];
+  /** The tick of the most recent react() call — the commit tick for queued effects. */
+  _lastReactTick = -1;
+  /**
+   * Record the current react() tick. Effects queued after this call are
+   * stamped with it as their `queuedAtTick`, so flush() knows to wait one
+   * more tick before deciding whether the tick committed.
+   */
+  markReactTick(tick) {
+    this._lastReactTick = tick;
+  }
+  /**
+   * Queue commit-gated manager writes for `observedTick`. No-op when there
+   * are no effects to run.
+   */
+  enqueue(observedTick, effects) {
+    if (effects.length === 0) return;
+    this._entries.push({
+      observedTick,
+      queuedAtTick: this._lastReactTick,
+      effects
+    });
+  }
+  /**
+   * Run deferred manager writes for committed ticks; drop them for aborted ticks.
+   *
+   * An entry queued during react() at tick C is resolved on the *next* react:
+   *   • committed `executive.last_tick === observedTick` → the commands landed,
+   *     so run the mirroring manager writes.
+   *   • the queuing tick has passed without that match → the tick was aborted
+   *     (e.g. inhibition veto), so drop the writes — no compensation needed
+   *     because the entity commands were discarded too.
+   */
+  flush(state, currentTick) {
+    if (this._entries.length === 0) return;
+    const committedTick = state.metrics.get("executive.last_tick");
+    const keep = [];
+    for (const entry of this._entries) {
+      if (currentTick <= entry.queuedAtTick) {
+        keep.push(entry);
+        continue;
+      }
+      if (committedTick === entry.observedTick) {
+        for (const effect of entry.effects) {
+          try {
+            effect();
+          } catch (err) {
+            logger.error(`[executive] deferred effect failed (tick ${entry.observedTick}):`, err);
+          }
+        }
+      } else {
+        logger.warn(
+          `[executive] dropping deferred manager writes for aborted tick ${entry.observedTick} (committed executive tick: ${committedTick ?? "none"})`
+        );
+      }
+    }
+    this._entries = keep;
+  }
+};
+
+// src/cognition/faculties/executive.engine/escalation.buffer.ts
+function validateFacetHandoff(payload) {
+  if (!payload || typeof payload !== "object") return "payload must be object";
+  const body = payload.body;
+  if (!body || typeof body !== "object") return "payload.body is required";
+  const kind = body.kind;
+  if (kind === "escalation") return null;
+  if (kind === "undertaking")
+    return typeof body.target === "string" && body.target.trim().length > 0 ? null : "undertaking handoff requires a non-empty target";
+  return `unknown handoff kind: ${String(kind)}`;
+}
+function whereItHappened(h) {
+  const who = h.subjectName ?? h.subjectEntityId;
+  return who ? `In my conversation with ${who}` : "While I was working on something else";
+}
+var EscalationBuffer = class {
+  _pending = [];
+  /** Buffer one handoff for injection on the next master cycle. */
+  push(handoff) {
+    this._pending.push(handoff);
+  }
+  get size() {
+    return this._pending.length;
+  }
+  get isEmpty() {
+    return this._pending.length === 0;
+  }
+  /**
+   * Convert every buffered handoff into a high-salience percept entity and clear
+   * the buffer. Returns the percepts plus the first handoff's requester context
+   * (used to tag goals the master creates in response).
+   */
+  drainToPercepts() {
+    const percepts = [];
+    let seq = 0;
+    for (const h of this._pending) {
+      const id = `escalation-percept-${h.subjectEntityId ?? h.facetId ?? "self"}-${h.tick}-${seq++}`;
+      const common = {
+        salience: 0.85,
+        // REAFFERENT. Nothing outside the mind produced this: a facet of it
+        // raised the handoff, and the master is now sensing its own part's
+        // doing. Tagging it costs no behaviour — the rupture gate excludes
+        // reafferent and untagged alike — but it stops the exclusion being an
+        // accident, and it is the honest answer rather than the convenient one.
+        provenance: "reafferent",
+        source: "executive-facet",
+        ...h.subjectEntityId ? { entityId: h.subjectEntityId } : {},
+        ...h.threadId ? { threadId: h.threadId } : {},
+        ...h.facetId ? { facetId: h.facetId } : {}
+      };
+      percepts.push(h.body.kind === "undertaking" ? {
+        id,
+        type: "percept",
+        metadata: {
+          ...common,
+          category: "undertaking",
+          // First person: this is the mind noticing what IT said it would do, not
+          // a report handed to it. What makes it act is that the words are still
+          // unsent — an undertaking it has already honoured reads the same until
+          // it checks, which is exactly the check we want it making.
+          // Everything actionable goes in `summary`: that is the only field the
+          // executive context actually renders (context.ts extractPercepts reads
+          // summary/content and nothing else).
+          //
+          // The closing clause is the whole point. A mind that has SAID it will make
+          // contact remembers deciding, and cannot tell from the inside whether the
+          // words went out — so it follows up on a message it never sent. Naming the
+          // gap is what lets it check. It stays a decision either way: it may have
+          // changed its mind, or judge this the wrong moment, and a reach-out
+          // competes with everything else like any other action.
+          summary: `${whereItHappened(h)} I said I would reach ${h.body.target}` + (h.body.gist ? ` \u2014 what I meant to say: "${h.body.gist.slice(0, 220)}"` : "") + `. Nothing has gone to them yet; saying it in that conversation did not send it. If I still mean it, I reach out with target '${h.body.target}'. If I no longer do, I let it go \u2014 but I do not leave it half-done while telling them it is handled.`,
+          // Who was promised, and when the promise was made. The executive
+          // reconciles against these (see _reconcileUndertakings): once the mind
+          // has actually reached this target since `tick`, the percept is retired
+          // rather than left standing as a claim the words are still unsent.
+          undertakingTarget: h.body.target,
+          tick: h.tick
+        }
+      } : {
+        id,
+        type: "percept",
+        metadata: {
+          ...common,
+          category: "task-escalation",
+          // The steer lives IN the summary because that is the only field the
+          // executive context renders (context.ts extractPercepts reads
+          // summary/content and nothing else). It sat in a sibling `directive`
+          // field for its whole life and never once reached the master.
+          summary: `[Task from ${h.subjectName ?? h.subjectEntityId ?? "my own focused work"}] ${h.body.reasoning} \u2014 this is mine to plan or re-goal; the part of me that raised it handles the talking.`,
+          tick: h.tick
+        }
+      });
+    }
+    const first = this._pending.find((h) => h.subjectEntityId);
+    const requester = first ? { entityId: first.subjectEntityId, threadId: first.threadId ?? "" } : void 0;
+    this._pending = [];
+    return { percepts, requester };
+  }
+};
 
 // src/cognition/faculties/executive.engine/facet.ts
 var ExecutiveFacet = class {
@@ -15156,662 +15812,6 @@ ${this._facetReasoningHistory.join("\n")}` : "";
       newBeliefs: output.newBeliefs,
       knownEntityUpdates: output.knownEntityUpdates
     };
-  }
-};
-
-// src/cognition/cache/fingerprint.ts
-var FINGERPRINT_DIM = 36;
-var FINGERPRINT_VERSION = 1;
-function extractFingerprint(state) {
-  const vec = new Float32Array(FINGERPRINT_DIM);
-  let idx = 0;
-  vec[idx++] = _norm(_metric(state, "energy.level", 50), 0, 100);
-  vec[idx++] = _norm(_metric(state, "sleep.pressure", 0), 0, 100);
-  vec[idx++] = _norm(_metric(state, "stress.load", 0), 0, 100);
-  vec[idx++] = _clamp01((_metric(state, "affect.valence", 0) + 1) / 2);
-  vec[idx++] = _clamp01(_metric(state, "affect.arousal", 0.3));
-  vec[idx++] = _clamp01(_metric(state, "affect.dominance", 0.5));
-  idx = _topEntityScalars(state, "goal", "priority", 0, vec, idx, 10);
-  idx = _topEntityScalars(state, "belief", "confidence", 0.5, vec, idx, 10);
-  idx = _topEntityScalars(state, "working_memory.item", "activation", 0, vec, idx, 10);
-  while (idx < FINGERPRINT_DIM) vec[idx++] = 0;
-  return vec;
-}
-function _topEntityScalars(state, type, field, fallback, vec, idx, count) {
-  const vals = [];
-  for (const e of state.entities.values()) {
-    if (e.type !== type) continue;
-    const raw = e.metadata?.[field];
-    vals.push(typeof raw === "number" ? raw : fallback);
-  }
-  vals.sort((a, b) => b - a);
-  for (let i = 0; i < count; i++)
-    vec[idx++] = _clamp01(vals[i] ?? 0);
-  return idx;
-}
-function _metric(state, key, fallback) {
-  const v = state.metrics.get(key);
-  return typeof v === "number" ? v : fallback;
-}
-function _norm(v, min, max) {
-  return Math.max(0, Math.min(1, (v - min) / (max - min)));
-}
-function _clamp01(v) {
-  if (Number.isNaN(v)) return 0;
-  return Math.max(0, Math.min(1, v));
-}
-function fingerprintSimilarity(a, b) {
-  let dot = 0, na = 0, nb = 0;
-  for (let i = 0; i < FINGERPRINT_DIM; i++) {
-    const ai = a[i] ?? 0;
-    const bi = b[i] ?? 0;
-    dot += ai * bi;
-    na += ai * ai;
-    nb += bi * bi;
-  }
-  const denom = Math.sqrt(na) * Math.sqrt(nb);
-  return denom === 0 ? 0 : dot / denom;
-}
-
-// src/cognition/cache/composition.ts
-function composeOutput(neighbors, tau, scopes) {
-  const weights = _softmaxWeights(neighbors, tau);
-  const anchor = neighbors[0].pattern.output;
-  const out = {
-    actions: [],
-    reasoning: anchor.reasoning ?? "",
-    confidence: anchor.confidence ?? 0.5
-  };
-  if (scopes.includes("actions")) {
-    const composed = _composeActions(neighbors, weights);
-    out.actions = composed.actions;
-    out.reasoning = composed.reasoning;
-    out.confidence = composed.confidence;
-  } else {
-    out.actions = _clone(anchor.actions ?? []);
-  }
-  if (scopes.includes("goals"))
-    out.newGoals = _composeGoals(neighbors, weights);
-  if (scopes.includes("beliefs"))
-    out.newBeliefs = _composeBeliefs(neighbors, weights);
-  return out;
-}
-function _softmaxWeights(neighbors, tau) {
-  const t = tau > 0 ? tau : 1e-6;
-  const sims = neighbors.map((n) => n.similarity);
-  const maxSim = Math.max(...sims);
-  const exps = sims.map((s) => Math.exp((s - maxSim) / t));
-  const sum = exps.reduce((a, b) => a + b, 0);
-  return exps.map((e) => sum === 0 ? 1 / exps.length : e / sum);
-}
-function _composeActions(neighbors, weights) {
-  const typeWeight = /* @__PURE__ */ new Map();
-  for (let i = 0; i < neighbors.length; i++) {
-    const acts = neighbors[i].pattern.output.actions ?? [];
-    const primary = acts[0]?.type;
-    if (primary === void 0) continue;
-    typeWeight.set(primary, (typeWeight.get(primary) ?? 0) + (weights[i] ?? 0));
-  }
-  let winningType = null;
-  let bestWeight = -1;
-  for (let i = 0; i < neighbors.length; i++) {
-    const primary = neighbors[i].pattern.output.actions?.[0]?.type;
-    if (primary === void 0) continue;
-    const w = typeWeight.get(primary) ?? 0;
-    if (w > bestWeight) {
-      bestWeight = w;
-      winningType = primary;
-    }
-  }
-  let source = neighbors[0];
-  for (let i = 0; i < neighbors.length; i++) {
-    if (neighbors[i].pattern.output.actions?.[0]?.type === winningType) {
-      source = neighbors[i];
-      break;
-    }
-  }
-  const src = source.pattern.output;
-  return {
-    actions: _clone(src.actions ?? []),
-    reasoning: src.reasoning ?? "",
-    confidence: src.confidence ?? 0.5
-  };
-}
-function _composeGoals(neighbors, weights) {
-  const byDesc = /* @__PURE__ */ new Map();
-  for (let i = 0; i < neighbors.length; i++) {
-    const w = weights[i] ?? 0;
-    for (const g of neighbors[i].pattern.output.newGoals ?? []) {
-      const cur = byDesc.get(g.description);
-      if (cur) {
-        cur.weight += w;
-        cur.priority += g.priority * w;
-        if (w > cur.bestW) {
-          cur.bestW = w;
-          cur.tags = g.tags;
-          cur.completionType = g.completionType;
-          cur.completionCondition = g.completionCondition;
-        }
-      } else {
-        byDesc.set(g.description, {
-          weight: w,
-          priority: g.priority * w,
-          tags: g.tags,
-          completionType: g.completionType,
-          completionCondition: g.completionCondition,
-          bestW: w
-        });
-      }
-    }
-  }
-  const result = [];
-  for (const [description, a] of byDesc) {
-    result.push({
-      description,
-      priority: a.weight === 0 ? 0 : a.priority / a.weight,
-      tags: [...a.tags],
-      completionType: a.completionType,
-      ...a.completionCondition !== void 0 ? { completionCondition: a.completionCondition } : {}
-    });
-  }
-  result.sort((x, y) => y.priority - x.priority);
-  return result.slice(0, 3);
-}
-function _composeBeliefs(neighbors, weights) {
-  const byStmt = /* @__PURE__ */ new Map();
-  for (let i = 0; i < neighbors.length; i++) {
-    const w = weights[i] ?? 0;
-    for (const b of neighbors[i].pattern.output.newBeliefs ?? []) {
-      const cur = byStmt.get(b.statement);
-      if (cur) {
-        cur.weight += w;
-        cur.confidence += b.confidence * w;
-        if (w > cur.bestW) {
-          cur.bestW = w;
-          cur.category = b.category;
-          cur.evidence = b.evidence;
-          cur.tags = b.tags;
-        }
-      } else {
-        byStmt.set(b.statement, {
-          weight: w,
-          confidence: b.confidence * w,
-          category: b.category,
-          evidence: b.evidence,
-          tags: b.tags,
-          bestW: w
-        });
-      }
-    }
-  }
-  const result = [];
-  for (const [statement, a] of byStmt) {
-    result.push({
-      statement,
-      category: a.category,
-      confidence: a.weight === 0 ? 0 : a.confidence / a.weight,
-      evidence: a.evidence,
-      tags: [...a.tags]
-    });
-  }
-  return result;
-}
-function _clone(v) {
-  return JSON.parse(JSON.stringify(v));
-}
-
-// src/cognition/cache/deliberation.cache.ts
-var DEFAULT_CONFIG = {
-  maxPatterns: 5e3,
-  k: 5,
-  minSimilarity: 0.75,
-  theta: 0.7,
-  tau: 0.5,
-  eta: 0.1,
-  decayPerCycle: 0.999,
-  verifyEveryNHits: 5,
-  scopes: ["actions"]
-};
-var DeliberationCache = class {
-  name = "deliberation-cache";
-  _patterns = [];
-  _config;
-  _hitCount = 0;
-  _missCount = 0;
-  _verifyCounter = 0;
-  constructor(config = {}) {
-    this._config = { ...DEFAULT_CONFIG, ...config };
-  }
-  get size() {
-    return this._patterns.length;
-  }
-  get hitCount() {
-    return this._hitCount;
-  }
-  get missCount() {
-    return this._missCount;
-  }
-  // ── Retrieval + composition ──────────────────────────────
-  /**
-   * Retrieve neighbors of `queryFp` and, if confident, compose an output.
-   * Confidence ρ = max over neighbors of (competence × similarity), per the
-   * research sketch §2.2 — a diffuse cloud of weak matches never triggers a hit.
-   */
-  retrieve(queryFp, _tick) {
-    const neighbors = this._retrieveNeighbors(queryFp);
-    if (neighbors.length === 0) {
-      this._missCount++;
-      return { output: null, confidence: 0, neighbors: [], hit: false };
-    }
-    let confidence = 0;
-    for (const n of neighbors) {
-      const score = n.pattern.competence * n.similarity;
-      if (score > confidence) confidence = score;
-    }
-    const hit = confidence >= this._config.theta;
-    if (hit) this._hitCount++;
-    else this._missCount++;
-    const output = hit ? composeOutput(neighbors, this._config.tau, this._config.scopes) : null;
-    return { output, confidence, neighbors, hit };
-  }
-  /** Store a new (fingerprint, output) pair from the slow (LLM) path. */
-  learn(queryFp, output, tick) {
-    this._evictIfFull(tick);
-    this._patterns.push({
-      fingerprint: new Float32Array(queryFp),
-      output,
-      competence: 0.5,
-      storedAtTick: tick,
-      retrievalCount: 0,
-      successCount: 0
-    });
-  }
-  /**
-   * Update the competence of the pattern nearest to `queryFp`, from a reafference
-   * reward in [0,1]. Called after an action outcome is confirmed.
-   */
-  updateCompetence(queryFp, reward, _tick) {
-    const best = this._findBestMatch(queryFp);
-    if (!best) return;
-    const r = Math.max(0, Math.min(1, reward));
-    best.retrievalCount++;
-    if (r > 0.5) best.successCount++;
-    const a = this._config.eta;
-    best.competence = Math.max(0, Math.min(1, best.competence * (1 - a) + r * a));
-  }
-  /** Decay all competences one executive cycle. Slowly forgets stale patterns. */
-  decay() {
-    const f = this._config.decayPerCycle;
-    if (f >= 1) return;
-    for (const p of this._patterns) p.competence *= f;
-  }
-  /** Deterministic 1-in-N verify schedule. Increments a counter each call. */
-  shouldVerify() {
-    if (this._config.verifyEveryNHits <= 0) return false;
-    this._verifyCounter++;
-    return this._verifyCounter % this._config.verifyEveryNHits === 0;
-  }
-  // ── Snapshot / restore (entity persistence + tests) ──────
-  snapshot() {
-    return {
-      version: FINGERPRINT_VERSION,
-      patterns: this._patterns.map((p) => ({
-        fingerprint: Array.from(p.fingerprint),
-        output: p.output,
-        competence: p.competence,
-        storedAtTick: p.storedAtTick,
-        retrievalCount: p.retrievalCount,
-        successCount: p.successCount
-      })),
-      hitCount: this._hitCount,
-      missCount: this._missCount,
-      verifyCounter: this._verifyCounter
-    };
-  }
-  restore(snap) {
-    if (snap.version !== FINGERPRINT_VERSION) return;
-    this._patterns = snap.patterns.map((p) => ({
-      fingerprint: new Float32Array(p.fingerprint),
-      output: p.output,
-      competence: p.competence,
-      storedAtTick: p.storedAtTick,
-      retrievalCount: p.retrievalCount,
-      successCount: p.successCount
-    }));
-    this._hitCount = snap.hitCount ?? 0;
-    this._missCount = snap.missCount ?? 0;
-    this._verifyCounter = snap.verifyCounter ?? 0;
-  }
-  // ── Internal ─────────────────────────────────────────────
-  _retrieveNeighbors(queryFp) {
-    const scored = [];
-    for (const p of this._patterns) {
-      const similarity = fingerprintSimilarity(queryFp, p.fingerprint);
-      if (similarity >= this._config.minSimilarity)
-        scored.push({ pattern: p, similarity });
-    }
-    scored.sort((a, b) => {
-      const sa = a.similarity * a.pattern.competence;
-      const sb = b.similarity * b.pattern.competence;
-      if (sa !== sb) return sb - sa;
-      return a.pattern.storedAtTick - b.pattern.storedAtTick;
-    });
-    return scored.slice(0, this._config.k);
-  }
-  _findBestMatch(queryFp) {
-    let best = null;
-    let bestSim = -1;
-    for (const p of this._patterns) {
-      const sim = fingerprintSimilarity(queryFp, p.fingerprint);
-      if (sim > bestSim) {
-        bestSim = sim;
-        best = p;
-      }
-    }
-    return best;
-  }
-  _evictIfFull(_tick) {
-    if (this._patterns.length < this._config.maxPatterns) return;
-    let evictIdx = 0;
-    let best = this._patterns[0];
-    for (let i = 1; i < this._patterns.length; i++) {
-      const p = this._patterns[i];
-      if (p.competence < best.competence || p.competence === best.competence && p.storedAtTick < best.storedAtTick) {
-        best = p;
-        evictIdx = i;
-      }
-    }
-    this._patterns.splice(evictIdx, 1);
-  }
-};
-
-// src/cognition/faculties/executive.engine/config.ts
-var WORKSPACE_THRESHOLD = 0.4;
-var BUFFER_SALIENCE_TRIGGER = 2.5;
-var BUFFER_MAX_AGE_TICKS = 30;
-var DEFAULT_EXECUTIVE_INTERVAL = 15;
-var DEFAULT_COOLDOWN_TICKS = 5;
-function readRuntimeConfig(state, base) {
-  const cfg = state.entities.get("engine-config-executive");
-  if (!cfg)
-    return {
-      executiveInterval: base.executiveInterval ?? DEFAULT_EXECUTIVE_INTERVAL,
-      cooldownTicks: base.cooldownTicks ?? DEFAULT_COOLDOWN_TICKS
-    };
-  const p = cfg.metadata?.params;
-  if (!p)
-    return {
-      executiveInterval: base.executiveInterval ?? DEFAULT_EXECUTIVE_INTERVAL,
-      cooldownTicks: base.cooldownTicks ?? DEFAULT_COOLDOWN_TICKS
-    };
-  return {
-    executiveInterval: p.executiveInterval ?? base.executiveInterval ?? DEFAULT_EXECUTIVE_INTERVAL,
-    cooldownTicks: p.cooldownTicks ?? base.cooldownTicks ?? DEFAULT_COOLDOWN_TICKS
-  };
-}
-
-// src/cognition/faculties/executive.engine/gating.ts
-function hasPendingInstructions(state) {
-  for (const entity of state.entities.values())
-    if (entity.type === "percept" || entity.type === "percept.social") {
-      const salience = entity.metadata?.salience ?? 0;
-      if (salience > 0.7) return true;
-    }
-  return false;
-}
-function evaluateGating(state, tick, deps, gs) {
-  if (deps.hasPendingWork)
-    return {
-      shouldActivate: false,
-      reason: "hasPendingWork",
-      cleanedBuffer: gs.salienceBuffer
-    };
-  if (tick - gs.lastExecutiveTick < gs.cooldownTicks)
-    return {
-      shouldActivate: false,
-      reason: "cooldown",
-      cleanedBuffer: gs.salienceBuffer
-    };
-  const energy = state.metrics.get("energy.level") ?? 100;
-  const isResting = state.metrics.get("state.resting") ?? 0;
-  const isSleeping = state.metrics.get("state.sleeping") ?? 0;
-  const isForcedRest = state.metrics.get("state.forced_rest") ?? 0;
-  const novelty2 = state.metrics.get("perception.novelty") ?? 0;
-  const sleepPressure = state.metrics.get("sleep.pressure") ?? 0;
-  const stressLoad = state.metrics.get("stress.load") ?? 0;
-  const valence = state.metrics.get("affect.valence") ?? 0;
-  const cleanedBuffer = gs.salienceBuffer.filter((e) => tick - e.tick < BUFFER_MAX_AGE_TICKS);
-  const totalSalience = cleanedBuffer.reduce((s, e) => s + (e.event.salience ?? 0), 0);
-  const salienceCharged = totalSalience >= BUFFER_SALIENCE_TRIGGER;
-  if (isForcedRest > 0)
-    return {
-      shouldActivate: false,
-      reason: "forced_rest",
-      cleanedBuffer
-    };
-  if (isResting > 0 || isSleeping > 0) {
-    const significantEvent = novelty2 > 0.8, hasPending = hasPendingInstructions(state);
-    if (significantEvent || hasPending)
-      return {
-        shouldActivate: true,
-        reason: `awakened_from_${isSleeping > 0 ? "sleep" : "rest"}`,
-        cleanedBuffer
-      };
-    return {
-      shouldActivate: false,
-      reason: "resting",
-      cleanedBuffer
-    };
-  }
-  let activeGoalCount = 0;
-  for (const entity of state.entities.values())
-    if (entity.type === "goal" && entity.metadata?.status === "active")
-      activeGoalCount++;
-  if (sleepPressure > 65)
-    return { shouldActivate: true, reason: "sleep_pressure_critical", cleanedBuffer };
-  if (stressLoad > 75)
-    return { shouldActivate: true, reason: "stress_overload", cleanedBuffer };
-  if (energy < 15)
-    return { shouldActivate: true, reason: "energy_critical", cleanedBuffer };
-  if (tick - gs.lastExecutiveTick >= gs.executiveInterval) {
-    const energyErr = deps.generativeModel.observe("energy.level", energy);
-    const stressErr = deps.generativeModel.observe("stress.load", stressLoad);
-    const noveltyErr = deps.generativeModel.observe("perception.novelty", novelty2);
-    const valenceErr = deps.generativeModel.observe("affect.valence", valence);
-    const allGated = energyErr.gated && stressErr.gated && noveltyErr.gated && valenceErr.gated;
-    const overdue = tick - gs.lastExecutiveTick >= gs.executiveInterval * 1.5;
-    if (allGated && !overdue && !salienceCharged)
-      return { shouldActivate: false, reason: "prediction_gated", cleanedBuffer };
-    return {
-      shouldActivate: true,
-      reason: salienceCharged ? "salience_charged" : "interval_elapsed",
-      cleanedBuffer
-    };
-  }
-  if (salienceCharged)
-    return { shouldActivate: true, reason: "salience_charged", cleanedBuffer };
-  const goallessTicks = activeGoalCount === 0 ? gs.goallessTickCount + 1 : 0;
-  const lowValenceTicks = valence < -0.4 ? gs.lowValenceTickCount + 1 : 0;
-  if (goallessTicks > 20)
-    return { shouldActivate: true, reason: "goalless_crisis", cleanedBuffer };
-  if (lowValenceTicks > 30)
-    return { shouldActivate: true, reason: "low_valence_crisis", cleanedBuffer };
-  if (novelty2 > 0.7)
-    return { shouldActivate: true, reason: "high_novelty", cleanedBuffer };
-  return { shouldActivate: false, reason: "no_trigger", cleanedBuffer };
-}
-function updateGatingState(gs, state, _tick, didActivate, cleanedBuffer) {
-  gs.salienceBuffer = cleanedBuffer;
-  let activeGoalCount = 0;
-  for (const entity of state.entities.values())
-    if (entity.type === "goal" && entity.metadata?.status === "active")
-      activeGoalCount++;
-  const valence = state.metrics.get("affect.valence") ?? 0;
-  gs.goallessTickCount = activeGoalCount === 0 ? gs.goallessTickCount + 1 : 0;
-  gs.lowValenceTickCount = valence < -0.4 ? gs.lowValenceTickCount + 1 : 0;
-  if (didActivate)
-    gs.lastExecutiveTick = _tick;
-}
-
-// src/cognition/faculties/executive.engine/deferred.effects.ts
-var DeferredEffectQueue = class {
-  _entries = [];
-  /** The tick of the most recent react() call — the commit tick for queued effects. */
-  _lastReactTick = -1;
-  /**
-   * Record the current react() tick. Effects queued after this call are
-   * stamped with it as their `queuedAtTick`, so flush() knows to wait one
-   * more tick before deciding whether the tick committed.
-   */
-  markReactTick(tick) {
-    this._lastReactTick = tick;
-  }
-  /**
-   * Queue commit-gated manager writes for `observedTick`. No-op when there
-   * are no effects to run.
-   */
-  enqueue(observedTick, effects) {
-    if (effects.length === 0) return;
-    this._entries.push({
-      observedTick,
-      queuedAtTick: this._lastReactTick,
-      effects
-    });
-  }
-  /**
-   * Run deferred manager writes for committed ticks; drop them for aborted ticks.
-   *
-   * An entry queued during react() at tick C is resolved on the *next* react:
-   *   • committed `executive.last_tick === observedTick` → the commands landed,
-   *     so run the mirroring manager writes.
-   *   • the queuing tick has passed without that match → the tick was aborted
-   *     (e.g. inhibition veto), so drop the writes — no compensation needed
-   *     because the entity commands were discarded too.
-   */
-  flush(state, currentTick) {
-    if (this._entries.length === 0) return;
-    const committedTick = state.metrics.get("executive.last_tick");
-    const keep = [];
-    for (const entry of this._entries) {
-      if (currentTick <= entry.queuedAtTick) {
-        keep.push(entry);
-        continue;
-      }
-      if (committedTick === entry.observedTick) {
-        for (const effect of entry.effects) {
-          try {
-            effect();
-          } catch (err) {
-            logger.error(`[executive] deferred effect failed (tick ${entry.observedTick}):`, err);
-          }
-        }
-      } else {
-        logger.warn(
-          `[executive] dropping deferred manager writes for aborted tick ${entry.observedTick} (committed executive tick: ${committedTick ?? "none"})`
-        );
-      }
-    }
-    this._entries = keep;
-  }
-};
-
-// src/cognition/faculties/executive.engine/escalation.buffer.ts
-function validateFacetHandoff(payload) {
-  if (!payload || typeof payload !== "object") return "payload must be object";
-  const body = payload.body;
-  if (!body || typeof body !== "object") return "payload.body is required";
-  const kind = body.kind;
-  if (kind === "escalation") return null;
-  if (kind === "undertaking")
-    return typeof body.target === "string" && body.target.trim().length > 0 ? null : "undertaking handoff requires a non-empty target";
-  return `unknown handoff kind: ${String(kind)}`;
-}
-function whereItHappened(h) {
-  const who = h.subjectName ?? h.subjectEntityId;
-  return who ? `In my conversation with ${who}` : "While I was working on something else";
-}
-var EscalationBuffer = class {
-  _pending = [];
-  /** Buffer one handoff for injection on the next master cycle. */
-  push(handoff) {
-    this._pending.push(handoff);
-  }
-  get size() {
-    return this._pending.length;
-  }
-  get isEmpty() {
-    return this._pending.length === 0;
-  }
-  /**
-   * Convert every buffered handoff into a high-salience percept entity and clear
-   * the buffer. Returns the percepts plus the first handoff's requester context
-   * (used to tag goals the master creates in response).
-   */
-  drainToPercepts() {
-    const percepts = [];
-    let seq = 0;
-    for (const h of this._pending) {
-      const id = `escalation-percept-${h.subjectEntityId ?? h.facetId ?? "self"}-${h.tick}-${seq++}`;
-      const common = {
-        salience: 0.85,
-        // REAFFERENT. Nothing outside the mind produced this: a facet of it
-        // raised the handoff, and the master is now sensing its own part's
-        // doing. Tagging it costs no behaviour — the rupture gate excludes
-        // reafferent and untagged alike — but it stops the exclusion being an
-        // accident, and it is the honest answer rather than the convenient one.
-        provenance: "reafferent",
-        source: "executive-facet",
-        ...h.subjectEntityId ? { entityId: h.subjectEntityId } : {},
-        ...h.threadId ? { threadId: h.threadId } : {},
-        ...h.facetId ? { facetId: h.facetId } : {}
-      };
-      percepts.push(h.body.kind === "undertaking" ? {
-        id,
-        type: "percept",
-        metadata: {
-          ...common,
-          category: "undertaking",
-          // First person: this is the mind noticing what IT said it would do, not
-          // a report handed to it. What makes it act is that the words are still
-          // unsent — an undertaking it has already honoured reads the same until
-          // it checks, which is exactly the check we want it making.
-          // Everything actionable goes in `summary`: that is the only field the
-          // executive context actually renders (context.ts extractPercepts reads
-          // summary/content and nothing else).
-          //
-          // The closing clause is the whole point. A mind that has SAID it will make
-          // contact remembers deciding, and cannot tell from the inside whether the
-          // words went out — so it follows up on a message it never sent. Naming the
-          // gap is what lets it check. It stays a decision either way: it may have
-          // changed its mind, or judge this the wrong moment, and a reach-out
-          // competes with everything else like any other action.
-          summary: `${whereItHappened(h)} I said I would reach ${h.body.target}` + (h.body.gist ? ` \u2014 what I meant to say: "${h.body.gist.slice(0, 220)}"` : "") + `. Nothing has gone to them yet; saying it in that conversation did not send it. If I still mean it, I reach out with target '${h.body.target}'. If I no longer do, I let it go \u2014 but I do not leave it half-done while telling them it is handled.`,
-          // Who was promised, and when the promise was made. The executive
-          // reconciles against these (see _reconcileUndertakings): once the mind
-          // has actually reached this target since `tick`, the percept is retired
-          // rather than left standing as a claim the words are still unsent.
-          undertakingTarget: h.body.target,
-          tick: h.tick
-        }
-      } : {
-        id,
-        type: "percept",
-        metadata: {
-          ...common,
-          category: "task-escalation",
-          // The steer lives IN the summary because that is the only field the
-          // executive context renders (context.ts extractPercepts reads
-          // summary/content and nothing else). It sat in a sibling `directive`
-          // field for its whole life and never once reached the master.
-          summary: `[Task from ${h.subjectName ?? h.subjectEntityId ?? "my own focused work"}] ${h.body.reasoning} \u2014 this is mine to plan or re-goal; the part of me that raised it handles the talking.`,
-          tick: h.tick
-        }
-      });
-    }
-    const first = this._pending.find((h) => h.subjectEntityId);
-    const requester = first ? { entityId: first.subjectEntityId, threadId: first.threadId ?? "" } : void 0;
-    this._pending = [];
-    return { percepts, requester };
   }
 };
 
@@ -16844,11 +16844,6 @@ var ExecutiveEngine = class extends AsyncEngine {
       plansCount: executiveOutput.plans?.length ?? 0,
       goalsNew: executiveOutput.newGoals ?? [],
       goalsAbandon: executiveOutput.goalsToAbandon ?? [],
-      replies: (executiveOutput.conversationReplies ?? []).map((r) => ({
-        targetEntityId: r.targetEntityId,
-        targetEntityName: r.targetEntityName,
-        messages: r.messages
-      })),
       hasIntrospection: !!executiveOutput.introspection,
       hasNarrative: !!executiveOutput.narrative
     });
@@ -21813,7 +21808,7 @@ var BaseSenseEngine = class {
    * the domain-specific work to `_perceive()`. Subclasses never re-handle gating
    * or filtering — they only implement `_perceive()`.
    */
-  async ingest(input) {
+  async sense(input) {
     if (this.gateEffector && this._grants && !this._grants.isAllowed(this.gateEffector)) return;
     if (!this.acceptedKinds.has(input.kind)) return;
     await this._perceive(input);
@@ -28350,7 +28345,7 @@ var TransportController = class {
   /**
    * Emit drained external effector invocations over the transport (2.4). Called
    * by the tick loop after `pendingEffectorInvocations` is spliced. The peer
-   * executes each and returns a result-ack (correlationId = decisionRecordId),
+   * executes each and returns a result-ack (correlationId = intentId),
    * which inbound dispatch routes to `confirmExecution`.
    */
   emitInvocations(instance, invocations) {
@@ -28359,7 +28354,7 @@ var TransportController = class {
       this._emit(instance, {
         channel: "effector_invocation",
         willId: instance.config.id,
-        correlationId: invocation.decisionRecordId,
+        correlationId: invocation.intentId,
         seq: this._nextSeq(instance.config.id),
         wallTime: wallClock(),
         invocation
@@ -28435,7 +28430,7 @@ var TransportController = class {
           provenance: "unknown",
           ...env.speakerName ? { speakerName: env.speakerName } : {}
         };
-        void instance.cognition.auditionEngine.ingest(input);
+        void instance.cognition.auditionEngine.sense(input);
         break;
       }
       case "inbound_percept":
@@ -28871,7 +28866,7 @@ var effectorController = class {
    * Buffer a host-owned effector invocation for delivery. Called from the WillStem
    * `agency.invocation` bus subscription with the event payload
    * (`{ schema, intentId, targetEntityId, parameters, tick }`). The awaiting
-   * `agency.intent` id is the **correlation handle** (`decisionRecordId`): the host
+   * `agency.intent` id is the **correlation handle** (`intentId`): the host
    * echoes it on its result-ack, and `confirmExecution` uses it to find the intent.
    *
    * Policy sits between here and the wire — see `PolicyEnforcement.evaluate`.
@@ -28906,7 +28901,7 @@ var effectorController = class {
     const intentId = payload.intentId ?? "";
     instance.pendingEffectorInvocations.push({
       id: intentId,
-      decisionRecordId: intentId,
+      intentId,
       // correlation handle — the awaiting agency.intent id
       effectorName: payload.schema ?? "",
       parameters: payload.parameters ?? {},
@@ -28931,7 +28926,7 @@ var effectorController = class {
   /**
    * Called by the host/WorldInterface after executing a host-owned effector.
    * `invocationId` is the correlation handle the host echoed — the awaiting
-   * `agency.intent`'s id (= the `decisionRecordId` field of the effectorInvocation).
+   * `agency.intent`'s id (= the `intentId` field of the effectorInvocation).
    *
    * It reconciles the ack into an `agency.outcome` (via `reconcileInvocation`),
    * carrying the intent's efference copy (predicted reward/valence) so surprise is
@@ -28959,7 +28954,7 @@ var effectorController = class {
       reconcileInvocation(invocationId, schema, result, tick, predicted, planLink)
     );
     if (result.observation !== void 0 && result.observation !== null)
-      void instance.cognition.somatosensationEngine.ingest({
+      void instance.cognition.somatosensationEngine.sense({
         kind: "system",
         signal: schema,
         provenance: "reafferent",
@@ -29030,14 +29025,14 @@ var SensoryController = class {
    * LanguagePercept publication, conversation-facet spawn/reuse, and LLM
    * reply generation. Reply delivery is async via the outbox / SSE channel.
    */
-  async ingestText(instance, input) {
-    await instance.cognition.auditionEngine.ingest(input);
+  async senseText(instance, input) {
+    await instance.cognition.auditionEngine.sense(input);
   }
   /**
    * Route a raw SensoryInput to the appropriate sense engine by domain.
    * Used by the debug `POST /senses/:domain/ingest` route.
    */
-  async ingestSensory(instance, domain, input) {
+  async senseSignal(instance, domain, input) {
     const cog = instance.cognition;
     const engineMap = {
       audition: cog.auditionEngine,
@@ -29048,7 +29043,7 @@ var SensoryController = class {
     };
     const engine = engineMap[domain];
     if (!engine) throw Object.assign(new Error(`Unknown sense domain: ${domain}`), { code: 400 });
-    await engine.ingest(input);
+    await engine.sense(input);
   }
   /**
    * Inject a percept or external event into the Will's world.
@@ -29590,7 +29585,7 @@ var WillStem = class {
       const offlineMs = Date.now() - instance.pausedAt.getTime();
       const offlineMins = Math.round(offlineMs / 6e4);
       const duration = offlineMins < 2 ? "a moment" : offlineMins < 60 ? `${offlineMins} minutes` : `${Math.round(offlineMins / 60)} hours`;
-      void instance.cognition.somatosensationEngine.ingest({
+      void instance.cognition.somatosensationEngine.sense({
         kind: "system",
         signal: "WAKE",
         provenance: "exafferent",
@@ -29922,8 +29917,8 @@ var WillStem = class {
    * @param id     Will ID
    * @param input  TextMessage — `{ kind: 'text', entityId, threadId, content, speakerName? }`
    */
-  async ingestText(id, input) {
-    await this._sensory.ingestText(this._get(id), input);
+  async senseText(id, input) {
+    await this._sensory.senseText(this._get(id), input);
   }
   /**
    * Terminate the conversation session for an entity.
@@ -29971,10 +29966,10 @@ var WillStem = class {
   /**
    * Route a raw SensoryInput to the appropriate sense engine by domain.
    * Used by the debug `POST /senses/:domain/ingest` route.
-   * Audition inputs are gated by the 'listen' effector like ingestText().
+   * Audition inputs are gated by the 'listen' effector like senseText().
    */
-  async ingestSensory(id, domain, input) {
-    await this._sensory.ingestSensory(this._get(id), domain, input);
+  async senseSignal(id, domain, input) {
+    await this._sensory.senseSignal(this._get(id), domain, input);
   }
   listWills() {
     return Array.from(this._wills.entries()).map(([id, inst]) => ({
@@ -30218,7 +30213,7 @@ var Will = class _Will {
    */
   async sense(stimulus) {
     const from = stimulus.from ?? "user";
-    await this.stem.ingestText(this.id, {
+    await this.stem.senseText(this.id, {
       kind: "text",
       entityId: from,
       threadId: stimulus.thread ?? from,
@@ -30240,18 +30235,6 @@ var Will = class _Will {
       provenance: stimulus.provenance,
       ...stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {}
     });
-  }
-  /**
-   * @deprecated Renamed to `sense()` (SIGNAL_BOUNDARY P3) — see `sense` for why. Kept for one minor so a host upgrades on its own schedule; it
-   * delegates, so there is no second code path to drift.
-   *
-   * Note that `Stimulus.provenance` became REQUIRED in the same release, so a
-   * host that only renames the call still has one field to add. That pairing is
-   * deliberate: the two breaks were held back to land together rather than
-   * making the same host migrate twice.
-   */
-  async perceive(stimulus) {
-    return this.sense(stimulus);
   }
   /**
    * Sense from the default user. Sugar over `sense`.
@@ -30420,10 +30403,9 @@ var Will = class _Will {
   _buildConfig(id, opts) {
     const mode = opts.llm ?? detectProvider();
     const useMock = mode === "mock";
-    const llmConfig = useMock && !opts.llmConfig && opts.model === void 0 ? void 0 : {
+    const llmConfig = useMock && !opts.llmConfig ? void 0 : {
       ...mode !== "mock" ? { provider: mode } : {},
-      ...opts.llmConfig,
-      ...opts.llmConfig?.model !== void 0 ? { model: opts.llmConfig.model } : opts.model !== void 0 ? { model: opts.model } : {}
+      ...opts.llmConfig
     };
     return {
       id,
@@ -30481,7 +30463,7 @@ var Will = class _Will {
   async _runEffector(inv) {
     const handler = this._effectors.get(inv.effectorName);
     if (!handler) {
-      this.stem.confirmEffectorExecution(this.id, inv.decisionRecordId, {
+      this.stem.confirmEffectorExecution(this.id, inv.intentId, {
         success: false,
         description: `No handler registered for effector "${inv.effectorName}"`
       });
@@ -30491,9 +30473,10 @@ var Will = class _Will {
       const raw = await handler(inv.parameters, {
         reasoning: inv.reasoning,
         // The correlation handle, so a handler that feeds its own result back in
-        // can say WHICH act caused it. Already in scope — it is the id the ack
-        // is matched on — it just was not being passed on.
-        intentId: inv.decisionRecordId,
+        // can say WHICH act caused it. This line used to read
+        // `intentId: inv.decisionRecordId` — the translation that proved the
+        // wire name was already wrong.
+        intentId: inv.intentId,
         targetEntityId: inv.targetEntityId,
         // Which of the host's own ids that referent is — without it a handler
         // gets an opaque anchor and nothing it can look up.
@@ -30501,10 +30484,10 @@ var Will = class _Will {
         ...inv.description ? { description: inv.description } : {}
       });
       const result = typeof raw === "string" ? { success: true, description: raw } : raw;
-      this.stem.confirmEffectorExecution(this.id, inv.decisionRecordId, result);
+      this.stem.confirmEffectorExecution(this.id, inv.intentId, result);
     } catch (err) {
       this._emitError(err instanceof Error ? err : new Error(String(err)));
-      this.stem.confirmEffectorExecution(this.id, inv.decisionRecordId, {
+      this.stem.confirmEffectorExecution(this.id, inv.intentId, {
         success: false,
         description: `Effector "${inv.effectorName}" threw: ${err.message}`
       });

@@ -22,7 +22,7 @@
 ## Context: what exists today (audited 2026-08-11)
 
 **The whole of what a Discord message tells her** (`surface/channels/discord.ts`,
-the `will.perceive` call):
+the `will.sense` call):
 
 ```ts
 { text, from: 'discord:<userId>', thread: 'discord:<channelId>', direct: isDM, speaker }

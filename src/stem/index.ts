@@ -595,7 +595,7 @@ export class WillStem {
       // Fire-and-forget: `ingest` is async and the resume path is not. The
       // signal reaches state on the sense's own timing, exactly as an inbound
       // message does.
-      void instance.cognition.somatosensationEngine.ingest({
+      void instance.cognition.somatosensationEngine.sense({
         kind:       'system',
         signal:     'WAKE',
         provenance: 'exafferent',   // time passed; nothing I did caused it
@@ -1023,8 +1023,8 @@ export class WillStem {
    * @param id     Will ID
    * @param input  TextMessage — `{ kind: 'text', entityId, threadId, content, speakerName? }`
    */
-  async ingestText( id: string, input: TextMessage ): Promise<void> {
-    await this._sensory.ingestText( this._get( id ), input )
+  async senseText( id: string, input: TextMessage ): Promise<void> {
+    await this._sensory.senseText( this._get( id ), input )
   }
 
   /**
@@ -1076,10 +1076,10 @@ export class WillStem {
   /**
    * Route a raw SensoryInput to the appropriate sense engine by domain.
    * Used by the debug `POST /senses/:domain/ingest` route.
-   * Audition inputs are gated by the 'listen' effector like ingestText().
+   * Audition inputs are gated by the 'listen' effector like senseText().
    */
-  async ingestSensory( id: string, domain: string, input: SensoryInput ): Promise<void> {
-    await this._sensory.ingestSensory( this._get( id ), domain, input )
+  async senseSignal( id: string, domain: string, input: SensoryInput ): Promise<void> {
+    await this._sensory.senseSignal( this._get( id ), domain, input )
   }
 
   listWills(): WillSummary[] {

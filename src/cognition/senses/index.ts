@@ -229,7 +229,7 @@ export type SensoryInput =
 export interface SenseEngine extends CognitiveEngine {
   readonly domain: SenseDomain
   attachBus( bus: CognitiveBus ): void
-  ingest( input: SensoryInput ): Promise<void>
+  sense( input: SensoryInput ): Promise<void>
 }
 
 // ── Re-exports ────────────────────────────────────────────────

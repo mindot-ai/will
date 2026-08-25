@@ -49,7 +49,7 @@ function ackRecorder( will: Will ): EffectorAck[] {
 /** Drive the SDK's real dispatch for one invocation — the path a decided act takes. */
 function runEffector( will: Will, effectorName: string ): Promise<void> {
   return ( will as unknown as { _runEffector( inv: unknown ): Promise<void> } )._runEffector({
-    effectorName, decisionRecordId: 'i-clock', parameters: {},
+    effectorName, intentId: 'i-clock', parameters: {},
   })
 }
 
@@ -262,7 +262,7 @@ describe('the time is something a mind seeks, not something it is given', () => 
       const sense = new SomatosensationEngine()
       sense.attachBus( { publish: ( ev: { payload: unknown } ) => seen.push( ev.payload as Percept ),
                          subscribe: () => {} } as never )
-      await sense.ingest( { kind: 'system', signal: 'check-time', provenance: 'reafferent',
+      await sense.sense( { kind: 'system', signal: 'check-time', provenance: 'reafferent',
                             sourceIntentId: 'i-clock', data: acks[0]!.observation } )
 
       expect( seen[0]!.provenance ).toBe('reafferent')

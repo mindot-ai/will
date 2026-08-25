@@ -67,8 +67,6 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
      * and return "no recall" while a mind with six live facets was asking.
      */
     maxConcurrency?: number
-    /** @deprecated use maxConcurrency — kept as its fallback for back-compat. */
-    batchSize?: number
     /** Per-request timeout in ms before the connection is aborted. Default 30s. */
     timeoutMs?: number
     /**
@@ -82,7 +80,7 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
     this.dimensions = config.dimensions
     this._apiUrl = config.apiUrl
     this._apiKey = config.apiKey ?? null
-    this._maxConcurrency = Math.max( 1, config.maxConcurrency ?? config.batchSize ?? 4 )
+    this._maxConcurrency = Math.max( 1, config.maxConcurrency ?? 4 )
     this._gate = new LLMSemaphore( this._maxConcurrency )
     this._timeoutMs = config.timeoutMs ?? 30_000
     this._tokenTracker = config.tokenTracker ?? null

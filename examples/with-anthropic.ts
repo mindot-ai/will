@@ -73,7 +73,7 @@ await new Promise( r => setTimeout( r, 3_000 ) )
 const question = 'Hello! Tell me — what is it like to be you, right now?'
 console.log(`\n💬 You: "${question}"\n`)
 
-await stem.ingestText( willId, {
+await stem.senseText( willId, {
   kind:        'text',
   entityId:    'visitor',
   threadId:    'hello-thread',

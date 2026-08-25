@@ -87,8 +87,6 @@ import type { EngineResult } from '#core/orchestrator'
 import type { Duration } from '#core/types'
 import { wallClock } from '#core/wall.clock'
 
-// Re-export for compatibility
-export { ExecutiveFacet, type ExecutiveFacetHandle }
 
 /**
  * How hard a reasoning facet pulls on attention, as an `attention.demand` urgency.
@@ -1063,11 +1061,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       plansCount: executiveOutput.plans?.length ?? 0,
       goalsNew: executiveOutput.newGoals ?? [],
       goalsAbandon: executiveOutput.goalsToAbandon ?? [],
-      replies: ( executiveOutput.conversationReplies ?? [] ).map( r => ( {
-        targetEntityId: r.targetEntityId,
-        targetEntityName: r.targetEntityName,
-        messages: r.messages,
-      } ) ),
       hasIntrospection: !!executiveOutput.introspection,
       hasNarrative: !!executiveOutput.narrative
     } )

@@ -16,7 +16,7 @@
  * intent aimed at an engine-internal entity is the defect returning, and it is
  * invisible from inside a green suite otherwise.
  *
- * Driven through the cognitive bus rather than `auditionEngine.ingest`, which
+ * Driven through the cognitive bus rather than `auditionEngine.sense`, which
  * needs an LLM: everything downstream of the percept — tracker, synthesizer,
  * selector, executor — is the real pipeline.
  */

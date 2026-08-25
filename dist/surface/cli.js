@@ -6615,7 +6615,7 @@ function enactedEntity(schema, targetEntityId, tick) {
     metadata: { schema, targetEntityId, tick }
   };
 }
-function enactedAtBySchemaTarget(entities) {
+function enactedAtBySchemaTarget(entities, canon) {
   const out = /* @__PURE__ */ new Map();
   for (const [, e] of entities) {
     if (e.type !== ENACTED_TYPE) continue;
@@ -6624,7 +6624,7 @@ function enactedAtBySchemaTarget(entities) {
     const target = typeof meta3["targetEntityId"] === "string" ? meta3["targetEntityId"] : void 0;
     const tick = typeof meta3["tick"] === "number" ? meta3["tick"] : void 0;
     if (!schema || !target || tick === void 0) continue;
-    out.set(enactedKey(schema, target), tick);
+    out.set(enactedKey(schema, canon ? canon(target) : target), tick);
   }
   return out;
 }
@@ -6653,14 +6653,15 @@ function readConsequence(m) {
     tick: typeof meta3["tick"] === "number" ? meta3["tick"] : 0
   };
 }
-function liveConsequences(entities, tick) {
+function liveConsequences(entities, tick, canon) {
   const out = [];
   for (const [, e] of entities) {
     if (e.type !== CONSEQUENCE_TYPE) continue;
     const d = readConsequence(e.metadata);
     if (!d) continue;
     if (d.tick > tick) continue;
-    if (tick < d.expiresAt) out.push(d);
+    if (tick < d.expiresAt)
+      out.push(canon && d.targetEntityId ? { ...d, targetEntityId: canon(d.targetEntityId) } : d);
   }
   return out.sort((a, b) => a.intentId < b.intentId ? -1 : a.intentId > b.intentId ? 1 : 0);
 }
@@ -6709,7 +6710,7 @@ function enactionFootprint(descriptors, schema, targetEntityId, tick, windowTick
   }
   return strongest < 0 ? 0 : strongest > 1 ? 1 : strongest;
 }
-function spokenAtByEntity(entities) {
+function spokenAtByEntity(entities, canon) {
   const out = /* @__PURE__ */ new Map();
   for (const [, e] of entities) {
     if (e.type !== "conversation.sent") continue;
@@ -6717,7 +6718,8 @@ function spokenAtByEntity(entities) {
     const target = typeof m["targetEntityId"] === "string" ? m["targetEntityId"] : void 0;
     if (!target) continue;
     const at = typeof m["tick"] === "number" ? m["tick"] : typeof e.updatedAtTick === "number" ? e.updatedAtTick : typeof e.tick === "number" ? e.tick : 0;
-    if (at > (out.get(target) ?? -Infinity)) out.set(target, at);
+    const key = canon ? canon(target) : target;
+    if (at > (out.get(key) ?? -Infinity)) out.set(key, at);
   }
   return out;
 }
@@ -6791,14 +6793,15 @@ function readSettlement(m) {
     expiresAt: typeof meta3["expiresAt"] === "number" ? meta3["expiresAt"] : 0
   };
 }
-function liveSettlements(entities, tick) {
+function liveSettlements(entities, tick, canon) {
   const out = [];
   for (const [id, e] of entities) {
     if (e.type !== SETTLEMENT_TYPE) continue;
     const d = readSettlement(e.metadata);
     if (!d) continue;
     if (d.tick > tick) continue;
-    if (tick < d.expiresAt) out.push({ id, d });
+    if (tick < d.expiresAt)
+      out.push({ id, d: canon && d.targetEntityId ? { ...d, targetEntityId: canon(d.targetEntityId) } : d });
   }
   return out.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0).map((x) => x.d);
 }
@@ -23145,6 +23148,17 @@ var AffordanceSynthesizer = class {
   /** Tick of the last thing said to each entity — outlives the descriptor sweep. */
   _spokenAt = /* @__PURE__ */ new Map();
   _spokeAnywhereAt = void 0;
+  /**
+   * alias id → anchor id, read once per tick.
+   *
+   * Every surface below is keyed by WHO an act was aimed at, and the mind meets
+   * one person under more than one id: a reply is addressed to the transport id
+   * the percept arrived with (`discord:1019…`), a self-initiated message to the
+   * anchor the executive resolved (`ke:…`). `readSpokenTurns` resolved that for
+   * the PROMPT from the start; nothing resolved it for the WEIGHTS, so having
+   * just answered someone did not damp reaching out to them a cycle later.
+   */
+  _canon = (id) => id;
   _bus = null;
   _defaultCap;
   _lastFieldSize = 0;
@@ -23192,11 +23206,13 @@ var AffordanceSynthesizer = class {
     const skills = this._skills?.() ?? this._repertoire?.skills() ?? null;
     const valence = metric(state, "affect.valence", 0);
     const energyLow = metric(state, "energy.level", 0) < 30;
-    this._inFlight = liveConsequences(state.entities, tick);
-    this._enactedAt = enactedAtBySchemaTarget(state.entities);
-    this._settled = liveSettlements(state.entities, tick);
+    const aliases = readAliases(state.entities);
+    this._canon = (id) => canonicalOf(aliases, id);
+    this._inFlight = liveConsequences(state.entities, tick, this._canon);
+    this._enactedAt = enactedAtBySchemaTarget(state.entities, this._canon);
+    this._settled = liveSettlements(state.entities, tick, this._canon);
     this._satiationWindow = readEffectiveParams(state, "engine-config-action-selector").repeatWindowTicks ?? CONSEQUENCE_TTL_TICKS;
-    this._spokenAt = spokenAtByEntity(state.entities);
+    this._spokenAt = spokenAtByEntity(state.entities, this._canon);
     let last = -Infinity;
     for (const t of this._spokenAt.values()) if (t > last) last = t;
     this._spokeAnywhereAt = last > -Infinity ? last : void 0;
@@ -23340,10 +23356,11 @@ var AffordanceSynthesizer = class {
     const habitStrength = skill?.habitStrength ?? 0;
     const cost = clamp017(schema.cost * (energyLow ? 1.5 : 1));
     const speaks = schema.tags?.includes("communication") ?? false;
+    const asked = ctx.targetEntityId ? this._canon(ctx.targetEntityId) : void 0;
     const justEnacted = enactionFootprint(
       this._inFlight,
       schema.id,
-      ctx.targetEntityId,
+      asked,
       tick,
       this._satiationWindow,
       speaks ? this._spokenAt : void 0,
@@ -23353,7 +23370,7 @@ var AffordanceSynthesizer = class {
       // (it has `spokenAt`) and every other entity-bound act was missing.
       this._enactedAt
     );
-    const settled = settlementForce(this._settled, schema.id, ctx.targetEntityId, tick);
+    const settled = settlementForce(this._settled, schema.id, asked, tick);
     const key = ctx.targetEntityId ?? ctx.evokedBy ?? schema.id;
     const source = ctx.source ?? schema.source;
     const idTag = ctx.source && ctx.source !== schema.source ? `-${ctx.source}` : "";

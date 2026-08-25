@@ -39,6 +39,7 @@ import { CURIOUS_RESOLVED } from '#faculties/known.entity.tracker'
 import { collectGoalTargets } from '#agency/selection.scoring'
 import { readEffectiveParams } from '#cognition/persona.prior'
 import { liveConsequences, enactionFootprint, spokenAtByEntity, enactedAtBySchemaTarget, CONSEQUENCE_TTL_TICKS, type ConsequenceDescriptor } from '#agency/consequence'
+import { readAliases, canonicalOf } from '#cognition/social.identity'
 import { liveSettlements, settlementForce, type SettlementDescriptor } from '#agency/settlement'
 
 /** Default field width for non-innate affordances when no attention metric exists. */
@@ -84,6 +85,17 @@ export class AffordanceSynthesizer implements CognitiveEngine {
   /** Tick of the last thing said to each entity — outlives the descriptor sweep. */
   private _spokenAt: ReadonlyMap<string, number> = new Map()
   private _spokeAnywhereAt: number | undefined = undefined
+  /**
+   * alias id → anchor id, read once per tick.
+   *
+   * Every surface below is keyed by WHO an act was aimed at, and the mind meets
+   * one person under more than one id: a reply is addressed to the transport id
+   * the percept arrived with (`discord:1019…`), a self-initiated message to the
+   * anchor the executive resolved (`ke:…`). `readSpokenTurns` resolved that for
+   * the PROMPT from the start; nothing resolved it for the WEIGHTS, so having
+   * just answered someone did not damp reaching out to them a cycle later.
+   */
+  private _canon: ( id: string ) => string = id => id
   private _bus:         CognitiveBus | null = null
   private _defaultCap:  number
   private _lastFieldSize = 0
@@ -141,14 +153,21 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // `_build` runs for every candidate and this is a full-entity scan. Each
     // candidate whose (schema, target) matches one of these carries a decaying
     // `justEnacted`, so having just done a thing damps doing it again.
-    this._inFlight = liveConsequences( state.entities, tick )
+    // One scan, then every target-keyed surface below shares its id space. They
+    // must agree with each other AND with the lookup at the call site: canonical
+    // keys read with a raw target damps nothing, and a raw key read with a
+    // canonical target breaks the damping that already worked.
+    const aliases = readAliases( state.entities )
+    this._canon = ( id: string ) => canonicalOf( aliases, id )
+
+    this._inFlight = liveConsequences( state.entities, tick, this._canon )
     // Durable per-(schema, target) enaction. Descriptors alone expire at the ECHO
     // window, so without this the back half of the satiation window damped
     // nothing for any act with an object that is not speech.
-    this._enactedAt = enactedAtBySchemaTarget( state.entities )
+    this._enactedAt = enactedAtBySchemaTarget( state.entities, this._canon )
     // What the mind has already decided. Read here so a verdict reaches the
     // competition as a force in the field rather than a fact about one intent.
-    this._settled = liveSettlements( state.entities, tick )
+    this._settled = liveSettlements( state.entities, tick, this._canon )
     // How long this mind sits with something it has already done before doing it
     // again — the tenant's, not the container's. Falls back to the echo TTL only
     // when unseeded, so a bare harness behaves as before.
@@ -157,7 +176,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // Durable "when did I last speak to them". Descriptors alone cannot carry
     // satiation — the executor deletes them at their echo TTL, so any window
     // longer than that was a no-op.
-    this._spokenAt = spokenAtByEntity( state.entities )
+    this._spokenAt = spokenAtByEntity( state.entities, this._canon )
     // When this mind last spoke to ANYONE — the satiation arm that is not about
     // the listener. Computed once per tick rather than per candidate.
     let last = -Infinity
@@ -429,8 +448,12 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // The innate floor is entirely objectless, so without this it could not
     // satiate at all and whichever stance won once won harder each tick after.
     const speaks = schema.tags?.includes('communication') ?? false
+    // The lookup half. Only the QUESTION "have I just done this to them" is asked
+    // in canonical form — the affordance keeps the id it was built with, because
+    // that is the id the act will be delivered against.
+    const asked = ctx.targetEntityId ? this._canon( ctx.targetEntityId ) : undefined
     const justEnacted = enactionFootprint(
-      this._inFlight, schema.id, ctx.targetEntityId, tick, this._satiationWindow,
+      this._inFlight, schema.id, asked, tick, this._satiationWindow,
       speaks ? this._spokenAt : undefined,
       skill?.lastEnactedTick,
       speaks ? this._spokeAnywhereAt : undefined,
@@ -442,7 +465,7 @@ export class AffordanceSynthesizer implements CognitiveEngine {
     // The mirror of satiation: having thought this through holds the choice for
     // a while, and fades. Keyed exactly as `justEnacted` is, so an objectless
     // verdict cannot leak onto an act that has an object.
-    const settled = settlementForce( this._settled, schema.id, ctx.targetEntityId, tick )
+    const settled = settlementForce( this._settled, schema.id, asked, tick )
 
     const key    = ctx.targetEntityId ?? ctx.evokedBy ?? schema.id
     const source = ctx.source ?? schema.source

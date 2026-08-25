@@ -334,3 +334,169 @@ describe('AffordanceSynthesizer — inspect reaches what curiosity is about', ()
     expect( inspectsOf( res.commands?.set ).length ).toBeGreaterThan( 0 )
   } )
 } )
+
+// ── one person, one id ────────────────────────────────────────
+
+/**
+ * The mind meets one person under more than one id, and only half of it knew.
+ *
+ * A REPLY is addressed to the transport id the percept arrived with
+ * (`discord:1019…`); a SELF-INITIATED message is addressed to the anchor the
+ * executive resolved (`ke:…`). `readSpokenTurns` — the half that builds the
+ * prompt — has always resolved that through the alias table, and says so. The
+ * half that builds the WEIGHTS never did.
+ *
+ * So: a conversation facet answers someone, and its sync spikes the master's
+ * salience buffer unconditionally — that is the design, a facet reporting back is
+ * the master's own attention returning. The master wakes, sees what the facet
+ * worked out, and forms a `reach-out` toward the same person. The reply that just
+ * went out should damp it. It did not, because the reply was filed under
+ * `discord:1019…` and the reach-out asked about `ke:1sqlkux`.
+ *
+ * Both ids for both people are in the live logs. The prompt read them as one
+ * person; satiation read them as two.
+ *
+ * These run through the synthesizer rather than the readers on purpose. A
+ * canonical map read with a raw lookup passes every unit test of either half and
+ * damps nothing in the world — which is the shape this codebase keeps shipping.
+ */
+
+const ANCHOR    = 'ke:1sqlkux'
+const TRANSPORT = 'discord:1019376031150379101'
+
+const fabrice = () => ({
+  id: 'ke-fabrice', type: 'known-entity',
+  metadata: { keid: ANCHOR, kind: 'sentient', name: 'Fabrice', familiarity: 0.8, valence: 0.4 },
+})
+const alias = () => ({
+  id: 'alias-fabrice-discord', type: 'known-entity-alias',
+  metadata: { aliasKeid: TRANSPORT, canonicalKeid: ANCHOR },
+})
+/** The record a conversation facet writes when it answers someone. */
+const repliedTo = ( target: string, atTick: number ) => ({
+  id: `conv-sent-reply-${ target }-${ atTick }`, type: 'conversation.sent',
+  metadata: { targetEntityId: target, targetEntityName: 'Fabrice', messageCount: 1,
+    preview: 'Sure — go ahead. What is on your mind?', effectorName: 'text',
+    source: 'audition-facet', tick: atTick, delivered: false },
+})
+/** The master's willed outreach, aimed at whichever id it resolved. */
+const willedOutreachTo = ( target: string ) => ({
+  id: `ideomotor-reach-out-${ target }`, type: 'ideomotor.intent',
+  metadata: { schema: 'reach-out', targetEntityId: target, priority: 0.85, origin: 'executive' },
+})
+const willedOutreach = () => willedOutreachTo( ANCHOR )
+
+/** The descriptor the executor writes at dispatch, against the id it dispatched on. */
+const spokeVia = ( target: string, atTick: number ) => ({
+  id: `agency-consequence-${ target }-${ atTick }`, type: 'agency.consequence',
+  metadata: { intentId: `intent-${ atTick }`, schema: 'reach-out', mode: 'communicate',
+    effector: 'text', targetEntityId: target, tick: atTick, expiresAt: atTick + 30 },
+})
+
+/** A verdict already reached about this person, under one of their ids. */
+const settledOn = ( target: string, atTick: number ) => ({
+  id: `agency-settlement-reach-out-${ target }`, type: 'agency.settlement',
+  metadata: { schema: 'reach-out', targetEntityId: target, tick: atTick, expiresAt: atTick + 60 },
+})
+
+/**
+ * A satiation window longer than the echo window, which is what separates the two
+ * speech arms. `spokeAnywhereAt` — "I have just spoken AT ALL" — is pinned to
+ * CONSEQUENCE_TTL_TICKS (30) on purpose, deliberately weaker than the per-person
+ * arm. Left at the default both windows are 30, `spokeAnywhereAt` damps 0.9 at a
+ * gap of 3 whoever was spoken to, and it masks the arm under test completely.
+ * Measured past 30 the general arm is spent and only the per-person one is left.
+ */
+const window = ( ticks: number ) => ({
+  id: 'engine-config-action-selector', type: 'engine.config',
+  metadata: { params: { repeatWindowTicks: ticks } },
+})
+
+const reachOutAt = async ( entities: Array<{ id: string; type: string; metadata?: Record<string, unknown> }>, tick: number ) => {
+  const res = await new AffordanceSynthesizer().react( 0, tick, makeState({
+    tick, metrics: { 'energy.level': 60 }, entities: [ window( 120 ), ...entities ],
+  }), CTX )
+  return bySchema( res.commands?.set, 'reach-out')
+}
+
+describe('AffordanceSynthesizer — one person, one id', () => {
+  it('damps reaching out to someone the facet just replied to', async () => {
+    const reach = await reachOutAt(
+      [ fabrice(), alias(), repliedTo( TRANSPORT, 100 ), willedOutreach() ], 160 )
+
+    expect( reach, 'the willed outreach never reached the field').toBeDefined()
+    expect( reach?.metadata?.['justEnacted'],
+      'answering them under one id did not damp reaching them under the other' )
+      .toBeCloseTo( 0.5, 2 )
+  })
+
+  it('does not damp when the two ids really are two people', async () => {
+    // No alias entity: `discord:1019…` is simply someone else, and having spoken
+    // to them must leave Fabrice alone. This is what stops the fix being a
+    // wildcard that satiates everyone at once.
+    const reach = await reachOutAt(
+      [ fabrice(), repliedTo( TRANSPORT, 100 ), willedOutreach() ], 160 )
+
+    expect( reach ).toBeDefined()
+    expect( reach?.metadata?.['justEnacted'] ).toBeUndefined()
+  })
+
+  it('damps on the anchor too — the ordinary case still works', async () => {
+    const reach = await reachOutAt(
+      [ fabrice(), alias(), repliedTo( ANCHOR, 100 ), willedOutreach() ], 160 )
+
+    expect( reach?.metadata?.['justEnacted'] ).toBeCloseTo( 0.5, 2 )
+  })
+
+  it('fades, so the outreach becomes possible again', async () => {
+    // A refractory period, never a veto — she may genuinely have something to add.
+    const near = await reachOutAt( [ fabrice(), alias(), repliedTo( TRANSPORT, 100 ), willedOutreach() ], 160 )
+    const far  = await reachOutAt( [ fabrice(), alias(), repliedTo( TRANSPORT, 100 ), willedOutreach() ], 210 )
+
+    expect( Number( far?.metadata?.['justEnacted'] ?? 0 ) )
+      .toBeLessThan( Number( near?.metadata?.['justEnacted'] ) )
+  })
+
+  it('damps the mirror case too — aimed at the alias, recorded on the anchor', async () => {
+    // The half the first four tests cannot reach. An ideomotor outreach carries
+    // the anchor, so canonicalising the LOOKUP is a no-op for it and the map half
+    // alone appears to be the whole fix. A candidate evoked from a percept carries
+    // the transport id instead, and then it is the lookup that has to resolve.
+    const reach = await reachOutAt(
+      [ fabrice(), alias(), repliedTo( ANCHOR, 100 ), willedOutreachTo( TRANSPORT ) ], 160 )
+
+    expect( reach?.metadata?.['justEnacted'] ).toBeCloseTo( 0.5, 2 )
+  })
+
+  it('damps from a consequence descriptor across the two ids', async () => {
+    // The descriptor arm, which is a different reader from `conversation.sent` and
+    // carries whatever id the intent was dispatched against.
+    const reach = await reachOutAt(
+      [ fabrice(), alias(), spokeVia( TRANSPORT, 100 ), willedOutreach() ], 120 )
+
+    expect( reach?.metadata?.['justEnacted'],
+      'a descriptor under one id did not damp a candidate under the other')
+      .toBeGreaterThan( 0 )
+  })
+
+  it('holds a settlement across the two ids', async () => {
+    // Settlement is keyed exactly as satiation is — its own comment says so — so
+    // it has to share the same id space, or a verdict reached about a person under
+    // one id would not hold about them under the other.
+    const reach = await reachOutAt(
+      [ fabrice(), alias(), settledOn( TRANSPORT, 140 ), willedOutreach() ], 160 )
+
+    expect( reach?.metadata?.['settled'],
+      'the verdict did not follow the person across their ids').toBeGreaterThan( 0 )
+  })
+
+  it('leaves the affordance aimed where it was aimed', async () => {
+    // Only the QUESTION is asked in canonical form. Rewriting the affordance's own
+    // target would change who the act is delivered against, which is not what
+    // canonicalising a lookup is for.
+    const reach = await reachOutAt(
+      [ fabrice(), alias(), repliedTo( TRANSPORT, 100 ), willedOutreach() ], 160 )
+
+    expect( reach?.metadata?.['targetEntityId'] ).toBe( ANCHOR )
+  })
+})

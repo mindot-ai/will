@@ -241,9 +241,11 @@ To reach someone else I name them in an action:
  "args": {"content": "what I want to say to them"}}
 
 I am one conversation of a mind that is having several. Opening a channel is not mine to
-do — that action is handed to the part of me that owns whom I contact, and it reaches them
-through their own conversation, which may already be open. I keep [REPLY_TEXT] for the
-person in front of me.
+do — that action hands the intention to the part of me that owns whom I contact. It is a
+decision, not a delivery: at the moment I write it nothing has reached anyone, and it may
+yet come to nothing. So I never tell the person in front of me that I have contacted
+someone, or that a message is on its way. The most I can truthfully say is that I mean to.
+I keep [REPLY_TEXT] for the person in front of me.
 
 ## When to use GOALS_NEW (almost always)
 If the speaker requests, mentions, or implies something I should follow through on — embed [GOALS_NEW] in my reasoning.
@@ -693,6 +695,16 @@ export class AuditionEngine extends BaseSenseEngine {
     this._turnDone.get( entityId )?.()
   }
 
+  /**
+   * True while a turn with this person is still resolving — they spoke and the
+   * reply has not landed yet. The agency asks before delivering a self-initiated
+   * message (see OutreachAuthor.isSpeakingTo), so one mind does not reach one
+   * person down two paths in the same tick.
+   */
+  isSpeakingTo( entityId: string ): boolean {
+    return this._turnDone.has( entityId )
+  }
+
   // ── Facet lifecycle ─────────────────────────────────────────
 
   private async _routeToFacet( percept: LanguagePercept, speakerName: string ): Promise<boolean> {
@@ -1016,9 +1028,15 @@ export class AuditionEngine extends BaseSenseEngine {
         unsub = handle.subscribe( d => {
           if( d.respondingToType !== 'outreach') return
           const decision = d.decision as ConversationDecision
-          // A declared silence is carried through as such. Empty bubbles alone
-          // are ambiguous — see ConversationDecision.withheld.
-          done( { bubbles: decision.replyBubbles ?? [], withheld: decision.withheld === true } )
+          // A facet reasoned and its decision arrived — `answered`, whatever it
+          // holds. That is what separates an empty ANSWER from the empty every
+          // other exit on this method returns, and it is the only place on the
+          // method that can honestly say so.
+          done( {
+            bubbles:  decision.replyBubbles ?? [],
+            withheld: decision.withheld === true,
+            answered: true,
+          } )
         } )
         // The focus rides the REPORT, so a shared conversation facet keeps its own
         // standing focus and its next inbound turn resumes untouched.

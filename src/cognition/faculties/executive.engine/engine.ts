@@ -274,6 +274,11 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   // See EscalationBuffer for the full rationale (R5-g-2).
   private readonly _escalations = new EscalationBuffer()
 
+  /** First tick of an unbroken `hasPendingWork` suppression; null when the seat is free. */
+  private _mutedSince: Tick | null = null
+  /** Whether this suppression episode has already been reported. */
+  private _mutedWarned = false
+
   /** Set/clear the chunk broadcaster (called by WillManager when SSE clients connect). */
   setChunkBroadcaster( fn: (( chunk: string ) => void) | null ): void {
     this._chunkBroadcaster = fn
@@ -772,6 +777,26 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
     // Always update counters, even when not activating
     updateGatingState( this._gatingState, state, tick, result.shouldActivate, result.cleanedBuffer )
+
+    // A reasoning pass that never settles holds this gate shut until the
+    // AsyncEngine's stale prune drops it 600 ticks later, and every one of those
+    // ticks was silent — the mind simply stopped deliberating and nothing said
+    // why. Warn ONCE, at the point a pass has outlived any healthy one; warning
+    // every tick would bury the line it exists to surface.
+    if( result.reason === 'hasPendingWork'){
+      this._mutedSince ??= tick
+      // Once per episode, not once at an exact tick: react() is not guaranteed to
+      // be called on every tick, and an `=== threshold` test that the clock steps
+      // over never fires at all — a silent warning about a silence.
+      if( !this._mutedWarned && tick - this._mutedSince >= this._executiveInterval * 3 ){
+        this._mutedWarned = true
+        logger.warn(
+          `[executive] no cycle for ${ tick - this._mutedSince } ticks — a reasoning pass ` +
+          `has not settled and is holding the seat (tick=${tick})`
+        )
+      }
+    }
+    else { this._mutedSince = null; this._mutedWarned = false }
 
     if( result.shouldActivate )
       logger.info(`[executive] activating — reason: ${result.reason} (tick=${tick})`)

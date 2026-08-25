@@ -353,9 +353,38 @@ export function enactionFootprint(
   if( windowTicks <= 0 ) return 0
 
   if( !targetEntityId ){
-    if( selfEnactedAt === undefined ) return 0
-    const remaining = ( windowTicks - ( tick - selfEnactedAt ) ) / windowTicks
-    return remaining < 0 ? 0 : remaining > 1 ? 1 : remaining
+    // BOTH arms, for the same reason an act with an object has both.
+    //
+    // `selfEnactedAt` is a skill record, and a skill record is written when the
+    // outcome is RECONCILED — for a host effector that is an async ack landing
+    // some ticks after the act. In the window between dispatching and learning,
+    // satiation read the PREVIOUS enaction and damped almost nothing, while the
+    // descriptor saying "I did this on the tick just gone" sat one branch away,
+    // written at dispatch and never read: the objectless case returned before
+    // the loop that reads it.
+    //
+    // Measured live on a COO: `discord_server_snapshot` — objectless, cheap,
+    // always succeeds — repeated at a gap of THREE ticks in 26 of 47 intervals,
+    // while every entity-bound effector in the same run sat at 30–60 under the
+    // same weights. Those were not damped harder, they were damped SOONER,
+    // because a descriptor exists from the enacting tick and a skill record does
+    // not. Half the repeats were slipping through the reconciliation window.
+    let strongest = selfEnactedAt === undefined
+      ? 0
+      : ( windowTicks - ( tick - selfEnactedAt ) ) / windowTicks
+
+    for( const d of descriptors ){
+      // Objectless descriptors only. A `look up Alice` must never satiate the
+      // objectless form of the same schema — that is the asymmetry `enactedAt`
+      // is keyed by PAIR to avoid, and it would read as the mind refusing to do
+      // a thing in general because it once did it to someone.
+      if( d.schema !== schema || d.targetEntityId !== undefined ) continue
+      if( d.pending ) continue
+      const remaining = ( windowTicks - ( tick - d.tick ) ) / windowTicks
+      if( remaining > strongest ) strongest = remaining
+    }
+
+    return strongest < 0 ? 0 : strongest > 1 ? 1 : strongest
   }
 
   let strongest = 0

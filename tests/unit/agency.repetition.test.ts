@@ -402,3 +402,117 @@ describe('enactedAt — satiation for an act with an object that is not speech',
     expect( pressingScore ).toBeGreaterThan( 0 )
   } )
 } )
+
+// ── an act with no object ─────────────────────────────────────
+
+/**
+ * An act with no object was damped LATER than one with an object, not less.
+ *
+ * Both write a consequence descriptor at dispatch. Only the objectless case
+ * returned before the loop that reads it, leaving `LearnedSkill.lastEnactedTick`
+ * as its whole account of having just acted — and a skill record is written when
+ * the outcome is RECONCILED, which for a host effector is an async ack landing
+ * some ticks after the act. In that window satiation read the PREVIOUS enaction
+ * and damped almost nothing.
+ *
+ * Measured on a live COO over 18 minutes: `discord_server_snapshot` — objectless,
+ * cheap, returns the same guild name and member count every time — ran 48 times
+ * and repeated at a gap of THREE ticks in 26 of 47 intervals. Every entity-bound
+ * effector in the same run, under the same weights, sat at 30–60. They were not
+ * damped harder. They read a descriptor from the enacting tick; this read a skill
+ * record that had not caught up yet.
+ */
+
+/** A descriptor as the executor writes one for an external act with no object. */
+const looked = ( atTick: number, schema = 'discord_server_snapshot') =>
+  readConsequence( consequenceEntity({
+    intentId: `intent-${ schema }-${ atTick }`,
+    schema, mode: 'external', effector: schema,
+    expiresAt: atTick + CONSEQUENCE_TTL_TICKS, tick: atTick,
+  }).metadata as Record<string, unknown> )!
+
+/** The same act, but aimed at someone. */
+const lookedAt = ( target: string, atTick: number, schema = 'discord_server_snapshot') =>
+  readConsequence( consequenceEntity({
+    intentId: `intent-${ schema }-${ target }-${ atTick }`,
+    schema, mode: 'external', effector: schema, targetEntityId: target,
+    expiresAt: atTick + CONSEQUENCE_TTL_TICKS, tick: atTick,
+  }).metadata as Record<string, unknown> )!
+
+describe('satiating an act that has no object', () => {
+  const W = 60
+
+  it('reads the descriptor from the tick it acted, not the skill that lags it', () => {
+    // Enacted at 100 and again at 103 — the live gap. The ack for the first has
+    // not reconciled, so the skill still says 70.
+    const f = enactionFootprint(
+      [ looked( 100 ) ], 'discord_server_snapshot', undefined, 103, W,
+      undefined, 70,
+    )
+    expect( f, 'the act three ticks ago left no trace').toBeGreaterThan( 0.9 )
+  })
+
+  it('and that damping actually reaches the competition', () => {
+    // Crossing the seam, not just computing a number: the whole point of the
+    // descriptor is that `repeat` weighs it.
+    const snapshot = ( justEnacted: number ): Affordance => ({
+      id: 'affordance-1-discord_server_snapshot',
+      schema: 'discord_server_snapshot', source: 'entity',
+      parameters: {}, expectedValence: 0, expectedReward: 0.8,
+      cost: 0.06, habitStrength: 0.95, justEnacted,
+      available: true, tags: [ 'discord', 'info' ], tick: 1,
+    } as unknown as Affordance )
+
+    const damped = scoreAffordance( snapshot(
+      enactionFootprint( [ looked( 100 ) ], 'discord_server_snapshot', undefined, 103, W, undefined, 70 )
+    ), bias(), DEFAULT_WEIGHTS )
+    const undamped = scoreAffordance( snapshot( 0 ), bias(), DEFAULT_WEIGHTS )
+
+    expect( undamped - damped, 'the descriptor never reached the score').toBeGreaterThan( 0.25 )
+  })
+
+  it('fades over the window rather than locking the act out', () => {
+    const near = enactionFootprint( [ looked( 100 ) ], 'discord_server_snapshot', undefined, 103, W, undefined, 70 )
+    const far  = enactionFootprint( [ looked( 100 ) ], 'discord_server_snapshot', undefined, 155, W, undefined, 70 )
+    expect( far ).toBeLessThan( near )
+    expect( far ).toBeGreaterThanOrEqual( 0 )
+    // Past the window it is gone entirely — satiation is a refractory period,
+    // never a veto.
+    expect( enactionFootprint( [ looked( 100 ) ], 'discord_server_snapshot', undefined, 161, W, undefined, 70 ) ).toBe( 0 )
+  })
+
+  it('is not satiated by the same act aimed at someone', () => {
+    // `enactedAt` is keyed by PAIR precisely so damping "look up Alice" leaves
+    // "look up Bob" alone. The objectless form must get the same courtesy, or
+    // acting on one person reads as having done the thing in general.
+    const f = enactionFootprint(
+      [ lookedAt( FABRICE, 100 ) ], 'discord_server_snapshot', undefined, 103, W,
+      undefined, undefined,
+    )
+    expect( f, 'an act aimed at someone satiated the objectless form').toBe( 0 )
+  })
+
+  it('still honours the skill record when no descriptor survives', () => {
+    // The durable arm, which outlives the echo TTL. Removing it would trade one
+    // half of the window for the other.
+    const f = enactionFootprint( [], 'reflect', undefined, 105, W, undefined, 100 )
+    expect( f ).toBeCloseTo( ( W - 5 ) / W, 5 )
+  })
+
+  it('takes the stronger of the two, whichever is fresher', () => {
+    // The skill has caught up and is newer than a stale descriptor.
+    const f = enactionFootprint( [ looked( 100 ) ], 'reflect', undefined, 130, W, undefined, 128 )
+    expect( f ).toBeCloseTo( ( W - 2 ) / W, 5 )
+  })
+
+  it('is not satiated by an attempt that never landed', () => {
+    // `pending` descriptors are attempts, not acts — the same rule the targeted
+    // arm follows. See agency.attempt-is-not-an-act.
+    const attempt = readConsequence( consequenceEntity({
+      intentId: 'intent-pending', schema: 'reflect', mode: 'communicate',
+      effector: 'text', pending: true,
+      expiresAt: 100 + CONSEQUENCE_TTL_TICKS, tick: 100,
+    }).metadata as Record<string, unknown> )!
+    expect( enactionFootprint( [ attempt ], 'reflect', undefined, 103, W, undefined, undefined ) ).toBe( 0 )
+  })
+})

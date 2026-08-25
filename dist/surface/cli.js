@@ -6676,9 +6676,14 @@ function matchConsequenceText(descriptors, candidate) {
 function enactionFootprint(descriptors, schema, targetEntityId, tick, windowTicks = CONSEQUENCE_TTL_TICKS, spokenAt, selfEnactedAt, spokeAnywhereAt, enactedAt) {
   if (windowTicks <= 0) return 0;
   if (!targetEntityId) {
-    if (selfEnactedAt === void 0) return 0;
-    const remaining = (windowTicks - (tick - selfEnactedAt)) / windowTicks;
-    return remaining < 0 ? 0 : remaining > 1 ? 1 : remaining;
+    let strongest2 = selfEnactedAt === void 0 ? 0 : (windowTicks - (tick - selfEnactedAt)) / windowTicks;
+    for (const d of descriptors) {
+      if (d.schema !== schema || d.targetEntityId !== void 0) continue;
+      if (d.pending) continue;
+      const remaining = (windowTicks - (tick - d.tick)) / windowTicks;
+      if (remaining > strongest2) strongest2 = remaining;
+    }
+    return strongest2 < 0 ? 0 : strongest2 > 1 ? 1 : strongest2;
   }
   let strongest = 0;
   const enacted = enactedAt?.get(enactedKey(schema, targetEntityId));

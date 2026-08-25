@@ -1173,7 +1173,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // "## Percepts (What I Notice)" on the NEXT master cycle.
     // The master sees them as environmental signals — not as messages to reply to.
     // It responds by creating plans/goals, never by emitting [REPLY].
-    const { percepts: escalationPercepts, requester: escalationRequester } =
+    const { percepts: escalationPercepts, intents: escalationIntents, requester: escalationRequester } =
       this._escalations.drainToPercepts()
 
     // Build state commands
@@ -1262,6 +1262,14 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     if( keep.length ){
       commands.set ??= []
       commands.set.push( ...keep )
+    }
+    // The pull that goes with the notice. Emitted for every drained undertaking,
+    // including one whose percept was dropped as a restatement: the percept is
+    // deduped because the mind does not need telling twice, while the intent is
+    // ONE standing candidate per target by id, so re-setting it is idempotent.
+    if( escalationIntents.length ){
+      commands.set ??= []
+      commands.set.push( ...escalationIntents )
     }
     if( discharge.length ){
       commands.delete ??= []
@@ -1426,6 +1434,28 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
       if( honoured( u.target, u.madeAt ) ) discharge.push( id )
       else carrying.add( u.target )
+    }
+
+    // The standing intent is retired on its OWN terms, not the percept's.
+    //
+    // It has to be. A percept is swept after PERCEPT_STALE_AFTER_TICKS, so the
+    // notice is gone within a couple of ticks while the pull is meant to stand
+    // until the contact happens — which means keying the intent's retirement on
+    // the percept would leave an ideomotor intent nothing could ever discharge,
+    // re-winning the field forever. That is the immortal-entity shape this
+    // codebase has now been bitten by three times (msg-delivered, percept-wake,
+    // the seven undischargeable undertakings), and it is worth one extra scan to
+    // not add a fourth.
+    for( const [ id, e ] of state.entities ){
+      if( e.type !== 'ideomotor.intent') continue
+      const m = e.metadata as Record<string, unknown> | undefined
+      if( m?.['origin'] !== 'undertaking') continue
+
+      const target = typeof m['targetEntityId'] === 'string' ? m['targetEntityId'] : undefined
+      const madeAt = typeof m['tick'] === 'number' ? m['tick'] as number : 0
+      // No target ⇒ nothing it could ever be matched against. Same rule, same
+      // reason, as the percept above: undischargeable is strictly worse than gone.
+      if( !target || honoured( target, madeAt ) ) discharge.push( id )
     }
 
     // Drop an incoming restatement of something already honoured or already held.

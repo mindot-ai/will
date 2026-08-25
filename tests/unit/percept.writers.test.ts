@@ -130,13 +130,14 @@ describe('the retrofitted writers produce sweepable, tagged percepts', () => {
     expect( undertaking.metadata!['undertakingTarget'] ).toBe('ke:fkem')
     expect( undertaking.metadata!['entityId'] ).toBe('ke:ada')
 
-    // NOT capped. `perceptEntity` bounds nothing, and it must not here: the
-    // whole actionable steer lives in `summary` because that is the only field
-    // `extractPercepts` renders. A cap would silently eat the clause that tells
-    // the mind the words have not actually gone out.
+    // The summary states the gap and nothing else — no instruction naming an
+    // effector, no judgement about half-done work. The pull lives in the
+    // affordance field now, where it can be out-competed.
     const summary = String( undertaking.metadata!['summary'] )
-    expect( summary.length ).toBeGreaterThan( 200 )
-    expect( summary ).toContain('Nothing has gone to them yet')
+    expect( summary ).toContain('Nothing has gone to them since')
+    expect( summary ).not.toContain('I reach out with target')
+    // And the evidence rides beneath it rather than being written into it.
+    expect( undertaking.metadata!['data'] ).toMatchObject( { target: 'ke:fkem', promisedAt: 41 } )
   } )
 
   it('and the percept that comes out of that door is tick-stamped, so it expires', async () => {

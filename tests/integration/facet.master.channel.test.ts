@@ -52,7 +52,7 @@ function wired(){
  * cast, and what is under test is the WIRING, not an interface.
  */
 const priv = ( e: ExecutiveEngine ) => e as unknown as {
-  _escalations: { drainToPercepts(): { percepts: { metadata: unknown }[] } }
+  _escalations: { drainToPercepts(): { percepts: { metadata: unknown }[]; intents: { metadata: Record<string, unknown> }[] } }
   _facetSubjects: Map<string, { entityId: string; name?: string; tick: number }>
 }
 
@@ -84,10 +84,14 @@ describe('facet → master channel survives the orchestrator\'s subscription', (
       body: { kind: 'undertaking', reasoning: '', target: 'FKEM', gist: 'can you coordinate the demo meeting?' },
     }, 'audition-engine')
 
-    const m = priv( engine )._escalations.drainToPercepts().percepts[0]!.metadata as Record<string, unknown>
+    const drained = priv( engine )._escalations.drainToPercepts()
+    const m = drained.percepts[0]!.metadata as Record<string, unknown>
     expect( m.category ).toBe('undertaking')
     expect( m.summary ).toMatch( /I said I would reach FKEM/ )
-    expect( m.summary ).toMatch( /Nothing has gone to them yet/ )
+    expect( m.summary ).toMatch( /Nothing has gone to them since/ )
+    // The notice arrives with the pull beside it, as a competing candidate
+    // rather than as a sentence telling the master to enact `reach-out`.
+    expect( drained.intents[0]!.metadata!['targetEntityId'] ).toBe('FKEM')
   } )
 
   it('learns who each facet is with from the sync, not just that one reported', () => {

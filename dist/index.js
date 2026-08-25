@@ -14070,6 +14070,8 @@ function validateFacetHandoff(payload) {
     return typeof body.target === "string" && body.target.trim().length > 0 ? null : "undertaking handoff requires a non-empty target";
   return `unknown handoff kind: ${String(kind)}`;
 }
+var UNDERTAKING_PRIORITY = 0.7;
+var undertakingIntentId = (target) => `ideomotor-undertaking-${target}`;
 function whereItHappened(h) {
   const who = h.subjectName ?? h.subjectEntityId;
   return who ? `In my conversation with ${who}` : "While I was working on something else";
@@ -14113,6 +14115,7 @@ var EscalationBuffer = class {
    */
   drainToPercepts() {
     const percepts = [];
+    const intents = [];
     let seq = 0;
     for (const h of this._pending) {
       const id = `escalation-percept-${h.subjectEntityId ?? h.facetId ?? "self"}-${h.tick}-${seq++}`;
@@ -14136,42 +14139,67 @@ var EscalationBuffer = class {
       percepts.push(h.body.kind === "undertaking" ? perceptEntity({
         ...core,
         category: "undertaking",
-        // First person: this is the mind noticing what IT said it would do, not
-        // a report handed to it. What makes it act is that the words are still
-        // unsent — an undertaking it has already honoured reads the same until
-        // it checks, which is exactly the check we want it making.
-        // Everything actionable goes in `summary`: that is the only field the
-        // executive context actually renders (context.ts extractPercepts reads
-        // summary/content and nothing else).
+        // THE GAP, AND ONLY THE GAP. First person because the mind is noticing
+        // what IT said it would do, not because it is being told what to do
+        // about it. A mind that has said it will make contact remembers
+        // deciding and cannot tell from the inside whether the words went out
+        // — so it follows up on a message it never sent. Naming the gap is
+        // what lets it check; naming the remedy was never this line's job.
         //
-        // The closing clause is the whole point. A mind that has SAID it will make
-        // contact remembers deciding, and cannot tell from the inside whether the
-        // words went out — so it follows up on a message it never sent. Naming the
-        // gap is what lets it check. It stays a decision either way: it may have
-        // changed its mind, or judge this the wrong moment, and a reach-out
-        // competes with everything else like any other action.
-        summary: `${whereItHappened(h)} I said I would reach ${h.body.target}` + (h.body.gist ? ` \u2014 what I meant to say: "${h.body.gist.slice(0, 220)}"` : "") + `. Nothing has gone to them yet; saying it in that conversation did not send it. If I still mean it, I reach out with target '${h.body.target}'. If I no longer do, I let it go \u2014 but I do not leave it half-done while telling them it is handled.`
+        // What used to follow this sentence: "If I still mean it, I reach out
+        // with target 'X'. If I no longer do, I let it go — but I do not leave
+        // it half-done while telling them it is handled." An instruction
+        // naming an effector and its argument, and a value judgement, both
+        // written in the mind's own voice so it could not disagree with
+        // either. The pull now lives in the affordance field where it can be
+        // out-competed, and the judgement belongs to a persona, not a buffer.
+        summary: `${whereItHappened(h)} I said I would reach ${h.body.target}. Nothing has gone to them since; saying it in that conversation did not send it.`
       }, {
         ...mine,
         // Who was promised, and when the promise was made. The executive
         // reconciles against these (see _reconcileUndertakings): once the mind
         // has actually reached this target since `tick`, the percept is retired
         // rather than left standing as a claim the words are still unsent.
-        undertakingTarget: h.body.target
+        undertakingTarget: h.body.target,
+        // The EVIDENCE, rendered beneath the label since P2 — which is what
+        // makes the prose above unnecessary. `gist` is what the mind meant to
+        // say; it is a fact about the promise, not a script for keeping it,
+        // and it is carried whole rather than clipped into a sentence.
+        data: {
+          target: h.body.target,
+          promisedAt: h.tick,
+          ...h.subjectName ?? h.subjectEntityId ? { promisedTo: h.subjectName ?? h.subjectEntityId } : {},
+          ...h.body.gist ? { gist: h.body.gist } : {},
+          contactedSince: false
+        }
       }) : perceptEntity({
         ...core,
         category: "task-escalation",
-        // The steer lives IN the summary because that is the only field the
-        // executive context renders (context.ts extractPercepts reads
-        // summary/content and nothing else). It sat in a sibling `directive`
-        // field for its whole life and never once reached the master.
-        summary: `[Task from ${h.subjectName ?? h.subjectEntityId ?? "my own focused work"}] ${h.body.reasoning} \u2014 this is mine to plan or re-goal; the part of me that raised it handles the talking.`
+        // What was raised, and by which part of me. It used to close with
+        // "this is mine to plan or re-goal; the part of me that raised it
+        // handles the talking" — a role instruction. Whether to plan it,
+        // re-goal it or drop it is the master's call, and it has a whole
+        // faculty for making it.
+        summary: `[Raised by ${h.subjectName ?? h.subjectEntityId ?? "my own focused work"}] ${h.body.reasoning}`
       }, mine));
+      if (h.body.kind === "undertaking")
+        intents.push({
+          id: undertakingIntentId(h.body.target),
+          type: "ideomotor.intent",
+          metadata: {
+            schema: "reach-out",
+            targetEntityId: h.body.target,
+            priority: UNDERTAKING_PRIORITY,
+            origin: "undertaking",
+            tick: h.tick,
+            ...h.body.gist ? { parameters: { gist: h.body.gist } } : {}
+          }
+        });
     }
     const first = this._pending.find((h) => h.subjectEntityId);
     const requester = first ? { entityId: first.subjectEntityId, threadId: first.threadId ?? "" } : void 0;
     this._pending = [];
-    return { percepts, requester };
+    return { percepts, intents, requester };
   }
 };
 
@@ -15713,7 +15741,7 @@ var ExecutiveEngine = class extends AsyncEngine {
     logger.info(
       `[executive] reasoning complete \u2014 tick=${footprint.tickObserved}  actions=${executiveOutput.actions.length}  plans=${executiveOutput.plans?.length ?? 0}  beliefs=${executiveOutput.newBeliefs?.length ?? 0}  hasIntrospection=${!!executiveOutput.introspection}  hasNarrative=${!!executiveOutput.narrative}`
     );
-    const { percepts: escalationPercepts, requester: escalationRequester } = this._escalations.drainToPercepts();
+    const { percepts: escalationPercepts, intents: escalationIntents, requester: escalationRequester } = this._escalations.drainToPercepts();
     const commandDeps = {
       goalManager: this._goalManager,
       semanticIntegrator: this._semanticIntegrator,
@@ -15774,6 +15802,10 @@ var ExecutiveEngine = class extends AsyncEngine {
     if (keep.length) {
       commands.set ??= [];
       commands.set.push(...keep);
+    }
+    if (escalationIntents.length) {
+      commands.set ??= [];
+      commands.set.push(...escalationIntents);
     }
     if (discharge.length) {
       commands.delete ??= [];
@@ -15894,6 +15926,14 @@ var ExecutiveEngine = class extends AsyncEngine {
       }
       if (honoured(u.target, u.madeAt)) discharge.push(id);
       else carrying.add(u.target);
+    }
+    for (const [id, e] of state.entities) {
+      if (e.type !== "ideomotor.intent") continue;
+      const m = e.metadata;
+      if (m?.["origin"] !== "undertaking") continue;
+      const target = typeof m["targetEntityId"] === "string" ? m["targetEntityId"] : void 0;
+      const madeAt = typeof m["tick"] === "number" ? m["tick"] : 0;
+      if (!target || honoured(target, madeAt)) discharge.push(id);
     }
     const keep = incoming.filter((p) => {
       const u = undertakingOf(p.metadata);

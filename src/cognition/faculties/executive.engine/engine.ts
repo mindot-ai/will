@@ -231,7 +231,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     tick:       number
     concluded?: string
     /** Commitments the facet declared toward a THIRD party while attending here. */
-    promised?:  Array<{ target: string; gist?: string; tick: number }>
+    promised?:  Array<{ what: string; target?: string; gist?: string; tick: number }>
   }>()
 
   // ── Cognitive models ───────────────────────────────────────
@@ -1539,7 +1539,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       // rather than dropping it quietly, which is how a promise disappears with
       // nobody able to tell whether it was ever made.
       if( !payload.facetId ){
-        logger.warn(`[executive] undertaking toward "${ body.target }" arrived with no facetId — nowhere to file it`)
+        logger.warn(`[executive] commitment "${ body.what }" arrived with no facetId — nowhere to file it`)
         return
       }
       // Created if absent: a facet can hand something up before its first sync,
@@ -1550,13 +1550,18 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         tick,
       }
       at.promised = [
-        // One entry per target: restating the same promise is the same promise.
-        ...( at.promised ?? [] ).filter( p => p.target !== body.target ),
-        { target: body.target, ...( body.gist ? { gist: body.gist } : {} ), tick },
+        // Deduped on WHAT was promised, falling back to the target when two
+        // wordings mean the same contact: restating a promise is the same
+        // promise, and the master does not need telling twice.
+        ...( at.promised ?? [] ).filter( p =>
+          p.what !== body.what && !( body.target !== undefined && p.target === body.target ) ),
+        { what: body.what,
+          ...( body.target ? { target: body.target } : {} ),
+          ...( body.gist   ? { gist:   body.gist   } : {} ), tick },
       ]
       this._facetSubjects.set( payload.facetId, at )
       logger.info(
-        `[executive] filed undertaking from ${from} → reach ${ body.target } ` +
+        `[executive] filed commitment from ${from} → "${ body.what }" ` +
         `(it reads this at its next cycle; what to do about it is its own call)`
       )
       return

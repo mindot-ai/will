@@ -90,14 +90,14 @@ describe('facet → master channel survives the orchestrator\'s subscription', (
 
     publish( bus, 'executive.facet.handoff', {
       facetId: 'facet-1', subjectEntityId: 'discord:1019', threadId: 't', confidence: 0.85, tick: 13,
-      body: { kind: 'undertaking', reasoning: '', target: 'FKEM', gist: 'can you coordinate the demo meeting?' },
+      body: { kind: 'undertaking', reasoning: '', what: 'reach FKEM', target: 'FKEM', gist: 'can you coordinate the demo meeting?' },
     }, 'audition-engine')
 
     // Nothing queued as work for the master — an undertaking is not a task.
     expect( priv( engine )._escalations.drainToPercepts().percepts ).toHaveLength( 0 )
 
     const at = priv( engine )._facetSubjects.get('facet-1')!
-    expect( at.promised ).toEqual( [ { target: 'FKEM', gist: 'can you coordinate the demo meeting?', tick: 13 } ] )
+    expect( at.promised ).toEqual( [ { what: 'reach FKEM', target: 'FKEM', gist: 'can you coordinate the demo meeting?', tick: 13 } ] )
   } )
 
   it('files a promise even when it arrives before the first sync', () => {
@@ -107,11 +107,11 @@ describe('facet → master channel survives the orchestrator\'s subscription', (
 
     publish( bus, 'executive.facet.handoff', {
       facetId: 'facet-9', subjectEntityId: 'discord:1019', threadId: 't', confidence: 0.8, tick: 5,
-      body: { kind: 'undertaking', reasoning: '', target: 'FKEM' },
+      body: { kind: 'undertaking', reasoning: '', what: 'reach FKEM', target: 'FKEM' },
     }, 'audition-engine')
 
     expect( priv( engine )._facetSubjects.get('facet-9')?.promised )
-      .toEqual( [ { target: 'FKEM', tick: 5 } ] )
+      .toEqual( [ { what: 'reach FKEM', target: 'FKEM', tick: 5 } ] )
   } )
 
   it('learns who each facet is with AND what it worked out there', () => {
@@ -172,7 +172,8 @@ describe('and the master actually reads it', () => {
       activeConversations: [ {
         entityId: 'discord:1019', name: 'Fabrice', sinceTick: 12,
         concluded: 'He is asking for a demo and I think it is worth doing.',
-        promised:  [ { target: 'FKEM', gist: 'coordinate the demo meeting', tick: 13 } ],
+        promised:  [ { what: 'reach FKEM', target: 'FKEM', gist: 'coordinate the demo meeting', tick: 13 },
+                     { what: 'have the scoping doc ready by Friday', tick: 14 } ],
       } ],
     } as never )
 
@@ -180,6 +181,12 @@ describe('and the master actually reads it', () => {
     expect( prompt ).toContain('What I worked out there: He is asking for a demo')
     expect( prompt ).toContain('I said there that I would reach FKEM')
     expect( prompt ).toContain('Saying it in that thread did not send it.')
+
+    // A promise that is not a contact carries no such clause — only a CONTACT
+    // can be mistaken for already done by having been said.
+    expect( prompt ).toContain('I said there that I would have the scoping doc ready by Friday')
+    const workLine = prompt.split('\n').find( l => l.includes('scoping doc ready by Friday') )!
+    expect( workLine ).not.toContain('did not send it')
 
     // Stated as a fact and left there. What to do about it — keep it, drop it,
     // make a goal of it — is the mind's, and it has a faculty for that.

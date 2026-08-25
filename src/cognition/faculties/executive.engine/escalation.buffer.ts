@@ -43,14 +43,33 @@ export interface EscalationHandoff {
 }
 
 /**
- * An intention toward a THIRD party — "I'll reach out to FKEM now" — formed
- * while attending to something else. The facet never opens that channel itself,
- * so this is the only thing standing between having decided to make contact and
- * having made it.
+ * SOMETHING I SAID I WOULD DO, declared by the part of me that said it.
+ *
+ * It was `{ target, gist }` — a contact and nothing else — because the defect it
+ * was built for was capability-shaped rather than promise-shaped: a conversation
+ * facet can speak in its own thread but cannot open a channel to a third party,
+ * so the handoff carried the one act it structurally could not perform. Named
+ * "undertaking" and dressed in promise language, it read as a general commitment
+ * system with a strange restriction, and it was not one.
+ *
+ * `what` is the commitment in the mind's own words — "reach FKEM about the demo",
+ * "have the scoping doc by Friday", "look into the pricing". `target` is set only
+ * when it is toward someone the mind would have to REACH, which is still the case
+ * the tract exists for; a promise about work has no target and needs none.
+ *
+ * Note what this deliberately does NOT become: a task list. It is filed beside
+ * what the facet concluded and read once by the master, which may make a goal of
+ * it — the conversation format already says to raise [GOALS_NEW] for anything to
+ * follow through on, and goals are the thing that persists. This only ensures the
+ * seat that decides never learns of it too late to decide.
  */
 export interface UndertakingHandoff {
   kind:      'undertaking'
-  target:    string
+  /** What I said I would do, in my own words. */
+  what:      string
+  /** Who it is toward — only when keeping it means reaching someone. */
+  target?:   string
+  /** The words I had in mind for them, when I had any. */
   gist?:     string
   reasoning: string
 }
@@ -69,11 +88,18 @@ export function validateFacetHandoff( payload: unknown ): string | null {
   if( !body || typeof body !== 'object') return 'payload.body is required'
   const kind = ( body as { kind?: unknown } ).kind
   if( kind === 'escalation') return null
-  if( kind === 'undertaking')
-    return typeof ( body as { target?: unknown } ).target === 'string'
-        && ( body as { target: string } ).target.trim().length > 0
+  if( kind === 'undertaking'){
+    // `what` is the requirement now, not `target`. A promise about work has no
+    // one to reach and is still a promise; a promise with a target but nothing
+    // said is not one.
+    const what = ( body as { what?: unknown } ).what
+    if( typeof what !== 'string' || what.trim().length === 0 )
+      return 'undertaking handoff requires a non-empty what'
+    const target = ( body as { target?: unknown } ).target
+    return target === undefined || ( typeof target === 'string' && target.trim().length > 0 )
       ? null
-      : 'undertaking handoff requires a non-empty target'
+      : 'undertaking handoff target, when present, must be a non-empty string'
+  }
   return `unknown handoff kind: ${String( kind )}`
 }
 

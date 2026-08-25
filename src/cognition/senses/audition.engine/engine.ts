@@ -1312,6 +1312,13 @@ export class AuditionEngine extends BaseSenseEngine {
           )
           handoff({
             kind:      'undertaking',
+            // The commitment in the mind's own words. A contact is one KIND of
+            // promise, not the only kind the tract can carry — see
+            // UndertakingHandoff. This producer only makes contact-shaped ones,
+            // because a facet declares an outward intent by naming a
+            // communicate action; anything else it means to follow through on
+            // goes through [GOALS_NEW], which the format already asks for.
+            what:      `reach ${ intent.target }`,
             target:    intent.target,
             reasoning: intent.reasoning ?? '',
             ...( intent.gist ? { gist: intent.gist } : {} ),

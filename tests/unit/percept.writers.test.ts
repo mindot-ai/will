@@ -118,7 +118,7 @@ describe('the retrofitted writers produce sweepable, tagged percepts', () => {
     const { EscalationBuffer } = await import('#faculties/executive.engine/escalation.buffer')
     const buf = new EscalationBuffer()
     buf.push( { facetId: 'f-1', subjectEntityId: 'ke:ada', subjectName: 'Ada', threadId: 't-1',
-                tick: 41, body: { kind: 'undertaking', target: 'ke:fkem',
+                tick: 41, body: { kind: 'undertaking', what: 'reach ke:fkem', target: 'ke:fkem',
                                   gist: 'the pricing question', reasoning: 'promised it' } } )
     buf.push( { facetId: 'f-2', tick: 42,
                 body: { kind: 'escalation', reasoning: 'the roadmap needs re-planning' } } )

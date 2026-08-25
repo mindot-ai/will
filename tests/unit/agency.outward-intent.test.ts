@@ -233,7 +233,7 @@ describe('an undertaking rides the tract, and the harness is gone', () => {
     const buf = new EscalationBuffer()
     buf.push( {
       facetId: 'f-1', subjectEntityId: 'discord:1019376031150379101', threadId: 't', tick: 328,
-      body: { kind: 'undertaking', reasoning: '', target: 'FKEM', gist: 'coordinate the demo meeting' },
+      body: { kind: 'undertaking', reasoning: '', what: 'reach FKEM', target: 'FKEM', gist: 'coordinate the demo meeting' },
     } )
 
     // It never reaches the buffer at all — `_onFacetHandoff` files it with what
@@ -283,7 +283,7 @@ describe('executive.facet.handoff — one channel, any facet type', () => {
     const buf = new EscalationBuffer()
     buf.push( {
       subjectEntityId: 'discord:1019', subjectName: 'Fabrice', tick: 5,
-      body: { kind: 'undertaking', reasoning: '', target: 'FKEM' },
+      body: { kind: 'undertaking', reasoning: '', what: 'reach FKEM', target: 'FKEM' },
     } )
     expect( ( buf.drainToPercepts().percepts[0]!.metadata as Record<string, unknown> ).summary )
       .toMatch( /In my conversation with Fabrice/ )
@@ -303,15 +303,23 @@ describe('executive.facet.handoff — one channel, any facet type', () => {
 describe('validateFacetHandoff — the bus checks the shape, not each caller', () => {
   it('accepts both kinds', () => {
     expect( validateFacetHandoff({ body: { kind: 'escalation', reasoning: 'r' } }) ).toBeNull()
-    expect( validateFacetHandoff({ body: { kind: 'undertaking', target: 'FKEM' } }) ).toBeNull()
+    expect( validateFacetHandoff({ body: { kind: 'undertaking', what: 'reach FKEM', target: 'FKEM' } }) ).toBeNull()
   } )
 
-  it('rejects an undertaking with nobody to reach — it could never be discharged', () => {
-    // A target-less undertaking asserts "nothing has gone to them yet" forever:
-    // _reconcileUndertakings keys discharge on the target, so it can never be
-    // matched against a contact. Seven of these were found in one live snapshot.
-    expect( validateFacetHandoff({ body: { kind: 'undertaking' } }) ).toMatch( /target/ )
-    expect( validateFacetHandoff({ body: { kind: 'undertaking', target: '  ' } }) ).toMatch( /target/ )
+  it('accepts a commitment with nobody to reach — a promise about work is still a promise', () => {
+    // `target` used to be REQUIRED, because the discharge rule keyed on it and a
+    // target-less undertaking could never be matched against a contact. That
+    // rule is gone with the harness, and requiring a target made the tract only
+    // able to carry one kind of promise: "I'll have the doc by Friday" could not
+    // be declared at all.
+    expect( validateFacetHandoff({ body: { kind: 'undertaking', what: 'have the scoping doc by Friday' } }) ).toBeNull()
+  } )
+
+  it('rejects a commitment that says nothing — a target alone is not a promise', () => {
+    expect( validateFacetHandoff({ body: { kind: 'undertaking' } }) ).toMatch( /what/ )
+    expect( validateFacetHandoff({ body: { kind: 'undertaking', what: '  ', target: 'FKEM' } }) ).toMatch( /what/ )
+    // A present-but-empty target is still a mistake worth naming.
+    expect( validateFacetHandoff({ body: { kind: 'undertaking', what: 'reach them', target: '  ' } }) ).toMatch( /target/ )
   } )
 
   it('rejects a body it does not know, rather than dropping it silently', () => {

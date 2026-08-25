@@ -200,13 +200,39 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   private readonly _facetSupervisor = new FacetSupervisor()
 
   /**
-   * Who each live facet is engaged with, learned from `executive.facet.sync`.
-   * Keyed by facetId; the last sync wins. Rendered into the master's own prompt so
-   * the singular seat can reason across its conversations "as if they were sitting
-   * at the same table" — which it cannot do while it only knows facet numbers.
-   * Stale entries age out on read (see _activeConversations).
+   * Who each live facet is engaged with AND what it concluded there, learned from
+   * `executive.facet.sync`. Keyed by facetId; the last sync wins. Rendered into
+   * the master's own prompt so the singular seat can reason across its
+   * conversations "as if they were sitting at the same table" — which it cannot
+   * do while it only knows facet numbers. Stale entries age out on read (see
+   * _activeConversations).
+   *
+   * `concluded` IS THE RETURN LEG, and it did not exist. `executive.facet.sync`
+   * has always carried the facet's full `reasoning`; this handler received it and
+   * dropped it on the floor. So the sync was one-way: the master's thinking flows
+   * DOWN to facets as "What I've Been Turning Over", while what a facet worked out
+   * came back as identity and a salience spike — that attention had been engaged,
+   * and with whom, never what it concluded.
+   *
+   * A facet is the same mind with a focus, not a subordinate reporting in. A mind
+   * that cannot read back its own thinking from where its attention has been is
+   * split, and the prompt comment two files over already named the consequence:
+   * "telling one person it has contacted another when it has not".
+   *
+   * It is kept HERE, on the engine, rather than as a percept, because a percept is
+   * swept after 2 ticks and a working-memory item decays below the retrieval
+   * threshold in about 9 — while the master's own interval is 15. Anything routed
+   * that way is usually gone before the master next reads. This survives to the
+   * next cycle by construction.
    */
-  private _facetSubjects = new Map<string, { entityId: string; name?: string; tick: number }>()
+  private _facetSubjects = new Map<string, {
+    entityId:   string
+    name?:      string
+    tick:       number
+    concluded?: string
+    /** Commitments the facet declared toward a THIRD party while attending here. */
+    promised?:  Array<{ target: string; gist?: string; tick: number }>
+  }>()
 
   // ── Cognitive models ───────────────────────────────────────
   private readonly _model = new GenerativeModel()
@@ -1173,7 +1199,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // "## Percepts (What I Notice)" on the NEXT master cycle.
     // The master sees them as environmental signals — not as messages to reply to.
     // It responds by creating plans/goals, never by emitting [REPLY].
-    const { percepts: escalationPercepts, intents: escalationIntents, requester: escalationRequester } =
+    const { percepts: escalationPercepts, requester: escalationRequester } =
       this._escalations.drainToPercepts()
 
     // Build state commands
@@ -1256,24 +1282,17 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
     // Clear processed messages
 
-    // Merge escalation percepts into final commands, and retire the ones already
-    // honoured. See _dischargedUndertakings for why this is not optional.
-    const { keep, discharge } = this._reconcileUndertakings( escalationPercepts, this._lastStateRef! )
-    if( keep.length ){
+    // Merge escalation percepts into the final commands.
+    //
+    // `_reconcileUndertakings` used to sit here, discharging promises the engine
+    // judged kept and dropping restatements. Both are gone with the undertaking
+    // harness: a promise is no longer a percept, so there is nothing to
+    // reconcile. What the facet declared rides the sync tract to the master's own
+    // prompt, and what to do about it — including whether it is still worth
+    // doing — is the mind's, through the goal machinery it already has.
+    if( escalationPercepts.length ){
       commands.set ??= []
-      commands.set.push( ...keep )
-    }
-    // The pull that goes with the notice. Emitted for every drained undertaking,
-    // including one whose percept was dropped as a restatement: the percept is
-    // deduped because the mind does not need telling twice, while the intent is
-    // ONE standing candidate per target by id, so re-setting it is idempotent.
-    if( escalationIntents.length ){
-      commands.set ??= []
-      commands.set.push( ...escalationIntents )
-    }
-    if( discharge.length ){
-      commands.delete ??= []
-      commands.delete.push( ...discharge )
+      commands.set.push( ...escalationPercepts )
     }
 
     // ── Persist deliberation cache (mirrors the rolling summary) ──
@@ -1344,7 +1363,13 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
     return [ ...this._facetSubjects.values() ]
       .sort( ( a, b ) => b.tick - a.tick )
-      .map( s => ({ entityId: s.entityId, ...( s.name ? { name: s.name } : {} ), sinceTick: s.tick }) )
+      .map( s => ({
+        entityId: s.entityId,
+        ...( s.name ? { name: s.name } : {} ),
+        sinceTick: s.tick,
+        ...( s.concluded ? { concluded: s.concluded } : {} ),
+        ...( s.promised?.length ? { promised: s.promised } : {} ),
+      }) )
   }
 
   /**
@@ -1384,98 +1409,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
    * claim that the words are unsent; whether to say more to that person is then an
    * ordinary competition like any other.
    */
-  private _reconcileUndertakings(
-    incoming: EntityInput[],
-    state:    ReadonlySimulationState,
-  ): { keep: EntityInput[]; discharge: string[] } {
-    /** Latest tick at which anything was sent to each target. */
-    const contacted = new Map<string, number>()
-    for( const [ , e ] of state.entities ){
-      if( e.type !== 'conversation.sent') continue
-      const m      = e.metadata as Record<string, unknown> | undefined
-      const target = typeof m?.['targetEntityId'] === 'string' ? m['targetEntityId'] as string : undefined
-      if( !target ) continue
-      // metadata.tick where set, else the entity's own sim-clock tick. Reading
-      // metadata alone defaulted every record to 0, so `contacted >= madeAt` was
-      // false for any promise made after tick 0 — this discharge never once fired.
-      const at = typeof m?.['tick'] === 'number' ? m['tick'] as number
-               : typeof ( e as { tick?: number } ).tick === 'number' ? ( e as { tick?: number } ).tick as number
-               : 0
-      contacted.set( target, Math.max( contacted.get( target ) ?? 0, at ) )
-    }
-
-    /** An undertaking is spent once we have reached its target since making it. */
-    const honoured = ( target: string | undefined, madeAt: number ): boolean =>
-      !!target && ( contacted.get( target ) ?? -1 ) >= madeAt
-
-    const undertakingOf = ( m: Record<string, unknown> | undefined ) =>
-      m?.['category'] === 'undertaking'
-        ? {
-          target: typeof m['undertakingTarget'] === 'string' ? m['undertakingTarget'] as string : undefined,
-          madeAt: typeof m['tick'] === 'number' ? m['tick'] as number : 0,
-        }
-        : undefined
-
-    const discharge: string[] = []
-    /** Targets we are already carrying a live, unhonoured undertaking toward. */
-    const carrying = new Set<string>()
-
-    for( const [ id, e ] of state.entities ){
-      if( e.type !== 'percept') continue
-      const u = undertakingOf( e.metadata as Record<string, unknown> | undefined )
-      if( !u ) continue
-
-      // No target ⇒ it predates the field this reconciliation keys on, so it can
-      // never be matched against a contact and would assert "nothing has gone to
-      // them yet" for the rest of the mind's life. Seven of these were found in a
-      // live snapshot, each one re-read every cycle. Undischargeable is strictly
-      // worse than gone.
-      if( !u.target ){ discharge.push( id ); continue }
-
-      if( honoured( u.target, u.madeAt ) ) discharge.push( id )
-      else carrying.add( u.target )
-    }
-
-    // The standing intent is retired on its OWN terms, not the percept's.
-    //
-    // It has to be. A percept is swept after PERCEPT_STALE_AFTER_TICKS, so the
-    // notice is gone within a couple of ticks while the pull is meant to stand
-    // until the contact happens — which means keying the intent's retirement on
-    // the percept would leave an ideomotor intent nothing could ever discharge,
-    // re-winning the field forever. That is the immortal-entity shape this
-    // codebase has now been bitten by three times (msg-delivered, percept-wake,
-    // the seven undischargeable undertakings), and it is worth one extra scan to
-    // not add a fourth.
-    for( const [ id, e ] of state.entities ){
-      if( e.type !== 'ideomotor.intent') continue
-      const m = e.metadata as Record<string, unknown> | undefined
-      if( m?.['origin'] !== 'undertaking') continue
-
-      const target = typeof m['targetEntityId'] === 'string' ? m['targetEntityId'] : undefined
-      const madeAt = typeof m['tick'] === 'number' ? m['tick'] as number : 0
-      // No target ⇒ nothing it could ever be matched against. Same rule, same
-      // reason, as the percept above: undischargeable is strictly worse than gone.
-      if( !target || honoured( target, madeAt ) ) discharge.push( id )
-    }
-
-    // Drop an incoming restatement of something already honoured or already held.
-    // Duplicates were how seven of these piled up: each master cycle drained a
-    // fresh copy of a promise that could never be marked kept.
-    const keep = incoming.filter( p => {
-      const u = undertakingOf( p.metadata as Record<string, unknown> | undefined )
-      if( !u?.target ) return true
-      if( honoured( u.target, u.madeAt ) ) return false
-      if( carrying.has( u.target ) ) return false
-      carrying.add( u.target )
-      return true
-    } )
-
-    if( discharge.length )
-      logger.info(`[executive] ${ discharge.length } undertaking(s) discharged — the contact was made`)
-
-    return { keep, discharge }
-  }
-
   private _onFacetSync( event: CognitiveEvent ): void {
     const payload = event.payload as {
       facetId?: string
@@ -1486,13 +1419,28 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       subjectName?: string
     }
 
-    // Remember WHO this facet is with, not just that it reported.
-    if( payload.facetId && payload.subjectEntityId )
+    // Remember WHO this facet is with, and WHAT it worked out there. The second
+    // half is the return leg: `reasoning` has always been on this payload and was
+    // read into a local and then dropped, so the master learned that its attention
+    // had been engaged and never what it concluded.
+    //
+    // Carried whole, not clipped. For the master this is the only copy — the
+    // facet's own history is in the facet, and once that conversation ends the
+    // thinking is gone. Live facets are few (one per open conversation), so this
+    // is bounded by how many people the mind is talking to, not by traffic.
+    if( payload.facetId && payload.subjectEntityId ){
+      const prior = this._facetSubjects.get( payload.facetId )
       this._facetSubjects.set( payload.facetId, {
         entityId: payload.subjectEntityId,
         ...( payload.subjectName ? { name: payload.subjectName } : {} ),
         tick: payload.tick ?? this._lastExecutiveTick ?? 0,
+        ...( payload.reasoning ? { concluded: payload.reasoning } : {} ),
+        // Promises ride along rather than being re-derived: a commitment the facet
+        // DECLARED is a fact, while the same thing read back out of prose is a
+        // guess. Preserved across syncs until the master has read them.
+        ...( prior?.promised?.length ? { promised: prior.promised } : {} ),
       })
+    }
 
     // Unconditional (not gated on WORKSPACE_THRESHOLD like ordinary traffic):
     // a facet reporting back is the master's own attention returning, and the
@@ -1556,31 +1504,76 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // unfalsifiable: it could be marked kept by something that happened first.
     const tick = payload.tick ?? this._currentTick
 
+    // AN UNDERTAKING RIDES THE TRACT, NOT A HARNESS OF ITS OWN.
+    //
+    // It used to become a percept plus a standing ideomotor intent plus a bespoke
+    // discharge rule — the engine deciding how hard a promise pulls and when it
+    // counts as kept. That is judgement, and judgement is the mind's. What is not
+    // the mind's to supply is the FACT crossing from where its attention was to
+    // where its singular seat is; that crossing is anatomy.
+    //
+    // So it is filed with what the facet concluded and rendered to the master at
+    // its next cycle. Reading that it promised someone something and has not done
+    // it, the master may form a goal — which it can already do, and which the goal
+    // machinery then lifts, plans and completes. Or it may not, and that is a
+    // decision rather than a mechanism failing.
+    //
+    // The old route could not have worked anyway: a percept is swept at +2 ticks
+    // and decays out of working memory at about +9, while the master's interval
+    // is 15. The notice was usually gone before the seat it was addressed to ran.
+    // Spike the salience buffer FIRST, for both kinds. The master must NOT be
+    // handed the inbound as a message to answer — that would make it produce a
+    // [REPLY], duplicating the facet's and breaking the facet/master boundary.
+    // (The queue that once carried inbound this way was removed in #114: nothing
+    // ever filled it.) Done before the undertaking branch returns, so a promise
+    // still pulls the master's next cycle forward rather than waiting out the
+    // interval — which matters more now that the promise is what it will read.
+    this._gatingState.salienceBuffer.push({ event, tick })
+
+    const from = payload.subjectName ?? payload.subjectEntityId ?? payload.facetId ?? 'a focus'
+
+    if( payload.body.kind === 'undertaking'){
+      const body = payload.body
+      // Keyed by facet because that is what the master's view of its open threads
+      // is keyed by. A handoff with no facet id has nowhere to file — say so
+      // rather than dropping it quietly, which is how a promise disappears with
+      // nobody able to tell whether it was ever made.
+      if( !payload.facetId ){
+        logger.warn(`[executive] undertaking toward "${ body.target }" arrived with no facetId — nowhere to file it`)
+        return
+      }
+      // Created if absent: a facet can hand something up before its first sync,
+      // and requiring the entry to exist first made that promise vanish.
+      const at = this._facetSubjects.get( payload.facetId ) ?? {
+        entityId: payload.subjectEntityId ?? payload.facetId,
+        ...( payload.subjectName ? { name: payload.subjectName } : {} ),
+        tick,
+      }
+      at.promised = [
+        // One entry per target: restating the same promise is the same promise.
+        ...( at.promised ?? [] ).filter( p => p.target !== body.target ),
+        { target: body.target, ...( body.gist ? { gist: body.gist } : {} ), tick },
+      ]
+      this._facetSubjects.set( payload.facetId, at )
+      logger.info(
+        `[executive] filed undertaking from ${from} → reach ${ body.target } ` +
+        `(it reads this at its next cycle; what to do about it is its own call)`
+      )
+      return
+    }
+
     this._escalations.push({
       tick,
       ...( payload.facetId         ? { facetId:         payload.facetId }         : {} ),
       ...( payload.subjectEntityId ? { subjectEntityId: payload.subjectEntityId } : {} ),
       ...( payload.subjectName     ? { subjectName:     payload.subjectName }     : {} ),
       ...( payload.threadId        ? { threadId:        payload.threadId }        : {} ),
-      body: payload.body.kind === 'undertaking'
-        ? { ...payload.body, reasoning: ( payload.body.reasoning ?? '').slice( 0, 400 ) }
-        : { ...payload.body, reasoning: ( payload.body.reasoning ?? '').slice( 0, 400 ) },
+      body: { ...payload.body, reasoning: ( payload.body.reasoning ?? '').slice( 0, 400 ) },
     })
 
-    // Spike the salience buffer so the master fires soon rather than waiting for
-    // the next scheduled interval. The master must NOT be handed the inbound as a
-    // message to answer — that would make it produce a [REPLY], duplicating the
-    // facet's and breaking the facet/master boundary. (The queue that once carried
-    // inbound this way was removed in #114: nothing ever filled it.)
-    this._gatingState.salienceBuffer.push({ event, tick })
-
-    const from = payload.subjectName ?? payload.subjectEntityId ?? payload.facetId ?? 'a focus'
     logger.info(
-      payload.body.kind === 'undertaking'
-        ? `[executive] master queued undertaking from ${from} ` +
-          `→ reach ${payload.body.target} (confidence=${payload.confidence?.toFixed( 2 )})`
-        : `[executive] master queued escalation percept from ${from} ` +
-          `(confidence=${payload.confidence?.toFixed( 2 )})`
+      `[executive] master queued escalation percept from ${from} ` +
+      `(confidence=${payload.confidence?.toFixed( 2 )})`
     )
   }
 

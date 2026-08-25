@@ -1326,8 +1326,47 @@ places call it"*, which is checkable and true, rather than a fourth door.
 > on its own terms, since a percept is swept in 2 ticks while the pull must
 > stand) carries the pull. See [[build-cogs-not-behaviors]].
 >
-> The `self.handoff` entity type is still worth considering, but it is now a
-> naming question rather than a behaviour one.
+> **Resolved 2026-08-25 — the harness is gone, not renamed.** Fabrice's follow-up
+> was the sharper question: *"isn't that supposed to be handled by the mind itself
+> using its ability to create goals and execute them?"* Yes. The line that holds:
+> **transport is anatomy, judgement is cognition.** A facet is the same mind with
+> a focus — same `PromptFactory`, same live-state baseline, `mode: 'facet'` — but
+> its conclusions still have to CROSS to the singular seat, and no amount of
+> reasoning lets the master read a context it was never given. That crossing is a
+> nerve. Everything after it is the mind's.
+>
+> Three things checked before cutting, and two of them changed the fix:
+>
+> 1. **The return leg was empty.** `executive.facet.sync` has always carried the
+>    facet's full `reasoning`; `_onFacetSync` read it into a local and dropped it,
+>    keeping only WHO the facet was with plus a salience spike. So the master's
+>    thinking flowed DOWN as "What I've Been Turning Over" and what a facet worked
+>    out came back as a name. The prompt's own comment already named the
+>    consequence — *"telling one person it has contacted another when it has not"*.
+>    That is the undertaking failure mode, and the harness existed as a structured
+>    exception carved out of a content-free channel.
+> 2. **Cadence was never the problem.** Master interval 15, floor 5, and facet
+>    syncs pull it earlier (salience ≈ 0.85 each against a 2.5 trigger). It is not
+>    starved of runs — it was starved of content.
+> 3. **The old route could not have delivered anyway.** Percept swept at +2;
+>    working-memory item under the retrieval threshold at ≈ +9 (0.75 activation,
+>    0.08/s unattended, floor 0.05); master interval 15. The notice was usually
+>    gone before the seat it was addressed to next ran.
+>
+> So: a promise now rides the sync tract as a fact filed beside what the facet
+> concluded, held on the engine (which neither sweeps nor decays) and rendered in
+> `## In Conversation Now`. Deleted with the harness: `UNDERTAKING_PRIORITY`, the
+> standing `ideomotor.intent`, its retirement scan, `_reconcileUndertakings`
+> entirely, and the undertaking percept. The master reads that it promised someone
+> something and has not done it, and may form a goal — which it can already do,
+> and which the goal machinery then lifts, plans and completes. Or it may not, and
+> that is a decision rather than a mechanism failing.
+>
+> **A named number that governed nothing, found on the way:**
+> `PERCEPT_STALE_AFTER_TICKS` was exported and documented while the only sweeper
+> carried its own literal `2`. Now wired, and pinned by asserting the NOT-swept
+> edge — the existing test derived the age from the same constant, so both halves
+> moved together and it could not tell.
 
 **Not a P4 case, despite matching the grep:** `working.memory.ts` sets
 `type: 'percept'` on a working-memory ITEM, not a state entity. Different

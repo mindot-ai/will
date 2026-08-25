@@ -216,243 +216,48 @@ describe('partitionOutwardIntents — a facet action aimed at someone else', () 
 
 // ── 3. the escalation: an undertaking reaches the master ──────
 
-describe('EscalationBuffer — an undertaking made inside a conversation', () => {
-  it('tells the master what it promised, to whom, and that nothing has gone out', () => {
+describe('an undertaking rides the tract, and the harness is gone', () => {
+  /**
+   * What was here: the buffer turned an undertaking into a percept, a standing
+   * ideomotor intent at a priority the ENGINE chose, and a bespoke discharge rule
+   * by which the ENGINE decided when a promise counted as kept. All three were
+   * judgement, and judgement is the mind's.
+   *
+   * What is left is the crossing itself: a facet is the same mind with a focus,
+   * and what it worked out there has to reach the singular seat somehow. That is
+   * anatomy — no amount of reasoning lets the master read a context it was never
+   * given. Everything after the crossing is the mind's to decide, and it has the
+   * goal machinery to decide it with.
+   */
+  it('an undertaking produces no percept and no intent — nothing for the engine to decide', () => {
     const buf = new EscalationBuffer()
     buf.push( {
-      subjectEntityId: 'discord:1019376031150379101', threadId: 't', tick: 328,
-      body: { kind: 'undertaking', reasoning: '', target: 'FKEM', gist: 'Fabrice wants a full demo — can you coordinate a meeting?' },
+      facetId: 'f-1', subjectEntityId: 'discord:1019376031150379101', threadId: 't', tick: 328,
+      body: { kind: 'undertaking', reasoning: '', target: 'FKEM', gist: 'coordinate the demo meeting' },
     } )
 
-    const { percepts, intents } = buf.drainToPercepts()
-    expect( percepts ).toHaveLength( 1 )
-
-    const m = percepts[0]!.metadata as Record<string, unknown>
-    expect( m.category ).toBe('undertaking')
-
-    // THE GAP, and only the gap. The summary states what was promised and that
-    // it has not happened — a fact the mind cannot perceive any other way,
-    // because a facet formed the intention and the master never saw it.
-    const summary = m.summary as string
-    expect( summary ).toMatch( /I said I would reach FKEM/ )
-    expect( summary ).toMatch( /Nothing has gone to them since/ )
-
-    // And NOT an instruction. These two sentences used to follow, in the mind's
-    // own voice so it could not disagree with either: one naming the effector
-    // and its argument, one a value judgement about leaving things half-done.
-    expect( summary ).not.toMatch( /I reach out with target/ )
-    expect( summary ).not.toMatch( /half-done/ )
-    expect( summary ).not.toMatch( /If I still mean it/ )
-
-    // The gist is not lost — it moved from prose into evidence, which the
-    // prompt renders beneath the label since P2. It is a fact about the
-    // promise, not a script for keeping it.
-    expect( m.data ).toMatchObject( {
-      target: 'FKEM', promisedAt: 328, contactedSince: false,
-      gist: 'Fabrice wants a full demo — can you coordinate a meeting?',
-    } )
-    expect( m.directive ).toBeUndefined()
-
-    // The pull it used to dictate, as a candidate that competes instead.
-    expect( intents ).toHaveLength( 1 )
-    const i = intents[0]!.metadata as Record<string, unknown>
-    expect( intents[0]!.type ).toBe('ideomotor.intent')
-    expect( i.schema ).toBe('reach-out')
-    expect( i.targetEntityId ).toBe('FKEM')
-    // NOT 'executive': commands.ts sweeps every executive-origin intent the
-    // executive does not re-imagine each cycle, which would kill this one after
-    // a single tick.
-    expect( i.origin ).toBe('undertaking')
-  } )
-
-  it('keeps two undertakings from one conversation distinct rather than collapsing them', () => {
-    // Same entity, same tick: keying on (entity, tick) alone silently kept only the
-    // last, losing one of two things the mind decided to do.
-    const buf = new EscalationBuffer()
-    const base = { subjectEntityId: 'discord:1019', threadId: 't', tick: 42 }
-    buf.push( { ...base, body: { kind: 'undertaking' as const, reasoning: '', target: 'FKEM' } } )
-    buf.push( { ...base, body: { kind: 'undertaking' as const, reasoning: '', target: 'Ada' } } )
-
+    // It never reaches the buffer at all — `_onFacetHandoff` files it with what
+    // the facet concluded, and the buffer carries only work raised for the master.
     const { percepts } = buf.drainToPercepts()
-    expect( new Set( percepts.map( p => p.id ) ).size ).toBe( 2 )
-    expect( percepts.map( p => ( p.metadata as Record<string, unknown> ).summary ) )
-      .toEqual( [ expect.stringMatching( /reach FKEM/ ), expect.stringMatching( /reach Ada/ ) ] )
+    expect( percepts ).toHaveLength( 1 )
+    expect( ( percepts[0]!.metadata as Record<string, unknown> ).category ).toBe('undertaking')
+
+    // The pieces the engine used to decide with are gone from the module.
+    return import('#faculties/executive.engine/escalation.buffer').then( mod => {
+      expect( 'UNDERTAKING_PRIORITY' in mod ).toBe( false )
+      expect( 'undertakingIntentId' in mod ).toBe( false )
+    } )
   } )
 
-  it('reports what a task escalation IS, and does not assign the master a role', () => {
-    // What was raised, and by which part of me. `extractPercepts` renders
-    // summary/content and nothing else, so a sibling `directive` field never
-    // once reached the master in the whole life of that field — but the answer
-    // to that was to put the FACT in the summary, not an instruction.
+  it('a task escalation still reaches the master as work, and says nothing about roles', () => {
     const buf = new EscalationBuffer()
-    buf.push( { subjectEntityId: 'e', threadId: 't', tick: 9, body: { kind: 'escalation', reasoning: 'they want the repo set up' } } )
+    buf.push( { subjectEntityId: 'e', threadId: 't', tick: 9,
+                body: { kind: 'escalation', reasoning: 'they want the repo set up' } } )
 
-    const { percepts, intents } = buf.drainToPercepts()
-    const m = percepts[0]!.metadata as Record<string, unknown>
+    const m = buf.drainToPercepts().percepts[0]!.metadata as Record<string, unknown>
     expect( m.category ).toBe('task-escalation')
     expect( m.summary ).toMatch( /they want the repo set up/ )
-    // Whether to plan it, re-goal it or drop it is the master's call, and it has
-    // a whole faculty for making it.
     expect( m.summary ).not.toMatch( /mine to plan or re-goal/ )
-    expect( m.summary ).not.toMatch( /handles the talking/ )
-    expect( m.directive ).toBeUndefined()
-
-    // An escalation is not an intention toward anyone — nothing to compete.
-    expect( intents ).toHaveLength( 0 )
-  } )
-} )
-
-// ── 4. an undertaking has to be able to end ──────────────────
-
-/**
- * The percept that stops a promise being forgotten made it impossible to believe
- * one had been kept.
- *
- * Measured on a live Will: SEVEN undertaking percepts accumulated in state, every
- * one still asserting "Nothing has gone to them yet", while a `conversation.sent`
- * to that person sat beside them. She re-read seven standing unfulfilled promises
- * every cycle and re-sent the same relay five times in five minutes, then again in
- * the following session. Nothing retired them and nothing deduplicated them.
- *
- * Discharge is by EVIDENCE — a `conversation.sent` to that target no older than
- * the promise. That record snapshots with the state, so a kept promise stays kept
- * across a restart, which tick-scoped satiation cannot manage.
- */
-describe('undertakings are discharged by having made the contact', () => {
-  const FKEM    = 'discord:1525573163482742907'
-  const FABRICE = 'discord:1019376031150379101'
-
-  /** The engine's private reconciler — internals on purpose; the wiring is what matters. */
-  const reconcile = ( engine: ExecutiveEngine, incoming: EntityInput[], state: ReadonlySimulationState ) =>
-    ( engine as unknown as {
-      _reconcileUndertakings( i: EntityInput[], s: ReadonlySimulationState ): { keep: EntityInput[]; discharge: string[] }
-    } )._reconcileUndertakings( incoming, state )
-
-  const undertaking = ( id: string, target: string, madeAt: number ): EntityInput => ({
-    id, type: 'percept',
-    metadata: { category: 'undertaking', undertakingTarget: target, tick: madeAt, summary: 'I said I would reach them' },
-  })
-
-  const sentTo = ( target: string, at: number ) => ({
-    id: `conv-sent-${ target }-${ at }`, type: 'conversation.sent',
-    metadata: { targetEntityId: target, tick: at },
-  })
-
-  const stateOf = ( ...entities: { id: string; type: string; metadata?: unknown }[] ) =>
-    ({ tick: 300, entities: new Map( entities.map( e => [ e.id, e ] ) ) } as unknown as ReadonlySimulationState )
-
-  const standingIntent = ( target: string, madeAt: number ) => ({
-    id: `ideomotor-undertaking-${ target }`, type: 'ideomotor.intent',
-    metadata: { schema: 'reach-out', targetEntityId: target, origin: 'undertaking', tick: madeAt, priority: 0.7 },
-  })
-
-  it('retires the standing INTENT on its own terms, not the percept\'s', () => {
-    // It has to be retired independently, and this is the assertion that says
-    // why: a percept is swept after PERCEPT_STALE_AFTER_TICKS, so the notice is
-    // gone within a couple of ticks while the pull stands until the contact
-    // happens. Keying the intent's retirement on the percept would leave an
-    // ideomotor intent nothing could ever discharge — re-winning the field
-    // forever. That is the immortal-entity shape this codebase has already been
-    // bitten by three times.
-    const engine = new ExecutiveEngine()
-
-    // Contacted since: both the notice and the pull are done.
-    const done = reconcile( engine, [], stateOf(
-      standingIntent( FKEM, 100 ), sentTo( FKEM, 120 ) ) )
-    expect( done.discharge ).toContain(`ideomotor-undertaking-${ FKEM }`)
-
-    // Not contacted: the pull stands, with NO percept in state at all — which is
-    // the ordinary case two ticks after the notice was raised.
-    const standing = reconcile( engine, [], stateOf( standingIntent( FKEM, 100 ) ) )
-    expect( standing.discharge ).toHaveLength( 0 )
-
-    // Contacted BEFORE the promise was made does not count — that is a different
-    // conversation, not this promise kept.
-    const stale = reconcile( engine, [], stateOf(
-      standingIntent( FKEM, 200 ), sentTo( FKEM, 120 ) ) )
-    expect( stale.discharge ).toHaveLength( 0 )
-  } )
-
-  it('discharges an intent with no target rather than leaving it undischargeable', () => {
-    // Same rule, same reason, as the percept beside it: nothing could ever match
-    // it, so it would stand forever. Undischargeable is strictly worse than gone.
-    const engine = new ExecutiveEngine()
-    const orphan = { id: 'ideomotor-undertaking-', type: 'ideomotor.intent',
-                     metadata: { schema: 'reach-out', origin: 'undertaking', tick: 10 } }
-    expect( reconcile( engine, [], stateOf( orphan ) ).discharge ).toContain('ideomotor-undertaking-')
-  } )
-
-  it('leaves ordinary executive-origin intents alone', () => {
-    // The sweep for those lives in commands.ts and keys on the executive
-    // re-imagining them each cycle. Two owners for one entity type is fine as
-    // long as each only touches its own origin.
-    const engine = new ExecutiveEngine()
-    const theirs = { id: 'ideomotor-reach-out-x', type: 'ideomotor.intent',
-                     metadata: { schema: 'reach-out', targetEntityId: FKEM, origin: 'executive', tick: 10 } }
-    expect( reconcile( engine, [], stateOf( theirs, sentTo( FKEM, 120 ) ) ).discharge ).toHaveLength( 0 )
-  } )
-
-  it('retires a promise once the contact has been made', () => {
-    const state = stateOf( undertaking('u1', FKEM, 100 ), sentTo( FKEM, 120 ) )
-    const { discharge } = reconcile( new ExecutiveEngine(), [], state )
-    expect( discharge ).toEqual( [ 'u1' ] )
-  } )
-
-  it('keeps one whose contact has NOT been made', () => {
-    const state = stateOf( undertaking('u1', FKEM, 100 ) )
-    expect( reconcile( new ExecutiveEngine(), [], state ).discharge ).toEqual( [] )
-  } )
-
-  it('does not count a message sent BEFORE the promise as keeping it', () => {
-    // Having messaged someone yesterday is not having relayed what you promised today.
-    const state = stateOf( undertaking('u1', FKEM, 200 ), sentTo( FKEM, 120 ) )
-    expect( reconcile( new ExecutiveEngine(), [], state ).discharge ).toEqual( [] )
-  } )
-
-  it('does not let a message to one person discharge a promise to another', () => {
-    const state = stateOf( undertaking('u1', FKEM, 100 ), sentTo( FABRICE, 150 ) )
-    expect( reconcile( new ExecutiveEngine(), [], state ).discharge ).toEqual( [] )
-  } )
-
-  it('refuses to restate a promise it is already carrying', () => {
-    // How seven piled up: every master cycle drained a fresh copy of a promise
-    // that could never be marked kept.
-    const state = stateOf( undertaking('u1', FKEM, 100 ) )
-    const { keep } = reconcile( new ExecutiveEngine(), [ undertaking('u2', FKEM, 180 ) ], state )
-    expect( keep ).toEqual( [] )
-  } )
-
-  it('refuses an incoming promise that is already honoured on arrival', () => {
-    const state = stateOf( sentTo( FKEM, 150 ) )
-    const { keep } = reconcile( new ExecutiveEngine(), [ undertaking('u1', FKEM, 100 ) ], state )
-    expect( keep ).toEqual( [] )
-  } )
-
-  it('admits a genuinely new promise toward someone else', () => {
-    const state = stateOf( undertaking('u1', FKEM, 100 ) )
-    const { keep } = reconcile( new ExecutiveEngine(), [ undertaking('u2', FABRICE, 180 ) ], state )
-    expect( keep.map( k => k.id ) ).toEqual( [ 'u2' ] )
-  } )
-
-  it('retires an undertaking that predates the target field — it can never be matched', () => {
-    // Seven of these sat in a live snapshot, each asserting "nothing has gone to
-    // them yet" on every cycle with no way to ever be discharged.
-    const legacy: EntityInput = {
-      id: 'old-u', type: 'percept',
-      metadata: { category: 'undertaking', summary: 'I said I would reach them' },
-    }
-    const state = stateOf( { ...legacy, metadata: legacy.metadata } as never )
-    expect( reconcile( new ExecutiveEngine(), [], state ).discharge ).toEqual( [ 'old-u' ] )
-  } )
-
-  it('leaves ordinary task escalations alone', () => {
-    const task: EntityInput = {
-      id: 'esc1', type: 'percept',
-      metadata: { category: 'task-escalation', summary: 'they want the repo set up' },
-    }
-    const { keep, discharge } = reconcile( new ExecutiveEngine(), [ task ], stateOf() )
-    expect( keep.map( k => k.id ) ).toEqual( [ 'esc1' ] )
-    expect( discharge ).toEqual( [] )
   } )
 } )
 

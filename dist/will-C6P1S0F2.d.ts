@@ -5050,11 +5050,30 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     private _tokenTracker;
     private readonly _facetSupervisor;
     /**
-     * Who each live facet is engaged with, learned from `executive.facet.sync`.
-     * Keyed by facetId; the last sync wins. Rendered into the master's own prompt so
-     * the singular seat can reason across its conversations "as if they were sitting
-     * at the same table" — which it cannot do while it only knows facet numbers.
-     * Stale entries age out on read (see _activeConversations).
+     * Who each live facet is engaged with AND what it concluded there, learned from
+     * `executive.facet.sync`. Keyed by facetId; the last sync wins. Rendered into
+     * the master's own prompt so the singular seat can reason across its
+     * conversations "as if they were sitting at the same table" — which it cannot
+     * do while it only knows facet numbers. Stale entries age out on read (see
+     * _activeConversations).
+     *
+     * `concluded` IS THE RETURN LEG, and it did not exist. `executive.facet.sync`
+     * has always carried the facet's full `reasoning`; this handler received it and
+     * dropped it on the floor. So the sync was one-way: the master's thinking flows
+     * DOWN to facets as "What I've Been Turning Over", while what a facet worked out
+     * came back as identity and a salience spike — that attention had been engaged,
+     * and with whom, never what it concluded.
+     *
+     * A facet is the same mind with a focus, not a subordinate reporting in. A mind
+     * that cannot read back its own thinking from where its attention has been is
+     * split, and the prompt comment two files over already named the consequence:
+     * "telling one person it has contacted another when it has not".
+     *
+     * It is kept HERE, on the engine, rather than as a percept, because a percept is
+     * swept after 2 ticks and a working-memory item decays below the retrieval
+     * threshold in about 9 — while the master's own interval is 15. Anything routed
+     * that way is usually gone before the master next reads. This survives to the
+     * next cycle by construction.
      */
     private _facetSubjects;
     private readonly _model;
@@ -5270,7 +5289,6 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * claim that the words are unsent; whether to say more to that person is then an
      * ordinary competition like any other.
      */
-    private _reconcileUndertakings;
     private _onFacetSync;
     /**
      * A focused part of me surfaced something the singular seat owns — work to plan

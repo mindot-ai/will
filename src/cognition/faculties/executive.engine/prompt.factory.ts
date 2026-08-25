@@ -364,7 +364,15 @@ export interface PromptBuildOptions {
    * how one mind ends up opening a second conversation with someone it is already
    * talking to — or telling one person it has contacted another when it has not.
    */
-  activeConversations?: { entityId: string; name?: string; sinceTick: number }[]
+  activeConversations?: {
+    entityId: string
+    name?: string
+    sinceTick: number
+    /** What the mind worked out in that thread — its own reasoning, come back. */
+    concluded?: string
+    /** Commitments it made there toward someone NOT in the thread. */
+    promised?: Array<{ target: string; gist?: string; tick: number }>
+  }[]
 }
 
 // ── PromptFactory ────────────────────────────────────────────
@@ -871,10 +879,29 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
     // can hold several conversations as one situation rather than as N strangers.
     // Names come from what the mind has actually learned; the id is shown because
     // that is what a reach-out must be addressed to.
+    // WHAT I worked out there, not only WHO I am with.
+    //
+    // `executive.facet.sync` has always carried the facet's full reasoning and the
+    // master discarded it, so the return leg of the loop was empty: my thinking
+    // went down to a facet as "What I've Been Turning Over" and came back as a
+    // name. A facet is this same mind with a focus — reading back what it worked
+    // out is not a report from a subordinate, it is remembering where my attention
+    // has been. First person throughout, for that reason.
+    //
+    // A promise made in one thread to someone NOT in it is stated as the plain
+    // fact it is. There is deliberately no instruction about it: whether to keep
+    // it, drop it, or make a goal of it is mine to decide, and I have a whole
+    // faculty for that.
     const conversationsBlock = ( options.mode !== 'facet' && options.activeConversations?.length )
-      ? `## In Conversation Now\n${options.activeConversations.map( c =>
-          `- ${c.name ?? 'someone'} (id: ${c.entityId})`
-        ).join('\n')}\nThese threads are already open — I am in them. Reaching out to one of these people again starts a second, parallel thread with them.`
+      ? `## In Conversation Now\n${options.activeConversations.map( c => {
+          const who       = `- ${c.name ?? 'someone'} (id: ${c.entityId})`
+          const concluded = c.concluded ? `\n    What I worked out there: ${c.concluded.trim()}` : ''
+          const promised  = ( c.promised ?? [] ).map( p =>
+            `\n    I said there that I would reach ${p.target}${ p.gist ? ` — about: "${p.gist}"` : '' }`
+            + `, at tick ${p.tick}. Saying it in that thread did not send it.`
+          ).join('')
+          return `${who}${concluded}${promised}`
+        } ).join('\n')}\nThese threads are already open — I am in them. Reaching out to one of these people again starts a second, parallel thread with them.`
       : ''
 
     // Task focus — what the Will is committed to and the felt cost of switching away.

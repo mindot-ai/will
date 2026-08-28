@@ -29,7 +29,8 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -124,12 +125,12 @@ function stripComments( src: string ): string[] {
 
 interface Violation { file: string; line: number; pattern: string; text: string }
 
-function scan(): Violation[] {
+function scan( dirs: string[] = SCAN_DIRS, root: string = REPO_ROOT ): Violation[] {
   const violations: Violation[] = []
-  for( const dir of SCAN_DIRS ){
+  for( const dir of dirs ){
     // Apply only the patterns scoped to this dir (or unscoped patterns).
     const active = BANNED.filter( p => !p.dirs || p.dirs.includes( dir ) )
-    for( const file of collectTsFiles( join( REPO_ROOT, dir ) ) ){
+    for( const file of collectTsFiles( join( root, dir ) ) ){
       const raw     = readFileSync( file, 'utf8')
       const rawLines = raw.split('\n')
       const code    = stripComments( raw )
@@ -139,7 +140,7 @@ function scan(): Violation[] {
         for( const pat of active )
           if( pat.re.test( codeLine ) )
             violations.push({
-              file:    file.slice( REPO_ROOT.length + 1 ),
+              file:    file.slice( root.length + 1 ),
               line:    idx + 1,
               pattern: pat.name,
               text:    original.trim(),
@@ -170,6 +171,33 @@ describe('determinism guard — banned non-deterministic APIs (R2)', () => {
         + `Fix: ${BANNED.map( b => `${b.name} → ${b.hint}`).join('; ')}.\n`
         + `If a site is genuinely non-replay-affecting, add a "${ALLOW_MARKER}" comment.`,
     ).toHaveLength( 0 )
+  })
+
+  it('detects real unmarked banned calls through the full scan() pipeline (positive fixture)', () => {
+    // Isolated fixture tree OUTSIDE the repo — src/core and src/cognition are never touched.
+    const root = mkdtempSync( join( tmpdir(), 'determinism-guard-' ) )
+    try {
+      const dir = 'fixture'
+      mkdirSync( join( root, dir ), { recursive: true } )
+      writeFileSync( join( root, dir, 'sample.ts' ),
+        [
+          'export const a = Math.random()',                        // 1: must flag
+          '// Math.random() only in a comment',                    // 2: stripped → no flag
+          'export const b = Date.now() // determinism-ok: telem',  // 3: marker → suppressed
+          'export const c = crypto.randomUUID()',                  // 4: must flag
+        ].join('\n'),
+      )
+
+      const violations = scan( [ dir ], root )
+
+      // Exactly the two unmarked, non-comment calls, at the right lines and patterns.
+      expect( violations.map( v => `${v.line}:${v.pattern}` ).sort() )
+        .toEqual( [ '1:Math.random()', '4:randomUUID()' ] )
+      // Paths are reported fixture-relative, proving the slice logic runs on the given root.
+      expect( violations.every( v => v.file === join( dir, 'sample.ts' ) ) ).toBe( true )
+    } finally {
+      rmSync( root, { recursive: true, force: true } )
+    }
   })
 
   it('comment-only mentions of a banned API do not trigger a violation', () => {

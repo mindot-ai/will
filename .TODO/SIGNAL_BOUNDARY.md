@@ -1,5 +1,9 @@
 # SIGNAL_BOUNDARY — where the mind meets the world, in both directions
 
+> **The picture:** `docs/graphs/signal-boundary-loop.svg` — the whole arc in one
+> diagram: one door in that requires an assertion, one crossing out, and an ack
+> that comes back as facts the mind perceives rather than a verdict handed to it.
+
 > *(formerly AFFERENCE_UNIFICATION — widened 2026-08-21 to cover efference too.
 > Splitting one boundary into two epochs would repeat, at the document level,
 > exactly the "not well accorded across" problem this file exists to fix. It is
@@ -499,7 +503,7 @@ there being a world with a clock in it.
 > parallel path and prove it byte-identical, exactly as POLICY_REAFFERENCE P0
 > shipped dark. The replay-equivalence capstone gates every phase.
 
-### P0 — **CORRECTED TWICE, both times before writing code.** The sense door lays down no trace, and the trace it should lay is not the one this file first named.
+### P0 — ✅ **SHIPPED 2026-08-23** — **CORRECTED TWICE, both times before writing code.** The sense door lays down no trace, and the trace it should lay is not the one this file first named.
 
 **First correction (2026-08-21):** the original P0 said "`BaseSenseEngine`
 propagates provenance onto the percept it transduces". There is no percept to
@@ -558,6 +562,10 @@ skip provenance, two skip the tick. P0 proposes *more* writers from the sense
 door, so building it first would multiply both faults.
 
 #### What P0 therefore is
+
+> Superseded by the record below — these three are the PLAN, and
+> *Shipped 2026-08-23* ticks all of them. Left as open boxes they read as
+> outstanding work in a closed epoch.
 
 - [ ] **Own the `percept` contract before widening it.** One constructor for a
       `percept` entity — id, `tick`, `salience`, `category`, `summary`,
@@ -1118,7 +1126,7 @@ saying nothing, so the signal's own name is used instead.
 > until the fixture was made bigger than the cap it was meant to catch. Four
 > mutations, four gaps, one pass each.
 
-### P3 — Rename to the vocabulary
+### P3 — Rename to the vocabulary — ✅ **SHIPPED 2026-08-24** (P3a/P3b/P3c below)
 
 #### P3a — the host-facing door — ✅ **SHIPPED 2026-08-24**
 - [x] `will.perceive()` → **`will.sense()`**. It has never been perception;

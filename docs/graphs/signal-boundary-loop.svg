@@ -1,0 +1,191 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="700" viewBox="0 0 1360 700" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-e2e8f0" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#e2e8f0"/></marker>
+<marker id="arr-94a3b8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#94a3b8"/></marker>
+<marker id="arr-f472b6" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#f472b6"/></marker>
+<marker id="arr-4ade80" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#4ade80"/></marker>
+<marker id="arr-fbbf24" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#fbbf24"/></marker>
+</defs>
+<rect width="1360" height="700" fill="url(#sky)"/>
+<rect x="1" y="1" width="1358" height="698" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">The signal boundary — the mind knows its own doing from the world’s</text>
+<text x="40" y="80" font-size="13" fill="#8b93a7">Everything that reaches a mind arrives through one door and must SAY whose doing it was; everything that leaves goes out through one crossing and comes back as facts the mind perceives, not a verdict it is handed. Provenance is asserted at the edge, never inferred later — because by then only the mind can tell, and it is the one thing it cannot work out alone</text>
+<rect x="1166" y="42" width="154" height="22" rx="11" fill="#fbbf2414" stroke="#fbbf2455" stroke-width="1"/>
+<circle cx="1178" cy="53" r="3.4" fill="#fbbf24"/>
+<text x="1187" y="57" font-size="10.5" fill="#cbd5e1">Executive (System 2)</text>
+<rect x="1034.5" y="42" width="123.5" height="22" rx="11" fill="#4ade8014" stroke="#4ade8055" stroke-width="1"/>
+<circle cx="1046.5" cy="53" r="3.4" fill="#4ade80"/>
+<text x="1055.5" y="57" font-size="10.5" fill="#cbd5e1">Agency (action)</text>
+<rect x="896.9" y="42" width="129.6" height="22" rx="11" fill="#f472b614" stroke="#f472b655" stroke-width="1"/>
+<circle cx="908.9" cy="53" r="3.4" fill="#f472b6"/>
+<text x="917.9" y="57" font-size="10.5" fill="#cbd5e1">Social cognition</text>
+<rect x="728.8" y="42" width="160.1" height="22" rx="11" fill="#94a3b814" stroke="#94a3b855" stroke-width="1"/>
+<circle cx="740.8" cy="53" r="3.4" fill="#94a3b8"/>
+<text x="749.8" y="57" font-size="10.5" fill="#cbd5e1">Stem / infrastructure</text>
+<rect x="615.5999999999999" y="42" width="105.19999999999999" height="22" rx="11" fill="#e2e8f014" stroke="#e2e8f055" stroke-width="1"/>
+<circle cx="627.5999999999999" cy="53" r="3.4" fill="#e2e8f0"/>
+<text x="636.5999999999999" y="57" font-size="10.5" fill="#cbd5e1">Host / world</text>
+<rect x="44" y="118" width="236" height="404" rx="16" fill="#e2e8f007" stroke="#e2e8f02e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#e2e8f0bb">THE WORLD SPEAKS</text>
+<rect x="300" y="118" width="250" height="404" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="316" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">THE DOOR IN</text>
+<rect x="570" y="118" width="250" height="404" rx="16" fill="#f472b607" stroke="#f472b62e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="586" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#f472b6bb">ONE SHAPE FOR A PERCEPT</text>
+<rect x="840" y="118" width="240" height="404" rx="16" fill="#4ade8007" stroke="#4ade802e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="856" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#4ade80bb">THE CROSSING OUT</text>
+<rect x="1100" y="118" width="222" height="404" rx="16" fill="#fbbf2407" stroke="#fbbf242e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="1116" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#fbbf24bb">WHAT COMES BACK</text>
+<path d="M 262 187 C 296 187, 284 187, 318 187" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<rect x="228.8" y="177" width="122.39999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="290" y="190.5" font-size="10" fill="#cbd5e1" text-anchor="middle">declares exafferent</text>
+<path d="M 262 327 C 319.2981535479111 327, 260.7018464520889 187, 318 187" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 262 467 C 296 467, 284 467, 318 467" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
+<rect x="214.8" y="457" width="150.39999999999998" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="290" y="470.5" font-size="10" fill="#cbd5e1" text-anchor="middle">an edge that cannot know</text>
+<path d="M 425 214 C 425 248, 425 266, 425 300" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="394.6" y="247" width="60.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="425" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">requires</text>
+<path d="M 425 440 C 425 406, 425 388, 425 354" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
+<rect x="321.8" y="387" width="206.39999999999998" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="425" y="400.5" font-size="10" fill="#cbd5e1" text-anchor="middle">defaults exafferent — the safe lie</text>
+<path d="M 532 327 C 589.2981535479112 327, 530.7018464520888 187, 588 187" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 532 187 C 566 187, 554 187, 588 187" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<rect x="470.8" y="177" width="178.39999999999998" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="560" y="190.5" font-size="10" fill="#cbd5e1" text-anchor="middle">one constructor, five writers</text>
+<path d="M 695 214 C 695 248, 695 266, 695 300" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f472b6)"/>
+<rect x="642.2" y="247" width="105.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<text x="695" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">and is let go of</text>
+<path d="M 588 187 C 562 187, 562 467, 588 467" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
+<rect x="487.7" y="317" width="161.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<text x="568.5" y="330.5" font-size="10" fill="#cbd5e1" text-anchor="middle">carries whose doing it was</text>
+<path d="M 802 467 C 910.5071352492545 467, 749.4928647507455 187, 858 187" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
+<rect x="774.639798082812" y="396.5199999999999" width="133.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<text x="841.439798082812" y="410.0199999999999" font-size="10" fill="#cbd5e1" text-anchor="middle">a surprise may revoke</text>
+<path d="M 960 214 C 960 248, 960 266, 960 300" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<rect x="887.6" y="247" width="144.79999999999998" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="960" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">predicts before it acts</text>
+<path d="M 960 354 C 960 388, 960 406, 960 440" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<path d="M 1062 467 C 1170.2193032688715 467, 1005.7806967311284 187, 1114 187" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<path d="M 1209 214 C 1209 248, 1209 266, 1209 300" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<rect x="1128.2" y="247" width="161.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="1209" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">the mind makes the meaning</text>
+<path d="M 960 354 C 960 448.7077103513753, 940 600, 1000 600 C 1060 600, 1209 474, 1209 354" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-4ade80)"/>
+<rect x="938.8" y="590" width="122.39999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="1000" y="603.5" font-size="10" fill="#cbd5e1" text-anchor="middle">predicted vs actual</text>
+<path d="M 1304 187 C 1326 187, 1326 467, 1304 467" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
+<rect x="1262.1" y="317" width="116.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="1320.5" y="330.5" font-size="10" fill="#cbd5e1" text-anchor="middle">facts arrive WHOLE</text>
+<path d="M 1209 354 C 1209 388, 1209 406, 1209 440" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<path d="M 960 494 C 960 614, 540 648, 480 648 C 420 648, 162 614, 162 494" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-4ade80)"/>
+<rect x="388" y="638" width="184" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="480" y="651.5" font-size="10" fill="#cbd5e1" text-anchor="middle">and the world may echo it back</text>
+<g>
+<rect x="62" y="160" width="200" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="62" y="160" width="200" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="63.2" y="169" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="162" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Inbound — a channel</text>
+<text x="162" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">someone spoke · exafferent</text>
+</g>
+<g>
+<rect x="62" y="300" width="200" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="62" y="300" width="200" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="63.2" y="309" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="162" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">A wake after absence</text>
+<text x="162" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">the mind’s own gap — it was away</text>
+</g>
+<g>
+<rect x="62" y="440" width="200" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="62" y="440" width="200" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="63.2" y="449" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="162" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">My own words, quoted</text>
+<text x="162" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">the world handing me back my act</text>
+</g>
+<g filter="url(#glow)" color="#94a3b8">
+<rect x="318" y="160" width="214" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="318" y="160" width="214" height="54" rx="12" fill="#94a3b812"/>
+<rect x="319.2" y="169" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="425" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">will.sense()</text>
+<text x="425" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">the ONE door · an assertion, not a guess</text>
+</g>
+<g>
+<rect x="318" y="300" width="214" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="318" y="300" width="214" height="54" rx="12" fill="#94a3b812"/>
+<rect x="319.2" y="309" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="425" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">SignalProvenance</text>
+<text x="425" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">exafferent | reafferent | unknown</text>
+</g>
+<g>
+<rect x="318" y="440" width="214" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="318" y="440" width="214" height="54" rx="12" fill="#94a3b812"/>
+<rect x="319.2" y="449" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="425" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">asProvenance()</text>
+<text x="425" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">the untyped edge — never guesses reafferent</text>
+</g>
+<g filter="url(#glow)" color="#f472b6">
+<rect x="588" y="160" width="214" height="54" rx="12" fill="#10141d" stroke="#f472b699" stroke-width="1.4"/>
+<rect x="588" y="160" width="214" height="54" rx="12" fill="#f472b612"/>
+<rect x="589.2" y="169" width="3.2" height="36" rx="1.6" fill="#f472b6"/>
+<text x="695" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">perceptEntity()</text>
+<text x="695" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">tick + provenance, by construction</text>
+</g>
+<g>
+<rect x="588" y="300" width="214" height="54" rx="12" fill="#10141d" stroke="#f472b699" stroke-width="1.4"/>
+<rect x="588" y="300" width="214" height="54" rx="12" fill="#f472b612"/>
+<rect x="589.2" y="309" width="3.2" height="36" rx="1.6" fill="#f472b6"/>
+<text x="695" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">swept at +2 ticks</text>
+<text x="695" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">a percept is not a memory</text>
+</g>
+<g filter="url(#glow)" color="#f472b6">
+<rect x="588" y="440" width="214" height="54" rx="12" fill="#10141d" stroke="#f472b699" stroke-width="1.4"/>
+<rect x="588" y="440" width="214" height="54" rx="12" fill="#f472b612"/>
+<rect x="589.2" y="449" width="3.2" height="36" rx="1.6" fill="#f472b6"/>
+<text x="695" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">the rupture gate</text>
+<text x="695" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">only EXAFFERENT can surprise me</text>
+</g>
+<g>
+<rect x="858" y="160" width="204" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="858" y="160" width="204" height="54" rx="12" fill="#4ade8012"/>
+<rect x="859.2" y="169" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="960" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">the efference crossing</text>
+<text x="960" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">one class — now three that each own a job</text>
+</g>
+<g>
+<rect x="858" y="300" width="204" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="858" y="300" width="204" height="54" rx="12" fill="#4ade8012"/>
+<rect x="859.2" y="309" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="960" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">efference copy</text>
+<text x="960" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">what I predicted I would feel</text>
+</g>
+<g>
+<rect x="858" y="440" width="204" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="858" y="440" width="204" height="54" rx="12" fill="#4ade8012"/>
+<rect x="859.2" y="449" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="960" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">the act leaves</text>
+<text x="960" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">effector · outbox · the wire</text>
+</g>
+<g filter="url(#glow)" color="#fbbf24">
+<rect x="1114" y="160" width="190" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="1114" y="160" width="190" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="1115.2" y="169" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="1209" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">the ack, split</text>
+<text x="1209" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">FACTS → observation · FATE → description</text>
+</g>
+<g>
+<rect x="1114" y="300" width="190" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="1114" y="300" width="190" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="1115.2" y="309" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="1209" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">ReafferenceEngine</text>
+<text x="1209" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">grades the act, whole — never truncated</text>
+</g>
+<g filter="url(#glow)" color="#fbbf24">
+<rect x="1114" y="440" width="190" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="1114" y="440" width="190" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="1115.2" y="449" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="1209" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">## Percepts</text>
+<text x="1209" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">my doing, told apart from the world’s</text>
+</g>
+<text x="40" y="678" font-size="10.5" fill="#5b6372">@mindot/will · signal-boundary-loop</text>
+<text x="1320" y="678" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

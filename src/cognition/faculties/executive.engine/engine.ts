@@ -18,6 +18,7 @@
  */
 
 import { logger } from '#core/logger'
+import { readAliases, canonicalOf } from '#cognition/social.identity'
 import type { SessionLogger } from '#stem/tracts/session.logger'
 import type {
   Tick,
@@ -478,7 +479,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // attachments. The supervisor owns the registry + attention budget and
     // performs the throw-checks on bus / director / state ref.
     return this._facetSupervisor.spawn( {
-      ...( key ? { key } : {} ),
+      ...( key ? { key: this._canonicalKey( key ) } : {} ),
       bus:         this._bus,
       llmDirector: this._llmDirector,
       stateRef:    this._lastStateRef,
@@ -501,7 +502,45 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
    * See FacetSupervisor.handleFor.
    */
   facetFor( key: string ): ExecutiveFacetHandle | undefined {
-    return this._facetSupervisor.handleFor( key )
+    // Tolerant of BOTH id spaces, canonical first.
+    //
+    // A facet registered before its anchor was visible is still that person's
+    // open thread, and answering "nobody home" would open a second one beside it
+    // — the exact failure this key exists to prevent. Two ways that happens: a
+    // first message racing the tracker's mint, and a later name-merge that
+    // re-points one anchor onto another (KNOWN_ENTITY Phase 5, which is
+    // deliberately revisable and never destructively re-keys).
+    return this._facetSupervisor.handleFor( this._canonicalKey( key ) )
+        ?? this._facetSupervisor.handleFor( key )
+  }
+
+  /**
+   * A facet key in the PERSON's id space, not the address's.
+   *
+   * `FacetSpawnDeps.key` is `<role>:<entityId>`, and the two sides of that
+   * contract disagreed about which space `entityId` lives in. Audition spawns a
+   * conversation facet keyed by `percept.speakerEntityId` — the transport address
+   * the message arrived on (`discord:1019…`) — while `authorOutreach` asks for
+   * `conversation:<anchor>` (`ke:1sqlkux`), because the executive resolves a
+   * person to their anchor before willing anything at them.
+   *
+   * So the dedup this key exists for never fired for a master-willed outreach.
+   * Every one spawned a transient rival facet on someone the mind was already
+   * talking to — which is what the key was added to prevent, and what its own
+   * comment claims it does. Observed live: a reply and an unprompted second
+   * answer to the same question 27 seconds apart, the second composed by a facet
+   * that could not see the first.
+   *
+   * Safe to resolve here because KnownEntityTracker mints the anchor on FIRST
+   * sight of an address, deterministically from it (R2), so a conversation is
+   * keyed the same way from its first message onward.
+   */
+  private _canonicalKey( key: string ): string {
+    const cut = key.indexOf(':')
+    if( cut < 0 || !this._lastStateRef ) return key
+    const id    = key.slice( cut + 1 )
+    const canon = canonicalOf( readAliases( this._lastStateRef.entities ), id )
+    return canon === id ? key : `${ key.slice( 0, cut ) }:${ canon }`
   }
 
   // ── CognitiveEngine interface ──────────────────────────────

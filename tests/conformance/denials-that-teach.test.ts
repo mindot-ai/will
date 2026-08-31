@@ -130,7 +130,7 @@ function stem( intentId: string ){
   const instance = {
     config: { id: WILL_ID }, tickCount: 10,
     pendingEffectorInvocations: [] as effectorInvocation[],
-    simulation: { stateManager: {
+    simulation: { clock: { currentTick: 9_000 }, stateManager: {
       snapshot:  () => ({ entities }),
       setEntity: ( e: { id: string } ) => entities.set( e.id, e as SimulationEntity ),
       setMetric: () => {},

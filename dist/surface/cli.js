@@ -28939,7 +28939,7 @@ var EscalationLifecycle = class {
     for (const esc of pending) {
       esc.expiresAt = tick + ESCALATION_TTL_TICKS;
       this._markEscalated(instance, esc.intentId, esc.expiresAt);
-      this._voiceEscalation(instance, esc, tick);
+      this._voiceEscalation(instance, esc);
       active.set(esc.intentId, esc);
     }
     this._activeEscalations.set(instance.config.id, active);
@@ -28973,7 +28973,8 @@ var EscalationLifecycle = class {
    * is a pure move — relocating it is a behaviour question about who authors
    * the words, not a question about where the file boundary goes.
    */
-  _voiceEscalation(instance, esc, tick) {
+  _voiceEscalation(instance, esc) {
+    const tick = instance.simulation.clock.currentTick;
     const content = escalationAsk(esc.schema, esc.reasonCode);
     try {
       instance.cognition.outboxWriter.enqueue({

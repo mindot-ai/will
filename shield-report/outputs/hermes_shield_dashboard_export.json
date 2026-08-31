@@ -1,0 +1,21 @@
+{
+  "action_surfaces": 0,
+  "baseline_status": "absent",
+  "block_live_promotion": 0,
+  "drift_detected": 0,
+  "needs_certification": 0,
+  "needs_retest": 0,
+  "overall_verdict": "PASS_WITH_RESIDUAL_RISK",
+  "patch_plan_summary": {
+    "blocking": 0,
+    "items": 0
+  },
+  "protected_full_path": 0,
+  "provider_scope": 0,
+  "residual": 0,
+  "scan_time": "2026-08-25T16:51:23Z",
+  "scanner_version": "0.8.2",
+  "text_path_only": 0,
+  "top_risks": [],
+  "untrusted_ingresses": 0
+}

@@ -16536,7 +16536,7 @@ var ExecutiveEngine = class extends AsyncEngine {
    */
   spawnFacet(role, key) {
     return this._facetSupervisor.spawn({
-      ...key ? { key } : {},
+      ...key ? { key: this._canonicalKey(key) } : {},
       bus: this._bus,
       llmDirector: this._llmDirector,
       stateRef: this._lastStateRef,
@@ -16558,7 +16558,35 @@ var ExecutiveEngine = class extends AsyncEngine {
    * See FacetSupervisor.handleFor.
    */
   facetFor(key) {
-    return this._facetSupervisor.handleFor(key);
+    return this._facetSupervisor.handleFor(this._canonicalKey(key)) ?? this._facetSupervisor.handleFor(key);
+  }
+  /**
+   * A facet key in the PERSON's id space, not the address's.
+   *
+   * `FacetSpawnDeps.key` is `<role>:<entityId>`, and the two sides of that
+   * contract disagreed about which space `entityId` lives in. Audition spawns a
+   * conversation facet keyed by `percept.speakerEntityId` — the transport address
+   * the message arrived on (`discord:1019…`) — while `authorOutreach` asks for
+   * `conversation:<anchor>` (`ke:1sqlkux`), because the executive resolves a
+   * person to their anchor before willing anything at them.
+   *
+   * So the dedup this key exists for never fired for a master-willed outreach.
+   * Every one spawned a transient rival facet on someone the mind was already
+   * talking to — which is what the key was added to prevent, and what its own
+   * comment claims it does. Observed live: a reply and an unprompted second
+   * answer to the same question 27 seconds apart, the second composed by a facet
+   * that could not see the first.
+   *
+   * Safe to resolve here because KnownEntityTracker mints the anchor on FIRST
+   * sight of an address, deterministically from it (R2), so a conversation is
+   * keyed the same way from its first message onward.
+   */
+  _canonicalKey(key) {
+    const cut = key.indexOf(":");
+    if (cut < 0 || !this._lastStateRef) return key;
+    const id = key.slice(cut + 1);
+    const canon = canonicalOf(readAliases(this._lastStateRef.entities), id);
+    return canon === id ? key : `${key.slice(0, cut)}:${canon}`;
   }
   // ── CognitiveEngine interface ──────────────────────────────
   subscribes() {

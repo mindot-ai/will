@@ -35,19 +35,19 @@
 <rect x="826" y="118" width="494" height="470" rx="16" fill="#a78bfa07" stroke="#a78bfa2e" stroke-width="1" stroke-dasharray="5 4"/>
 <text x="842" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#a78bfabb">WHAT TRAVELS — THE SELF</text>
 <path d="M 252 177 C 328.9253255501981 177, 425 133.07467444980188, 425 210" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
-<rect x="336.9469970813243" y="154.6530029186757" width="60.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<rect x="336.4469970813243" y="154.6530029186757" width="61.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
 <text x="367.3469970813243" y="168.1530029186757" font-size="10" fill="#cbd5e1" text-anchor="middle">shutdown</text>
 <path d="M 157 204 C 157 251.88, 157 282.12, 157 330" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
-<rect x="137.8" y="257" width="38.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<rect x="139.1" y="257" width="35.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
 <text x="157" y="270.5" font-size="10" fill="#cbd5e1" text-anchor="middle">boot</text>
 <path d="M 157 330 C 157 239.36312439551077, 239.36312439551077 237, 330 237" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <path d="M 520 237 C 607.9736451765506 237, 685 242.02635482344942, 685 330" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 685 384 C 685 473.9136631482976, 609.9136631482976 487, 520 487" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
 <path d="M 330 487 C 237.49060711259042 487, 157 476.5093928874096, 157 384" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="164.40897766722142" y="460.19102233277863" width="88.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<rect x="167.60897766722144" y="460.19102233277863" width="82.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
 <text x="208.80897766722143" y="473.69102233277863" font-size="10" fill="#cbd5e1" text-anchor="middle">the SAME self</text>
 <path d="M 685 384 C 685 424.48, 685 439.52, 685 480" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
-<rect x="649" y="422" width="72" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<rect x="647" y="422" width="76" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
 <text x="685" y="435.5" font-size="10" fill="#cbd5e1" text-anchor="middle">runPMAEval</text>
 <path d="M 780 357 C 862.2469824302644 357, 773.7530175697356 177, 856 177" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
 <path d="M 780 357 C 819.263397713392 357, 816.736602286608 287, 856 287" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
@@ -74,7 +74,7 @@
 <rect x="330" y="210" width="190" height="54" rx="12" fill="#94a3b812"/>
 <rect x="331.2" y="219" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
 <text x="425" y="234" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Distill</text>
-<text x="425" y="250.5" font-size="10" fill="#8b93a7" text-anchor="middle">save() — non-destructive · hibernate()</text>
+<text x="425" y="250.5" font-size="9" fill="#8b93a7" text-anchor="middle">save() — non-destructive · hibernate()</text>
 </g>
 <g filter="url(#glow)" color="#a78bfa">
 <rect x="590" y="330" width="190" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>

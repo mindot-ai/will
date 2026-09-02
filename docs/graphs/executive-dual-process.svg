@@ -33,40 +33,40 @@
 <path d="M 232 289 C 281.79015163664394 289, 250.20984836335603 177, 300 177" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <path d="M 404 204 C 404 238, 404 228, 404 262" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <path d="M 508 289 C 554.9234610829167 289, 513.0765389170833 177, 560 177" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
-<rect x="495.0567121928949" y="254.80799999999994" width="72" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<rect x="498.9567121928949" y="254.80799999999994" width="64.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
 <text x="531.0567121928949" y="268.30799999999994" font-size="10" fill="#cbd5e1" text-anchor="middle">deliberate</text>
 <path d="M 508 289 C 542 289, 526 327, 560 327" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
-<rect x="514.8" y="298" width="38.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<rect x="517.4" y="298" width="33.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
 <text x="534" y="311.5" font-size="10" fill="#cbd5e1" text-anchor="middle">fast</text>
 <path d="M 660 204 C 660 240.48000000000002, 660 263.52, 660 300" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
-<rect x="624" y="242" width="72" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<rect x="626.6" y="242" width="66.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
 <text x="660" y="255.5" font-size="10" fill="#cbd5e1" text-anchor="middle">candidates</text>
 <path d="M 660 354 C 660 398.12092927398515, 665 425.87907072601485, 665 470" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
 <path d="M 665 524 C 665 560.48, 665 583.52, 665 620" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <path d="M 560 327 C 440 327, 404 500, 404 620" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f97316)"/>
-<rect x="412.2" y="418.5" width="49.599999999999994" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<rect x="412.2" y="418.5" width="49.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
 <text x="437" y="432" font-size="10" fill="#cbd5e1" text-anchor="middle">record</text>
 <path d="M 164 524 C 164 734, 950 414, 950 204" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="292.17599999999993" y="577.1799999999998" width="83.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<rect x="291.17599999999993" y="577.1799999999998" width="85.20000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
 <text x="333.77599999999995" y="590.6799999999998" font-size="10" fill="#cbd5e1" text-anchor="middle">spawnFacet()</text>
 <path d="M 164 470 C 164 304, 1205 -16, 1205 150" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="237.38406400000005" y="334.89392000000004" width="111.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<rect x="242.08406400000004" y="334.89392000000004" width="101.80000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
 <text x="292.98406400000005" y="348.39392000000004" font-size="10" fill="#cbd5e1" text-anchor="middle">setFocus · report</text>
 <path d="M 950 204 C 950 238, 950 228, 950 262" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <path d="M 1205 204 C 1205 238, 1205 228, 1205 262" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
-<rect x="1180.2" y="223" width="49.599999999999994" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<rect x="1180.2" y="223" width="49.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
 <text x="1205" y="236.5" font-size="10" fill="#cbd5e1" text-anchor="middle">queued</text>
 <path d="M 1050 289 C 1084 289, 1076 289, 1110 289" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
-<rect x="1055.2" y="279" width="49.599999999999994" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<rect x="1056.5" y="279" width="47" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
 <text x="1080" y="292.5" font-size="10" fill="#cbd5e1" text-anchor="middle">launch</text>
 <path d="M 1205 316 C 1205 462, 906 327, 760 327" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f97316)"/>
-<rect x="926.9120000000001" y="355.17600000000004" width="105.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<rect x="928.5120000000001" y="355.17600000000004" width="102.40000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
 <text x="979.7120000000001" y="368.67600000000004" font-size="10" fill="#cbd5e1" text-anchor="middle">same prompt path</text>
 <path d="M 660 354 C 660 514, 950 437, 1110 437" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f97316)"/>
-<rect x="736.7025000000001" y="444.6357500000001" width="122.39999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<rect x="741.9025000000001" y="444.6357500000001" width="112.00000000000003" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
 <text x="797.9025000000001" y="458.1357500000001" font-size="10" fill="#cbd5e1" text-anchor="middle">resolution enqueued</text>
 <path d="M 1205 464 C 1205 498, 1205 494, 1205 528" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
-<rect x="1160.6" y="486" width="88.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<rect x="1162.2" y="486" width="85.60000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
 <text x="1205" y="499.5" font-size="10" fill="#cbd5e1" text-anchor="middle">Phase-2 drain</text>
 <path d="M 770 497 C 808 497, 812 437, 850 437" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
 <path d="M 950 410 C 950 374.28, 950 351.72, 950 316" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>

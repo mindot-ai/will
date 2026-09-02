@@ -22,24 +22,24 @@
 <path d="M 162 204 C 162 238, 162 256, 162 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 262 177 C 296 177, 296 177, 330 177" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
 <path d="M 262 317 C 382 317, 474 317, 594 317" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="389.2" y="307" width="77.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<rect x="391.3" y="307" width="73.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
 <text x="428" y="320.5" font-size="10" fill="#cbd5e1" text-anchor="middle">hard wiring</text>
 <path d="M 262 457 C 296 457, 296 457, 330 457" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
 <path d="M 520 457 C 612.0527269504189 457, 704 436.0527269504189, 704 344" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="565.4788909933795" y="437.1513451502814" width="94.39999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="612.6788909933796" y="450.6513451502814" font-size="10" fill="#cbd5e1" text-anchor="middle">verified wired</text>
+<rect x="521.3010259853835" y="445.1858015210253" width="85" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="563.8010259853835" y="458.6858015210253" font-size="10" fill="#cbd5e1" text-anchor="middle">verified wired</text>
 <path d="M 704 290 C 704 256, 704 238, 704 204" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <path d="M 704 344 C 704 378, 704 396, 704 430" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <path d="M 814 177 C 898.3081253864882 177, 980 205.69187461351183, 980 290" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
-<rect x="859.4358832954412" y="175.4737643019537" width="55.199999999999996" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
-<text x="887.0358832954412" y="188.9737643019537" font-size="10" fill="#cbd5e1" text-anchor="middle">publish</text>
+<rect x="826.4951792662819" y="169.0275713059502" width="50" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="851.4951792662819" y="182.5275713059502" font-size="10" fill="#cbd5e1" text-anchor="middle">publish</text>
 <path d="M 814 457 C 898.3081253864882 457, 980 428.3081253864882, 980 344" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
-<rect x="887.015547019933" y="422.11554701993305" width="83.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<rect x="896.115547019933" y="422.11554701993305" width="65" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
 <text x="928.615547019933" y="435.61554701993305" font-size="10" fill="#cbd5e1" text-anchor="middle">topic filter</text>
 <path d="M 980 290 C 980 256, 980 238, 980 204" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 1080 177 C 1158.1560688750446 177, 1226 211.84393112495542, 1226 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="1128.2074860546918" y="180.16821904747374" width="55.199999999999996" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="1155.8074860546917" y="193.66821904747374" font-size="10" fill="#cbd5e1" text-anchor="middle">deliver</text>
+<rect x="1089.2799918929989" y="169.3805455482943" width="50" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="1114.2799918929989" y="182.8805455482943" font-size="10" fill="#cbd5e1" text-anchor="middle">deliver</text>
 <path d="M 1226 290 C 1226 256, 1226 238, 1226 204" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <g filter="url(#glow)" color="#94a3b8">
 <rect x="62" y="150" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>

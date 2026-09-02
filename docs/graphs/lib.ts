@@ -83,6 +83,37 @@ export interface Graph {
 const NODE_W = 172
 const NODE_H = 54
 
+/**
+ * Estimated rendered width of a string — the one place that assumption lives.
+ *
+ * The edge-label pill has always sized itself with `length * 5.6` (0.56em at
+ * 10px), which is a decent average and badly wrong for text that is mostly caps
+ * or mostly `i`/`l`. Node labels had no such estimate at all: a `<text>` with no
+ * wrapping and no truncation simply runs past the box it belongs to, and a reader
+ * sees a subtitle bleeding into the node beside it. Fifteen of twenty-eight
+ * graphs shipped with at least one.
+ */
+export function textW( s: string, size: number ): number {
+  let em = 0
+  for( const c of s )
+    em += 'iIl|.,\':;!ft '.includes( c ) ? 0.30
+        : 'mwMW—'.includes( c )          ? 0.92
+        : ( c >= 'A' && c <= 'Z' ) || ( c >= '0' && c <= '9' ) ? 0.66
+        : 0.56
+  return em * size
+}
+
+/**
+ * The largest size at or below `size` that fits `s` into `w`, floored so a very
+ * long line shrinks rather than disappearing. Shrinking beats truncating: the
+ * author's words are the content, and a clipped one reads as a typo.
+ */
+function fit( s: string, size: number, w: number, floor: number ): number {
+  const need = textW( s, size )
+  if( need <= w ) return size
+  return Math.max( floor, Math.floor( ( size * w / need ) * 10 ) / 10 )
+}
+
 const esc = ( s: string ): string =>
   s.replace( /&/g, '&amp;').replace( /</g, '&lt;').replace( />/g, '&gt;')
 
@@ -228,7 +259,7 @@ export function render( g: Graph ): string {
       `${ e.dash ? ' stroke-dasharray="5 4"' : '' } marker-end="url(#arr-${ color.slice( 1 ) })"/>`,
     )
     if( e.label ){
-      const w = e.label.length * 5.6 + 16
+      const w = textW( e.label, 10 ) + 16
       parts.push(
         `<rect x="${m.x - w/2}" y="${m.y - 10}" width="${w}" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="${color}44" stroke-width="0.8"/>`,
         `<text x="${m.x}" y="${m.y + 3.5}" font-size="10" fill="#cbd5e1" text-anchor="middle">${esc( e.label )}</text>`,
@@ -247,14 +278,17 @@ export function render( g: Graph ): string {
       `<rect x="${n.x + 1.2}" y="${n.y + 9}" width="3.2" height="${h - 18}" rx="1.6" fill="${color}"/>`,
     )
     const cx = n.x + w / 2
+    // Fit to the box. Nothing wraps or clips here, so a long line used to run
+    // straight out of its node and across whatever sat beside it.
+    const inner = w - 16
     if( n.sub ){
       parts.push(
-        `<text x="${cx}" y="${n.y + h/2 - 3}" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">${esc( n.label )}</text>`,
-        `<text x="${cx}" y="${n.y + h/2 + 13.5}" font-size="10" fill="#8b93a7" text-anchor="middle">${esc( n.sub )}</text>`,
+        `<text x="${cx}" y="${n.y + h/2 - 3}" font-size="${ fit( n.label, 13, inner, 10 ) }" font-weight="600" fill="#f1f5f9" text-anchor="middle">${esc( n.label )}</text>`,
+        `<text x="${cx}" y="${n.y + h/2 + 13.5}" font-size="${ fit( n.sub, 10, inner, 8 ) }" fill="#8b93a7" text-anchor="middle">${esc( n.sub )}</text>`,
       )
     }
     else
-      parts.push(`<text x="${cx}" y="${n.y + h/2 + 4.5}" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">${esc( n.label )}</text>`)
+      parts.push(`<text x="${cx}" y="${n.y + h/2 + 4.5}" font-size="${ fit( n.label, 13, inner, 10 ) }" font-weight="600" fill="#f1f5f9" text-anchor="middle">${esc( n.label )}</text>`)
     parts.push(`</g>`)
   }
 

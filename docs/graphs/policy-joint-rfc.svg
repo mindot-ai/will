@@ -32,21 +32,13 @@
 <text x="60" y="722" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#4ade80bb">THE INVARIANTS — WHAT A REFUSAL CAN NEVER DO</text>
 <path d="M 162 244 C 162 280.48, 162 303.52, 162 340" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
 <path d="M 162 490 C 162 453.52, 162 430.48, 162 394" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
-<rect x="131.4" y="432" width="61.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
-<text x="162" y="445.5" font-size="10" fill="#cbd5e1" text-anchor="middle">discloses</text>
 <path d="M 262 367 C 322.84273498126134 367, 257.15726501873866 217, 318 217" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
 <path d="M 262 367 C 296 367, 284 367, 318 367" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
 <path d="M 418 490 C 418 453.52, 418 430.48, 418 394" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="384.6" y="432" width="66.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="418" y="445.5" font-size="10" fill="#cbd5e1" text-anchor="middle">constrains</text>
 <path d="M 518 217 C 552 217, 542 217, 576 217" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 518 367 C 579.1126958986429 367, 514.8873041013571 217, 576 217" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
 <path d="M 681 244 C 681 280.48, 681 303.52, 681 340" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="655.5" y="282" width="51" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="681" y="295.5" font-size="10" fill="#cbd5e1" text-anchor="middle">Verdict</text>
 <path d="M 681 394 C 681 430.48, 681 453.52, 681 490" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="640.5" y="432" width="81.00000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="681" y="445.5" font-size="10" fill="#cbd5e1" text-anchor="middle">every verdict</text>
 <path d="M 786 367 C 858.099930651839 367, 773.900069348161 187, 846 187" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 786 367 C 820 367, 812 327, 846 327" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 786 367 C 830.3152344008242 367, 801.6847655991758 467, 846 467" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
@@ -57,8 +49,6 @@
 <path d="M 1056 607 C 1090 607, 1078 607, 1112 607" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 262 757 C 296 757, 296 757, 330 757" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
 <path d="M 681 544 C 681 615.0874278617534, 701 658.9125721382466, 701 730" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="660.6" y="627" width="60.800000000000004" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="691" y="640.5" font-size="10" fill="#cbd5e1" text-anchor="middle">recorded</text>
 <g>
 <rect x="62" y="190" width="200" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
 <rect x="62" y="190" width="200" height="54" rx="12" fill="#e2e8f012"/>
@@ -213,6 +203,16 @@
 <text x="1208" y="754" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">No policy ⇒ no trace</text>
 <text x="1208" y="770.5" font-size="10" fill="#8b93a7" text-anchor="middle">identical to a pre-policy mind</text>
 </g>
+<rect x="131.4" y="432" width="61.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="162" y="445.5" font-size="10" fill="#cbd5e1" text-anchor="middle">discloses</text>
+<rect x="384.6" y="432" width="66.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="418" y="445.5" font-size="10" fill="#cbd5e1" text-anchor="middle">constrains</text>
+<rect x="655.5" y="282" width="51" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="681" y="295.5" font-size="10" fill="#cbd5e1" text-anchor="middle">Verdict</text>
+<rect x="640.5" y="432" width="81.00000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="681" y="445.5" font-size="10" fill="#cbd5e1" text-anchor="middle">every verdict</text>
+<rect x="660.6" y="627" width="60.800000000000004" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="691" y="640.5" font-size="10" fill="#cbd5e1" text-anchor="middle">recorded</text>
 <text x="40" y="858" font-size="10.5" fill="#5b6372">@mindot/will · policy-joint-rfc</text>
 <text x="1320" y="858" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
 </svg>

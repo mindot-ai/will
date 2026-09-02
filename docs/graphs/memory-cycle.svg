@@ -10,7 +10,7 @@
 </defs>
 <rect width="1360" height="780" fill="url(#sky)"/>
 <rect x="1" y="1" width="1358" height="778" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
-<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">Memory — how experience becomes a self</text>
+<text x="40" y="56" font-size="23.3" font-weight="700" fill="#f8fafc" letter-spacing="0.2">Memory — how experience becomes a self</text>
 <text x="40" y="80" font-size="13" fill="#8b93a7">Working memory → episodic consolidation → beliefs; maintenance loops below, recall back into thought on the right</text>
 <rect x="1159.9" y="42" width="160.1" height="22" rx="11" fill="#94a3b814" stroke="#94a3b855" stroke-width="1"/>
 <circle cx="1171.9" cy="53" r="3.4" fill="#94a3b8"/>
@@ -42,28 +42,14 @@
 <text x="1092" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#fbbf24bb">RECALL INTO THOUGHT</text>
 <path d="M 234 177 C 272.1535896083186 177, 279.8464103916814 232, 318 232" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
 <path d="M 234 289 C 272.5751474397701 289, 279.4248525602299 232, 318 232" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
-<rect x="244.1" y="250.5" width="63.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#38bdf844" stroke-width="0.8"/>
-<text x="276" y="264" font-size="10" fill="#cbd5e1" text-anchor="middle">WM items</text>
 <path d="M 498 232 C 534.2676108945709 232, 539.7323891054291 177, 576 177" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
-<rect x="498.6" y="194.5" width="76.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
-<text x="537" y="208" font-size="10" fill="#cbd5e1" text-anchor="middle">salient items</text>
 <path d="M 674 204 C 674 238, 674 246, 674 280" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f97316)"/>
-<rect x="650.2" y="232" width="47.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
-<text x="674" y="245.5" font-size="10" fill="#cbd5e1" text-anchor="middle">embed</text>
 <path d="M 772 307 C 806 307, 804 307, 838 307" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
 <path d="M 772 177 C 806 177, 804 177, 838 177" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
 <path d="M 576 497 C 546 497, 546 177, 576 177" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
-<rect x="531.5" y="327" width="44" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
-<text x="553.5" y="340.5" font-size="10" fill="#cbd5e1" text-anchor="middle">prune</text>
 <path d="M 576 607 C 520 607, 520 177, 576 177" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
-<rect x="510.91999999999996" y="349.85749999999996" width="47" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
-<text x="534.42" y="363.35749999999996" font-size="10" fill="#cbd5e1" text-anchor="middle">replay</text>
 <path d="M 838 497 C 812 497, 812 177, 838 177" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
-<rect x="787.9" y="327" width="61.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
-<text x="818.5" y="340.5" font-size="10" fill="#cbd5e1" text-anchor="middle">reinforce</text>
 <path d="M 1028 307 C 1083.4018627845671 307, 1038.5981372154329 177, 1094 177" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
-<rect x="1016.9" y="232" width="88.20000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
-<text x="1061" y="245.5" font-size="10" fill="#cbd5e1" text-anchor="middle">semanticQuery</text>
 <path d="M 1028 177 C 1062 177, 1060 177, 1094 177" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
 <path d="M 1196 204 C 1196 238, 1196 246, 1196 280" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <path d="M 1028 177 C 1178 177, 1196 410, 1196 560" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
@@ -166,6 +152,20 @@
 <text x="1196" y="584" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">PMA distill</text>
 <text x="1196" y="600.5" font-size="10" fill="#8b93a7" text-anchor="middle">beliefs · digests · narrative</text>
 </g>
+<rect x="244.1" y="250.5" width="63.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#38bdf844" stroke-width="0.8"/>
+<text x="276" y="264" font-size="10" fill="#cbd5e1" text-anchor="middle">WM items</text>
+<rect x="498.6" y="194.5" width="76.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="537" y="208" font-size="10" fill="#cbd5e1" text-anchor="middle">salient items</text>
+<rect x="650.2" y="232" width="47.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="674" y="245.5" font-size="10" fill="#cbd5e1" text-anchor="middle">embed</text>
+<rect x="531.5" y="327" width="44" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="553.5" y="340.5" font-size="10" fill="#cbd5e1" text-anchor="middle">prune</text>
+<rect x="510.91999999999996" y="349.85749999999996" width="47" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="534.42" y="363.35749999999996" font-size="10" fill="#cbd5e1" text-anchor="middle">replay</text>
+<rect x="787.9" y="327" width="61.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="818.5" y="340.5" font-size="10" fill="#cbd5e1" text-anchor="middle">reinforce</text>
+<rect x="1016.9" y="232" width="88.20000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="1061" y="245.5" font-size="10" fill="#cbd5e1" text-anchor="middle">semanticQuery</text>
 <text x="40" y="758" font-size="10.5" fill="#5b6372">@mindot/will · memory-cycle</text>
 <text x="1320" y="758" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
 </svg>

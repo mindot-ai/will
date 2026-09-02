@@ -9,7 +9,7 @@
 </defs>
 <rect width="1360" height="760" fill="url(#sky)"/>
 <rect x="1" y="1" width="1358" height="758" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
-<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">WillStem — the body’s organs (tracts)</text>
+<text x="40" y="56" font-size="24.5" font-weight="700" fill="#f8fafc" letter-spacing="0.2">WillStem — the body’s organs (tracts)</text>
 <text x="40" y="80" font-size="13" fill="#8b93a7">The stem stays thin; each tract owns one boundary of the body — intake, outflow, lifecycle, observability — around the same tick loop</text>
 <rect x="1202.6" y="42" width="117.39999999999999" height="22" rx="11" fill="#818cf814" stroke="#818cf855" stroke-width="1"/>
 <circle cx="1214.6" cy="53" r="3.4" fill="#818cf8"/>
@@ -38,31 +38,15 @@
 <rect x="334" y="560" width="682" height="148" rx="16" fill="#818cf807" stroke="#818cf82e" stroke-width="1" stroke-dasharray="5 4"/>
 <text x="350" y="582" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#818cf8bb">OBSERVABILITY</text>
 <path d="M 282 177 C 410 177, 432 327, 560 327" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
-<rect x="391.9" y="242" width="58.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#38bdf844" stroke-width="0.8"/>
-<text x="421" y="255.5" font-size="10" fill="#cbd5e1" text-anchor="middle">percepts</text>
 <path d="M 282 317 C 387.7083232295357 317, 454.2916767704643 327, 560 327" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="396" y="312" width="50" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="421" y="325.5" font-size="10" fill="#cbd5e1" text-anchor="middle">on-tick</text>
 <path d="M 560 177 C 420 177, 172 150, 172 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="388.6125" y="164.96875" width="103.40000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="440.3125" y="178.46875" font-size="10" fill="#cbd5e1" text-anchor="middle">inbound envelopes</text>
 <path d="M 680 300 C 680 263.52, 680 240.48000000000002, 680 204" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="650.9" y="242" width="58.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="680" y="255.5" font-size="10" fill="#cbd5e1" text-anchor="middle">outbound</text>
 <path d="M 680 300 C 680 168, 934 177, 1066 177" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="798.5" y="179" width="50" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="823.5" y="192.5" font-size="10" fill="#cbd5e1" text-anchor="middle">replies</text>
 <path d="M 1181 204 C 1181 238, 1181 236, 1181 270" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 1181 324 C 1181 358, 1181 356, 1181 390" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
 <path d="M 800 327 C 930 327, 936 537, 1066 537" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="898.1" y="422" width="69.80000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="933" y="435.5" font-size="10" fill="#cbd5e1" text-anchor="middle">invocations</text>
 <path d="M 1181 510 C 1181 476, 1181 478, 1181 444" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-4ade80)"/>
-<rect x="1161.8" y="467" width="38.400000000000006" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="1181" y="480.5" font-size="10" fill="#cbd5e1" text-anchor="middle">acks</text>
 <path d="M 282 507 C 418 507, 680 490, 680 354" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
-<rect x="495.2" y="471.5" width="73.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
-<text x="532" y="485" font-size="10" fill="#cbd5e1" text-anchor="middle">distill ⇄ load</text>
 <path d="M 282 647 C 371.3872764995108 647, 431.6813970213451 555.5712328460952, 480 520 C 528.3186029786549 484.4287671539048, 680 452.767840920008, 680 354" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
 <path d="M 680 354 C 680 482, 454 492, 454 620" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
 <path d="M 680 354 C 680 455.0914279254181, 684 518.9085720745819, 684 620" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
@@ -158,6 +142,22 @@
 <text x="914" y="644" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">BiographyWriter</text>
 <text x="914" y="660.5" font-size="10" fill="#8b93a7" text-anchor="middle">the life, written to disk</text>
 </g>
+<rect x="391.9" y="242" width="58.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#38bdf844" stroke-width="0.8"/>
+<text x="421" y="255.5" font-size="10" fill="#cbd5e1" text-anchor="middle">percepts</text>
+<rect x="396" y="312" width="50" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="421" y="325.5" font-size="10" fill="#cbd5e1" text-anchor="middle">on-tick</text>
+<rect x="388.6125" y="164.96875" width="103.40000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="440.3125" y="178.46875" font-size="10" fill="#cbd5e1" text-anchor="middle">inbound envelopes</text>
+<rect x="650.9" y="242" width="58.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="680" y="255.5" font-size="10" fill="#cbd5e1" text-anchor="middle">outbound</text>
+<rect x="798.5" y="179" width="50" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="823.5" y="192.5" font-size="10" fill="#cbd5e1" text-anchor="middle">replies</text>
+<rect x="898.1" y="422" width="69.80000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="933" y="435.5" font-size="10" fill="#cbd5e1" text-anchor="middle">invocations</text>
+<rect x="1161.8" y="467" width="38.400000000000006" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="1181" y="480.5" font-size="10" fill="#cbd5e1" text-anchor="middle">acks</text>
+<rect x="495.2" y="471.5" width="73.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="532" y="485" font-size="10" fill="#cbd5e1" text-anchor="middle">distill ⇄ load</text>
 <text x="40" y="738" font-size="10.5" fill="#5b6372">@mindot/will · stem-tracts</text>
 <text x="1320" y="738" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
 </svg>

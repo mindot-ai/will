@@ -34,12 +34,8 @@
 <rect x="1096" y="108" width="226" height="560" rx="16" fill="#fbbf2407" stroke="#fbbf242e" stroke-width="1" stroke-dasharray="5 4"/>
 <text x="1112" y="130" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#fbbf24bb">WHAT FEELING TOUCHES</text>
 <path d="M 232 227 C 352 227, 450 167, 570 167" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
-<rect x="341.14450000000005" y="191.48500000000004" width="87.00000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#38bdf844" stroke-width="0.8"/>
-<text x="384.64450000000005" y="204.98500000000004" font-size="10" fill="#cbd5e1" text-anchor="middle">feeds all seven</text>
 <path d="M 146 360 C 146 251.75791980635498, 201.75791980635498 167, 310 167" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 232 387 C 268.4879158078397 387, 273.5120841921603 443, 310 443" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="253.1" y="405" width="35.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="271" y="418.5" font-size="10" fill="#cbd5e1" text-anchor="middle">load</text>
 <path d="M 408 324 C 408 290, 408 320, 408 286" fill="none" stroke="#2dd4bf" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-2dd4bf)"/>
 <path d="M 766 167 C 868.3181313355556 167, 733.6818686644444 427, 836 427" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
 <path d="M 766 257 C 835.8621499812309 257, 766.1378500187691 427, 836 427" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
@@ -49,14 +45,8 @@
 <path d="M 766 617 C 842.944135579003 617, 759.055864420997 427, 836 427" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
 <path d="M 668 680 C 668 560, 941 574, 941 454" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
 <path d="M 408 140 C 408 104, 941 114, 941 150" fill="none" stroke="#2dd4bf" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-2dd4bf)"/>
-<rect x="812.739232" y="116.31424000000001" width="52.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#2dd4bf44" stroke-width="0.8"/>
-<text x="839.039232" y="129.81424" font-size="10" fill="#cbd5e1" text-anchor="middle">budgets</text>
 <path d="M 408 562 C 408 762, 1208 544, 1208 344" fill="none" stroke="#2dd4bf" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-2dd4bf)"/>
-<rect x="829.9" y="575.2045" width="75.80000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#2dd4bf44" stroke-width="0.8"/>
-<text x="867.8" y="588.7045" font-size="10" fill="#cbd5e1" text-anchor="middle">attention cap</text>
 <path d="M 506 443 C 626 443, 716 427, 836 427" fill="none" stroke="#2dd4bf" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-2dd4bf)"/>
-<rect x="747.4660799999999" y="418.36857599999996" width="52.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#2dd4bf44" stroke-width="0.8"/>
-<text x="773.7660799999999" y="431.86857599999996" font-size="10" fill="#cbd5e1" text-anchor="middle">arousal</text>
 <path d="M 1046 177 C 1080 177, 1076 177, 1110 177" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <path d="M 1046 427 C 1158.740160397051 427, 1208 316.7401603970511, 1208 204" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
 <path d="M 1046 427 C 1094.3601323405965 427, 1061.6398676594035 317, 1110 317" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
@@ -202,6 +192,16 @@
 <text x="1208" y="594" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">on('emotion')</text>
 <text x="1208" y="610.5" font-size="10" fill="#8b93a7" text-anchor="middle">hosts observe affect</text>
 </g>
+<rect x="341.14450000000005" y="191.48500000000004" width="87.00000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#38bdf844" stroke-width="0.8"/>
+<text x="384.64450000000005" y="204.98500000000004" font-size="10" fill="#cbd5e1" text-anchor="middle">feeds all seven</text>
+<rect x="253.1" y="405" width="35.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="271" y="418.5" font-size="10" fill="#cbd5e1" text-anchor="middle">load</text>
+<rect x="812.739232" y="116.31424000000001" width="52.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#2dd4bf44" stroke-width="0.8"/>
+<text x="839.039232" y="129.81424" font-size="10" fill="#cbd5e1" text-anchor="middle">budgets</text>
+<rect x="829.9" y="575.2045" width="75.80000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#2dd4bf44" stroke-width="0.8"/>
+<text x="867.8" y="588.7045" font-size="10" fill="#cbd5e1" text-anchor="middle">attention cap</text>
+<rect x="747.4660799999999" y="418.36857599999996" width="52.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#2dd4bf44" stroke-width="0.8"/>
+<text x="773.7660799999999" y="431.86857599999996" font-size="10" fill="#cbd5e1" text-anchor="middle">arousal</text>
 <text x="40" y="808" font-size="10.5" fill="#5b6372">@mindot/will · affect-body</text>
 <text x="1320" y="808" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
 </svg>

@@ -156,16 +156,16 @@
 <text x="301.26763178885284" y="234.25" font-size="10" fill="#cbd5e1" text-anchor="middle">a shared room</text>
 <rect x="251.9" y="247" width="76.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
 <text x="290" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">first sighting</text>
-<rect x="354.49999999999994" y="247" width="141.00000000000009" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
-<text x="425" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">address becomes an alias</text>
+<rect x="375.6" y="247" width="98.80000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<text x="425" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">becomes an alias</text>
 <rect x="347.1" y="610" width="105.80000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
 <text x="400" y="623.5" font-size="10" fill="#cbd5e1" text-anchor="middle">direct ⇒ dm | room</text>
 <rect x="520.6" y="317" width="95.80000000000003" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
 <text x="568.5" y="330.5" font-size="10" fill="#cbd5e1" text-anchor="middle">a blocked merge</text>
 <rect x="584.3559999999999" y="286.75999999999993" width="96.60000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
 <text x="632.6559999999998" y="300.25999999999993" font-size="10" fill="#cbd5e1" text-anchor="middle">follows the chain</text>
-<rect x="760.5999999999999" y="457" width="138.80000000000007" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
-<text x="830" y="470.5" font-size="10" fill="#cbd5e1" text-anchor="middle">shown, so it can be asked</text>
+<rect x="779.4" y="457" width="101.20000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<text x="830" y="470.5" font-size="10" fill="#cbd5e1" text-anchor="middle">so it can be asked</text>
 <rect x="667.2" y="580" width="125.60000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
 <text x="730" y="593.5" font-size="10" fill="#cbd5e1" text-anchor="middle">fuse MOVES the routes</text>
 <rect x="1017.5" y="387" width="119.00000000000003" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>

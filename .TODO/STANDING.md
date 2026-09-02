@@ -45,6 +45,11 @@ engine has fixed were found this way and could not have been found any other way
 — no test knew to ask. But an observation of one mind on one afternoon is n=1,
 and the line must say so.
 
+Sightings from a live Will go in **[FIELD_NOTES.md](FIELD_NOTES.md)**, one
+section per run, rather than inside the epoch document they happened to inform —
+an epoch document is SHIPPED, and a sighting filed there is read in the voice of
+a gated mechanism.
+
 ### DESIGNED
 
 The reasoning is complete and the plan is of record. No code, or not enough code

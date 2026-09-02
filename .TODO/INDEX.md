@@ -4,11 +4,11 @@
 > document in this folder and the release headers in `CHANGELOG.md`.
 > Do not edit by hand — edit the document, then re-emit.
 
-Day zero is **2026-05-28**. 44 documents, 8 releases.
+Day zero is **2026-05-28**. 45 documents, 8 releases.
 What each level means, and what it may be cited for, is [STANDING.md](STANDING.md).
 
 - **SHIPPED** · 30 — in the engine, gated by CI, carried by a release
-- **OBSERVED** · 7 — true of the real system at a moment, established by looking
+- **OBSERVED** · 8 — true of the real system at a moment, established by looking
 - **DESIGNED** · 6 — reasoned to a plan of record — intent, not capability
 - **SPECULATIVE** · 1 — a hypothesis the project is holding
 
@@ -218,7 +218,11 @@ sketch, deliberately short — its design depends on decisions made in [[SIGNAL_
 
 **2026-08-31 · SHIPPED** · [SIGNAL_BOUNDARY — where the mind meets the world, in both directions](SIGNAL_BOUNDARY.md)
 
-52 of 57, opened 2026-08-21 as AFFERENCE_UNIFICATION and widened to cover efference; released in v0.10.0. Its live-run section is a different claim — six faults seen in one COO on one afternoon, OBSERVED and n=1, not gated by anything
+52 of 57, opened 2026-08-21 as AFFERENCE_UNIFICATION and widened to cover efference; released in v0.10.0. The live-run sightings that shaped it are a different claim and live in [[FIELD_NOTES]] — OBSERVED, n=1, gated by nothing
+
+**2026-08-31 · OBSERVED** · [FIELD_NOTES — what was seen in a mind that was actually running](FIELD_NOTES.md)
+
+four runs of one COO Will on Discord, the earliest recorded on or before 2026-08-21; each sighting is n=1 unless it says otherwise
 
 **2026-08-31 · RELEASE v0.10.0** — *the mind knows its own doing from the world's*
 

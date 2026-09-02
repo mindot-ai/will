@@ -38,22 +38,22 @@
 <path d="M 234 177 C 268 177, 284 177, 318 177" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <path d="M 148 204 C 148 317.5588895266843, 204.44111047331572 417, 318 417" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
 <path d="M 234 317 C 268 317, 284 297, 318 297" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
-<rect x="242.8" y="297" width="66.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<rect x="246.7" y="297" width="58.599999999999994" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
 <text x="276" y="310.5" font-size="10" fill="#cbd5e1" text-anchor="middle">calibrate</text>
 <path d="M 148 430 C 148 364.622327970476, 241.99063869168614 368.51153946547754, 288 330 C 334.0093613083138 291.48846053452246, 418 272.7957440544108, 418 204" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
 <path d="M 518 177 C 552 177, 544 177, 578 177" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-818cf8)"/>
 <path d="M 518 297 C 568.9823498869952 297, 527.0176501130048 177, 578 177" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-818cf8)"/>
 <path d="M 683 204 C 683 240.48000000000002, 683 263.52, 683 300" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
-<rect x="619" y="242" width="128" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<rect x="622.4" y="242" width="121.20000000000003" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
 <text x="683" y="255.5" font-size="10" fill="#cbd5e1" text-anchor="middle">harvested when fresh</text>
 <path d="M 518 417 C 559.1032845402895 417, 536.8967154597105 327, 578 327" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-818cf8)"/>
-<rect x="498" y="362" width="100" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
+<rect x="503.2" y="362" width="89.60000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
 <text x="548" y="375.5" font-size="10" fill="#cbd5e1" text-anchor="middle">detected biases</text>
 <path d="M 518 567 C 556 567, 540 487, 578 487" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-818cf8)"/>
-<rect x="523.2" y="517" width="49.599999999999994" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
+<rect x="522.7" y="517" width="50.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
 <text x="548" y="530.5" font-size="10" fill="#cbd5e1" text-anchor="middle">themes</text>
 <path d="M 683 354 C 683 394.28, 683 419.72, 683 460" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-818cf8)"/>
-<rect x="630.2" y="397" width="105.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
+<rect x="635.4" y="397" width="95.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
 <text x="683" y="410.5" font-size="10" fill="#cbd5e1" text-anchor="middle">lessons · biases</text>
 <path d="M 788 487 C 849.3908788013333 487, 786.6091211986667 337, 848 337" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-818cf8)"/>
 <path d="M 1048 337 C 1112.416445105268 337, 1039.583554894732 177, 1104 177" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-818cf8)"/>
@@ -62,10 +62,10 @@
 <path d="M 1201 204 C 1201 238, 1201 256, 1201 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 1298 177 C 1328 177, 1328 583, 1298 583" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
 <path d="M 418 150 C 418 114, 1201 394, 1201 430" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-818cf8)"/>
-<rect x="1117.43275" y="389.21999999999997" width="72" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
+<rect x="1123.43275" y="389.21999999999997" width="60" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
 <text x="1153.43275" y="402.71999999999997" font-size="10" fill="#cbd5e1" text-anchor="middle">traitStats</text>
 <path d="M 1201 344 C 1201 464, 719.4766297075341 657.9076240826731, 660 650 C 600.5233702924659 642.0923759173269, 148 324, 148 204" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
-<rect x="503.6" y="640" width="312.79999999999995" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<rect x="525.2" y="640" width="269.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
 <text x="660" y="653.5" font-size="10" fill="#cbd5e1" text-anchor="middle">the apparatus changes — next cycle thinks differently</text>
 <g>
 <rect x="62" y="150" width="172" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
@@ -163,7 +163,7 @@
 <rect x="1104" y="430" width="194" height="54" rx="12" fill="#f9731612"/>
 <rect x="1105.2" y="439" width="3.2" height="36" rx="1.6" fill="#f97316"/>
 <text x="1201" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Prompt trait bands</text>
-<text x="1201" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">“markedly curious” — self-knowledge</text>
+<text x="1201" y="470.5" font-size="9.5" fill="#8b93a7" text-anchor="middle">“markedly curious” — self-knowledge</text>
 </g>
 <g>
 <rect x="1104" y="556" width="194" height="54" rx="12" fill="#10141d" stroke="#38bdf899" stroke-width="1.4"/>

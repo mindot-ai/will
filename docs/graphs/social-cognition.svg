@@ -35,17 +35,17 @@
 <rect x="860" y="118" width="456" height="540" rx="16" fill="#fbbf2407" stroke="#fbbf242e" stroke-width="1" stroke-dasharray="5 4"/>
 <text x="876" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#fbbf24bb">INTO THOUGHT &amp; ACTION</text>
 <path d="M 272 177 C 306 177, 296 217, 330 217" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
-<rect x="259.4" y="187" width="83.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#38bdf844" stroke-width="0.8"/>
+<rect x="263.3" y="187" width="75.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#38bdf844" stroke-width="0.8"/>
 <text x="301" y="200.5" font-size="10" fill="#cbd5e1" text-anchor="middle">per referent</text>
 <path d="M 272 457 C 365.82537822998637 457, 236.17462177001363 217, 330 217" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
-<rect x="256.7689656664236" y="309.06" width="83.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<rect x="260.16896566642356" y="309.06" width="76.39999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
 <text x="298.36896566642355" y="322.56" font-size="10" fill="#cbd5e1" text-anchor="middle">name · facts</text>
 <path d="M 437 244 C 437 284.28, 437 309.72, 437 350" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f472b6)"/>
 <path d="M 437 404 C 437 448.08, 437 475.92, 437 520" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
-<rect x="401" y="452" width="72" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<rect x="398.7" y="452" width="76.60000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
 <text x="437" y="465.5" font-size="10" fill="#cbd5e1" text-anchor="middle">same name?</text>
 <path d="M 330 547 C 304 547, 304 377, 330 377" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
-<rect x="254.9" y="452" width="111.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<rect x="262.7" y="452" width="95.60000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
 <text x="310.5" y="465.5" font-size="10" fill="#cbd5e1" text-anchor="middle">alias → canonical</text>
 <path d="M 437 350 C 437 249.02960040959272, 509.0296004095927 177, 610 177" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
 <path d="M 544 377 C 583.4102321738911 377, 570.5897678261089 297, 610 297" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
@@ -56,11 +56,11 @@
 <path d="M 814 537 C 874.5715708893207 537, 843.8864977183358 442.20053352104463, 862 385 C 880.1135022816642 327.79946647895537, 854.9080750029298 297, 890 297" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
 <path d="M 814 417 C 848 417, 856 457, 890 457" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fb7185)"/>
 <path d="M 544 547 C 610.7946614633236 547, 640.8822856608008 617.748373235977, 700 628 C 759.1177143391992 638.251626764023, 817.3603386571771 607, 890 607" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
-<rect x="627.6" y="618" width="144.79999999999998" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<rect x="636.1999999999999" y="618" width="127.60000000000005" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
 <text x="700" y="631.5" font-size="10" fill="#cbd5e1" text-anchor="middle">familiar yet unresolved</text>
 <path d="M 1090 457 C 1124 457, 1112 457, 1146 457" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
 <path d="M 712 270 C 712 155.34070643859695, 941.3318551553555 192.5717453238524, 1000 180 C 1058.6681448446445 167.4282546761476, 1090.5082889072612 177, 1146 177" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
-<rect x="972.4" y="170" width="55.199999999999996" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<rect x="975" y="170" width="50" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
 <text x="1000" y="183.5" font-size="10" fill="#cbd5e1" text-anchor="middle">travels</text>
 <g>
 <rect x="66" y="150" width="206" height="54" rx="12" fill="#10141d" stroke="#38bdf899" stroke-width="1.4"/>

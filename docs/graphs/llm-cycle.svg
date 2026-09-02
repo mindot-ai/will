@@ -35,22 +35,22 @@
 <path d="M 272 317 C 306 317, 296 317, 330 317" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
 <path d="M 169 430 C 169 396, 169 378, 169 344" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
 <path d="M 520 317 C 577.8798756045657 317, 522.1201243954343 177, 580 177" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
-<rect x="528" y="237" width="44" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<rect x="531.9" y="237" width="36.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
 <text x="550" y="250.5" font-size="10" fill="#cbd5e1" text-anchor="middle">first</text>
 <path d="M 520 317 C 554 317, 546 317, 580 317" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
-<rect x="530.8" y="307" width="38.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<rect x="532.1" y="307" width="35.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
 <text x="550" y="320.5" font-size="10" fill="#cbd5e1" text-anchor="middle">then</text>
 <path d="M 520 317 C 577.8798756045657 317, 522.1201243954343 457, 580 457" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
-<rect x="530.8" y="377" width="38.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<rect x="532.1" y="377" width="35.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
 <text x="550" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">else</text>
 <path d="M 685 484 C 685 524.28, 685 549.72, 685 590" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
-<rect x="646.2" y="527" width="77.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<rect x="646.2" y="527" width="77.60000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
 <text x="685" y="540.5" font-size="10" fill="#cbd5e1" text-anchor="middle">concurrency</text>
 <path d="M 790 177 C 872.4344248315253 177, 950 207.56557516847465, 950 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 790 317 C 824 317, 826 317, 860 317" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 790 457 C 872.4344248315253 457, 950 426.43442483152535, 950 344" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
 <path d="M 950 290 C 950 256, 950 238, 950 204" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f97316)"/>
-<rect x="925.2" y="237" width="49.599999999999994" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<rect x="925.2" y="237" width="49.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
 <text x="950" y="250.5" font-size="10" fill="#cbd5e1" text-anchor="middle">record</text>
 <path d="M 950 344 C 950 378, 950 396, 950 430" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f97316)"/>
 <path d="M 1040 317 C 1074 317, 1076 317, 1110 317" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
@@ -69,7 +69,7 @@
 <rect x="66" y="290" width="206" height="54" rx="12" fill="#f9731612"/>
 <rect x="67.2" y="299" width="3.2" height="36" rx="1.6" fill="#f97316"/>
 <text x="169" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">buildUserMessage</text>
-<text x="169" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">live state → awareness-scoped sections</text>
+<text x="169" y="330.5" font-size="9.9" fill="#8b93a7" text-anchor="middle">live state → awareness-scoped sections</text>
 </g>
 <g>
 <rect x="66" y="430" width="206" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>

@@ -38,8 +38,6 @@
 <path d="M 810 457 C 844 457, 852 457, 886 457" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 1076 317 C 1110 317, 1102 317, 1136 317" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
 <path d="M 1226 344 C 1226 464, 1055.5772376859409 617.3909166218435, 1000 640 C 944.4227623140591 662.6090833781565, 670 619, 550 619" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
-<rect x="911.1999999999999" y="630" width="177.6000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
-<text x="1000" y="643.5" font-size="10" fill="#cbd5e1" text-anchor="middle">inbound_message · percept · ack</text>
 <path d="M 340 619 C 306 619, 306 619, 272 619" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <g>
 <rect x="66" y="150" width="206" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
@@ -132,6 +130,8 @@
 <text x="169" y="616" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Applied on-tick</text>
 <text x="169" y="632.5" font-size="10" fill="#8b93a7" text-anchor="middle">FIFO · tick-stamped · replayable</text>
 </g>
+<rect x="911.1999999999999" y="630" width="177.6000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="1000" y="643.5" font-size="10" fill="#cbd5e1" text-anchor="middle">inbound_message · percept · ack</text>
 <text x="40" y="698" font-size="10.5" fill="#5b6372">@mindot/will · transports</text>
 <text x="1320" y="698" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
 </svg>

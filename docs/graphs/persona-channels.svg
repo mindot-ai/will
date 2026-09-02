@@ -11,8 +11,8 @@
 </defs>
 <rect width="1360" height="740" fill="url(#sky)"/>
 <rect x="1" y="1" width="1358" height="738" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
-<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">Two channels of character — Channel A &amp; Channel B</text>
-<text x="40" y="80" font-size="13" fill="#8b93a7">One prior, developed from lived behavior. Channel A tunes the machinery continuously (subconscious); Channel B surfaces coarse trait bands into the prompt (self-knowledge) — and behavior feeds the loop again</text>
+<text x="40" y="56" font-size="24.4" font-weight="700" fill="#f8fafc" letter-spacing="0.2">Two channels of character — Channel A &amp; Channel B</text>
+<text x="40" y="80" font-size="12.5" fill="#8b93a7">One prior, developed from lived behavior. Channel A tunes the machinery continuously (subconscious); Channel B surfaces coarse trait bands into the prompt (self-knowledge) — and behavior feeds the loop again</text>
 <rect x="1196.5" y="42" width="123.5" height="22" rx="11" fill="#4ade8014" stroke="#4ade8055" stroke-width="1"/>
 <circle cx="1208.5" cy="53" r="3.4" fill="#4ade80"/>
 <text x="1217.5" y="57" font-size="10.5" fill="#cbd5e1">Agency (action)</text>
@@ -43,26 +43,16 @@
 <path d="M 272 217 C 306.5444872591851 217, 295.4555127408149 287, 330 287" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-818cf8)"/>
 <path d="M 272 357 C 306.5444872591851 357, 295.4555127408149 287, 330 287" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-818cf8)"/>
 <path d="M 437 314 C 437 358.08, 437 385.92, 437 430" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-818cf8)"/>
-<rect x="393.7" y="362" width="86.60000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
-<text x="437" y="375.5" font-size="10" fill="#cbd5e1" text-anchor="middle">bounded deltas</text>
 <path d="M 544 457 C 630.2658588318693 457, 513.7341411681307 237, 600 237" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
-<rect x="561.2" y="337" width="21.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
-<text x="572" y="350.5" font-size="10" fill="#cbd5e1" text-anchor="middle">⊕</text>
 <path d="M 272 217 C 392 217, 512.280776991961 343.6286409999703, 560 380 C 607.719223008039 416.3713590000297, 563.6131397342392 467, 600 467" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-818cf8)"/>
-<rect x="524.9" y="370" width="70.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
-<text x="560" y="383.5" font-size="10" fill="#cbd5e1" text-anchor="middle">trait values</text>
 <path d="M 800 237 C 835.034268937713 237, 834.965731062287 177, 870 177" fill="none" stroke="#2dd4bf" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-2dd4bf)"/>
 <path d="M 800 237 C 838.1592662403249 237, 831.8407337596751 309, 870 309" fill="none" stroke="#2dd4bf" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-2dd4bf)"/>
 <path d="M 1070 177 C 1104 177, 1086 237, 1120 237" fill="none" stroke="#2dd4bf" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-2dd4bf)"/>
 <path d="M 1070 309 C 1155.1963050841996 309, 1215 394.8036949158005, 1215 480" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
-<rect x="1146.648614406575" y="352.5513855934252" width="55.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
-<text x="1174.448614406575" y="366.0513855934252" font-size="10" fill="#cbd5e1" text-anchor="middle">recruits</text>
 <path d="M 800 467 C 834 467, 836 467, 870 467" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
 <path d="M 1070 467 C 1104 467, 1086 507, 1120 507" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
 <path d="M 800 587 C 920 587, 1215 654, 1215 534" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f97316)"/>
 <path d="M 1215 534 C 1215 654, 759.9561770243438 697.7072207638874, 700 700 C 640.0438229756562 702.2927792361126, 169 694, 169 574" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f97316)"/>
-<rect x="553.7" y="690" width="292.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
-<text x="700" y="703.5" font-size="10" fill="#cbd5e1" text-anchor="middle">behavior — from either system — demonstrates the traits</text>
 <g>
 <rect x="66" y="190" width="206" height="54" rx="12" fill="#10141d" stroke="#818cf899" stroke-width="1.4"/>
 <rect x="66" y="190" width="206" height="54" rx="12" fill="#818cf812"/>
@@ -154,6 +144,16 @@
 <text x="1215" y="504" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">System 2</text>
 <text x="1215" y="520.5" font-size="10" fill="#8b93a7" text-anchor="middle">the deliberate self — one call</text>
 </g>
+<rect x="393.7" y="362" width="86.60000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
+<text x="437" y="375.5" font-size="10" fill="#cbd5e1" text-anchor="middle">bounded deltas</text>
+<rect x="561.2" y="337" width="21.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="572" y="350.5" font-size="10" fill="#cbd5e1" text-anchor="middle">⊕</text>
+<rect x="524.9" y="370" width="70.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#818cf844" stroke-width="0.8"/>
+<text x="560" y="383.5" font-size="10" fill="#cbd5e1" text-anchor="middle">trait values</text>
+<rect x="1146.648614406575" y="352.5513855934252" width="55.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="1174.448614406575" y="366.0513855934252" font-size="10" fill="#cbd5e1" text-anchor="middle">recruits</text>
+<rect x="553.7" y="690" width="292.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="700" y="703.5" font-size="10" fill="#cbd5e1" text-anchor="middle">behavior — from either system — demonstrates the traits</text>
 <text x="40" y="718" font-size="10.5" fill="#5b6372">@mindot/will · persona-channels</text>
 <text x="1320" y="718" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
 </svg>

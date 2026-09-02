@@ -26,27 +26,15 @@
 <text x="1080" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#e2e8f0bb">CONNECTION POINTS</text>
 <path d="M 162 204 C 162 238, 162 256, 162 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 262 317 C 296 317, 296 317, 330 317" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="279.4" y="307" width="33.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="296" y="320.5" font-size="10" fill="#cbd5e1" text-anchor="middle">tick</text>
 <path d="M 262 457 C 321.1434324333649 457, 270.8565675666351 317, 330 317" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="254" y="377" width="84" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="296" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">priority order</text>
 <path d="M 425 204 C 425 238, 425 256, 425 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
 <path d="M 520 317 C 554 317, 560 317, 594 317" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="538.6" y="307" width="36.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="557" y="320.5" font-size="10" fill="#cbd5e1" text-anchor="middle">emit</text>
 <path d="M 594 177 C 508.74683178017875 177, 425 204.74683178017875, 425 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="521.6867834035887" y="170.5676958508972" width="44" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="543.6867834035887" y="184.0676958508972" font-size="10" fill="#cbd5e1" text-anchor="middle">reads</text>
 <path d="M 794 317 C 828 317, 790 317, 824 317" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 919 290 C 919 217.96802673663728, 866.0319732633627 177, 794 177" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
-<rect x="836.7119899737611" y="196.48801002623898" width="93.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
-<text x="883.511989973761" y="209.98801002623898" font-size="10" fill="#cbd5e1" text-anchor="middle">next tick’s view</text>
 <path d="M 919 344 C 919 378, 919 396, 919 430" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
 <path d="M 824 457 C 790 457, 828 457, 794 457" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
 <path d="M 1014 317 C 1048 317, 1050 317, 1084 317" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
-<rect x="1022.5" y="307" width="53" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
-<text x="1049" y="320.5" font-size="10" fill="#cbd5e1" text-anchor="middle">per tick</text>
 <path d="M 1014 457 C 1048 457, 1050 457, 1084 457" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
 <g>
 <rect x="62" y="150" width="200" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
@@ -132,6 +120,18 @@
 <text x="1190" y="454" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Restore / replay</text>
 <text x="1190" y="470.5" font-size="10" fill="#8b93a7" text-anchor="middle">load a snapshot, resume the life</text>
 </g>
+<rect x="279.4" y="307" width="33.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="296" y="320.5" font-size="10" fill="#cbd5e1" text-anchor="middle">tick</text>
+<rect x="254" y="377" width="84" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="296" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">priority order</text>
+<rect x="538.6" y="307" width="36.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="557" y="320.5" font-size="10" fill="#cbd5e1" text-anchor="middle">emit</text>
+<rect x="521.6867834035887" y="170.5676958508972" width="44" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="543.6867834035887" y="184.0676958508972" font-size="10" fill="#cbd5e1" text-anchor="middle">reads</text>
+<rect x="836.7119899737611" y="196.48801002623898" width="93.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="883.511989973761" y="209.98801002623898" font-size="10" fill="#cbd5e1" text-anchor="middle">next tick’s view</text>
+<rect x="1022.5" y="307" width="53" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="1049" y="320.5" font-size="10" fill="#cbd5e1" text-anchor="middle">per tick</text>
 <text x="40" y="618" font-size="10.5" fill="#5b6372">@mindot/will · simulation-core</text>
 <text x="1320" y="618" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
 </svg>

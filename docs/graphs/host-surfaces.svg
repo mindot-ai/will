@@ -30,25 +30,15 @@
 <text x="1080" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">ONE BODY</text>
 <path d="M 262 247 C 296 247, 296 247, 330 247" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 520 247 C 558.7078079978704 247, 555.2921920021296 177, 594 177" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="519.9749236875641" y="217.2775" width="57.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="548.7749236875641" y="230.7775" font-size="10" fill="#cbd5e1" text-anchor="middle">will mcp</text>
 <path d="M 520 247 C 558.7078079978704 247, 555.2921920021296 317, 594 317" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="516.174923687564" y="256.72249999999997" width="65.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="548.7749236875641" y="270.22249999999997" font-size="10" fill="#cbd5e1" text-anchor="middle">will serve</text>
 <path d="M 425 274 C 425 384.65738217381676, 483.34261782618324 457, 594 457" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
 <path d="M 425 274 C 425 321.88, 425 352.12, 425 400" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="375.6" y="327" width="98.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="425" y="340.5" font-size="10" fill="#cbd5e1" text-anchor="middle">hibernate ⇄ wake</text>
 <path d="M 425 274 C 425 394, 644.1625394677735 598.0414481053042, 700 620 C 755.8374605322265 641.9585518946958, 959 595.1634778153328, 959 484" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="639.4" y="610" width="121.20000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="700" y="623.5" font-size="10" fill="#cbd5e1" text-anchor="middle">WILL_MCP_SERVERS</text>
 <path d="M 794 177 C 831.6180807591244 177, 826.3819192408756 247, 864 247" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
 <path d="M 794 317 C 831.6180807591244 317, 826.3819192408756 247, 864 247" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
 <path d="M 594 177 C 568 177, 568 457, 594 457" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
 <path d="M 594 317 C 582 317, 582 457, 594 457" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
 <path d="M 864 457 C 830 457, 828 457, 794 457" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
-<rect x="802.5" y="447" width="53" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="829" y="460.5" font-size="10" fill="#cbd5e1" text-anchor="middle">effector</text>
 <path d="M 794 457 C 934 457, 1190 484, 1190 344" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 1054 247 C 1118.201642041547 247, 1190 225.79835795845295, 1190 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
 <g filter="url(#glow)" color="#94a3b8">
@@ -114,6 +104,16 @@
 <text x="1190" y="314" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">WillStem</text>
 <text x="1190" y="330.5" font-size="10" fill="#8b93a7" text-anchor="middle">one body under all doors</text>
 </g>
+<rect x="519.9749236875641" y="217.2775" width="57.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="548.7749236875641" y="230.7775" font-size="10" fill="#cbd5e1" text-anchor="middle">will mcp</text>
+<rect x="516.174923687564" y="256.72249999999997" width="65.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="548.7749236875641" y="270.22249999999997" font-size="10" fill="#cbd5e1" text-anchor="middle">will serve</text>
+<rect x="375.6" y="327" width="98.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="425" y="340.5" font-size="10" fill="#cbd5e1" text-anchor="middle">hibernate ⇄ wake</text>
+<rect x="639.4" y="610" width="121.20000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="700" y="623.5" font-size="10" fill="#cbd5e1" text-anchor="middle">WILL_MCP_SERVERS</text>
+<rect x="802.5" y="447" width="53" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="829" y="460.5" font-size="10" fill="#cbd5e1" text-anchor="middle">effector</text>
 <text x="40" y="638" font-size="10.5" fill="#5b6372">@mindot/will · host-surfaces</text>
 <text x="1320" y="638" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
 </svg>

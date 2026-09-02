@@ -42,42 +42,20 @@
 <text x="842" y="490" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#a78bfabb">INTO MEMORY</text>
 <path d="M 148 204 C 148 238, 148 256, 148 290" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
 <path d="M 148 344 C 148 378, 148 396, 148 430" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="130.1" y="377" width="35.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="148" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">gate</text>
 <path d="M 234 457 C 296.041328161154 457, 255.95867183884602 317, 318 317" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
-<rect x="249.2" y="377" width="53.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="276" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">allowed</text>
 <path d="M 234 317 C 306.04132816115396 317, 245.95867183884602 177, 318 177" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="246.4" y="237" width="59.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="276" y="250.5" font-size="10" fill="#cbd5e1" text-anchor="middle">arm turn</text>
 <path d="M 418 344 C 418 378, 418 396, 418 430" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
-<rect x="369.09999999999997" y="377" width="97.80000000000004" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#38bdf844" stroke-width="0.8"/>
-<text x="418" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">append user turn</text>
 <path d="M 234 627 C 378 627, 418 488, 418 344" fill="none" stroke="#fb7185" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fb7185)"/>
-<rect x="336.5" y="529.5" width="87.00000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fb718544" stroke-width="0.8"/>
-<text x="380" y="543" font-size="10" fill="#cbd5e1" text-anchor="middle">salience inputs</text>
 <path d="M 518 317 C 552 317, 542 317, 576 317" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
 <path d="M 518 177 C 601.3684761687538 177, 681 206.63152383124628, 681 290" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
 <path d="M 418 430 C 418 296.6522995381027, 442.6522995381027 177, 576 177" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
-<rect x="396.630620755658" y="342.4824830226315" width="50" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
-<text x="421.630620755658" y="355.9824830226315" font-size="10" fill="#cbd5e1" text-anchor="middle">context</text>
 <path d="M 681 204 C 681 238, 681 256, 681 290" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <path d="M 681 344 C 681 378, 681 396, 681 430" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
-<rect x="657.5" y="377" width="47" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
-<text x="681" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">report</text>
 <path d="M 786 457 C 868.9932527377979 457, 763.0067472622021 247, 846 247" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
-<rect x="778.1" y="342" width="75.80000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
-<text x="816" y="355.5" font-size="10" fill="#cbd5e1" text-anchor="middle">launch @ tick</text>
 <path d="M 1046 247 C 1083.6180807591243 247, 1078.3819192408757 177, 1116 177" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f97316)"/>
-<rect x="1057.5" y="202" width="47" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
-<text x="1081" y="215.5" font-size="10" fill="#cbd5e1" text-anchor="middle">tokens</text>
 <path d="M 946 274 C 946 308, 946 326, 946 360" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
-<rect x="877.6" y="310.90400000000005" width="136.80000000000004" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
-<text x="946" y="324.40400000000005" font-size="10" fill="#cbd5e1" text-anchor="middle">decision lands (Phase 2)</text>
 <path d="M 1046 387 C 1080 387, 1082 387, 1116 387" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
 <path d="M 946 414 C 946 457.32, 946 484.68, 946 528" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="915.6" y="461" width="60.800000000000004" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="946" y="474.5" font-size="10" fill="#cbd5e1" text-anchor="middle">exchange</text>
 <path d="M 1046 555 C 1080 555, 1082 555, 1116 555" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
 <g>
 <rect x="62" y="150" width="172" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
@@ -191,6 +169,28 @@
 <text x="1210" y="552" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Next-turn recall</text>
 <text x="1210" y="568.5" font-size="10" fill="#8b93a7" text-anchor="middle">the past shapes the reply</text>
 </g>
+<rect x="130.1" y="377" width="35.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="148" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">gate</text>
+<rect x="249.2" y="377" width="53.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="276" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">allowed</text>
+<rect x="246.4" y="237" width="59.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="276" y="250.5" font-size="10" fill="#cbd5e1" text-anchor="middle">arm turn</text>
+<rect x="369.09999999999997" y="377" width="97.80000000000004" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#38bdf844" stroke-width="0.8"/>
+<text x="418" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">append user turn</text>
+<rect x="336.5" y="529.5" width="87.00000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fb718544" stroke-width="0.8"/>
+<text x="380" y="543" font-size="10" fill="#cbd5e1" text-anchor="middle">salience inputs</text>
+<rect x="396.630620755658" y="342.4824830226315" width="50" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="421.630620755658" y="355.9824830226315" font-size="10" fill="#cbd5e1" text-anchor="middle">context</text>
+<rect x="657.5" y="377" width="47" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="681" y="390.5" font-size="10" fill="#cbd5e1" text-anchor="middle">report</text>
+<rect x="778.1" y="342" width="75.80000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="816" y="355.5" font-size="10" fill="#cbd5e1" text-anchor="middle">launch @ tick</text>
+<rect x="1057.5" y="202" width="47" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="1081" y="215.5" font-size="10" fill="#cbd5e1" text-anchor="middle">tokens</text>
+<rect x="877.6" y="310.90400000000005" width="136.80000000000004" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="946" y="324.40400000000005" font-size="10" fill="#cbd5e1" text-anchor="middle">decision lands (Phase 2)</text>
+<rect x="915.6" y="461" width="60.800000000000004" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="946" y="474.5" font-size="10" fill="#cbd5e1" text-anchor="middle">exchange</text>
 <text x="40" y="758" font-size="10.5" fill="#5b6372">@mindot/will · audition-conversation</text>
 <text x="1320" y="758" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
 </svg>

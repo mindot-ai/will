@@ -8,8 +8,8 @@
 </defs>
 <rect width="1360" height="700" fill="url(#sky)"/>
 <rect x="1" y="1" width="1358" height="698" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
-<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">The answered loop — a message learns whether anyone replied</text>
-<text x="40" y="80" font-size="13" fill="#8b93a7">Delivery is a fact about the channel; being answered is a fact about the world. Splitting them gives the mind the one percept it never had — that it spoke and was not answered — and lets it choose silence with somewhere to say why</text>
+<text x="40" y="56" font-size="21.4" font-weight="700" fill="#f8fafc" letter-spacing="0.2">The answered loop — a message learns whether anyone replied</text>
+<text x="40" y="80" font-size="11.5" fill="#8b93a7">Delivery is a fact about the channel; being answered is a fact about the world. Splitting them gives the mind the one percept it never had — that it spoke and was not answered — and lets it choose silence with somewhere to say why</text>
 <rect x="1159.9" y="42" width="160.1" height="22" rx="11" fill="#94a3b814" stroke="#94a3b855" stroke-width="1"/>
 <circle cx="1171.9" cy="53" r="3.4" fill="#94a3b8"/>
 <text x="1180.9" y="57" font-size="10.5" fill="#cbd5e1">Stem / infrastructure</text>
@@ -33,43 +33,21 @@
 <rect x="1100" y="118" width="222" height="404" rx="16" fill="#fbbf2407" stroke="#fbbf242e" stroke-width="1" stroke-dasharray="5 4"/>
 <text x="1116" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#fbbf24bb">WHAT THE MIND SEES</text>
 <path d="M 262 187 C 296 187, 284 187, 318 187" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
-<rect x="266" y="177" width="48" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="290" y="190.5" font-size="10" fill="#cbd5e1" text-anchor="middle">writes</text>
 <path d="M 262 327 C 319.2981535479111 327, 260.7018464520889 187, 318 187" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
-<rect x="232.00979693893478" y="277.555" width="115.00000000000004" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="289.5097969389348" y="291.055" font-size="10" fill="#cbd5e1" text-anchor="middle">speaking is speaking</text>
 <path d="M 162 440 C 162 406, 162 388, 162 354" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-4ade80)"/>
-<rect x="86.69999999999997" y="387" width="150.60000000000005" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="162" y="400.5" font-size="10" fill="#cbd5e1" text-anchor="middle">suppresses the WORDS only</text>
 <path d="M 532 187 C 566 187, 554 187, 588 187" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f472b6)"/>
 <path d="M 532 327 C 589.2981535479112 327, 530.7018464520888 187, 588 187" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f472b6)"/>
-<rect x="500.7" y="247" width="118.60000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
-<text x="560" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">heard after we spoke</text>
 <path d="M 695 214 C 695 248, 695 266, 695 300" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
-<rect x="658.6" y="247" width="72.80000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="695" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">they replied</text>
 <path d="M 588 187 C 562 187, 562 467, 588 467" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-4ade80)"/>
-<rect x="516.3" y="317" width="104.40000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="568.5" y="330.5" font-size="10" fill="#cbd5e1" text-anchor="middle">nothing came back</text>
 <path d="M 802 327 C 859.2981535479112 327, 800.7018464520888 187, 858 187" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
 <path d="M 802 467 C 910.5071352492545 467, 749.4928647507455 187, 858 187" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
 <path d="M 960 214 C 960 248, 960 266, 960 300" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f472b6)"/>
-<rect x="909.4" y="247" width="101.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
-<text x="960" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">about the PERSON</text>
 <path d="M 858 187 C 834 187, 834 467, 858 467" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f472b6)"/>
-<rect x="779.6" y="317" width="120.80000000000003" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
-<text x="840" y="330.5" font-size="10" fill="#cbd5e1" text-anchor="middle">answered ⇒ progress</text>
 <path d="M 695 354 C 695 474, 892.1089756274838 615.767983292125, 950 600 C 1007.8910243725162 584.232016707875, 1209 334, 1209 214" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-4ade80)"/>
-<rect x="897.6" y="590" width="104.80000000000004" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="950" y="603.5" font-size="10" fill="#cbd5e1" text-anchor="middle">their words travel</text>
 <path d="M 1062 327 C 1096 327, 1080 327, 1114 327" fill="none" stroke="#f472b6" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f472b6)"/>
 <path d="M 1209 214 C 1209 299.88, 1209 354.12, 1209 440" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
-<rect x="1141.3999999999996" y="265.68201727999997" width="135.20000000000005" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
-<text x="1208.9999999999998" y="279.18201727999997" font-size="10" fill="#cbd5e1" text-anchor="middle">I can see I already asked</text>
 <path d="M 1209 354 C 1209 388, 1209 406, 1209 440" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
-<path d="M 1209 440 C 1209 320, 737.9630553566184 111.50110362927713, 680 96 C 622.0369446433816 80.49889637072287, 162 40, 162 160" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
-<rect x="611.9" y="86" width="136.20000000000005" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
-<text x="680" y="99.5" font-size="10" fill="#cbd5e1" text-anchor="middle">and may still speak again</text>
+<path d="M 1209 440 C 1209 320, 737.9630553566184 123.50110362927713, 680 108 C 622.0369446433816 92.49889637072287, 162 40, 162 160" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
 <g>
 <rect x="62" y="160" width="200" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
 <rect x="62" y="160" width="200" height="54" rx="12" fill="#4ade8012"/>
@@ -168,6 +146,28 @@
 <text x="1209" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">The field re-forms</text>
 <text x="1209" y="480.5" font-size="9.7" fill="#8b93a7" text-anchor="middle">the mind decides — repeat is allowed</text>
 </g>
+<rect x="266" y="177" width="48" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="290" y="190.5" font-size="10" fill="#cbd5e1" text-anchor="middle">writes</text>
+<rect x="232.00979693893478" y="277.555" width="115.00000000000004" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="289.5097969389348" y="291.055" font-size="10" fill="#cbd5e1" text-anchor="middle">speaking is speaking</text>
+<rect x="86.69999999999997" y="387" width="150.60000000000005" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="162" y="400.5" font-size="10" fill="#cbd5e1" text-anchor="middle">suppresses the WORDS only</text>
+<rect x="500.7" y="247" width="118.60000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<text x="560" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">heard after we spoke</text>
+<rect x="658.6" y="247" width="72.80000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="695" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">they replied</text>
+<rect x="521.175" y="413.25" width="104.40000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="573.375" y="426.75" font-size="10" fill="#cbd5e1" text-anchor="middle">nothing came back</text>
+<rect x="909.4" y="247" width="101.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<text x="960" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">about the PERSON</text>
+<rect x="779.6" y="317" width="120.80000000000003" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f472b644" stroke-width="0.8"/>
+<text x="840" y="330.5" font-size="10" fill="#cbd5e1" text-anchor="middle">answered ⇒ progress</text>
+<rect x="897.6" y="590" width="104.80000000000004" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="950" y="603.5" font-size="10" fill="#cbd5e1" text-anchor="middle">their words travel</text>
+<rect x="1141.3999999999996" y="265.68201727999997" width="135.20000000000005" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="1208.9999999999998" y="279.18201727999997" font-size="10" fill="#cbd5e1" text-anchor="middle">I can see I already asked</text>
+<rect x="611.9" y="98" width="136.20000000000005" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="680" y="111.5" font-size="10" fill="#cbd5e1" text-anchor="middle">and may still speak again</text>
 <text x="40" y="678" font-size="10.5" fill="#5b6372">@mindot/will · answered-loop</text>
 <text x="1320" y="678" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
 </svg>

@@ -24,38 +24,20 @@
 <rect x="584" y="118" width="732" height="540" rx="16" fill="#4ade8007" stroke="#4ade802e" stroke-width="1" stroke-dasharray="5 4"/>
 <text x="600" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#4ade80bb">THE ACTING SUBSTRATE (AGENCY)</text>
 <path d="M 709 220 C 709 113.35531705706093, 499.5057725994003 147.68524738368637, 440 140 C 380.4942274005997 132.31475261631363, 167 46.190426260387724, 167 150" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
-<rect x="395.8" y="130" width="88.39999999999998" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="440" y="143.5" font-size="10" fill="#cbd5e1" text-anchor="middle">extractAbilities</text>
 <path d="M 167 204 C 167 238, 167 256, 167 290" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <path d="M 272 317 C 306 317, 296 317, 330 317" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <path d="M 520 317 C 561.5505282758234 317, 562.4494717241766 247, 604 247" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
-<rect x="524.3" y="272" width="75.39999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
-<text x="562" y="285.5" font-size="10" fill="#cbd5e1" text-anchor="middle">pre-activate</text>
 <path d="M 272 457 C 306 457, 296 457, 330 457" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
 <path d="M 520 457 C 629.9696153838755 457, 709 383.9696153838755, 709 274" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
-<rect x="580.7565738796839" y="432.823776119889" width="35.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
-<text x="598.6565738796838" y="446.323776119889" font-size="10" fill="#cbd5e1" text-anchor="middle">bias</text>
 <path d="M 709 274 C 709 321.88, 709 352.12, 709 400" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
 <path d="M 709 454 C 709 492.76, 709 517.24, 709 556" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
-<rect x="644.4" y="495" width="129.20000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
-<text x="709" y="508.5" font-size="10" fill="#cbd5e1" text-anchor="middle">contested · high-stakes</text>
 <path d="M 814 583 C 909.8877136986658 583, 980 549.8877136986658, 980 454" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
-<rect x="893.7578926369997" y="544.4578926369998" width="78.39999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
-<text x="932.9578926369998" y="557.9578926369998" font-size="10" fill="#cbd5e1" text-anchor="middle">chosen intent</text>
 <path d="M 814 427 C 848 427, 846 427, 880 427" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
 <path d="M 272 597 C 400 597, 476 427, 604 427" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
-<rect x="420.1" y="502" width="35.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
-<text x="438" y="515.5" font-size="10" fill="#cbd5e1" text-anchor="middle">veto</text>
 <path d="M 1080 427 C 1114 427, 1102 427, 1136 427" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
 <path d="M 1226 400 C 1226 352.12, 1226 321.88, 1226 274" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
-<rect x="1205.3" y="327" width="41.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="1226" y="340.5" font-size="10" fill="#cbd5e1" text-anchor="middle">learn</text>
 <path d="M 1226 220 C 1226 180, 709 180, 709 220" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-4ade80)"/>
-<rect x="925.5" y="180" width="84" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="967.5" y="193.5" font-size="10" fill="#cbd5e1" text-anchor="middle">refined priors</text>
 <path d="M 1226 454 C 1226 574, 679.9759391732649 670.3009648959415, 620 672 C 560.0240608267351 673.6990351040585, 167 604, 167 484" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-4ade80)"/>
-<rect x="578.2" y="662" width="83.60000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="620" y="675.5" font-size="10" fill="#cbd5e1" text-anchor="middle">plan advances</text>
 <g>
 <rect x="62" y="150" width="210" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
 <rect x="62" y="150" width="210" height="54" rx="12" fill="#fbbf2412"/>
@@ -140,6 +122,24 @@
 <text x="1226" y="244" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Skills &amp; habits</text>
 <text x="1226" y="260.5" font-size="10" fill="#8b93a7" text-anchor="middle">abilities get skilled</text>
 </g>
+<rect x="395.8" y="130" width="88.39999999999998" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="440" y="143.5" font-size="10" fill="#cbd5e1" text-anchor="middle">extractAbilities</text>
+<rect x="524.3" y="272" width="75.39999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="562" y="285.5" font-size="10" fill="#cbd5e1" text-anchor="middle">pre-activate</text>
+<rect x="580.7565738796839" y="432.823776119889" width="35.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="598.6565738796838" y="446.323776119889" font-size="10" fill="#cbd5e1" text-anchor="middle">bias</text>
+<rect x="644.4" y="495" width="129.20000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="709" y="508.5" font-size="10" fill="#cbd5e1" text-anchor="middle">contested · high-stakes</text>
+<rect x="893.7578926369997" y="544.4578926369998" width="78.39999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="932.9578926369998" y="557.9578926369998" font-size="10" fill="#cbd5e1" text-anchor="middle">chosen intent</text>
+<rect x="420.1" y="502" width="35.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="438" y="515.5" font-size="10" fill="#cbd5e1" text-anchor="middle">veto</text>
+<rect x="1205.3" y="327" width="41.4" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="1226" y="340.5" font-size="10" fill="#cbd5e1" text-anchor="middle">learn</text>
+<rect x="925.5" y="180" width="84" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="967.5" y="193.5" font-size="10" fill="#cbd5e1" text-anchor="middle">refined priors</text>
+<rect x="578.2" y="662" width="83.60000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="620" y="675.5" font-size="10" fill="#cbd5e1" text-anchor="middle">plan advances</text>
 <text x="40" y="698" font-size="10.5" fill="#5b6372">@mindot/will · executive-agency-seam</text>
 <text x="1320" y="698" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
 </svg>

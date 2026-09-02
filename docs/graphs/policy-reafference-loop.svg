@@ -9,7 +9,7 @@
 <rect width="1360" height="820" fill="url(#sky)"/>
 <rect x="1" y="1" width="1358" height="818" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
 <text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">Policy reafference — the mind learns may from can</text>
-<text x="40" y="80" font-size="13" fill="#8b93a7">A boundary felt as world resistance: a PDP judges each reach; refusal teaches availability (never competence), a class “never” lets go of a deliberation, escalate holds and asks — and replay re-feeds recorded verdicts</text>
+<text x="40" y="80" font-size="12.1" fill="#8b93a7">A boundary felt as world resistance: a PDP judges each reach; refusal teaches availability (never competence), a class “never” lets go of a deliberation, escalate holds and asks — and replay re-feeds recorded verdicts</text>
 <rect x="1214.8" y="42" width="105.19999999999999" height="22" rx="11" fill="#e2e8f014" stroke="#e2e8f055" stroke-width="1"/>
 <circle cx="1226.8" cy="53" r="3.4" fill="#e2e8f0"/>
 <text x="1235.8" y="57" font-size="10.5" fill="#cbd5e1">Host / world</text>
@@ -30,50 +30,22 @@
 <rect x="1096" y="118" width="224" height="512" rx="16" fill="#4ade8007" stroke="#4ade802e" stroke-width="1" stroke-dasharray="5 4"/>
 <text x="1112" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#4ade80bb">THE FIELD RE-FORMS</text>
 <path d="M 162 204 C 162 240.48000000000002, 162 263.52, 162 300" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-4ade80)"/>
-<rect x="100.49999999999999" y="242" width="123.00000000000003" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="162" y="255.5" font-size="10" fill="#cbd5e1" text-anchor="middle">holds awaiting · emits</text>
 <path d="M 262 327 C 322.84273498126134 327, 257.15726501873866 177, 318 177" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
 <path d="M 418 204 C 418 240.48000000000002, 418 263.52, 418 300" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="390.2" y="242" width="55.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="418" y="255.5" font-size="10" fill="#cbd5e1" text-anchor="middle">evaluate</text>
 <path d="M 418 354 C 418 398.08, 418 425.92, 418 470" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="377.5" y="402" width="81.00000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="418" y="415.5" font-size="10" fill="#cbd5e1" text-anchor="middle">every verdict</text>
 <path d="M 518 327 C 579.1126958986429 327, 514.8873041013571 177, 576 177" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="525.8" y="242" width="42.400000000000006" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="547" y="255.5" font-size="10" fill="#cbd5e1" text-anchor="middle">allow</text>
 <path d="M 518 327 C 552 327, 542 357, 576 357" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="527.8" y="332" width="38.400000000000006" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="547" y="345.5" font-size="10" fill="#cbd5e1" text-anchor="middle">deny</text>
 <path d="M 518 327 C 600.787689906169 327, 493.212310093831 537, 576 537" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="519.2" y="422" width="55.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="547" y="435.5" font-size="10" fill="#cbd5e1" text-anchor="middle">escalate</text>
 <path d="M 786 177 C 820 177, 812 177, 846 177" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
 <path d="M 786 357 C 858.099930651839 357, 773.900069348161 177, 846 177" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
-<rect x="789.3531054958297" y="318.875" width="52.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="815.6531054958297" y="332.375" font-size="10" fill="#cbd5e1" text-anchor="middle">refused</text>
 <path d="M 681 564 C 681 600.48, 681 623.52, 681 660" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
 <path d="M 576 687 C 542 687, 545 680, 545 620 C 545 560, 475.3681362589364 357, 576 357" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="497.4" y="610" width="95.20000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="545" y="623.5" font-size="10" fill="#cbd5e1" text-anchor="middle">denied · expired</text>
 <path d="M 786 687 C 861.723045369293 687, 828.7457786598626 548.630581835368, 816 490 C 803.2542213401374 431.36941816463195, 681 324, 681 204" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-94a3b8)"/>
-<rect x="785.6" y="480" width="60.800000000000004" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
-<text x="816" y="493.5" font-size="10" fill="#cbd5e1" text-anchor="middle">approved</text>
 <path d="M 951 204 C 951 251.88, 951 282.12, 951 330" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
-<rect x="923.2" y="257" width="55.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="951" y="270.5" font-size="10" fill="#cbd5e1" text-anchor="middle">refusals</text>
 <path d="M 1056 177 C 1074 177, 1074 537, 1056 537" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
-<rect x="1025.04" y="449.2399999999999" width="84.60000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="1067.34" y="462.7399999999999" font-size="10" fill="#cbd5e1" text-anchor="middle">real outcomes</text>
 <path d="M 1056 357 C 1127.633779741125 357, 1040.366220258875 177, 1112 177" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
-<rect x="1062.6450164019952" y="296.28499999999997" width="47.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="1086.4450164019952" y="309.78499999999997" font-size="10" fill="#cbd5e1" text-anchor="middle">damps</text>
 <path d="M 1208 204 C 1208 251.88, 1208 282.12, 1208 330" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
-<rect x="1156.9" y="257" width="102.20000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="1208" y="270.5" font-size="10" fill="#cbd5e1" text-anchor="middle">the field competes</text>
 <path d="M 1208 384 C 1208 431.88, 1208 462.12, 1208 510" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
-<rect x="1158.9" y="437" width="98.20000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
-<text x="1208" y="450.5" font-size="10" fill="#cbd5e1" text-anchor="middle">honored next tick</text>
 <g>
 <rect x="62" y="150" width="200" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
 <rect x="62" y="150" width="200" height="54" rx="12" fill="#4ade8012"/>
@@ -179,6 +151,34 @@
 <text x="1208" y="534" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Revocation tombstone</text>
 <text x="1208" y="550.5" font-size="10" fill="#8b93a7" text-anchor="middle">lets go — no successor</text>
 </g>
+<rect x="100.49999999999999" y="242" width="123.00000000000003" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="162" y="255.5" font-size="10" fill="#cbd5e1" text-anchor="middle">holds awaiting · emits</text>
+<rect x="390.2" y="242" width="55.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="418" y="255.5" font-size="10" fill="#cbd5e1" text-anchor="middle">evaluate</text>
+<rect x="377.5" y="402" width="81.00000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="418" y="415.5" font-size="10" fill="#cbd5e1" text-anchor="middle">every verdict</text>
+<rect x="525.8" y="242" width="42.400000000000006" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="547" y="255.5" font-size="10" fill="#cbd5e1" text-anchor="middle">allow</text>
+<rect x="527.8" y="332" width="38.400000000000006" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="547" y="345.5" font-size="10" fill="#cbd5e1" text-anchor="middle">deny</text>
+<rect x="519.2" y="422" width="55.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="547" y="435.5" font-size="10" fill="#cbd5e1" text-anchor="middle">escalate</text>
+<rect x="789.3531054958297" y="318.875" width="52.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="815.6531054958297" y="332.375" font-size="10" fill="#cbd5e1" text-anchor="middle">refused</text>
+<rect x="497.4" y="610" width="95.20000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="545" y="623.5" font-size="10" fill="#cbd5e1" text-anchor="middle">denied · expired</text>
+<rect x="785.6" y="480" width="60.800000000000004" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="816" y="493.5" font-size="10" fill="#cbd5e1" text-anchor="middle">approved</text>
+<rect x="923.2" y="257" width="55.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="951" y="270.5" font-size="10" fill="#cbd5e1" text-anchor="middle">refusals</text>
+<rect x="1025.04" y="449.2399999999999" width="84.60000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="1067.34" y="462.7399999999999" font-size="10" fill="#cbd5e1" text-anchor="middle">real outcomes</text>
+<rect x="1062.6450164019952" y="296.28499999999997" width="47.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="1086.4450164019952" y="309.78499999999997" font-size="10" fill="#cbd5e1" text-anchor="middle">damps</text>
+<rect x="1156.9" y="257" width="102.20000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="1208" y="270.5" font-size="10" fill="#cbd5e1" text-anchor="middle">the field competes</text>
+<rect x="1158.9" y="437" width="98.20000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#4ade8044" stroke-width="0.8"/>
+<text x="1208" y="450.5" font-size="10" fill="#cbd5e1" text-anchor="middle">honored next tick</text>
 <text x="40" y="798" font-size="10.5" fill="#5b6372">@mindot/will · policy-reafference-loop</text>
 <text x="1320" y="798" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
 </svg>

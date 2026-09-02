@@ -936,6 +936,9 @@ implementation checklist on 2026-05-28 to the mechanism that shipped last week.
   for. Every one carries a `Standing` line saying whether it is **SHIPPED** (in
   the engine, gated by CI), **OBSERVED** (seen in a running mind, on a date, with
   its n), **DESIGNED** (a plan, no code) or **SPECULATIVE** (a hypothesis).
+- **[.TODO/FIELD_NOTES.md](.TODO/FIELD_NOTES.md)** — what a live Will was seen
+  doing, one section per run, with the timestamps and counts as they were read.
+  Every fault the engine has fixed by watching rather than by testing.
 - **[CHANGELOG.md](CHANGELOG.md)** — each release as the story of one epoch, with
   [a diagram](docs/graphs) for the arc it closed.
 

@@ -1,5 +1,7 @@
 # FIX_TODO — Tactical fixes (`will` codebase review)
 
+> **Standing:** OBSERVED · 2026-05-29 · tactical review, `file:line` as read on the day — the line numbers have drifted since and should be re-resolved by symbol, not by number
+
 > Concrete, mostly-localized bugs and hygiene issues found during an architecture/perf/tooling
 > review on 2026-05-29. Strategic/architectural changes live in `REORIENT_TODO.md`.
 > Each item cites `file:line` (line numbers as read at review time). Severity: **P0** correctness/reliability,

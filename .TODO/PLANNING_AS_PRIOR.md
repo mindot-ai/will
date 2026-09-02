@@ -1,5 +1,7 @@
 # Will — Planning as a top-down prior (not a dispatcher)
 
+> **Standing:** SHIPPED · 2026-07-02 · 16 of 16 — a plan biases the one action competition instead of dispatching steps; no parallel command channel. Pre-public: exact date not recorded
+
 > Re-ground the planning **execution leg** onto the agency substrate. A plan stops
 > *dispatching* steps to an executor and instead *biases the one action competition*
 > toward the actions that serve its current frontier. The ordinary `ActionSelector`

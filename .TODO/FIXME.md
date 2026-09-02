@@ -1,5 +1,7 @@
 # FIXME — review punch list
 
+> **Standing:** OBSERVED · 2026-06-01 · architecture/performance review punch list; 6 of 7 closed since
+
 Findings from the architecture/performance review, ordered smallest → largest.
 Severity: 🔴 correctness · 🟠 productionization · 🟡 docs/maintainability.
 

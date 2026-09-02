@@ -1,5 +1,7 @@
 # Planning ↔ GoalManager — flow alignment audit
 
+> **Standing:** SHIPPED · 2026-07-02 · flow-by-flow audit of the Planning↔GoalManager contract, with the gaps found and fixed. Pre-public: exact date not recorded
+
 Audit of every flow between `PlanningEngine` and `GoalManager`, with the gaps found
 and fixed. Goal here: a plan and the goal it serves never drift out of sync.
 

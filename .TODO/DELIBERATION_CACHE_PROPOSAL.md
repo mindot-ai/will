@@ -1,5 +1,7 @@
 # DeliberationCache — Production Proposal for Will
 
+> **Standing:** DESIGNED · 2026-08-03 · production proposal, 9 items, no code. Its formula is held separately as SPECULATIVE in [[__RESEARCH_DIRECTIONS]]
+
 ## Overview
 
 A deterministic, replay-safe fast-path cache for the ExecutiveEngine that

@@ -1,5 +1,7 @@
 # Will — Lift the agency pipeline into the Channel-A/B developable layer
 
+> **Standing:** SHIPPED · 2026-07-02 · complete, 11 of 11 — the agency engines were the last faculty group bypassing Channel-A/B. Pre-public: exact date not recorded
+
 > **Status: ✅ COMPLETE (Strong tier, both reconciliations, and Channel B).**
 > `AGENCY_PIPELINE_TODO.md` is fully closed and the agency engines — which began as the
 > **one major faculty group that bypassed the Channel-A/B pattern** — are now

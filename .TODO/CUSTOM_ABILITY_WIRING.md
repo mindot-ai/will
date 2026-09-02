@@ -1,5 +1,7 @@
 # Will — Custom (host-owned) effector wiring
 
+> **Standing:** SHIPPED · 2026-07-06 · partial — gap found 2026-06-15, Phase 1 wired; entity binding, per-effector metadata, preconditions and the learning surface are open
+
 > **Status: 🟢 Phase 1 wired.** A host's declared domain effectors now reach the
 > agency field and route to the world. Phases 2+ (entity binding, per-effector
 > metadata, preconditions, learning surface) are follow-ups.

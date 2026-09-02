@@ -1,5 +1,7 @@
 # Will — Per-Facet Awareness Scoping
 
+> **Standing:** SHIPPED · 2026-07-02 · 3 of 3 — a facet sees the context sections its creating engine declares. Pre-public: exact date not recorded
+
 > A facet now sees exactly the cognitive-context sections its creating engine
 > declares — the prompt-context analogue of an engine's `subscribes()`. This
 > replaces the blanket `mode === 'master'` gate with a uniform, declarative

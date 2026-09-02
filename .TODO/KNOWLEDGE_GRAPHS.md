@@ -1,5 +1,7 @@
 # Knowledge graphs → architecture documentation (roadmap)
 
+> **Standing:** SHIPPED · 2026-07-08 · partial — the graphs ship and regenerate from declarative specs (28 as of 2026-09-02); the next phase, pairing each graph with prose, is open (9 items)
+
 > **Status:** graphs SHIPPED (2026-07-08) — `docs/graphs/*.svg`, generated from
 > declarative specs by `docs/graphs/generate.ts` (design system: `lib.ts`).
 > This file is the roadmap for the NEXT phase: pairing each graph with prose so

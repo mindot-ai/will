@@ -1,5 +1,7 @@
 # METACOGNITION_CYCLE_TODO — Closing the mind's self-dependent loop
 
+> **Standing:** SHIPPED · 2026-06-03 · 24 of 24, captured 2026-06-01 — the Will writes its own introspection back into the apparatus that perceives and reasons
+
 > The "mind closing cycle" feature: let the Will **accommodate** — write its own introspection back
 > into the apparatus that perceives and reasons (engine configs, percept/salience priors, beliefs, and
 > the PMA persona), so a coherent persona accretes over time instead of being re-derived each run.

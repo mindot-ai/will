@@ -1,5 +1,7 @@
 # Will — Lift mechanism constants into the Channel-A developable layer
 
+> **Standing:** SHIPPED · 2026-07-02 · partial by design — strong tier complete, medium tier all but two rows that are documented judgement-call skips, physiological tier deliberately fixed. Pre-public: exact date not recorded
+
 > **Status: 🟢 Strong tier ✅ complete · 🟡 Medium tier ✅ mostly done (rules 28–30) with two
 > rows deliberately deferred · 🔵 physiological tier intentionally left fixed.** The two
 > Medium deferrals are documented judgement-call skips (redundant with edges already wired —

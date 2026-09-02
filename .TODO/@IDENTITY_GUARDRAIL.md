@@ -1,5 +1,7 @@
 # Will — Identity / profile guardrail
 
+> **Standing:** SHIPPED · 2026-07-02 · partial — Phase 1 and most of Phase 2 wired; the API boundary (`POST /v1/wills → 400`) and Studio surfacing are open. Pre-public: exact date not recorded
+
 > **Status: 🟢 Phase 1 + most of Phase 2 wired.** A deterministic guard validates
 > + sanitizes the operator-supplied persona at creation AND on PMA reload, with a
 > capability cross-check, plus an optional semantic LLM coherence check. The API

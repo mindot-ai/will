@@ -84,6 +84,7 @@
     "run:outreach": "bun --env-file=.env run examples/outreach.ts",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
+    "record": "bun .TODO/index.ts",
     "prepublishOnly": "bun run typecheck && bun test && bun run build",
     "test": "vitest run",
     "test:watch": "vitest watch",

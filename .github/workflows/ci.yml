@@ -27,6 +27,14 @@ jobs:
       - name: Build
         run: bun run build
 
+      # The record is generated, so it cannot drift from what the documents say:
+      # a new .TODO doc without a Standing line, or a stale INDEX.md, fails here.
+      - name: Development record
+        run: |
+          bun .TODO/index.ts
+          git diff --exit-code -- .TODO/INDEX.md \
+            || { echo '::error::INDEX.md is stale — run `bun .TODO/index.ts` and commit it'; exit 1; }
+
   secrets:
     runs-on: ubuntu-latest
     steps:

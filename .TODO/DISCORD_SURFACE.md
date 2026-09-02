@@ -1,5 +1,7 @@
 # DISCORD_SURFACE_TODO — a Will present in a server, not merely connected to one
 
+> **Standing:** SHIPPED · 2026-08-11 · partial — P0 (the room stops being an id) and P1 (reactions are answers) live, P2+ open; the open half is confirmed by live evidence, not inference
+
 > **Status:** 🟡 **P0–P1 LANDED (2026-08-11), P2+ OPEN.** *(Was a bare "OPEN";
 > refined 2026-08-21 during the SIGNAL_BOUNDARY audit.)* P0 (the room stops being
 > an id) and P1 (reactions are answers) are live. **The open half is confirmed by

@@ -1,5 +1,7 @@
 # ACT_EXPECTATIONS — an act is still in the air until the world says otherwise
 
+> **Standing:** DESIGNED · 2026-08-21 · sketch, deliberately short — its design depends on decisions made in [[SIGNAL_BOUNDARY]]. 6 items, none built
+
 > **Status:** SKETCH (2026-08-21). Deliberately short: its design depends on
 > decisions not yet made in [[SIGNAL_BOUNDARY]], and writing it out in full
 > before those land would be guessing in detail.

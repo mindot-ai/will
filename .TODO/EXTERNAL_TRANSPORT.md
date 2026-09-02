@@ -1,5 +1,7 @@
 # Will — External Transport + Conversation Memory + Facet Concurrency
 
+> **Standing:** SHIPPED · 2026-08-25 · 73 of 73, opened 2026-06-02 — socket.io as the primary bidirectional channel, conversation through the canonical memory pipeline, per-facet serialization
+
 > Reorientation of the conversation/communication pipeline.
 > Three converging changes: (1) a unified bidirectional `ExternalTransport`
 > (socket.io) replacing tick-drained SSE delivery; (2) conversation persisted

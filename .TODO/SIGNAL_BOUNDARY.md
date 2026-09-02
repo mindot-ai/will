@@ -1,5 +1,7 @@
 # SIGNAL_BOUNDARY — where the mind meets the world, in both directions
 
+> **Standing:** SHIPPED · 2026-08-31 · 52 of 57, opened 2026-08-21 as AFFERENCE_UNIFICATION and widened to cover efference; released in v0.10.0. Its live-run section is a different claim — six faults seen in one COO on one afternoon, OBSERVED and n=1, not gated by anything
+
 > **The picture:** `docs/graphs/signal-boundary-loop.svg` — the whole arc in one
 > diagram: one door in that requires an assertion, one crossing out, and an ack
 > that comes back as facts the mind perceives rather than a verdict handed to it.

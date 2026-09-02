@@ -1,5 +1,7 @@
 # POLICY_REAFFERENCE — the boundary as a sense: policy verdicts routed through reafference
 
+> **Standing:** SHIPPED · 2026-07-28 · partial — P0–P4 2026-07-21, P5 2026-07-28, released in v0.7.0; P6 is open and gated on a schema diff from the bilateral joint RFC with HELM
+
 > **Status:** P0–P5 SHIPPED (P0–P4 2026-07-21, P5 2026-07-28) · P6 + refinements
 > OPEN. Goal: give the
 > Will a **body that cannot do forbidden things**, and make the refusal something

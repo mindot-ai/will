@@ -1,5 +1,7 @@
 # Will — Faculty output-consumption audit + integration wiring
 
+> **Standing:** OBSERVED · 2026-07-02 · per-faculty audit by tracing whether a faculty's distinctive output is actually *read*. Method note: events are not a relevance signal — the executive subscribes to `'*'`. Pre-public: exact date not recorded
+
 > Full per-faculty audit: does each faculty's **distinctive output** (a metric/entity that
 > should change behaviour) actually get *consumed* by something that changes behaviour?
 >

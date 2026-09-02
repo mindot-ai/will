@@ -924,6 +924,28 @@ Debug prompts are written to `data/wills/<id>/debug/` on every executive call �
 
 ---
 
+## The development record
+
+Every arc of this engine's development is written down and public, from the first
+implementation checklist on 2026-05-28 to the mechanism that shipped last week.
+
+- **[.TODO/INDEX.md](.TODO/INDEX.md)** — the whole record in order: 44 documents
+  and 8 releases on one timeline. Generated (`bun run record`), so it cannot
+  drift from what the documents say.
+- **[.TODO/STANDING.md](.TODO/STANDING.md)** — what each document may be cited
+  for. Every one carries a `Standing` line saying whether it is **SHIPPED** (in
+  the engine, gated by CI), **OBSERVED** (seen in a running mind, on a date, with
+  its n), **DESIGNED** (a plan, no code) or **SPECULATIVE** (a hypothesis).
+- **[CHANGELOG.md](CHANGELOG.md)** — each release as the story of one epoch, with
+  [a diagram](docs/graphs) for the arc it closed.
+
+The reason for the labels: these documents do not carry the same weight of
+evidence, and read in one voice they are indistinguishable. A mechanism the suite
+gates on every commit and a behaviour seen once on one afternoon are both true and
+are not the same claim.
+
+---
+
 ## Naming
 
 | Name | What it is |

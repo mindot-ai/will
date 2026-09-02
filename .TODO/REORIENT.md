@@ -1,5 +1,7 @@
 # REORIENT_TODO — Strategic / architectural reorientation (`will` codebase review)
 
+> **Standing:** OBSERVED · 2026-05-31 · architectural direction changes from the 2026-05-29 review; each is a decision plus a migration, not a fix
+
 > Higher-level direction changes from the 2026-05-29 review. These are not one-line fixes; each is a
 > decision + a migration. Tactical bugs live in `FIX_TODO.md`. Items are ordered by leverage.
 

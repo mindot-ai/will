@@ -1,5 +1,7 @@
 # Will — Trait → Faculty "Channel A" edges (the subconscious layer)
 
+> **Standing:** SHIPPED · 2026-07-02 · the two-channel model — a trait reaches behaviour subconsciously as a numeric parameter (A) and consciously through the prompt (B). Pre-public: exact date not recorded, and its PR refs are private-repo numbering
+
 > A personality trait reaches behaviour through **two channels**:
 >
 > - **Channel A (subconscious / autonomic).** A faculty reads the trait as a *numeric

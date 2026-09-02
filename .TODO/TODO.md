@@ -1,5 +1,7 @@
 # Will — Implementation TODO
 
+> **Standing:** SHIPPED · 2026-05-28 · day zero of this record — the 5-Senses (Phase 13.8) implementation checklist. Partial and superseded: audition and exteroception ship, four shell senses are still empty (see [[__CONTRIBUTION_TOPICS]]), and its 63 unchecked boxes are history, not backlog
+
 > Ordered implementation checklist for the 5 Senses Architecture (Phase 13.8).
 > Tasks are sequenced by dependency — complete each section before starting the next.
 > See `roadmap.md § Phase 13.8` for the full design specification.

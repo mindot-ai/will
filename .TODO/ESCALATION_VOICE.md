@@ -1,5 +1,7 @@
 # ESCALATION_VOICE — the escalation ask in the mind's own voice
 
+> **Standing:** DESIGNED · 2026-07-21 · the mechanism (hold → ask → resolve → expire) shipped with [[POLICY_REAFFERENCE]] P4; only the authored voice is unbuilt. 6 items
+
 > **Status:** OPEN — designed 2026-07-21. Goal: replace the stem's fixed-template
 > escalation ask (POLICY_REAFFERENCE P4) with words the Will actually *authors* —
 > first person, grounded in its persona, identity, memory, and how it feels about

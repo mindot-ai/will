@@ -23,7 +23,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { LLMSemaphore, isRateLimitError, withGate } from '#llm/gate'
+import { LLMSemaphore, isRateLimitError, isRetryableError, withGate } from '#llm/gate'
 
 function deferred<T = void>() {
   let resolve!: ( value: T | PromiseLike<T> ) => void
@@ -130,6 +130,70 @@ describe('isRateLimitError — only 429-shaped Errors retry (R7)', () => {
   } )
 } )
 
+describe('isRetryableError — transient provider statuses retry (R7)', () => {
+  const TRANSIENT = [ 429, 500, 502, 503, 504, 529 ]
+
+  // The fetch paths in index.ts throw the status inside the message, not as a
+  // field: `${provider} API ${status}: …` and `Anthropic stream ${status}: …`.
+  // Both shapes must be recognised, for every transient status.
+  for( const status of TRANSIENT ){
+    it(`retries ${status} in the "API ${status}:" message shape`, () => {
+      expect( isRetryableError( new Error(`anthropic API ${status}: overloaded`) ) ).toBe( true )
+    } )
+
+    it(`retries ${status} in the "stream ${status}:" message shape`, () => {
+      expect( isRetryableError( new Error(`Anthropic stream ${status}: overloaded`) ) ).toBe( true )
+    } )
+
+    it(`retries ${status} carried as a statusCode field`, () => {
+      const err = Object.assign( new Error('boom'), { statusCode: status } )
+      expect( isRetryableError( err ) ).toBe( true )
+    } )
+  }
+
+  it('retries a status carried as a `status` field', () => {
+    const err = Object.assign( new Error('boom'), { status: 503 } )
+    expect( isRetryableError( err ) ).toBe( true )
+  } )
+
+  it('does not retry 4xx client errors (message shape or field)', () => {
+    expect( isRetryableError( new Error('OpenAI API 400: bad request') ) ).toBe( false )
+    expect( isRetryableError( new Error('OpenAI API 401: unauthorized') ) ).toBe( false )
+    expect( isRetryableError( new Error('OpenAI API 404: not found') ) ).toBe( false )
+    expect( isRetryableError( Object.assign( new Error('nope'), { statusCode: 400 } ) ) ).toBe( false )
+    expect( isRetryableError( Object.assign( new Error('nope'), { statusCode: 401 } ) ) ).toBe( false )
+    expect( isRetryableError( Object.assign( new Error('nope'), { statusCode: 404 } ) ) ).toBe( false )
+  } )
+
+  it('a recognised status is authoritative — a 400 with stray digits stays fatal', () => {
+    // Body digits ("500 tokens") must not flip a real 400 into retryable: the
+    // status parsed from the "API 400:" prefix decides it.
+    expect( isRetryableError( new Error('OpenAI API 400: max 500 tokens, got 529') ) ).toBe( false )
+  } )
+
+  it('keeps the existing 429 rate-limit behaviour intact', () => {
+    // No status field, no "API/stream" prefix — must still retry via the
+    // isRateLimitError fallback, exactly as before this predicate existed.
+    expect( isRetryableError( new Error('rate_limit_error: slow down') ) ).toBe( true )
+    expect( isRetryableError( new Error('hit the rate limit') ) ).toBe( true )
+    expect( isRetryableError( new Error('HTTP 429 Too Many Requests') ) ).toBe( true )
+    expect( isRetryableError( Object.assign( new Error('too many'), { statusCode: 429 } ) ) ).toBe( true )
+  } )
+
+  it('leaves "not implemented" and ordinary errors fatal', () => {
+    expect( isRetryableError( new Error('_callDeepSeek not yet implemented') ) ).toBe( false )
+    expect( isRetryableError( new Error('network unreachable') ) ).toBe( false )
+    expect( isRetryableError( new Error('Unknown LLM wire: foo') ) ).toBe( false )
+  } )
+
+  it('returns false for non-Error values', () => {
+    expect( isRetryableError('API 529: overloaded') ).toBe( false ) // string, not Error
+    expect( isRetryableError( { statusCode: 503 } ) ).toBe( false )  // plain object, not Error
+    expect( isRetryableError( null ) ).toBe( false )
+    expect( isRetryableError( undefined ) ).toBe( false )
+  } )
+} )
+
 describe('withGate — retry semantics (R7)', () => {
   // Real timers with a tiny env-tuned backoff (WILL_LLM_RETRY_BASE_MS, read
   // lazily by withGate) — bun:test's `vi` has no async fake-timer helpers, and
@@ -187,6 +251,32 @@ describe('withGate — retry semantics (R7)', () => {
     await expect( withGate( fn, 'persistent-429') ).rejects.toBe( rateLimit )
     // Initial attempt + the full retry budget (WILL_LLM_MAX_RETRIES=2) = 3 calls.
     expect( fn ).toHaveBeenCalledTimes( 3 )
+  } )
+
+  it('retries a transient 529 (overloaded) and resolves on the next attempt', async () => {
+    const fn = vi.fn()
+      .mockRejectedValueOnce( new Error('Anthropic stream 529: overloaded') )
+      .mockResolvedValueOnce('recovered')
+
+    await expect( withGate( fn, 'retry-529') ).resolves.toBe('recovered')
+    expect( fn ).toHaveBeenCalledTimes( 2 )
+  } )
+
+  it('gives up on a persistent 503 after exhausting the same retry budget', async () => {
+    const overloaded = new Error('anthropic API 503: service unavailable')
+    const fn = vi.fn().mockRejectedValue( overloaded )
+
+    await expect( withGate( fn, 'persistent-503') ).rejects.toBe( overloaded )
+    // Initial attempt + WILL_LLM_MAX_RETRIES (=2) = 3 calls — the budget is
+    // unchanged; only WHICH errors qualify widened.
+    expect( fn ).toHaveBeenCalledTimes( 3 )
+  } )
+
+  it('still refuses to retry a 4xx client error', async () => {
+    const fn = vi.fn().mockRejectedValue( new Error('OpenAI API 400: bad request') )
+
+    await expect( withGate( fn, 'client-400') ).rejects.toThrow('400')
+    expect( fn ).toHaveBeenCalledTimes( 1 )
   } )
 
   it('releases its slot during backoff so other engines are not starved (R7)', async () => {

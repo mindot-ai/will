@@ -5204,6 +5204,28 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * See FacetSupervisor.handleFor.
      */
     facetFor(key: string): ExecutiveFacetHandle | undefined;
+    /**
+     * A facet key in the PERSON's id space, not the address's.
+     *
+     * `FacetSpawnDeps.key` is `<role>:<entityId>`, and the two sides of that
+     * contract disagreed about which space `entityId` lives in. Audition spawns a
+     * conversation facet keyed by `percept.speakerEntityId` — the transport address
+     * the message arrived on (`discord:1019…`) — while `authorOutreach` asks for
+     * `conversation:<anchor>` (`ke:1sqlkux`), because the executive resolves a
+     * person to their anchor before willing anything at them.
+     *
+     * So the dedup this key exists for never fired for a master-willed outreach.
+     * Every one spawned a transient rival facet on someone the mind was already
+     * talking to — which is what the key was added to prevent, and what its own
+     * comment claims it does. Observed live: a reply and an unprompted second
+     * answer to the same question 27 seconds apart, the second composed by a facet
+     * that could not see the first.
+     *
+     * Safe to resolve here because KnownEntityTracker mints the anchor on FIRST
+     * sight of an address, deterministically from it (R2), so a conversation is
+     * keyed the same way from its first message onward.
+     */
+    private _canonicalKey;
     subscribes(): string[];
     publishes(): CognitiveEventSchema[];
     /**

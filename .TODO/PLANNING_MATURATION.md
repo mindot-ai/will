@@ -1,5 +1,7 @@
 # Will — Planning Maturation (substrate vs. policy)
 
+> **Standing:** SHIPPED · 2026-07-02 · partial — 7 of 8; the engine is split into deterministic substrate and swappable policy, and the policy is being handed to the learned layer progressively. Pre-public: exact date not recorded
+
 > The hardcoded `planning.engine` was a startup compromise so a fresh mind could
 > plan/execute before a customer ever saw it (the same reason we gave it a
 > communication faculty). The long-term question: do we eventually remove it and

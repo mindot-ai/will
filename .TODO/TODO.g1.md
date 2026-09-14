@@ -1,5 +1,7 @@
 # Will — Audit TODO
 
+> **Standing:** OBSERVED · 2026-07-02 · superseded — pipeline audit, prompt-quality review and session-log gap analysis; its 61 unchecked boxes are a historical snapshot, not open work. Pre-public: exact date not recorded
+
 Generated from: pipeline audit · prompt quality review (tick-858 prompt) · session log gap analysis.
 Work items are grouped and ordered by dependency — tackle top-to-bottom within each section.
 

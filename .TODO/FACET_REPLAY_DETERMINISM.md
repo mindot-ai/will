@@ -1,5 +1,7 @@
 # Facet-era replay determinism gap (R2-d regression)
 
+> **Standing:** SHIPPED · 2026-07-04 · found 2026-07-02 while making the suite CI-green for the public release; all three layers fixed and `replay.equivalence.test.ts` re-enabled, verified 3×
+
 **Status:** CLOSED (2026-07-04) — all three layers fixed; `replay.equivalence.test.ts` is RE-ENABLED and passing (3× verified). Kept as the design record.
 **Found:** 2026-07-02, while making the suite CI-green for the public release.
 **Updated:** 2026-07-03 — two of three layers fixed; the remaining work is precisely scoped.

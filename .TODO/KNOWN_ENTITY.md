@@ -1,5 +1,7 @@
 # Will — Known-entity knowledge (how a mind comes to know someone / something)
 
+> **Standing:** SHIPPED · 2026-07-02 · Phases 0–5 complete — the dossier is the node for anything Will knows. Pre-public: exact date not recorded, and its PR citations are private-repo numbering that now collides with public PRs
+
 > **✅ COMPLETE — Phases 0–5 all shipped** (will#174, #180–#183, #185–#188; the rename
 > #175/#177/#178 and the goal-lifecycle prereq #184). The known-entity dossier is the
 > *node* for anything Will knows, sentient or not: it perceives entities through its senses,

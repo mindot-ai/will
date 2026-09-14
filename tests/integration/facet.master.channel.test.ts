@@ -194,3 +194,100 @@ describe('and the master actually reads it', () => {
     expect( prompt ).not.toMatch( /I reach out with target/ )
   } )
 } )
+
+// ── one thread of attention per person ────────────────────────
+
+/**
+ * A conversation facet is keyed by WHO, and only half the codebase agreed.
+ *
+ * `FacetSpawnDeps.key` is `<role>:<entityId>`. Audition spawns a conversation
+ * facet keyed by `percept.speakerEntityId` — the transport address the message
+ * arrived on (`discord:1019…`). `AuditionEngine.authorOutreach` asks for
+ * `conversation:<anchor>` (`ke:1sqlkux`), because the executive resolves a person
+ * to their anchor before it wills anything at them. The two never met.
+ *
+ * So the dedup the key exists for never fired for a master-willed outreach: each
+ * one spawned a transient rival facet on someone the mind was already talking to
+ * — the precise thing the key was added to prevent, and which its own comment
+ * claims it prevents. Live: a reply, then an unprompted second answer to the same
+ * question 27 seconds later, opening "To answer your question:", composed by a
+ * facet that could not see the reply already sent.
+ *
+ * KnownEntityTracker mints the anchor on FIRST sight of an address and
+ * deterministically from it, so resolving here is stable from the first message.
+ */
+const withState = ( e: ExecutiveEngine, entities: Array<{ id: string; type: string; metadata?: Record<string, unknown> }> ) => {
+  const map = new Map<string, unknown>()
+  for( const x of entities ) map.set( x.id, { ...x, createdAt: 0, updatedAt: 0 } )
+  const priv = e as unknown as { _lastStateRef: unknown; _llmDirector: unknown; _willId: string }
+  priv._lastStateRef = { tick: 1, time: 0, entities: map, metrics: new Map() }
+  // The supervisor throws without these; nothing here reasons, it only spawns.
+  priv._llmDirector ??= { call: async () => ( { text: '', inputTok: 0, outputTok: 0 } ) }
+  priv._willId     ||= 'will-test'
+}
+
+const ANCHOR    = 'ke:1sqlkux'
+const TRANSPORT = 'discord:1019376031150379101'
+const aliasEntity = () => ({
+  id: `kea-${ TRANSPORT }`, type: 'known-entity-alias',
+  metadata: { aliasKeid: TRANSPORT, canonicalKeid: ANCHOR },
+})
+
+describe('a conversation facet is keyed by the person, not the address', () => {
+  it('finds the open thread when the master asks for it by anchor', () => {
+    const { engine } = wired()
+    withState( engine, [ aliasEntity() ] )
+
+    // Audition's spawn: the address the message arrived on.
+    const spawned = engine.spawnFacet('conversation', `conversation:${ TRANSPORT }`)
+    expect( spawned.handle, 'no facet was opened at all').toBeDefined()
+
+    // authorOutreach's lookup: the anchor the executive resolved.
+    const found = engine.facetFor(`conversation:${ ANCHOR }`)
+    expect( found, 'the master opened a rival facet on someone she was already talking to')
+      .toBe( spawned.handle )
+  })
+
+  it('still finds it by the address it was met on', () => {
+    // Tolerant both ways: audition keeps asking in transport space.
+    const { engine } = wired()
+    withState( engine, [ aliasEntity() ] )
+
+    const spawned = engine.spawnFacet('conversation', `conversation:${ TRANSPORT }`)
+    expect( engine.facetFor(`conversation:${ TRANSPORT }`) ).toBe( spawned.handle )
+  })
+
+  it('does not fuse two people who have no alias between them', () => {
+    // The guard against the fix becoming a wildcard: without an alias record they
+    // are two someones, and two someones get two threads of attention.
+    const { engine } = wired()
+    withState( engine, [] )
+
+    const a = engine.spawnFacet('conversation', `conversation:${ TRANSPORT }`)
+    expect( engine.facetFor(`conversation:${ ANCHOR }`), 'fused two different people')
+      .not.toBe( a.handle )
+  })
+
+  it('still finds a thread opened before its anchor was visible', () => {
+    // The reason the lookup tries BOTH. A facet can be registered under the raw
+    // address — a first message racing the tracker's mint, or a later name-merge
+    // re-pointing one anchor onto another (KNOWN_ENTITY Phase 5 is revisable and
+    // never destructively re-keys). Canonical-only would then miss a LIVE thread
+    // and open a second beside it, which is the defect wearing the other face.
+    const { engine } = wired()
+    withState( engine, [] )                       // no alias yet → registered raw
+    const spawned = engine.spawnFacet('conversation', `conversation:${ TRANSPORT }`)
+
+    withState( engine, [ aliasEntity() ] )        // the anchor lands afterwards
+    expect( engine.facetFor(`conversation:${ TRANSPORT }`),
+      'a live thread went missing once its anchor appeared').toBe( spawned.handle )
+  })
+
+  it('leaves a key that carries no entity id alone', () => {
+    const { engine } = wired()
+    withState( engine, [ aliasEntity() ] )
+
+    const s = engine.spawnFacet('deliberation', 'deliberation')
+    expect( engine.facetFor('deliberation') ).toBe( s.handle )
+  })
+})

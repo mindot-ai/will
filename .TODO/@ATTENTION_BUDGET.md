@@ -1,5 +1,7 @@
 # Will — Dynamic Attention Budget
 
+> **Standing:** SHIPPED · 2026-07-02 · budget → concurrent facets → token spend is live; also the cost governor. Pre-public: exact date not recorded, and its PR refs are private-repo numbering
+
 > A Will can now **explicitly choose** how much cognitive capacity to engage —
 > mobilizing more attention (more parallel facets) under high stakes, or standing
 > down to conserve — while its **vitals still compel rest/shutdown** when energy

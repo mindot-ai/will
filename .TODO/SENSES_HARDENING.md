@@ -1,5 +1,7 @@
 # Will — Sensory Pipeline Hardening TODO
 
+> **Standing:** SHIPPED · 2026-06-02 · partial — 33 of 35; lifecycle hygiene, salience fidelity, token economy and extensibility, not the core design
+
 > Findings from the sensory-pipeline architecture review (AuditionEngine + facets
 > + senses layer integration). The pipeline is a strong fit with the mind's
 > philosophy — dual-track percept/facet, GWT + attention integration, narrative

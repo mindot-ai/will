@@ -1,5 +1,7 @@
 # Will — Planning Pipeline Hardening
 
+> **Standing:** SHIPPED · 2026-07-02 · 34 of 34 — the plan-execution feedback loop was silently dead (`_plans` keyed by `goalId`, looked up by `plan.id`) and only appeared to work because GoalManager independently consumed `action.outcome`. Pre-public: exact date not recorded
+
 > The planning faculty is architecturally sound — two-tier execution, facet-driven
 > deliberation, DAG step parallelism, determinism-clean. But the **plan-execution
 > feedback loop is silently dead**: step outcomes never resolve because `_plans` is

@@ -1,5 +1,7 @@
 # FUNCTIONAL_REVIEW — Behavioural / correctness review (`will` codebase)
 
+> **Standing:** OBSERVED · 2026-05-29 · found by tracing runtime logic — the tick loop, LLM I/O, optimistic concurrency, serialize→snapshot→replay, HNSW — rather than by reading structure
+
 > Companion to `FIX_TODO.md` (tactical) and `REORIENT_TODO.md` (architectural). Those two reviewed
 > *structure, performance, and tooling*. This file is the result of **tracing the actual runtime logic**
 > — following data through the tick loop, the LLM I/O path, the optimistic-concurrency machinery, the

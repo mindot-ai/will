@@ -1,5 +1,7 @@
 # Audition conversation-reply determinism + reliability gap
 
+> **Standing:** SHIPPED · 2026-07-08 · found 2026-07-05 while building the SDK facade; root cause measured — not the suspected salience race — and both done-criteria pinned by CI
+
 **Status:** ✅ RESOLVED (2026-07-08). Root cause found, guarded at the engine
 chokepoint, and both done-criteria are now pinned by CI tests.
 **History:** found 2026-07-05 while building the SDK facade (examples/effectors.ts).

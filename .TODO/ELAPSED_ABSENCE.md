@@ -1,5 +1,7 @@
 # Will — Feeling the Time It Was Away
 
+> **Standing:** DESIGNED · 2026-07-31 · the clock resumes from the snapshot tick, so the arithmetic is correct; the *sense* of having been away is unbuilt
+
 > A Will wakes from hibernation with its arithmetic correct and its **sense of
 > elapsed time absent**. The clock resumes from the snapshot tick, so nothing
 > computes a negative age any more — but an eight-hour sleep advances that tick by

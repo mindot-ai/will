@@ -1,5 +1,7 @@
 # PREDICTIVE_SUBSTRATE_TODO — unify SalienceComputer into GenerativeModel
 
+> **Standing:** SHIPPED · 2026-06-03 · 4 of 4, opened 2026-06-02 as a detour from [[METACOGNITION_CYCLE]] — `SalienceComputer` folded into `GenerativeModel`, one predictive substrate instead of two
+
 > Detour from `METACOGNITION_CYCLE_TODO.md` (resume there after this lands). Goal: collapse the
 > duplicated per-stream "predictive surprise" substrate. `SalienceComputer` and `GenerativeModel` both
 > maintain an EMA prediction + a normalised deviation per stream — the same computation, done twice in

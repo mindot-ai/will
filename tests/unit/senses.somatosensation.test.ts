@@ -15,6 +15,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { SomatosensationEngine, SYSTEM_SIGNAL_SALIENCE } from '#senses/somatosensation.engine'
+import { PERCEPT_SUMMARY_CAP } from '#cognition/percept.entity'
 import type { Percept } from '#senses/index'
 
 function wired(){
@@ -89,5 +90,63 @@ describe('the wake stops being special', () => {
     await e.sense( { kind: 'text', entityId: 'e', threadId: 't', content: 'hi', provenance: 'exafferent' } )
     expect( published ).toHaveLength( 0 )
     expect( traced ).toHaveLength( 0 )
+  } )
+} )
+
+describe('the label is the engine\'s to bound; the payload is the host\'s to keep whole', () => {
+  // SIGNAL_BOUNDARY P2 — the engine may bound the words IT composes (its own
+  // business), but the host's payload is the mind's only copy of what came back
+  // and is never clipped. These pin that split at the unit level; the existing
+  // coverage exercises it only through the object/`compact` path.
+
+  it('a bare-string payload becomes the summary verbatim', async () => {
+    // `data` need not be an object. A host that hands back a plain string of
+    // words has said what it means, and those words are what the mind reads.
+    const { e, published } = wired()
+    await e.sense( { kind: 'system', signal: 'X', provenance: 'exafferent',
+                      data: 'the deploy finished' } )
+    expect( published[0]!.summary ).toBe('the deploy finished')
+    expect( published[0]!.data ).toBe('the deploy finished')
+  } )
+
+  it('caps the summary it writes, but carries the whole payload in data', async () => {
+    // A host `summary` longer than the engine's own label budget is truncated in
+    // the summary (the ENGINE's words) — while the full payload survives untouched
+    // in `data` (the mind's only copy). Clipping the label destroys nobody's copy;
+    // clipping the payload would.
+    const { e, published } = wired()
+    const long = 'x'.repeat( PERCEPT_SUMMARY_CAP + 50 )
+    await e.sense( { kind: 'system', signal: 'X', provenance: 'exafferent',
+                      data: { summary: long } } )
+    expect( published[0]!.summary ).toHaveLength( PERCEPT_SUMMARY_CAP )
+    expect( published[0]!.summary!.endsWith('…') ).toBe( true )
+    expect( published[0]!.summary ).not.toBe( long )
+    // The payload is not clipped — the whole reading is still there to be read.
+    expect( ( published[0]!.data as { summary: string } ).summary ).toBe( long )
+  } )
+
+  it('labels a wordless object payload with a compact render, payload beside it', async () => {
+    // No host words → the label is the signal name plus a glance at the shape,
+    // and the whole object rides in `data`.
+    const { e, published } = wired()
+    await e.sense( { kind: 'system', signal: 'server_snapshot', provenance: 'exafferent',
+                      data: { warnings: 3 } } )
+    expect( published[0]!.summary ).toBe('server_snapshot: {"warnings":3}')
+    expect( published[0]!.data ).toEqual( { warnings: 3 } )
+  } )
+} )
+
+describe('the webhook branch transduces with the same contract', () => {
+  // The webhook path has been covered only for provenance; its source id, its
+  // wordless-fallback label, and its default salience were unpinned — a mutation
+  // to any of the three passed the whole suite.
+
+  it('names its source and falls back to the signal name when the payload says nothing', async () => {
+    const { e, published } = wired()
+    await e.sense( { kind: 'webhook', source: 'github', headers: {},
+                      provenance: 'exafferent', payload: {} } )
+    expect( published[0]!.sourceEntityId ).toBe('webhook:github')
+    expect( published[0]!.summary ).toBe('Something happened: github.')
+    expect( published[0]!.salience ).toBe( SYSTEM_SIGNAL_SALIENCE )
   } )
 } )

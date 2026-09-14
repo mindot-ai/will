@@ -1,5 +1,7 @@
 # Experimental Research Directions
 
+> **Standing:** SPECULATIVE · 2026-08-03 · a synthesis of established ideas (case-based reasoning, speculative decoding, mixture-of-experts) applied to structured agent cognition. The fast-path/slow-path architecture is proven; this application of it is not, and no published system has demonstrated it
+
 ## Part I: Research Sketch — The DeliberationCache Formula
 
 > **Honest framing:** This formula is a synthesis of established ideas (case-based reasoning, speculative decoding, mixture-of-experts) applied to a novel domain: structured agent cognition. The fast-path/slow-path architecture is proven. Applying it to *multi-field structured reasoning* (plans, beliefs, goals, introspection) is experimental. No published system has demonstrated this for agent cognition.

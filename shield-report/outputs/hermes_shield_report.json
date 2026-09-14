@@ -1,0 +1,73 @@
+{
+  "ai_tier": {
+    "any_failed": false,
+    "any_ran": false,
+    "failure_reason": null,
+    "finder_counts": {},
+    "finder_failure": null,
+    "finder_status": "off",
+    "per_file_counts": {},
+    "per_file_failure": null,
+    "per_file_status": "off"
+  },
+  "amber_action_items": [],
+  "candidate_critical": {
+    "count": 0,
+    "items": []
+  },
+  "candidate_high": 0,
+  "coverage_pct": 100.0,
+  "files_scanned": 220,
+  "fixed_dest_review_items": [],
+  "gated_vulnerable": 0,
+  "guard_model_note": "python",
+  "install_liability_rating": {
+    "as_installed_likelihood": 2,
+    "band": "Low",
+    "bands": {
+      "High": ">=100",
+      "Low": "<=16",
+      "Med": "17-99"
+    },
+    "count": 0,
+    "method": "severity x as-installed-likelihood(2); per-surface capped at Med; aggregate band by RCE-class count",
+    "note": "inert here, live on install \u2014 the High band is an aggregate-count signal, never a per-surface reachable-here verdict",
+    "per_surface": {
+      "High": 0,
+      "Low": 0,
+      "Med": 0
+    }
+  },
+  "install_liability_rce": 0,
+  "language_mix": {},
+  "non_gated_items": [],
+  "non_gated_vulnerable": 0,
+  "nothing_scanned": false,
+  "nothing_scanned_message": "",
+  "nothing_scanned_reason": "",
+  "overall_rating": "None (no proven-live)",
+  "proven_live": {
+    "count": 0,
+    "items": []
+  },
+  "proven_live_poc": 0,
+  "reachability_unknown": 0,
+  "reachability_unknown_items": [],
+  "reachability_unknown_reason": {
+    "unresolved_dispatch": false,
+    "untrusted_ingress": false
+  },
+  "reachable_amber_actions": 0,
+  "reachable_fixed_dest_review": 0,
+  "repo": "will",
+  "repo_kind": "library",
+  "repo_kind_confidence": "low",
+  "repo_kind_reason": "no publish target and no routes detected \u2014 defaulting to the conservative inherited-risk (library) framing",
+  "risk_ratings": {
+    "High": 0,
+    "Low": 0,
+    "Med": 0
+  },
+  "total_action_surfaces": 0,
+  "vulnerable_surfaces": 0
+}

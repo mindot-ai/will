@@ -1,5 +1,7 @@
 # EXAFFERENCE_TODO — corollary discharge + the exafferent interrupt (commitment revocation)
 
+> **Standing:** SHIPPED · 2026-08-21 · designed 2026-07-19, all 23 items landed. The header said OPEN for a month after it shipped — the mistake that motivated [[STANDING]]
+
 > **Status:** ✅ **SHIPPED** — designed 2026-07-19, all phases landed. *(Header
 > said OPEN until 2026-08-21; corrected during the SIGNAL_BOUNDARY audit. Evidence:
 > 23 of 23 phase items checked, none open, and the mechanisms are live in

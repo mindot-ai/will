@@ -1,5 +1,7 @@
 # Will — Graded trait salience (Channel B surfacing)
 
+> **Standing:** SHIPPED · 2026-07-02 · A + B + C plus cross-session persistence of the per-trait baseline. Pre-public: exact date not recorded, and its cited `will#168/#170/#171` are private-repo numbers that now collide with three unrelated public PRs
+
 > **✅ COMPLETE (A + B + C, plus cross-session persistence).** Shipped in will#168
 > (A — absolute intensity bands), will#170 (B — baseline-relative + C — recency), and
 > will#171 (PMA persistence of the per-trait baseline/recency so the Will's *own norm*

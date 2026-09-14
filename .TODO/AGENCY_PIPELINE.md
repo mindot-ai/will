@@ -1,5 +1,7 @@
 # Agency Pipeline — mind-like effector system (greenfield)
 
+> **Standing:** SHIPPED · 2026-07-02 · greenfield rebuild, 50 of 50; the old effector stack was deleted in its Phase 8. Pre-public: exact date not recorded
+
 > Pure rebuild of how the Will *acts*. We are **not** migrating the current effector
 > subsystem (`src/effectors/*`, `generic.json`, the executors, `ActionExecutor`).
 > That whole stack gets deleted in Phase 8. This document is the canonical plan.

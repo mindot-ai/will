@@ -1,5 +1,7 @@
 # Will — Heuristic cleanup audit (faculty engines)
 
+> **Standing:** OBSERVED · 2026-07-02 · faculty-engine audit whose finding was a reframe: most "heuristics" are the autonomic mechanism Channel A modulates, not LLM substitutes to remove. Pre-public: exact date not recorded
+
 > Audit of `src/cognition/engines/faculties/*` for heuristic processing that is
 > **outdated, redundant, or distorting** now that the Will has dual-process cognition
 > (master + facets) and the Channel-A persona-prior layer.

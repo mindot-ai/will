@@ -1,5 +1,7 @@
 # MODEL_ROUTING — one Will, many models
 
+> **Standing:** SHIPPED · 2026-07-29 · opened 2026-07-28 at engine 0.7.0; the mind tags, the host decides, one endpoint resolves per call. Released in v0.8.0
+
 **Status:** plan of record · opened 2026-07-28
 **Engine version at open:** 0.7.0
 

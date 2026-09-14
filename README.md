@@ -262,7 +262,7 @@ There is **no synchronous reply** — `senseText` returns immediately; the Will 
 
 ## Architecture
 
-> **Visual map:** [`docs/graphs/`](docs/graphs/) holds twenty-seven architecture graphs — the cognitive stories (memory, executive & facets, agency, audition, body & affect, meta-cognition, the executive ⇄ agency seam, planning & goals, social cognition, proactive communication, competence, the two persona channels), the loops that close on the world (exafference, policy reafference and its joint RFC, the answered loop, identity vs route), the machinery (the deterministic tick, the simulation core, the cognitive bus & wiring, one LLM call end-to-end, model routing, transports, the stem's tracts), the edges (host surfaces, the PMA lifecycle), and the [whole composition](docs/graphs/composition.svg). One palette across all of them: violet is always memory, amber executive, green agency. Regenerate with `bun docs/graphs/generate.ts`.
+> **Visual map:** [`docs/graphs/`](docs/graphs/) holds twenty-eight architecture graphs — the cognitive stories (memory, executive & facets, agency, audition, body & affect, meta-cognition, the executive ⇄ agency seam, planning & goals, social cognition, proactive communication, competence, the two persona channels), the loops that close on the world (exafference, policy reafference and its joint RFC, the answered loop, identity vs route, the signal boundary), the machinery (the deterministic tick, the simulation core, the cognitive bus & wiring, one LLM call end-to-end, model routing, transports, the stem's tracts), the edges (host surfaces, the PMA lifecycle), and the [whole composition](docs/graphs/composition.svg). One palette across all of them: violet is always memory, amber executive, green agency. Regenerate with `bun docs/graphs/generate.ts`.
 
 ![Will — the whole composition](docs/graphs/composition.svg)
 
@@ -921,6 +921,31 @@ bun test:watch     # Watch mode (Vitest)
 ```
 
 Debug prompts are written to `data/wills/<id>/debug/` on every executive call — inspect the full prompt + raw LLM output at each tick.
+
+---
+
+## The development record
+
+Every arc of this engine's development is written down and public, from the first
+implementation checklist on 2026-05-28 to the mechanism that shipped last week.
+
+- **[.TODO/INDEX.md](.TODO/INDEX.md)** — the whole record in order: 44 documents
+  and 8 releases on one timeline. Generated (`bun run record`), so it cannot
+  drift from what the documents say.
+- **[.TODO/STANDING.md](.TODO/STANDING.md)** — what each document may be cited
+  for. Every one carries a `Standing` line saying whether it is **SHIPPED** (in
+  the engine, gated by CI), **OBSERVED** (seen in a running mind, on a date, with
+  its n), **DESIGNED** (a plan, no code) or **SPECULATIVE** (a hypothesis).
+- **[.TODO/FIELD_NOTES.md](.TODO/FIELD_NOTES.md)** — what a live Will was seen
+  doing, one section per run, with the timestamps and counts as they were read.
+  Every fault the engine has fixed by watching rather than by testing.
+- **[CHANGELOG.md](CHANGELOG.md)** — each release as the story of one epoch, with
+  [a diagram](docs/graphs) for the arc it closed.
+
+The reason for the labels: these documents do not carry the same weight of
+evidence, and read in one voice they are indistinguishable. A mechanism the suite
+gates on every commit and a behaviour seen once on one afternoon are both true and
+are not the same claim.
 
 ---
 

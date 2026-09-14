@@ -31,6 +31,13 @@ function stub( awaitingIntentId: string, tick = 8 ){
     metadata: { schema: 'trade', status: 'awaiting', predictedReward: 0.5, predictedValence: 0 },
   } as SimulationEntity )
 
+  // The simulation clock, deliberately NOT the lifecycle's tick.
+  //
+  // `applyPolicyOutcomes` passes `instance.tickCount` — process-local, starts at
+  // 0 each boot — while `conversation.sent` is read in sim-clock space. Setting
+  // them to the same number here would let a record stamped from either one pass,
+  // which is exactly how the defect shipped.
+  const clock = { currentTick: 9_000 }
   const stateManager = {
     snapshot:  () => ({ entities }),
     setEntity: ( e: { id: string } ) => entities.set( e.id, e as SimulationEntity ),
@@ -39,7 +46,7 @@ function stub( awaitingIntentId: string, tick = 8 ){
   const voiced: Array<{ content: string; effectorName: string; targetEntityId: string }> = []
   const instance = {
     config: { id: WILL_ID }, tickCount: tick, pendingEffectorInvocations: [] as effectorInvocation[],
-    simulation: { stateManager },
+    simulation: { stateManager, clock },
     cognition:  { outboxWriter: { enqueue: ( row: { content: string; effectorName: string; targetEntityId: string } ) => { voiced.push( row ); return 'm-1' } } },
   }
   return { instance, entities, voiced }
@@ -198,7 +205,10 @@ describe('P4 — she remembers asking', () => {
     const turns = readSpokenTurns( entities )
     expect( turns, 'written, but not where the prompt looks').toHaveLength( 1 )
     expect( turns[0]!.preview ).toContain('trade')
-    expect( turns[0]!.tick ).toBe( 8 )
+    // The world's clock (9000), not the lifecycle's counter (8). Stamped with the
+    // latter the ask sorts to the oldest turn she has and falls off the end of
+    // `## What I've Said Lately` — present in state, absent from the prompt.
+    expect( turns[0]!.tick, 'stamped from the wrong clock').toBe( 9_000 )
     // Not an ack: `## What I've Said Lately` filters those out, and an approval
     // ask filtered out of her own record is the whole defect again.
     expect( turns[0]!.isAck ).toBe( false )

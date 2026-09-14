@@ -1,5 +1,7 @@
 # ENVELOPE_NARROWING — the counterfactual, consumed: refusals narrow reach, not ability
 
+> **Standing:** SHIPPED · 2026-07-28 · partial — designed 2026-07-22, P0 shipped; P1 is blocked upstream on counterfactual direction (2026-07-27), P2 open
+
 > **Status:** **P0 SHIPPED (2026-07-28)** · P1–P2 OPEN, and P1 is **blocked
 > upstream** on counterfactual direction (see the 2026-07-27 update below).
 > Designed 2026-07-22. Goal: make an *instance* refusal teach

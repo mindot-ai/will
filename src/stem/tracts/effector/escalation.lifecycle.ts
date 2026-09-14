@@ -118,7 +118,7 @@ export class EscalationLifecycle {
     for( const esc of pending ){
       esc.expiresAt = tick + ESCALATION_TTL_TICKS
       this._markEscalated( instance, esc.intentId, esc.expiresAt )
-      this._voiceEscalation( instance, esc, tick )
+      this._voiceEscalation( instance, esc )
       active.set( esc.intentId, esc )
     }
     this._activeEscalations.set( instance.config.id, active )
@@ -154,7 +154,22 @@ export class EscalationLifecycle {
    * is a pure move — relocating it is a behaviour question about who authors
    * the words, not a question about where the file boundary goes.
    */
-  private _voiceEscalation( instance: WillInstance, esc: Escalation, tick: number ): void {
+  private _voiceEscalation( instance: WillInstance, esc: Escalation ): void {
+    // The SIMULATION clock, not the lifecycle's `tick`.
+    //
+    // Two counters live here and they are thousands apart. `applyPolicyOutcomes`
+    // passes `instance.tickCount` — a process-local counter that starts at 0 on
+    // every boot — and the whole escalation lifecycle is self-consistent in that
+    // space, so nothing else notices. `conversation.sent` is read in SIM-clock
+    // space by `readSpokenTurns` and `spokenAtByEntity`, where the state manager
+    // stamps `updatedAtTick` from the simulation clock.
+    //
+    // Written with the process counter, the ask landed ~17,000 ticks in the past
+    // on a live Will: it still existed, but `readSpokenTurns` sorts oldest-first
+    // and `## What I've Said Lately` keeps only the newest few — so the record
+    // was dropped from the one section it was added to appear in. Found by a live
+    // run, not by the suite: both halves were internally consistent.
+    const tick = instance.simulation.clock.currentTick
     const content = escalationAsk( esc.schema, esc.reasonCode )
     try {
       instance.cognition.outboxWriter.enqueue({

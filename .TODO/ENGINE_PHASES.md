@@ -1,5 +1,7 @@
 # Engine Phases: Self-Aware Simulated Mind Framework
 
+> **Standing:** SHIPPED · 2026-06-21 · the phase-by-phase build record, kept for provenance. Its 156 unchecked boxes are historical, not a backlog — the forward-looking roadmap is [ROADMAP.md](../ROADMAP.md)
+
 > **Internal engineering history.** The phase-by-phase build record of the
 > engine, kept for provenance. The forward-looking, community-facing roadmap is
 > [ROADMAP.md](../ROADMAP.md). Commercial phases — billing, pricing, margins,

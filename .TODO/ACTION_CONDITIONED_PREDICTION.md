@@ -1,5 +1,7 @@
 # ACTION_CONDITIONED_PREDICTION_TODO — the exafference sequel
 
+> **Standing:** SHIPPED · 2026-08-21 · designed 2026-07-20, all 11 tracked items landed; the header said OPEN until the SIGNAL_BOUNDARY audit corrected it
+
 > **Status:** ✅ **SHIPPED** — designed 2026-07-20, all 11 tracked items landed
 > (0 open; each marked ✅ in the table below). *(Header said OPEN until 2026-08-21;
 > corrected during the SIGNAL_BOUNDARY audit.)* Sequel to `.TODO/EXAFFERENCE.md`

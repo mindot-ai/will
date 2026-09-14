@@ -1,5 +1,7 @@
 # Record anchoring — tamper-evident decision records (parked, do not lose)
 
+> **Standing:** DESIGNED · 2026-07-08 · parked the day it was written so it would survive context loss. Upgrades the audit story from operator-trusted logs to tamper-evident records — no blockchain, no new dependency
+
 > **Status:** OPEN — parked 2026-07-08 so it survives context loss. Small,
 > high-leverage: it upgrades our audit story from "operator-trusted logs" to
 > "tamper-evident records verifiable without trusting the operator", with no

@@ -1,5 +1,85 @@
 # Changelog
 
+## 0.10.0 — 2026-08-31 · the mind knows its own doing from the world's
+
+A mind that cannot tell what it did from what was done to it cannot be surprised,
+cannot learn from an act, and cannot trust its own memory of having spoken.
+Signals were arriving through several doors and one set of bypasses, leaving
+through a single class with seven jobs, and *whose doing* a signal was got
+inferred late — by which point only the mind could tell, and that is the one
+thing it cannot work out alone. This epoch gives the boundary a shape: **one door
+in that requires an assertion, one crossing out, and an answer that comes back as
+facts the mind perceives rather than a verdict it is handed.**
+
+> **The picture:** `docs/graphs/signal-boundary-loop.svg` — the whole arc in one
+> diagram.
+
+- **The door is called `sense()`, and it refuses a signal that will not say whose
+  doing it was.** `perceive()` and `ingestText()` are gone, along with every
+  alias beside them — one name for one thing. Provenance is now a required
+  assertion at the edge (`exafferent | reafferent | unknown`), because a host
+  knows whether it is relaying the world or handing back the mind's own act, and
+  the mind cannot recover that fact afterwards. The bypasses that used to write
+  percepts directly — the wake after an absence, `inspect`, an inbound percept —
+  route through the same door. **Breaking**, and deliberately so: a signal that
+  cannot say where it came from is the defect this epoch exists to end.
+
+- **A percept has one shape.** `perceptEntity()` makes tick and provenance
+  structural rather than remembered, and the five existing writers were retrofitted
+  onto it. Two of them had been leaking: the outbox minted one immortal percept per
+  message the mind ever successfully sent, and the wake percept had a fixed id and
+  no tick, so *"I was offline for three hours"* sat in front of the executive
+  forever. A percept is swept two ticks after it lands. It is not a memory.
+
+- **Only the world can surprise her.** The rupture gate counts exafferent percepts
+  and nothing else, so the mind's own echo coming back off a channel can no longer
+  shake a commitment it just made. Neither can `unknown` — which one transport was
+  silently forcing on every message it carried.
+
+- **What a host says back is facts, not a verdict.** An effector ack now splits by
+  what it carries: the *fate* of the act in `description`, the *facts* it learned
+  in `observation`, arriving as a reafferent percept the mind perceives, remembers
+  and can recall. Whole, too — the old path truncated a host's answer at 120
+  characters, so a Will could look someone up sixty-five times and never once hold
+  what it found.
+
+- **The crossing out was one class doing seven jobs.** It is now three that each
+  own one, and the tick ordering they all depend on stayed with the controller
+  because neither collaborator owns the tick. Verified by injecting mutations into
+  the moved code rather than by a green suite — a pure move passes by construction,
+  which proves nothing.
+
+- **The wire says who spoke.** A transported mind carries provenance, direct-ness
+  and thread across the wire, and can be interrupted again.
+
+- **And then a live COO put the boundary to work.** With the signals finally
+  legible, one afternoon of watching a mind run surfaced six faults that no test
+  could see, each the same shape — a value produced, crossing a boundary, and the
+  far side not looking where it landed. She decided to contact someone and never
+  did, because a facet that reasoned and came back with nothing was
+  indistinguishable from a dead one, and the intent rotted into a *failed act* —
+  teaching her she is bad at speaking from passes where she never spoke. She told
+  the person in front of her that the message had gone, because the reply format
+  promised her the handoff *"reaches them"*. She broadcast an approval request and
+  then truthfully denied sending it seven times, because nothing wrote it into her
+  record of what she had said. An act with no object was damped later than one with
+  an object — not less — so a read whose answer never changes ran forty-eight times
+  in eighteen minutes, half of them three ticks apart. A person she had just
+  answered was a different person to satiation, because a reply is filed under the
+  address it was spoken on and a self-initiated message is aimed at the anchor. And
+  a conversation facet was keyed by the address rather than the person, so the guard
+  that stops the mind opening a second thread on someone it is already talking to
+  had **never once fired** — every master-willed outreach spawned a rival that
+  composed blind, and answered a question the open thread had answered twenty-seven
+  seconds earlier.
+
+Throughout: the quiet path is byte-identical. Provenance defaults nowhere — an
+untyped edge is normalised to `exafferent`, never to `reafferent`, so the mind
+errs toward being surprisable rather than toward dismissing the world as its own
+echo. Determinism, replay equivalence, snapshot/restore and the 100K-tick
+bounded-growth soak all hold; every satiation arm remains a weight that decays to
+nothing at its window edge, never a veto, so a mind can always change its mind.
+
 ## 0.9.0 — 2026-08-07 · the mind learns said from answered, and who from where
 
 Two things a mind needs that this one did not have. The first: sending a message

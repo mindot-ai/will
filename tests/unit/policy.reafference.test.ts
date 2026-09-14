@@ -46,7 +46,9 @@ function stateStub( awaitingIntentId: string ){
   }
   const instance = {
     config: { id: WILL_ID }, tickCount: 8, pendingEffectorInvocations: [] as effectorInvocation[],
-    simulation: { stateManager },
+    // A clock, because the escalation voice stamps its record in SIM-clock space
+    // (see policy.escalation's `she remembers asking`).
+    simulation: { stateManager, clock: { currentTick: 9_000 } },
   }
   return { instance, entities }
 }

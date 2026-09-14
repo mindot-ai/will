@@ -1,5 +1,7 @@
 # High-Value Engineering Contributions
 
+> **Standing:** DESIGNED · 2026-08-03 · scoped invitations for contributors, not commitments — the four shell sense engines are still empty scaffolds
+
 These are scoped, well-defined tasks that fit Will's existing architecture and would be welcomed per `CONTRIBUTING.md`.
 
 ## 1. Fill the Shell Sense Engines

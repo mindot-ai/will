@@ -83,6 +83,37 @@ export interface Graph {
 const NODE_W = 172
 const NODE_H = 54
 
+/**
+ * Estimated rendered width of a string — the one place that assumption lives.
+ *
+ * The edge-label pill has always sized itself with `length * 5.6` (0.56em at
+ * 10px), which is a decent average and badly wrong for text that is mostly caps
+ * or mostly `i`/`l`. Node labels had no such estimate at all: a `<text>` with no
+ * wrapping and no truncation simply runs past the box it belongs to, and a reader
+ * sees a subtitle bleeding into the node beside it. Fifteen of twenty-eight
+ * graphs shipped with at least one.
+ */
+export function textW( s: string, size: number ): number {
+  let em = 0
+  for( const c of s )
+    em += 'iIl|.,\':;!ft '.includes( c ) ? 0.30
+        : 'mwMW—'.includes( c )          ? 0.92
+        : ( c >= 'A' && c <= 'Z' ) || ( c >= '0' && c <= '9' ) ? 0.66
+        : 0.56
+  return em * size
+}
+
+/**
+ * The largest size at or below `size` that fits `s` into `w`, floored so a very
+ * long line shrinks rather than disappearing. Shrinking beats truncating: the
+ * author's words are the content, and a clipped one reads as a typo.
+ */
+function fit( s: string, size: number, w: number, floor: number ): number {
+  const need = textW( s, size )
+  if( need <= w ) return size
+  return Math.max( floor, Math.floor( ( size * w / need ) * 10 ) / 10 )
+}
+
 const esc = ( s: string ): string =>
   s.replace( /&/g, '&amp;').replace( /</g, '&lt;').replace( />/g, '&gt;')
 
@@ -184,19 +215,22 @@ export function render( g: Graph ): string {
   parts.push(`<rect x="1" y="1" width="${g.width - 2}" height="${g.height - 2}" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>`)
 
   // ── header ──
-  parts.push(
-    `<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">${esc( g.title )}</text>`,
-    `<text x="40" y="80" font-size="13" fill="#8b93a7">${esc( g.subtitle )}</text>`,
-  )
-
-  // ── legend (top-right, right-aligned chips) ──
+  //
+  // Sized against the space actually left over. The title used to run straight
+  // through the legend chips and the subtitle straight off the right edge — both
+  // invisible to a spec author, because neither has a box to overflow.
+  // ── legend (top-right, right-aligned chips) — laid out FIRST so the title can
+  //    be fitted against where the chips actually begin ──
+  const legend: string[] = []
+  let legendLeft = g.width - 40
   {
     let cx = g.width - 40
     for( const cat of [ ...g.legend ].reverse() ){
       const { color, label } = PALETTE[ cat ]
       const w = 14 + label.length * 6.1 + 18
       cx -= w
-      parts.push(
+      legendLeft = cx
+      legend.push(
         `<rect x="${cx}" y="42" width="${w}" height="22" rx="11" fill="${color}14" stroke="${color}55" stroke-width="1"/>`,
         `<circle cx="${cx + 12}" cy="53" r="3.4" fill="${color}"/>`,
         `<text x="${cx + 21}" y="57" font-size="10.5" fill="#cbd5e1">${esc( label )}</text>`,
@@ -204,6 +238,17 @@ export function render( g: Graph ): string {
       cx -= 8
     }
   }
+
+  // ── header ──
+  //
+  // Sized against the space actually left over. The title used to run straight
+  // through the legend chips and the subtitle straight off the right edge —
+  // neither has a box, so nothing about a spec says it will not fit.
+  parts.push(
+    `<text x="40" y="56" font-size="${ fit( g.title, 25, legendLeft - 40 - 26, 15 ) }" font-weight="700" fill="#f8fafc" letter-spacing="0.2">${esc( g.title )}</text>`,
+    `<text x="40" y="80" font-size="${ fit( g.subtitle, 13, g.width - 80, 8.5 ) }" fill="#8b93a7">${esc( g.subtitle )}</text>`,
+  )
+  parts.push( ...legend )
 
   // ── groups ──
   for( const gr of g.groups ){
@@ -214,7 +259,8 @@ export function render( g: Graph ): string {
     )
   }
 
-  // ── edges (under nodes) ──
+  // ── edges (under nodes) · labels held for the pass after them ──
+  const labelParts: string[] = []
   for( const e of g.edges ){
     const a = byId.get( e.from ), b = byId.get( e.to )
     if( !a || !b ) throw new Error(`${g.file}: edge ${e.from}→${e.to} references a missing node`)
@@ -228,8 +274,14 @@ export function render( g: Graph ): string {
       `${ e.dash ? ' stroke-dasharray="5 4"' : '' } marker-end="url(#arr-${ color.slice( 1 ) })"/>`,
     )
     if( e.label ){
-      const w = e.label.length * 5.6 + 16
-      parts.push(
+      const w = textW( e.label, 10 ) + 16
+      // Held back and painted AFTER the nodes. Edges are drawn first so their
+      // curves pass behind a box rather than over it — but that buried the labels
+      // too, and a pill half under a node does not read as a clipped label, it
+      // reads as broken text: `declares exafferent` rendering as `dares exaffe`.
+      // Fully opaque and only 19px tall, so on top it sits over a node's border
+      // rather than its centred text.
+      labelParts.push(
         `<rect x="${m.x - w/2}" y="${m.y - 10}" width="${w}" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="${color}44" stroke-width="0.8"/>`,
         `<text x="${m.x}" y="${m.y + 3.5}" font-size="10" fill="#cbd5e1" text-anchor="middle">${esc( e.label )}</text>`,
       )
@@ -247,16 +299,22 @@ export function render( g: Graph ): string {
       `<rect x="${n.x + 1.2}" y="${n.y + 9}" width="3.2" height="${h - 18}" rx="1.6" fill="${color}"/>`,
     )
     const cx = n.x + w / 2
+    // Fit to the box. Nothing wraps or clips here, so a long line used to run
+    // straight out of its node and across whatever sat beside it.
+    const inner = w - 16
     if( n.sub ){
       parts.push(
-        `<text x="${cx}" y="${n.y + h/2 - 3}" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">${esc( n.label )}</text>`,
-        `<text x="${cx}" y="${n.y + h/2 + 13.5}" font-size="10" fill="#8b93a7" text-anchor="middle">${esc( n.sub )}</text>`,
+        `<text x="${cx}" y="${n.y + h/2 - 3}" font-size="${ fit( n.label, 13, inner, 10 ) }" font-weight="600" fill="#f1f5f9" text-anchor="middle">${esc( n.label )}</text>`,
+        `<text x="${cx}" y="${n.y + h/2 + 13.5}" font-size="${ fit( n.sub, 10, inner, 8 ) }" fill="#8b93a7" text-anchor="middle">${esc( n.sub )}</text>`,
       )
     }
     else
-      parts.push(`<text x="${cx}" y="${n.y + h/2 + 4.5}" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">${esc( n.label )}</text>`)
+      parts.push(`<text x="${cx}" y="${n.y + h/2 + 4.5}" font-size="${ fit( n.label, 13, inner, 10 ) }" font-weight="600" fill="#f1f5f9" text-anchor="middle">${esc( n.label )}</text>`)
     parts.push(`</g>`)
   }
+
+  // ── edge labels, above everything they cross ──
+  parts.push( ...labelParts )
 
   // ── footer ──
   parts.push(

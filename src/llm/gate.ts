@@ -9,7 +9,8 @@
  *   1. Semaphore — caps simultaneous in-flight requests so independent
  *      engines (decision, semantic, planning…) can run in parallel up to
  *      the concurrency limit without flooding the API.
- *   2. Retry with exponential backoff — on 429 the call waits and retries.
+ *   2. Retry with exponential backoff — on a transient provider error
+ *      (429 rate limit, or a 5xx/529 overload) the call waits and retries.
  *
  * No minimum interval is enforced.  A fixed inter-call floor causes
  * starvation: every engine serialises into a single queue and slower
@@ -21,7 +22,7 @@
  *   WILL_LLM_CONCURRENCY    max simultaneous LLM calls (default 2)
  *   WILL_LLM_RESPONSIVE_CONCURRENCY  slots reserved for calls someone outside
  *                           the mind is waiting on (default 1)
- *   WILL_LLM_MAX_RETRIES    retries before giving up on a 429 (default 4)
+ *   WILL_LLM_MAX_RETRIES    retries before giving up on a transient error (default 4)
  *   WILL_LLM_RETRY_BASE_MS  first retry wait, doubles each attempt (default 2000)
  */
 
@@ -138,13 +139,64 @@ export function isRateLimitError( err: unknown ): boolean {
   )
 }
 
+// ── Retryable transient errors ────────────────────────────────
+
+/**
+ * Transient provider statuses worth retrying: rate limits (429) and the
+ * server-side overload / gateway family (500, 502, 503, 504) plus Anthropic's
+ * 529 Overloaded. All are conditions where the same request may succeed
+ * shortly after — unlike 4xx client errors, which will fail identically.
+ *
+ * NOT included: timeouts and generic network failures. Whether to retry those
+ * is a separate policy decision (a timeout may have already spent a slow
+ * generation) and is deliberately out of scope here.
+ */
+const RETRYABLE_STATUS: ReadonlySet<number> = new Set([ 429, 500, 502, 503, 504, 529 ])
+
+/**
+ * The HTTP status an LLM error carries, from a structured field if present, or
+ * else parsed from the message the fetch path actually throws.
+ *
+ * The direct/stream callers in `index.ts` do not attach a `statusCode`; they
+ * throw the status inside the message text — `` `${provider} API ${status}: …` ``
+ * and `` `Anthropic stream ${status}: …` ``. We read the field first (for any
+ * error that does carry one) and fall back to the message shape.
+ */
+function statusOf( err: Error ): number | undefined {
+  const field = ( err as { statusCode?: number; status?: number } ).statusCode
+             ?? ( err as { status?: number } ).status
+  if( typeof field === 'number' ) return field
+
+  const m = err.message.match( /\b(?:API|stream)\s+(\d{3})\b/ )
+  return m ? parseInt( m[ 1 ]!, 10 ) : undefined
+}
+
+/**
+ * Whether an error is a transient provider condition worth retrying.
+ *
+ * A recognised status decides it outright (so a `400`/`401`/`404` is fatal even
+ * if the message happens to contain other digits). With no status anywhere, we
+ * defer to `isRateLimitError` so a provider that phrases a rate limit in prose
+ * ("rate limit reached", `rate_limit_error`) still retries as it always has.
+ */
+export function isRetryableError( err: unknown ): boolean {
+  if( !( err instanceof Error ) ) return false
+
+  const status = statusOf( err )
+  if( status !== undefined ) return RETRYABLE_STATUS.has( status )
+
+  return isRateLimitError( err )
+}
+
 // ── Gate + retry wrapper ──────────────────────────────────────
 
 /**
- * Run `fn` through the global semaphore with automatic 429 retry.
+ * Run `fn` through the global semaphore with automatic retry of transient
+ * provider errors (see `isRetryableError`: 429 + the 5xx/529 overload family).
  *
  * - Waits for a slot before calling `fn`
- * - On 429: releases the slot, waits (exponential backoff + jitter), retries
+ * - On a transient error: releases the slot, waits (exponential backoff +
+ *   jitter), retries
  * - Throws after MAX_RETRIES exhausted, or for non-retryable errors
  */
 export async function withGate<T>(
@@ -164,7 +216,7 @@ export async function withGate<T>(
       return result
     }
     catch( err ){
-      if( isRateLimitError( err ) && attempt < maxRetries() ){
+      if( isRetryableError( err ) && attempt < maxRetries() ){
         attempt++
         const base = baseDelayMs()
         retryDelay = Math.min(
@@ -180,7 +232,7 @@ export async function withGate<T>(
     // slot-holding region, so a rate-limited call no longer starves the other
     // engines of concurrency while it sleeps.
     logger.warn(
-      `[LLMGate] ${label} rate limited — retry ${attempt}/${maxRetries()} in ${Math.round( retryDelay! )}ms` +
+      `[LLMGate] ${label} transient error — retry ${attempt}/${maxRetries()} in ${Math.round( retryDelay! )}ms` +
       `  (running=${gate.running} queued=${gate.queued})`
     )
     await new Promise( r => setTimeout( r, retryDelay! ) )

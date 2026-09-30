@@ -208,7 +208,7 @@ export class EscalationLifecycle {
           // the line readable next to the people in the same list.
           targetEntityName: 'everyone here',
           messageCount:     1,
-          preview:          content.slice( 0, 100 ),
+          text:             content,
           effectorName:     'broadcast',
           tick,
           delivered:        false,

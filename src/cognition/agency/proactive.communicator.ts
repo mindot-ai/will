@@ -19,6 +19,7 @@
  *   → OutboxController drains per tick → TransportController emits (or SSE)
  */
 
+import { fnv1a } from '#agency/consequence'
 import { logger } from '#core/logger'
 import { wallClock } from '#core/wall.clock'
 import type { ActionRequest, ActionResult } from '#types'
@@ -137,7 +138,7 @@ export class ProactiveCommunicator {
 
     return {
       success: true,
-      description: `I broadcast: "${finalContent.slice( 0, 80 )}${finalContent.length > 80 ? '…' : ''}"`,
+      description: `I broadcast: "${ finalContent }"`,
       commands,
       feedback: {
         outcomeQuality: 0.75,
@@ -230,7 +231,8 @@ export class ProactiveCommunicator {
         targetEntityId,
         targetEntityName,
         messageCount:    bubbles.length,
-        preview:         bubbles[0]?.slice( 0, 100 ) ?? '',
+        // Every bubble, whole — the record a turn is later judged by (LOSSLESS P0).
+        text:            bubbles.join('\n'),
         effectorName,
         tick:            deliveryTick,
         delivered:       false,
@@ -246,8 +248,7 @@ export class ProactiveCommunicator {
       targetEntityId,
       targetEntityName,
       messageCount:     bubbles.length,
-      messages:         bubbles.map( b => b.slice( 0, 300 ) ),
-      preview:          bubbles[0]?.slice( 0, 100 ) ?? '',
+      messages:         bubbles,
       isAck,
     })
 
@@ -265,13 +266,14 @@ export class ProactiveCommunicator {
       userMessage: originalMessage,
       willReply:   fullReply,
       tick:        ( request.parameters?.tick as number ) ?? 0,
-      idSeed:      wallClock(),
+      // Deterministic: the episode this becomes keeps the id (see idSeed).
+      idSeed:      `${ deliveryTick }-${ fnv1a(`${ originalMessage ?? '' }\u2192${ fullReply }`) }`,
       createdAt:   wallClock(),
     }) )
 
     return {
       success: true,
-      description: `I reach out to ${targetEntityName}: "${fullReply.slice( 0, 80 )}${fullReply.length > 80 ? '…' : ''}"`,
+      description: `I reach out to ${targetEntityName}: "${ fullReply }"`,
       commands,
       feedback: {
         // NOT a success yet. This reports the TRANSPORT, and the act's point is to be

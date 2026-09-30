@@ -38,8 +38,13 @@ export interface ConversationExchangeInput {
   activation?:    number
   /** WM attended count. Default 3. */
   attendedCount?: number
-  /** Unique id seed — the caller's clock (wallClock() under replay; never Date.now() in a scanned tree). */
-  idSeed:         number
+  /**
+   * Unique, DETERMINISTIC id seed — the sim tick plus a hash of the words (the
+   * `_sentKey` recipe). Never the wall clock: this id outlives the item, because
+   * the episode it becomes remembers it as its source (LOSSLESS P0), and a
+   * wall-clock id in durable state is a run that cannot replay (R2).
+   */
+  idSeed:         number | string
   /** Top-level createdAt. Pass on the StateCommands path; omit when setEntity stamps it. */
   createdAt?:     number
 }
@@ -67,9 +72,11 @@ export function buildConversationExchange( input: ConversationExchangeInput ): C
       activation,
       attendedCount,
       tags:          [ 'conversation', 'exchange', `entity:${ entityId }` ],
+      // Whole. This label is what recall renders for the exchange, so a cut here
+      // was a cut of her memory of the conversation, 100 characters a side.
       summary:       userMessage
-        ? `${ name }: "${ userMessage.slice( 0, 100 ) }" → "${ willReply.slice( 0, 100 ) }"`
-        : `I → ${ name }: "${ willReply.slice( 0, 140 ) }"`,
+        ? `${ name }: "${ userMessage }" → "${ willReply }"`
+        : `I → ${ name }: "${ willReply }"`,
       entityId,
       entityName:    name,
       userMessage,

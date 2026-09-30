@@ -298,7 +298,7 @@ export async function buildExecutiveContext(
       // the same person rendered as both `FKEM` and `discord:15255…` in one list,
       // which reads as two people. The roster holds the current best name.
       target:   nameOf( t.targetEntityId ) ?? t.targetEntityName ?? t.targetEntityId,
-      preview:  t.preview,
+      text:     t.text,
       age:      Math.max( 0, state.tick - t.tick ),
       answered: t.answeredAt !== undefined,
       ...( t.answeredWith ? { answeredWith: t.answeredWith } : {} ),

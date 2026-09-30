@@ -1214,19 +1214,19 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
     // throw the whole prompt away.
     if( !spokenTurns?.length ) return ''
 
-    const clip = ( s: string, n: number ): string =>
-      s.length > n ? `${ s.slice( 0, n ) }…` : s
-
+    // Whole, both sides. These were clipped to 80 and 100 characters on top of
+    // records already cut to 100 and 140 — and the correction that mattered in
+    // the story below sat past the cut as often as not (LOSSLESS P0).
     const lines = spokenTurns.map( t => {
-      const words = t.preview.trim()
-      const said  = words ? ` — "${ clip( words, 80 ) }"` : ''
+      const words = t.text.trim()
+      const said  = words ? ` — "${ words }"` : ''
       // Their words, not merely that they spoke. "they answered" on its own reads
       // as "I have the answer" — a live Will asked "same time, 3pm?", saw that
       // flag, never saw the correction to 2pm, and relayed 3pm to a third party as
       // confirmed. A reply I cannot see is not one I can act on.
       const back  = t.answered
         ? ( t.answeredWith?.trim()
-            ? ` — they answered: "${ clip( t.answeredWith.trim(), 100 ) }"`
+            ? ` — they answered: "${ t.answeredWith.trim() }"`
             : ' — they answered (I do not have their words here)' )
         : ' — no answer yet'
       return `- **${ t.target }** · ${ t.age } ticks ago${ said }${ back }`

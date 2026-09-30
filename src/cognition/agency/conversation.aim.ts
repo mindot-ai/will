@@ -85,7 +85,8 @@ export interface SpokenTurn {
   entityId:         string
   targetEntityId:   string
   targetEntityName?: string
-  preview:          string
+  /** What was said, whole — every bubble of it. See `wordsOf`. */
+  text:             string
   tick:             Tick
   /** Set once the target has spoken after this turn. */
   answeredAt?:      Tick
@@ -114,6 +115,22 @@ function meta( e: EntityLike ): Record<string, unknown> {
   return m instanceof Map ? Object.fromEntries( m ) : m as Record<string, unknown>
 }
 function str( v: unknown ): string | undefined { return typeof v === 'string' ? v : undefined }
+
+/**
+ * The words of a turn, whole.
+ *
+ * These records used to carry a `preview`: the FIRST bubble only, cut to 100
+ * characters for the mind's own words and 140 for what it heard. Everything that
+ * asks "what did I say, and what did they answer?" read that, so an answer in
+ * two bubbles was half an answer, and a correction past the 100th character was
+ * no correction at all (LOSSLESS P0). Writers now store `text`, every bubble.
+ *
+ * `preview` is still read when `text` is absent: a mind woken from a snapshot
+ * written before this change has only that, and its history is still its own.
+ */
+function wordsOf( m: Record<string, unknown> ): string {
+  return str( m['text'] ) ?? str( m['preview'] ) ?? ''
+}
 function num( v: unknown ): number | undefined {
   return typeof v === 'number' && Number.isFinite( v ) ? v : undefined
 }
@@ -146,7 +163,7 @@ export function readSpokenTurns( entities: ReadonlyMap<string, EntityLike> ): Sp
       entityId:         id,
       targetEntityId:   canonicalOf( aliases, target ),
       targetEntityName: str( m['targetEntityName'] ),
-      preview:          str( m['preview'] ) ?? '',
+      text:             wordsOf( m ),
       tick:             tickOf( e, m ),
       answeredAt:       num( m['answeredAt'] )   as Tick | undefined,
       answeredWith:     str( m['answeredWith'] ),
@@ -179,13 +196,13 @@ export function lastHeardByEntity( entities: ReadonlyMap<string, EntityLike> ): 
     const source = canonicalOf( aliases, raw )
     const at = tickOf( e, m )
     if( at > ( out.get( source )?.tick ?? -Infinity ) )
-      out.set( source, { tick: at, preview: str( m['preview'] ) ?? '' } )
+      out.set( source, { tick: at, text: wordsOf( m ) } )
   }
   return out
 }
 
 /** When someone last spoke to us, AND what they said. */
-export interface Heard { tick: Tick; preview: string }
+export interface Heard { tick: Tick; text: string }
 
 /**
  * When each person last spoke to the mind — the DURABLE version.
@@ -260,7 +277,7 @@ export function resolveReplyExpectations(
 
     const heard = lastHeard.get( t.targetEntityId )
     if( heard !== undefined && heard.tick > t.tick ){
-      answered.push({ turn: t, at: heard.tick, with: heard.preview })
+      answered.push({ turn: t, at: heard.tick, with: heard.text })
       continue
     }
 

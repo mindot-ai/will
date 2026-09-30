@@ -2590,8 +2590,7 @@ var OutboxWriter = class {
       targetEntityId: entityId,
       targetEntityName: entityName,
       messageCount: bubbles.length,
-      messages: bubbles.map((b) => b.slice(0, 300)),
-      preview: bubbles[0]?.slice(0, 100) ?? "",
+      messages: bubbles,
       threadId,
       source: "audition-facet"
     });
@@ -2728,6 +2727,19 @@ function isRateLimitError(err) {
   const msg = err.message;
   return msg.includes("rate_limit_error") || err.statusCode === 429 || msg.includes("rate limit") || msg.includes("429");
 }
+var RETRYABLE_STATUS = /* @__PURE__ */ new Set([429, 500, 502, 503, 504, 529]);
+function statusOf(err) {
+  const field = err.statusCode ?? err.status;
+  if (typeof field === "number") return field;
+  const m = err.message.match(/\b(?:API|stream)\s+(\d{3})\b/);
+  return m ? parseInt(m[1], 10) : void 0;
+}
+function isRetryableError(err) {
+  if (!(err instanceof Error)) return false;
+  const status = statusOf(err);
+  if (status !== void 0) return RETRYABLE_STATUS.has(status);
+  return isRateLimitError(err);
+}
 async function withGate(fn, label, gate = llmGate) {
   let attempt = 0;
   while (true) {
@@ -2737,7 +2749,7 @@ async function withGate(fn, label, gate = llmGate) {
       const result = await fn();
       return result;
     } catch (err) {
-      if (isRateLimitError(err) && attempt < maxRetries()) {
+      if (isRetryableError(err) && attempt < maxRetries()) {
         attempt++;
         const base = baseDelayMs();
         retryDelay = Math.min(
@@ -2749,7 +2761,7 @@ async function withGate(fn, label, gate = llmGate) {
       release();
     }
     logger.warn(
-      `[LLMGate] ${label} rate limited \u2014 retry ${attempt}/${maxRetries()} in ${Math.round(retryDelay)}ms  (running=${gate.running} queued=${gate.queued})`
+      `[LLMGate] ${label} transient error \u2014 retry ${attempt}/${maxRetries()} in ${Math.round(retryDelay)}ms  (running=${gate.running} queued=${gate.queued})`
     );
     await new Promise((r) => setTimeout(r, retryDelay));
   }
@@ -4362,6 +4374,162 @@ I grow with the organisation. Every decision, every project, every conversation 
 to what I know and how I reason. The company's intelligence compounds through me.`
 });
 
+// src/cognition/agency/consequence.ts
+var CONSEQUENCE_TYPE = "agency.consequence";
+var ATTENUATION = 0.25;
+var MIN_TEXT_MATCH_LEN = 12;
+var CONSEQUENCE_TTL_TICKS = 30;
+function fnv1a(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+function paramsKey(value) {
+  if (value === null || typeof value !== "object")
+    return typeof value === "string" ? JSON.stringify(value) : String(value);
+  if (Array.isArray(value))
+    return `[${value.map(paramsKey).join(",")}]`;
+  const obj = value;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${k}:${paramsKey(obj[k])}`).join(",")}}`;
+}
+function consequenceEntity(d) {
+  return {
+    id: `agency-consequence-${d.intentId}`,
+    type: CONSEQUENCE_TYPE,
+    metadata: { ...d }
+  };
+}
+var ENACTED_TYPE = "agency.enacted";
+function enactedId(schema, targetEntityId) {
+  return `agency-enacted-${schema}-${targetEntityId}`;
+}
+function enactedEntity(schema, targetEntityId, tick) {
+  return {
+    id: enactedId(schema, targetEntityId),
+    type: ENACTED_TYPE,
+    metadata: { schema, targetEntityId, tick }
+  };
+}
+function enactedAtBySchemaTarget(entities, canon) {
+  const out = /* @__PURE__ */ new Map();
+  for (const [, e] of entities) {
+    if (e.type !== ENACTED_TYPE) continue;
+    const meta3 = e.metadata ?? {};
+    const schema = typeof meta3["schema"] === "string" ? meta3["schema"] : void 0;
+    const target = typeof meta3["targetEntityId"] === "string" ? meta3["targetEntityId"] : void 0;
+    const tick = typeof meta3["tick"] === "number" ? meta3["tick"] : void 0;
+    if (!schema || !target || tick === void 0) continue;
+    out.set(enactedKey(schema, canon ? canon(target) : target), tick);
+  }
+  return out;
+}
+function enactedKey(schema, targetEntityId) {
+  return `${schema}\0${targetEntityId}`;
+}
+function readConsequence(m) {
+  const meta3 = m ?? {};
+  const intentId = typeof meta3["intentId"] === "string" ? meta3["intentId"] : void 0;
+  const schema = typeof meta3["schema"] === "string" ? meta3["schema"] : void 0;
+  const mode = meta3["mode"] === "communicate" || meta3["mode"] === "external" ? meta3["mode"] : void 0;
+  if (!intentId || !schema || !mode) return null;
+  return {
+    intentId,
+    schema,
+    mode,
+    effector: typeof meta3["effector"] === "string" ? meta3["effector"] : void 0,
+    targetEntityId: typeof meta3["targetEntityId"] === "string" ? meta3["targetEntityId"] : void 0,
+    textHash: typeof meta3["textHash"] === "number" ? meta3["textHash"] : void 0,
+    text: typeof meta3["text"] === "string" ? meta3["text"] : void 0,
+    paramsHash: typeof meta3["paramsHash"] === "number" ? meta3["paramsHash"] : void 0,
+    // Decoded, not just written — a field only one side knows about is the shape
+    // of defect this codebase has hit five times now.
+    pending: meta3["pending"] === true ? true : void 0,
+    expiresAt: typeof meta3["expiresAt"] === "number" ? meta3["expiresAt"] : 0,
+    tick: typeof meta3["tick"] === "number" ? meta3["tick"] : 0
+  };
+}
+function liveConsequences(entities, tick, canon) {
+  const out = [];
+  for (const [, e] of entities) {
+    if (e.type !== CONSEQUENCE_TYPE) continue;
+    const d = readConsequence(e.metadata);
+    if (!d) continue;
+    if (d.tick > tick) continue;
+    if (tick < d.expiresAt)
+      out.push(canon && d.targetEntityId ? { ...d, targetEntityId: canon(d.targetEntityId) } : d);
+  }
+  return out.sort((a, b) => a.intentId < b.intentId ? -1 : a.intentId > b.intentId ? 1 : 0);
+}
+function matchConsequenceText(descriptors, candidate) {
+  if (candidate.length === 0) return null;
+  const candidateHash = fnv1a(candidate);
+  for (const d of descriptors) {
+    if (d.textHash !== void 0 && d.textHash === candidateHash) return d;
+    if (d.text !== void 0 && d.text.length >= MIN_TEXT_MATCH_LEN && candidate.includes(d.text)) return d;
+  }
+  return null;
+}
+function enactionFootprint(descriptors, schema, targetEntityId, tick, windowTicks = CONSEQUENCE_TTL_TICKS, spokenAt, selfEnactedAt, spokeAnywhereAt, enactedAt) {
+  if (windowTicks <= 0) return 0;
+  if (!targetEntityId) {
+    let strongest2 = selfEnactedAt === void 0 ? 0 : (windowTicks - (tick - selfEnactedAt)) / windowTicks;
+    for (const d of descriptors) {
+      if (d.schema !== schema || d.targetEntityId !== void 0) continue;
+      if (d.pending) continue;
+      const remaining = (windowTicks - (tick - d.tick)) / windowTicks;
+      if (remaining > strongest2) strongest2 = remaining;
+    }
+    return strongest2 < 0 ? 0 : strongest2 > 1 ? 1 : strongest2;
+  }
+  let strongest = 0;
+  const enacted = enactedAt?.get(enactedKey(schema, targetEntityId));
+  if (enacted !== void 0) {
+    const remaining = (windowTicks - (tick - enacted)) / windowTicks;
+    if (remaining > strongest) strongest = remaining;
+  }
+  const spoken = spokenAt?.get(targetEntityId);
+  if (spoken !== void 0) {
+    const remaining = (windowTicks - (tick - spoken)) / windowTicks;
+    if (remaining > strongest) strongest = remaining;
+  }
+  if (spokeAnywhereAt !== void 0) {
+    const remaining = (CONSEQUENCE_TTL_TICKS - (tick - spokeAnywhereAt)) / CONSEQUENCE_TTL_TICKS;
+    if (remaining > strongest) strongest = remaining;
+  }
+  for (const d of descriptors) {
+    if (d.schema !== schema || d.targetEntityId !== targetEntityId) continue;
+    if (d.pending) continue;
+    const elapsed = tick - d.tick;
+    const remaining = (windowTicks - elapsed) / windowTicks;
+    if (remaining > strongest) strongest = remaining;
+  }
+  return strongest < 0 ? 0 : strongest > 1 ? 1 : strongest;
+}
+function spokenAtByEntity(entities, canon) {
+  const out = /* @__PURE__ */ new Map();
+  for (const [, e] of entities) {
+    if (e.type !== "conversation.sent") continue;
+    const m = e.metadata ?? {};
+    const target = typeof m["targetEntityId"] === "string" ? m["targetEntityId"] : void 0;
+    if (!target) continue;
+    const at = typeof m["tick"] === "number" ? m["tick"] : typeof e.updatedAtTick === "number" ? e.updatedAtTick : typeof e.tick === "number" ? e.tick : 0;
+    const key = canon ? canon(target) : target;
+    if (at > (out.get(key) ?? -Infinity)) out.set(key, at);
+  }
+  return out;
+}
+var CORRESPONDENCE_ATTENUATION = 0.5;
+function matchConsequenceEntity(descriptors, entityId, changeType) {
+  if (changeType !== "modified" || entityId.length === 0) return null;
+  for (const d of descriptors)
+    if (d.mode === "external" && d.targetEntityId === entityId) return d;
+  return null;
+}
+
 // src/cognition/conversation.memory.ts
 function buildConversationExchange(input) {
   const {
@@ -4385,7 +4553,9 @@ function buildConversationExchange(input) {
       activation,
       attendedCount,
       tags: ["conversation", "exchange", `entity:${entityId}`],
-      summary: userMessage ? `${name}: "${userMessage.slice(0, 100)}" \u2192 "${willReply.slice(0, 100)}"` : `I \u2192 ${name}: "${willReply.slice(0, 140)}"`,
+      // Whole. This label is what recall renders for the exchange, so a cut here
+      // was a cut of her memory of the conversation, 100 characters a side.
+      summary: userMessage ? `${name}: "${userMessage}" \u2192 "${willReply}"` : `I \u2192 ${name}: "${willReply}"`,
       entityId,
       entityName: name,
       userMessage,
@@ -4477,7 +4647,7 @@ var ProactiveCommunicator = class {
     });
     return {
       success: true,
-      description: `I broadcast: "${finalContent.slice(0, 80)}${finalContent.length > 80 ? "\u2026" : ""}"`,
+      description: `I broadcast: "${finalContent}"`,
       commands,
       feedback: {
         outcomeQuality: 0.75,
@@ -4536,7 +4706,8 @@ var ProactiveCommunicator = class {
         targetEntityId,
         targetEntityName,
         messageCount: bubbles.length,
-        preview: bubbles[0]?.slice(0, 100) ?? "",
+        // Every bubble, whole — the record a turn is later judged by (LOSSLESS P0).
+        text: bubbles.join("\n"),
         effectorName: effectorName2,
         tick: deliveryTick,
         delivered: false,
@@ -4551,8 +4722,7 @@ var ProactiveCommunicator = class {
       targetEntityId,
       targetEntityName,
       messageCount: bubbles.length,
-      messages: bubbles.map((b) => b.slice(0, 300)),
-      preview: bubbles[0]?.slice(0, 100) ?? "",
+      messages: bubbles,
       isAck
     });
     const fullReply = bubbles.join(" ");
@@ -4563,12 +4733,13 @@ var ProactiveCommunicator = class {
       userMessage: originalMessage,
       willReply: fullReply,
       tick: request.parameters?.tick ?? 0,
-      idSeed: wallClock(),
+      // Deterministic: the episode this becomes keeps the id (see idSeed).
+      idSeed: `${deliveryTick}-${fnv1a(`${originalMessage ?? ""}\u2192${fullReply}`)}`,
       createdAt: wallClock()
     }));
     return {
       success: true,
-      description: `I reach out to ${targetEntityName}: "${fullReply.slice(0, 80)}${fullReply.length > 80 ? "\u2026" : ""}"`,
+      description: `I reach out to ${targetEntityName}: "${fullReply}"`,
       commands,
       feedback: {
         // NOT a success yet. This reports the TRANSPORT, and the act's point is to be
@@ -6573,162 +6744,6 @@ function perceptEntity(facts, extra = {}) {
       ...facts.data !== void 0 ? { data: facts.data } : {}
     }
   };
-}
-
-// src/cognition/agency/consequence.ts
-var CONSEQUENCE_TYPE = "agency.consequence";
-var ATTENUATION = 0.25;
-var MIN_TEXT_MATCH_LEN = 12;
-var CONSEQUENCE_TTL_TICKS = 30;
-function fnv1a(text) {
-  let h = 2166136261;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return h >>> 0;
-}
-function paramsKey(value) {
-  if (value === null || typeof value !== "object")
-    return typeof value === "string" ? JSON.stringify(value) : String(value);
-  if (Array.isArray(value))
-    return `[${value.map(paramsKey).join(",")}]`;
-  const obj = value;
-  const keys = Object.keys(obj).sort();
-  return `{${keys.map((k) => `${k}:${paramsKey(obj[k])}`).join(",")}}`;
-}
-function consequenceEntity(d) {
-  return {
-    id: `agency-consequence-${d.intentId}`,
-    type: CONSEQUENCE_TYPE,
-    metadata: { ...d }
-  };
-}
-var ENACTED_TYPE = "agency.enacted";
-function enactedId(schema, targetEntityId) {
-  return `agency-enacted-${schema}-${targetEntityId}`;
-}
-function enactedEntity(schema, targetEntityId, tick) {
-  return {
-    id: enactedId(schema, targetEntityId),
-    type: ENACTED_TYPE,
-    metadata: { schema, targetEntityId, tick }
-  };
-}
-function enactedAtBySchemaTarget(entities, canon) {
-  const out = /* @__PURE__ */ new Map();
-  for (const [, e] of entities) {
-    if (e.type !== ENACTED_TYPE) continue;
-    const meta3 = e.metadata ?? {};
-    const schema = typeof meta3["schema"] === "string" ? meta3["schema"] : void 0;
-    const target = typeof meta3["targetEntityId"] === "string" ? meta3["targetEntityId"] : void 0;
-    const tick = typeof meta3["tick"] === "number" ? meta3["tick"] : void 0;
-    if (!schema || !target || tick === void 0) continue;
-    out.set(enactedKey(schema, canon ? canon(target) : target), tick);
-  }
-  return out;
-}
-function enactedKey(schema, targetEntityId) {
-  return `${schema}\0${targetEntityId}`;
-}
-function readConsequence(m) {
-  const meta3 = m ?? {};
-  const intentId = typeof meta3["intentId"] === "string" ? meta3["intentId"] : void 0;
-  const schema = typeof meta3["schema"] === "string" ? meta3["schema"] : void 0;
-  const mode = meta3["mode"] === "communicate" || meta3["mode"] === "external" ? meta3["mode"] : void 0;
-  if (!intentId || !schema || !mode) return null;
-  return {
-    intentId,
-    schema,
-    mode,
-    effector: typeof meta3["effector"] === "string" ? meta3["effector"] : void 0,
-    targetEntityId: typeof meta3["targetEntityId"] === "string" ? meta3["targetEntityId"] : void 0,
-    textHash: typeof meta3["textHash"] === "number" ? meta3["textHash"] : void 0,
-    text: typeof meta3["text"] === "string" ? meta3["text"] : void 0,
-    paramsHash: typeof meta3["paramsHash"] === "number" ? meta3["paramsHash"] : void 0,
-    // Decoded, not just written — a field only one side knows about is the shape
-    // of defect this codebase has hit five times now.
-    pending: meta3["pending"] === true ? true : void 0,
-    expiresAt: typeof meta3["expiresAt"] === "number" ? meta3["expiresAt"] : 0,
-    tick: typeof meta3["tick"] === "number" ? meta3["tick"] : 0
-  };
-}
-function liveConsequences(entities, tick, canon) {
-  const out = [];
-  for (const [, e] of entities) {
-    if (e.type !== CONSEQUENCE_TYPE) continue;
-    const d = readConsequence(e.metadata);
-    if (!d) continue;
-    if (d.tick > tick) continue;
-    if (tick < d.expiresAt)
-      out.push(canon && d.targetEntityId ? { ...d, targetEntityId: canon(d.targetEntityId) } : d);
-  }
-  return out.sort((a, b) => a.intentId < b.intentId ? -1 : a.intentId > b.intentId ? 1 : 0);
-}
-function matchConsequenceText(descriptors, candidate) {
-  if (candidate.length === 0) return null;
-  const candidateHash = fnv1a(candidate);
-  for (const d of descriptors) {
-    if (d.textHash !== void 0 && d.textHash === candidateHash) return d;
-    if (d.text !== void 0 && d.text.length >= MIN_TEXT_MATCH_LEN && candidate.includes(d.text)) return d;
-  }
-  return null;
-}
-function enactionFootprint(descriptors, schema, targetEntityId, tick, windowTicks = CONSEQUENCE_TTL_TICKS, spokenAt, selfEnactedAt, spokeAnywhereAt, enactedAt) {
-  if (windowTicks <= 0) return 0;
-  if (!targetEntityId) {
-    let strongest2 = selfEnactedAt === void 0 ? 0 : (windowTicks - (tick - selfEnactedAt)) / windowTicks;
-    for (const d of descriptors) {
-      if (d.schema !== schema || d.targetEntityId !== void 0) continue;
-      if (d.pending) continue;
-      const remaining = (windowTicks - (tick - d.tick)) / windowTicks;
-      if (remaining > strongest2) strongest2 = remaining;
-    }
-    return strongest2 < 0 ? 0 : strongest2 > 1 ? 1 : strongest2;
-  }
-  let strongest = 0;
-  const enacted = enactedAt?.get(enactedKey(schema, targetEntityId));
-  if (enacted !== void 0) {
-    const remaining = (windowTicks - (tick - enacted)) / windowTicks;
-    if (remaining > strongest) strongest = remaining;
-  }
-  const spoken = spokenAt?.get(targetEntityId);
-  if (spoken !== void 0) {
-    const remaining = (windowTicks - (tick - spoken)) / windowTicks;
-    if (remaining > strongest) strongest = remaining;
-  }
-  if (spokeAnywhereAt !== void 0) {
-    const remaining = (CONSEQUENCE_TTL_TICKS - (tick - spokeAnywhereAt)) / CONSEQUENCE_TTL_TICKS;
-    if (remaining > strongest) strongest = remaining;
-  }
-  for (const d of descriptors) {
-    if (d.schema !== schema || d.targetEntityId !== targetEntityId) continue;
-    if (d.pending) continue;
-    const elapsed = tick - d.tick;
-    const remaining = (windowTicks - elapsed) / windowTicks;
-    if (remaining > strongest) strongest = remaining;
-  }
-  return strongest < 0 ? 0 : strongest > 1 ? 1 : strongest;
-}
-function spokenAtByEntity(entities, canon) {
-  const out = /* @__PURE__ */ new Map();
-  for (const [, e] of entities) {
-    if (e.type !== "conversation.sent") continue;
-    const m = e.metadata ?? {};
-    const target = typeof m["targetEntityId"] === "string" ? m["targetEntityId"] : void 0;
-    if (!target) continue;
-    const at = typeof m["tick"] === "number" ? m["tick"] : typeof e.updatedAtTick === "number" ? e.updatedAtTick : typeof e.tick === "number" ? e.tick : 0;
-    const key = canon ? canon(target) : target;
-    if (at > (out.get(key) ?? -Infinity)) out.set(key, at);
-  }
-  return out;
-}
-var CORRESPONDENCE_ATTENUATION = 0.5;
-function matchConsequenceEntity(descriptors, entityId, changeType) {
-  if (changeType !== "modified" || entityId.length === 0) return null;
-  for (const d of descriptors)
-    if (d.mode === "external" && d.targetEntityId === entityId) return d;
-  return null;
 }
 
 // src/cognition/agency/revocation.ts
@@ -9950,6 +9965,10 @@ var WorkingMemory = class {
 };
 
 // src/cognition/faculties/episodic.consolidator.ts
+function sourceIdentity(id, metadata) {
+  const { activation: _a, attendedCount: _c, tick: _t, ...stable } = metadata ?? {};
+  return `${id}#${fnv1a(JSON.stringify(stable))}`;
+}
 var EpisodicConsolidator = class {
   name = "episodic-consolidator";
   _consolidationThreshold;
@@ -10074,6 +10093,7 @@ var EpisodicConsolidator = class {
         lastRetrievedAt: null,
         tags: candidate.tags,
         sourceType: candidate.type,
+        sourceId: candidate.id,
         createdAt: now,
         outcomeStatus: _inferOutcomeStatus(candidate.type, candidate.tags)
       };
@@ -10364,6 +10384,7 @@ var EpisodicConsolidator = class {
         lastRetrievedAt: episode.lastRetrievedAt,
         tags: episode.tags,
         sourceType: episode.sourceType,
+        ...episode.sourceId !== void 0 ? { sourceId: episode.sourceId } : {},
         tick: episode.timestamp,
         createdAt: episode.createdAt
       }
@@ -10390,6 +10411,7 @@ var EpisodicConsolidator = class {
         lastRetrievedAt: m["lastRetrievedAt"] ?? null,
         tags: m["tags"] ?? [],
         sourceType: m["sourceType"] ?? "percept",
+        ...typeof m["sourceId"] === "string" ? { sourceId: m["sourceId"] } : {},
         createdAt: m["createdAt"] ?? entity.createdAt
       };
       this._store.push(episode);
@@ -10413,19 +10435,18 @@ var EpisodicConsolidator = class {
   // ── Internal ─────────────────────────────────────────────
   _findCandidates(state) {
     const candidates = [];
-    const recentHashes = /* @__PURE__ */ new Set();
-    for (const memory of this._store.slice(-20)) {
-      const contentStr = typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
-      recentHashes.add(contentStr.slice(0, 100));
-    }
+    const alreadyRemembered = /* @__PURE__ */ new Set();
+    for (const memory of this._store)
+      if (memory.sourceId) alreadyRemembered.add(memory.sourceId);
     for (const entity of state.entities.values()) {
       if (entity.type !== "working_memory.item") continue;
       const content = entity.metadata;
-      const contentStr = JSON.stringify(content).slice(0, 100);
-      if (recentHashes.has(contentStr)) continue;
+      const identity = sourceIdentity(entity.id, content);
+      if (alreadyRemembered.has(identity)) continue;
       const category = entity.metadata?.tags;
       if (category && (category.includes("episodic_memory") || category.includes("percept") || category.includes("percept.social"))) continue;
       candidates.push({
+        id: identity,
         type: entity.metadata?.wmType ?? "unknown",
         content: entity.metadata,
         activation: entity.metadata?.activation ?? 0,
@@ -13635,6 +13656,9 @@ function meta2(e) {
 function str2(v) {
   return typeof v === "string" ? v : void 0;
 }
+function wordsOf(m) {
+  return str2(m["text"]) ?? str2(m["preview"]) ?? "";
+}
 function num(v) {
   return typeof v === "number" && Number.isFinite(v) ? v : void 0;
 }
@@ -13650,7 +13674,7 @@ function readSpokenTurns(entities) {
       entityId: id,
       targetEntityId: canonicalOf(aliases, target),
       targetEntityName: str2(m["targetEntityName"]),
-      preview: str2(m["preview"]) ?? "",
+      text: wordsOf(m),
       tick: tickOf(e, m),
       answeredAt: num(m["answeredAt"]),
       answeredWith: str2(m["answeredWith"]),
@@ -13671,7 +13695,7 @@ function lastHeardByEntity(entities) {
     const source = canonicalOf(aliases, raw);
     const at = tickOf(e, m);
     if (at > (out.get(source)?.tick ?? -Infinity))
-      out.set(source, { tick: at, preview: str2(m["preview"]) ?? "" });
+      out.set(source, { tick: at, text: wordsOf(m) });
   }
   return out;
 }
@@ -13696,7 +13720,7 @@ function resolveReplyExpectations(entities, tick, windowTicks = DEFAULT_REPLY_WI
     if (t.isAck || t.answeredAt !== void 0) continue;
     const heard = lastHeard.get(t.targetEntityId);
     if (heard !== void 0 && heard.tick > t.tick) {
-      answered.push({ turn: t, at: heard.tick, with: heard.preview });
+      answered.push({ turn: t, at: heard.tick, with: heard.text });
       continue;
     }
     if (t.unansweredAt !== void 0) continue;
@@ -13847,7 +13871,7 @@ async function buildExecutiveContext(state, deps, recallQuery) {
     // the same person rendered as both `FKEM` and `discord:15255…` in one list,
     // which reads as two people. The roster holds the current best name.
     target: nameOf2(t.targetEntityId) ?? t.targetEntityName ?? t.targetEntityId,
-    preview: t.preview,
+    text: t.text,
     age: Math.max(0, state.tick - t.tick),
     answered: t.answeredAt !== void 0,
     ...t.answeredWith ? { answeredWith: t.answeredWith } : {}
@@ -14738,11 +14762,10 @@ ${lines.join("\n")}${tail}`;
    */
   static _buildSpokenTurnsSection(spokenTurns) {
     if (!spokenTurns?.length) return "";
-    const clip = (s, n) => s.length > n ? `${s.slice(0, n)}\u2026` : s;
     const lines = spokenTurns.map((t) => {
-      const words = t.preview.trim();
-      const said = words ? ` \u2014 "${clip(words, 80)}"` : "";
-      const back = t.answered ? t.answeredWith?.trim() ? ` \u2014 they answered: "${clip(t.answeredWith.trim(), 100)}"` : " \u2014 they answered (I do not have their words here)" : " \u2014 no answer yet";
+      const words = t.text.trim();
+      const said = words ? ` \u2014 "${words}"` : "";
+      const back = t.answered ? t.answeredWith?.trim() ? ` \u2014 they answered: "${t.answeredWith.trim()}"` : " \u2014 they answered (I do not have their words here)" : " \u2014 no answer yet";
       return `- **${t.target}** \xB7 ${t.age} ticks ago${said}${back}`;
     });
     const open = spokenTurns.filter((t) => !t.answered).length;
@@ -22129,7 +22152,7 @@ var ThreadDigestManager = class _ThreadDigestManager {
   _threads = /* @__PURE__ */ new Map();
   append(threadId, role, content) {
     const lines = this._threads.get(threadId) ?? [];
-    lines.push(`${role}: ${content.slice(0, 200)}`);
+    lines.push(`${role}: ${content}`);
     if (lines.length > _ThreadDigestManager.MAX_TURNS)
       lines.splice(0, lines.length - _ThreadDigestManager.MAX_TURNS);
     this._threads.set(threadId, lines);
@@ -22429,9 +22452,11 @@ var AuditionEngine = class extends BaseSenseEngine {
       threadId,
       digest: this._digests.getDigest(threadId),
       // What a heard turn amounts to, for readers that do not know this is
-      // audition. Bounded, because `summary` renders into the executive prompt
-      // and a pasted essay would take the whole percept budget.
-      summary: `${speakerName} said: ${content}`.slice(0, PERCEPT_SUMMARY_CAP),
+      // audition — whole. It was cut to PERCEPT_SUMMARY_CAP (100), which is all
+      // the master ever saw of what someone said to it; the full text reached
+      // only the conversation facet. A pasted essay is a per-call budget
+      // question, answered by LOSSLESS P5, not by cutting the words (P0).
+      summary: `${speakerName} said: ${content}`,
       salience,
       // Arrival metadata for an EXTERNAL inbound message (network/RPC boundary):
       // no sim clock in scope here and the value is not replayed — wallClock() is
@@ -22785,7 +22810,8 @@ var AuditionEngine = class extends BaseSenseEngine {
         directedAtSelf: true,
         // an inbound turn is addressed to us by definition
         action: "communication",
-        preview: content.slice(0, 140),
+        // What they said, whole: this is what "they answered: …" shows the mind.
+        text: content,
         chars: content.length,
         ...threadId ? { threadId } : {}
       }
@@ -22812,7 +22838,7 @@ var AuditionEngine = class extends BaseSenseEngine {
         targetEntityId: entityId,
         targetEntityName: entityName,
         messageCount: bubbles.length,
-        preview: bubbles[0]?.slice(0, 100) ?? "",
+        text: bubbles.join("\n"),
         effectorName: "text",
         source: "audition-facet",
         tick: this._lastDecisionTick,
@@ -22834,8 +22860,9 @@ var AuditionEngine = class extends BaseSenseEngine {
       threadId,
       activation: Math.min(1, Math.max(0.6, conf)),
       attendedCount: 1,
-      idSeed: wallClock()
-      // wallClock id — telemetry only (R2)
+      // Deterministic, like _sentKey: the episode this becomes keeps the id as its
+      // source, so it is durable state, not telemetry (R2, LOSSLESS P0).
+      idSeed: `${this._lastDecisionTick}-${fnv1a(`${inbound}\u2192${reply}`)}`
     }));
   }
   // ── Facet decision handling ─────────────────────────────────
@@ -25313,7 +25340,7 @@ var ReafferenceEngine = class {
       merge(turn.entityId, { unansweredAt: tick });
       this._emitResponsiveness(turn.targetEntityId, false, tick - turn.tick, tick);
       logger.info(
-        `[reafference] no answer from ${turn.targetEntityName ?? turn.targetEntityId} after ${tick - turn.tick} ticks \u2014 "${turn.preview.slice(0, 60)}"`
+        `[reafference] no answer from ${turn.targetEntityName ?? turn.targetEntityId} after ${tick - turn.tick} ticks \u2014 "${turn.text}"`
       );
     }
     return { answered: answered.length, unanswered: unanswered.length };
@@ -29026,7 +29053,7 @@ var EscalationLifecycle = class {
           // the line readable next to the people in the same list.
           targetEntityName: "everyone here",
           messageCount: 1,
-          preview: content.slice(0, 100),
+          text: content,
           effectorName: "broadcast",
           tick,
           delivered: false
@@ -31343,7 +31370,6 @@ function chunkText(text, max) {
 var DISCORD_MESSAGE_LIMIT = 2e3;
 var DISCORD_CDN_HOSTS = /* @__PURE__ */ new Set(["cdn.discordapp.com", "media.discordapp.net"]);
 var MAX_FETCH_BYTES = 256 * 1024;
-var REACTION_QUOTE_CHARS = 140;
 function roomLabel(message) {
   if (!message.guildId) return void 0;
   const own = message.channel?.name;
@@ -31380,7 +31406,7 @@ async function connectDiscord(will, opts) {
     const emoji = full.emoji?.name ?? (full.emoji?.id ? ":custom:" : "");
     if (!emoji) return;
     const who = user.displayName ?? user.username;
-    const said = (msg.cleanContent || msg.content || "").trim().slice(0, REACTION_QUOTE_CHARS);
+    const said = (msg.cleanContent || msg.content || "").trim();
     const text = said ? `[${who ?? "someone"} reacted ${emoji} to what I said: "${said}"]` : `[${who ?? "someone"} reacted ${emoji} to something I said]`;
     await will.sense({
       text,

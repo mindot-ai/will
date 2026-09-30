@@ -217,12 +217,10 @@ describe('ThreadDigestManager', () => {
     expect( digest ).toContain('[Thread — last 5 turns]')
   } )
 
-  it('content is truncated to 200 characters', () => {
+  it('keeps each turn whole — it was cut to 200 characters (LOSSLESS P0)', () => {
     const long = 'x'.repeat( 300 )
     mgr.append('thread-1', 'user', long )
-    const digest = mgr.getDigest('thread-1')
-    expect( digest ).toContain('user: ' + 'x'.repeat( 200 ) )
-    expect( digest ).not.toContain('x'.repeat( 201 ) )
+    expect( mgr.getDigest('thread-1') ).toContain('user: ' + long )
   } )
 
   it('threads are isolated from each other', () => {

@@ -193,7 +193,8 @@ describe('P4 — she remembers asking', () => {
     const sent = [ ...entities.values() ].filter( e => e.type === SENT_TYPE )
     expect( sent, 'the ask left the mind and nothing recorded it').toHaveLength( 1 )
     // The SAME words, not a paraphrase of them — she is asked about what she said.
-    expect( String( sent[0]!.metadata!['preview'] ) ).toBe( voiced[0]!.content.slice( 0, 100 ) )
+    // Whole — it was pinned to the first 100 characters (LOSSLESS P0).
+    expect( String( sent[0]!.metadata!['text'] ) ).toBe( voiced[0]!.content )
   })
 
   it('and the record is the one the prompt is built from', () => {
@@ -204,7 +205,7 @@ describe('P4 — she remembers asking', () => {
 
     const turns = readSpokenTurns( entities )
     expect( turns, 'written, but not where the prompt looks').toHaveLength( 1 )
-    expect( turns[0]!.preview ).toContain('trade')
+    expect( turns[0]!.text ).toContain('trade')
     // The world's clock (9000), not the lifecycle's counter (8). Stamped with the
     // latter the ask sorts to the oldest turn she has and falls off the end of
     // `## What I've Said Lately` — present in state, absent from the prompt.

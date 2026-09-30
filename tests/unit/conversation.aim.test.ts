@@ -157,7 +157,7 @@ describe('reading what the mind has said', () => {
     expect( heard.get('discord:1')?.tick ).toBe( 30 )
     expect( heard.get('discord:2')?.tick ).toBe( 5 )
     // Their words come with it — the fact of an answer is not the answer.
-    expect( heard.get('discord:1')?.preview ).toBe('sure, one sec')
+    expect( heard.get('discord:1')?.text ).toBe('sure, one sec')
   } )
 } )
 
@@ -482,5 +482,69 @@ describe('the will behind an act is discharged by the act', () => {
     // twice and one person got the same message byte-for-byte 25 ticks apart.
     expect( src('cognition/agency/selection.scoring.ts') ).toMatch( /w\.repeat\s+\*\s+\(\s*a\.justEnacted/ )
     expect( src('cognition/agency/engines/affordance.synthesizer.ts') ).toContain('enactionFootprint(')
+  } )
+} )
+
+// ── LOSSLESS P0 — the words are whole ────────────────────────
+//
+// These records carried a `preview`: the FIRST bubble of what she said, cut to
+// 100 characters, and 140 of what she heard — then the prompt cut them again to
+// 80 and 100. The correction that mattered ("make it 2pm, not 3pm") sat past the
+// cut as often as not, and a second bubble was never recorded at all.
+
+describe('the words are whole (LOSSLESS P0)', () => {
+  const HERS   = 'Monday works for the release review. '
+               + 'I have the checklist, the rollback plan and both sign-offs lined up. '.repeat( 3 )
+               + 'Can you confirm 3pm UTC?'
+  const SECOND = 'And one more thing: the demo slot moves to Thursday.'
+  const THEIRS = 'Monday is fine, but '
+               + 'the payments migration has to land first, so we will not have the numbers before noon. '.repeat( 2 )
+               + 'Make it 2pm, not 3pm.'
+
+  it('is past every length the old cuts allowed, or it proves nothing', () => {
+    expect( HERS.length ).toBeGreaterThan( 100 )
+    expect( THEIRS.length ).toBeGreaterThan( 140 )
+  } )
+
+  it('reads every bubble of what she said and the whole of what they answered', () => {
+    const s = freshState()
+    sent( s, 's1', 'discord:1', 100, { text: `${ HERS }\n${ SECOND }` } )
+    received( s, 'r1', 'discord:1', 120 )
+    s.entities.get('r1')!.metadata!['text'] = THEIRS
+
+    expect( readSpokenTurns( s.entities )[0]!.text ).toBe(`${ HERS }\n${ SECOND }`)
+    expect( lastHeardByEntity( s.entities ).get('discord:1')!.text ).toBe( THEIRS )
+    expect( resolveReplyExpectations( s.entities, 200, 240 ).answered[0]!.with ).toBe( THEIRS )
+  } )
+
+  it("still reads a woken mind's older records, which only carry a preview", () => {
+    const s = freshState()
+    sent( s, 's1', 'discord:1', 100 )        // the pre-P0 shape: `preview` and no `text`
+    expect( readSpokenTurns( s.entities )[0]!.text ).toBe('Quick question about Q3')
+  } )
+
+  it('renders both sides whole in the prompt', async () => {
+    const s = freshState()
+    s.tick = 300
+    sent( s, 's1', 'discord:1', 100, { text: `${ HERS }\n${ SECOND }`, answeredAt: 120, answeredWith: THEIRS } )
+
+    const ctx = await buildExecutiveContext(
+      { tick: 300, metrics: new Map(), entities: s.entities } as never,
+      { workingMemory: null, goalManager: null, semanticIntegrator: null, episodicConsolidator: null } as never,
+    )
+    const rendered = PromptFactory.buildUserMessage({
+      context:              ctx,
+      state:                { tick: 300, metrics: new Map(), entities: s.entities } as never,
+      qualityModulation:    1,
+      epistemicUncertainty: 0.3,
+      deps:                 { summarizer: null } as never,
+      focus:                { title: 'T', content: 'focus body' } as never,
+      mode:                 'master',
+    } as never )
+
+    expect( rendered ).toContain( HERS )
+    expect( rendered ).toContain( SECOND )                   // never recorded before P0
+    expect( rendered ).toContain( THEIRS )
+    expect( rendered ).toContain('Make it 2pm, not 3pm.')    // the correction, past the old cut
   } )
 } )

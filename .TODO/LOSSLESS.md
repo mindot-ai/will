@@ -1,6 +1,6 @@
 # LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut
 
-> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); 0 of 6 phases landed
+> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0 of 6 landed, unreleased
 
 > **The rule:** *lossless, not unbounded.* Every cut that loses data — at intake, in
 > transit between the mind's own parts, in what it keeps, in its artifact, in its
@@ -61,26 +61,44 @@ case that needs a mechanism (P5).
 
 ## Phases
 
-### P0 — what she said and heard is whole
+### P0 — what she said and heard is whole ✅
 
 The records a turn is judged by. `conversation.sent` / `conversation.received`
 carry a `preview` and nothing longer; `readSpokenTurns` (conversation.aim.ts)
 reads it into `## What I've Said Lately` and the "they answered" line, and
 `prompt.factory.ts:1218` cuts it again.
 
-- [ ] `conversation.sent` / `.received` carry the full text; readers read it; old
+- [x] `conversation.sent` / `.received` carry the full text; readers read it; old
       records that only have `preview` still read (a woken mind's history)
-- [ ] `outbox.writer.ts:163-164`, `proactive.communicator.ts:233,249-250`,
+- [x] `outbox.writer.ts:163-164`, `proactive.communicator.ts:233,249-250`,
       `escalation.lifecycle.ts:211`, `audition.engine/engine.ts:1134,1179` — no cut
-- [ ] `prompt.factory.ts:1218` — spoken turns render whole
-- [ ] `audition.engine/engine.ts:622` — a heard turn's percept `summary` is whole
+- [x] `prompt.factory.ts:1218` — spoken turns render whole
+- [x] `audition.engine/engine.ts:622` — a heard turn's percept `summary` is whole
       (today the master sees 100 characters of what someone said)
-- [ ] `audition.engine/engine.ts:281` — thread digest turns whole (count is P5)
-- [ ] `conversation.memory.ts:71-72` — conversation episodes stored whole (today
+- [x] `audition.engine/engine.ts:281` — thread digest turns whole (count is P5)
+- [x] `conversation.memory.ts:71-72` — conversation episodes stored whole (today
       100/140 characters — this is what recall finds later)
-- [ ] `discord.ts:52` `REACTION_QUOTE_CHARS` — the reacted-to message quoted whole
-- [ ] `proactive.communicator.ts:140,274` — the act's own description carries the
+- [x] `discord.ts:52` `REACTION_QUOTE_CHARS` — the reacted-to message quoted whole
+- [x] `proactive.communicator.ts:140,274` — the act's own description carries the
       words whole (it feeds `## What Became Of What I Did`)
+- [x] **Episodes deduplicated on identity, not a 100-character prefix**
+      (`episodic.consolidator.ts`, moved here from P2). For a conversation the
+      prefix was boilerplate — `{"wmType":"conversation.exchange","activation":…`
+      — so a different person saying a different thing was dropped as "already
+      remembered" (reproduced live: Ada consolidated, Bo never did). Identity is
+      now the WM item's id plus a hash of its stable content: the id alone would
+      collide across boots (WorkingMemory's ids are a counter from 0), the content
+      alone would merge a thing said twice.
+- [x] Conversation WM item ids are deterministic (sim tick + hash of the words,
+      the `_sentKey` recipe). They were wall-clock "telemetry only" until an
+      episode began to remember its source; a wall-clock id in durable state is a
+      run that cannot replay (caught by `replay.conversation.test.ts`).
+
+What P0 surfaced and did not change — the forgetting curve, which is MIND: on
+the one live mind, `episodic_memory` held **zero** entities on every one of 2,095
+ticks of a 35-minute run; an unrecalled episode starts near 0.43 and decays at
+`0.02 × seconds` to the 0.01 prune line. Whether that rate is how this mind
+should forget is a calibration question for its owner, not a cut.
 
 ### P1 — what she thinks is whole, in transit and in record
 
@@ -107,8 +125,7 @@ reads it into `## What I've Said Lately` and the "they answered" line, and
       `discord.ts:42,402` fetch cut at 256 KB — whole (oversize → P5 paging)
 - [ ] `exteroception.ts:101,158` **drops percepts past 50 per tick**;
       `social.perception.ts:100,133` past 20 — nothing dropped at the door
-- [ ] `episodic.consolidator.ts:734-745` dedups on the first 100 characters —
-      two different memories that start alike are merged into one
+- [x] ~~`episodic.consolidator.ts:734-745` prefix dedup~~ — landed in P0
 - [ ] `semantic.engine/integrator.ts:566-580` episode content 150 in pattern text
 - [ ] `semantic.engine/clustering.ts:429,435` pattern detection reads the first 20
       episodes / 10 words — verify whether this is a sampling window (MIND) or a

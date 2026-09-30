@@ -115,7 +115,6 @@ function chunkText(text, max) {
 var DISCORD_MESSAGE_LIMIT = 2e3;
 var DISCORD_CDN_HOSTS = /* @__PURE__ */ new Set(["cdn.discordapp.com", "media.discordapp.net"]);
 var MAX_FETCH_BYTES = 256 * 1024;
-var REACTION_QUOTE_CHARS = 140;
 function roomLabel(message) {
   if (!message.guildId) return void 0;
   const own = message.channel?.name;
@@ -152,7 +151,7 @@ async function connectDiscord(will, opts) {
     const emoji = full.emoji?.name ?? (full.emoji?.id ? ":custom:" : "");
     if (!emoji) return;
     const who = user.displayName ?? user.username;
-    const said = (msg.cleanContent || msg.content || "").trim().slice(0, REACTION_QUOTE_CHARS);
+    const said = (msg.cleanContent || msg.content || "").trim();
     const text = said ? `[${who ?? "someone"} reacted ${emoji} to what I said: "${said}"]` : `[${who ?? "someone"} reacted ${emoji} to something I said]`;
     await will.sense({
       text,

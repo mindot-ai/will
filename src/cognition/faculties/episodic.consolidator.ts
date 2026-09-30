@@ -25,6 +25,7 @@
  *   - No storage limit (infinite _store, only vector index may have limit)
  */
 
+import { fnv1a } from '#agency/consequence'
 import { logger } from '#core/logger'
 import type {
   Duration,
@@ -78,9 +79,38 @@ export interface EpisodicMemory {
    *   'failed'    — action failed, timed out, or was abandoned
    */
   outcomeStatus?: 'intended' | 'attempted' | 'confirmed' | 'failed'
+  /**
+   * Which working-memory item this was consolidated from: its id plus a hash of
+   * its stable content (`sourceIdentity`). One item becomes one episode — this is
+   * what `_findCandidates` dedups on. Absent on episodes written before it
+   * existed, which simply never block anything.
+   */
+  sourceId?: string
+}
+
+/**
+ * A working-memory item's identity: its id AND what it holds.
+ *
+ * The id alone is not enough. WorkingMemory's own ids come from a counter that
+ * restarts at 0 every boot (`wm-${ idSeq++ }`), so an episode remembering
+ * `wm-item-wm-0` would make the NEXT session's unrelated `wm-item-wm-0` look
+ * already remembered — the process-local-counter failure audition's `_sentKey`
+ * was written against. The content alone is not enough either: the same words
+ * said again, later, are a second event.
+ *
+ * Content means everything but the bookkeeping WorkingMemory rewrites while an
+ * item lives — `activation`, `attendedCount`, and `tick`, which its own items
+ * carry as the tick they were last persisted on. Deterministic under replay:
+ * every writer's id is (see `idSeed` in conversation.memory.ts).
+ */
+export function sourceIdentity( id: string, metadata: Record<string, unknown> | undefined ): string {
+  const { activation: _a, attendedCount: _c, tick: _t, ...stable } = metadata ?? {}
+  return `${ id }#${ fnv1a( JSON.stringify( stable ) ) }`
 }
 
 interface WMCandidate {
+  /** `sourceIdentity` of the working-memory item — what an episode remembers as its source. */
+  id: string
   type: string
   content: unknown
   activation: number
@@ -262,6 +292,7 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
         lastRetrievedAt: null,
         tags: candidate.tags,
         sourceType: candidate.type,
+        sourceId: candidate.id,
         createdAt: now,
         outcomeStatus: _inferOutcomeStatus( candidate.type, candidate.tags ),
       }
@@ -660,6 +691,7 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
         lastRetrievedAt:    episode.lastRetrievedAt,
         tags:               episode.tags,
         sourceType:         episode.sourceType,
+        ...( episode.sourceId !== undefined ? { sourceId: episode.sourceId } : {} ),
         tick:               episode.timestamp,
         createdAt:          episode.createdAt,
       },
@@ -689,6 +721,7 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
         lastRetrievedAt:    ( m[ 'lastRetrievedAt' ]   as number | null ) ?? null,
         tags:               ( m[ 'tags' ]              as string[] ) ?? [],
         sourceType:         ( m[ 'sourceType' ]        as string ) ?? 'percept',
+        ...( typeof m[ 'sourceId' ] === 'string' ? { sourceId: m[ 'sourceId' ] as string } : {} ),
         createdAt:          ( m[ 'createdAt' ]         as number ) ?? entity.createdAt,
       }
       this._store.push( episode )
@@ -729,29 +762,36 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
   private _findCandidates( state: ReadonlySimulationState ): WMCandidate[] {
     const candidates: WMCandidate[] = []
 
-    // Build a set of recently consolidated content hashes for deduplication
-    const recentHashes = new Set<string>()
-    for( const memory of this._store.slice( -20 ) ){
-      const contentStr = typeof memory.content === 'string'
-        ? memory.content
-        : JSON.stringify( memory.content )
-      recentHashes.add( contentStr.slice( 0, 100 ) )  // Hash first 100 chars
-    }
+    // One working-memory item becomes one episode — deduplicated on the item's
+    // identity, not its text.
+    //
+    // This used to compare the first 100 characters of the item's JSON against
+    // the last 20 episodes. For a conversation that prefix is
+    //   {"wmType":"conversation.exchange","activation":0.85,"attendedCount":3,"tags":["conversation","exchan
+    // — boilerplate, identical for every exchange with every person. So once any
+    // one conversation was remembered, the next was "already remembered" whenever
+    // its activation matched: a different person saying a different thing was
+    // dropped as a duplicate (reproduced against the live engine: Ada's message
+    // consolidated, Bo's never did). A company brain that forgets every second
+    // conversation is not accumulating anything (LOSSLESS P0).
+    const alreadyRemembered = new Set<string>()
+    for( const memory of this._store )
+      if( memory.sourceId ) alreadyRemembered.add( memory.sourceId )
 
     for( const entity of state.entities.values() ){
       if( entity.type !== 'working_memory.item') continue
 
       const content = entity.metadata
-      const contentStr = JSON.stringify( content ).slice( 0, 100 )
 
-      // Skip if this content was recently consolidated (deduplication)
-      if( recentHashes.has( contentStr ) ) continue
+      const identity = sourceIdentity( entity.id, content as Record<string, unknown> | undefined )
+      if( alreadyRemembered.has( identity ) ) continue
 
       // Skip meta-percepts (percepts about other percepts)
       const category = entity.metadata?.tags as string[] | undefined
       if( category && ( category.includes('episodic_memory') || category.includes('percept') || category.includes('percept.social') ) ) continue
 
       candidates.push( {
+        id:   identity,
         type: ( entity.metadata?.wmType as string ) ?? 'unknown',
         content: entity.metadata,
         activation: ( entity.metadata?.activation as number ) ?? 0,

@@ -1,5 +1,5 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { a7 as EffectorHandler, cX as Will } from '../../will-vL35Z7yn.js';
+import { a7 as EffectorHandler, cX as Will } from '../../will-DVpUKA3J.js';
 
 /** Where the tools live: spawn a local server, reach a remote one, or bring a connected client. */
 type McpToolsSource = {

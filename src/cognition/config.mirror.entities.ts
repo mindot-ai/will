@@ -15,6 +15,7 @@
 import { WillConfig } from '#stem/mind'
 import type { StateManager } from '#core/state.manager'
 import { DEFAULT_FORGETTING_RATE_PER_SECOND } from '#faculties/forgetting.curve'
+import { DEFAULT_BELIEF_DECAY_PER_SECOND } from '#faculties/semantic.engine/types'
 
 export interface EngineConfigEntity {
   id:     string
@@ -243,7 +244,7 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
         minIntervalTicks:         30,
         minNewEpisodes:           10,
         beliefStalenessThreshold: 300,
-        beliefDecayRate:          0.001,
+        beliefDecayPerSecond:     DEFAULT_BELIEF_DECAY_PER_SECOND,
       },
     },
     {

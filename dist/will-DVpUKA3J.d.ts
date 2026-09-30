@@ -3514,8 +3514,8 @@ interface SemanticIntegratorConfig {
     minNewEpisodes?: number;
     /** Ticks without reinforcement before a belief starts losing confidence */
     beliefStalenessThreshold?: number;
-    /** Confidence lost per tick once a belief goes stale */
-    beliefDecayRate?: number;
+    /** Confidence lost per second of running time once a belief goes stale. See DEFAULT_BELIEF_DECAY_PER_SECOND. */
+    beliefDecayPerSecond?: number;
     /** Minimum similarity threshold for semantic pattern detection (0-1) */
     semanticSimilarityThreshold?: number;
     /** Maximum episodes to query for semantic pattern detection */
@@ -3624,7 +3624,7 @@ declare class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
     private _minIntervalTicks;
     private _minNewEpisodes;
     private _beliefStalenessThreshold;
-    private _beliefDecayRate;
+    private _beliefDecayPerSecond;
     private _semanticSimilarityThreshold;
     private _semanticQueryLimit;
     private _beliefs;

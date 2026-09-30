@@ -70,6 +70,9 @@ export interface ReviewRecord {
   easinessFactor: number
 }
 
+/** A review record's entity id — never the belief's own (see react()). */
+export const reviewRecordId = ( beliefId: string ): string => `sr-${ beliefId }`
+
 export class SpacedRepetition implements SimulationEngine, CognitiveEngine {
   readonly name = 'spaced-repetition'
 
@@ -219,11 +222,14 @@ export class SpacedRepetition implements SimulationEngine, CognitiveEngine {
   private _restoreFromState( state: ReadonlySimulationState ): void {
     for( const entity of state.entities.values() ){
       if( entity.type !== 'spaced_repetition_record') continue
-      if( this._reviewRecords.has( entity.id ) ) continue
+      // `sr-<belief>` carries its belief; a record written before that IS the
+      // belief's id (and, being so, had overwritten the belief — see react()).
+      const beliefId = ( entity.metadata?.['beliefId'] as string | undefined ) ?? entity.id
+      if( this._reviewRecords.has( beliefId ) ) continue
 
       const m = entity.metadata ?? {}
-      this._reviewRecords.set( entity.id, {
-        beliefId: entity.id,
+      this._reviewRecords.set( beliefId, {
+        beliefId,
         interval: (m['interval'] as number) ?? this._baseIntervalTicks,
         lastReviewedAt: (m['lastReviewedAt'] as number) ?? 0,
         consecutiveSuccesses: (m['consecutiveSuccesses'] as number) ?? 0,
@@ -248,7 +254,7 @@ export class SpacedRepetition implements SimulationEngine, CognitiveEngine {
       this._restored = true
     }
 
-    const commands: StateCommands = { set: [], metrics: [] }
+    const commands: StateCommands = { set: [], delete: [], metrics: [] }
 
     // Check if it's time for a review cycle
     const ticksSinceLastCycle = tick - this._lastReviewCycleTick
@@ -263,19 +269,37 @@ export class SpacedRepetition implements SimulationEngine, CognitiveEngine {
       this._lastReviewCycleTick = tick
     }
 
-    // Persist all review records
-    for( const [ beliefId, record ] of this._reviewRecords.entries() )
+    // Persist all review records — each under its OWN id. It was the belief's id,
+    // so every tick this record and the belief wrote the same entity and the later
+    // write won: the belief entity became a review record with no statement, and
+    // a woken mind restored none of its beliefs. (The "beliefs lost on restart" of
+    // the first review. Reproduced: one belief, one minute, a woken integrator
+    // restored zero.) A record whose belief is gone — from the integrator AND from
+    // state, so a first tick before the integrator restores cannot mistake every
+    // record for an orphan — goes with it.
+    const live = new Set( this._semanticIntegrator?.getBeliefs().map( b => b.id ) ?? [] )
+    for( const [ beliefId, record ] of this._reviewRecords.entries() ){
+      if( !live.has( beliefId ) && state.entities.get( beliefId )?.type !== 'belief'){
+        this._reviewRecords.delete( beliefId )
+        commands.delete!.push( reviewRecordId( beliefId ) )
+        // A pre-fix record sits at the belief's own id; with its belief gone, nothing
+        // else will ever write that id again.
+        if( state.entities.get( beliefId )?.type === 'spaced_repetition_record') commands.delete!.push( beliefId )
+        continue
+      }
       commands.set!.push({
-        id: beliefId,
+        id: reviewRecordId( beliefId ),
         type: 'spaced_repetition_record',
         updatedAt: tick,
         metadata: {
+          beliefId,
           interval: record.interval,
           lastReviewedAt: record.lastReviewedAt,
           consecutiveSuccesses: record.consecutiveSuccesses,
           easinessFactor: record.easinessFactor
         }
       })
+    }
 
     if( !commands.metrics ) commands.metrics = []
     commands.metrics.push(
@@ -354,11 +378,19 @@ export class SpacedRepetition implements SimulationEngine, CognitiveEngine {
     // This would require extending ExecutiveEngine to accept review tasks
     if( this._executiveReviewEnabled && this._executiveEngine )
       await this._surfaceToExecutive( toReview, tick )
-    
-    // Automatic reinforcement: assume successful recall
-    else 
-      for( const belief of toReview )
-        this._processReviewOutcome(belief.id, true, tick, commands)
+
+    // Nothing was recalled, so nothing is learned — only the schedule moves. This
+    // "assumed successful recall": +0.05 and a fresh last-update for every belief
+    // on the schedule, evidence or none. While beliefs decayed in minutes it lost
+    // that race; with decay in days it wins it outright — measured, beliefs at
+    // 0.3–0.9 were all at 1.00 within 12 hours of running time and stayed there.
+    // A belief grows with evidence (the executive restating it, a pattern merging
+    // into it) and with a recall the executive actually makes; not by existing.
+    else
+      for( const belief of toReview ){
+        const record = this._reviewRecords.get( belief.id )
+        if( record ) record.lastReviewedAt = tick
+      }
   }
 
   // ── Episodic rehearsal (waking episodic spaced repetition) ───

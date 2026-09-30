@@ -59,7 +59,9 @@ describe('beliefs', () => {
 
   it('lets go of a belief that decayed away — from state too, so a restart cannot restore it', async () => {
     const { sm, ep } = await withEpisodes()
-    const integ = new SemanticIntegrator()
+    // A fast fade (0.001/s), so a pass or two reaches the prune: this is about
+    // what the prune does, not how long a belief lasts (beliefs.fade.test.ts).
+    const integ = new SemanticIntegrator( { beliefDecayPerSecond: 0.001 } )
     integ.attachConsolidator( ep )
     integ.restoreBeliefs( [ belief( 1, 0.1205 ), belief( 2, 0.9 ) ] )
 
@@ -77,7 +79,7 @@ describe('beliefs', () => {
 
   it('keeps a belief\'s whole history — a run of decay as one entry, and past twenty', async () => {
     const { sm, ep } = await withEpisodes()
-    const integ = new SemanticIntegrator()
+    const integ = new SemanticIntegrator( { beliefDecayPerSecond: 0.001 } )
     integ.attachConsolidator( ep )
     integ.restoreBeliefs( [ belief( 1, 0.9, { history: [ { tick: 0, confidence: 0.9, delta: 0.9, cause: 'created' } ] } ) ] )
     for( let t = 400; t < 460; t++ ){

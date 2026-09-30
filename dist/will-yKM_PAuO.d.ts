@@ -1837,10 +1837,9 @@ interface EpisodicMemory {
      */
     outcomeStatus?: 'intended' | 'attempted' | 'confirmed' | 'failed';
     /**
-     * Which working-memory item this was consolidated from: its id plus a hash of
-     * its stable content (`sourceIdentity`). One item becomes one episode — this is
-     * what `_findCandidates` dedups on. Absent on episodes written before it
-     * existed, which simply never block anything.
+     * Which working-memory item this was consolidated from (`sourceIdentity`). One
+     * item becomes one episode — this is what `_findCandidates` dedups on. Absent
+     * on episodes written before it existed, which simply never block anything.
      */
     sourceId?: string;
 }

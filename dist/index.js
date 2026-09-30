@@ -8311,9 +8311,8 @@ var WorkingMemory = class {
 };
 
 // src/cognition/faculties/episodic.consolidator.ts
-function sourceIdentity(id, metadata) {
-  const { activation: _a, attendedCount: _c, tick: _t, ...stable } = metadata ?? {};
-  return `${id}#${fnv1a(JSON.stringify(stable))}`;
+function sourceIdentity(id) {
+  return id;
 }
 var EpisodicConsolidator = class {
   name = "episodic-consolidator";
@@ -8786,8 +8785,8 @@ var EpisodicConsolidator = class {
       if (memory.sourceId) alreadyRemembered.add(memory.sourceId);
     for (const entity of state.entities.values()) {
       if (entity.type !== "working_memory.item") continue;
-      const content = entity.metadata;
-      const identity = sourceIdentity(entity.id, content);
+      entity.metadata;
+      const identity = sourceIdentity(entity.id);
       if (alreadyRemembered.has(identity)) continue;
       const category = entity.metadata?.tags;
       if (category && (category.includes("episodic_memory") || category.includes("percept") || category.includes("percept.social"))) continue;

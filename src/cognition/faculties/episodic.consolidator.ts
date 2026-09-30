@@ -25,7 +25,6 @@
  *   - No storage limit (infinite _store, only vector index may have limit)
  */
 
-import { fnv1a } from '#agency/consequence'
 import { logger } from '#core/logger'
 import type {
   Duration,
@@ -80,32 +79,30 @@ export interface EpisodicMemory {
    */
   outcomeStatus?: 'intended' | 'attempted' | 'confirmed' | 'failed'
   /**
-   * Which working-memory item this was consolidated from: its id plus a hash of
-   * its stable content (`sourceIdentity`). One item becomes one episode — this is
-   * what `_findCandidates` dedups on. Absent on episodes written before it
-   * existed, which simply never block anything.
+   * Which working-memory item this was consolidated from (`sourceIdentity`). One
+   * item becomes one episode — this is what `_findCandidates` dedups on. Absent
+   * on episodes written before it existed, which simply never block anything.
    */
   sourceId?: string
 }
 
 /**
- * A working-memory item's identity: its id AND what it holds.
+ * A working-memory item's identity: its id.
  *
- * The id alone is not enough. WorkingMemory's own ids come from a counter that
- * restarts at 0 every boot (`wm-${ idSeq++ }`), so an episode remembering
- * `wm-item-wm-0` would make the NEXT session's unrelated `wm-item-wm-0` look
- * already remembered — the process-local-counter failure audition's `_sentKey`
- * was written against. The content alone is not enough either: the same words
- * said again, later, are a second event.
+ * Every runtime writer names an item for the thing it holds, for that thing's
+ * whole life — `wm-goal-<goal>`, `wm-percept-<percept>`, `wm-plan-<plan>`, and
+ * `wm-exchange-<entity>-<tick>-<hash of the words>`. So the id is the identity,
+ * and content is deliberately NOT part of it: a goal's priority drifts every
+ * tick, and keyed on content the same goal became a new "memory" each time it
+ * moved — 1,334 episodes of a handful of goals over a 10K-tick soak once
+ * forgetting ran in days instead of seconds.
  *
- * Content means everything but the bookkeeping WorkingMemory rewrites while an
- * item lives — `activation`, `attendedCount`, and `tick`, which its own items
- * carry as the tick they were last persisted on. Deterministic under replay:
- * every writer's id is (see `idSeed` in conversation.memory.ts).
+ * `WorkingMemory.load()` mints counter ids (`wm-N`) that restart every boot, and
+ * would collide across sessions — it has no runtime caller (tests only). Any
+ * runtime writer added later must name its items the same way the others do.
  */
-export function sourceIdentity( id: string, metadata: Record<string, unknown> | undefined ): string {
-  const { activation: _a, attendedCount: _c, tick: _t, ...stable } = metadata ?? {}
-  return `${ id }#${ fnv1a( JSON.stringify( stable ) ) }`
+export function sourceIdentity( id: string ): string {
+  return id
 }
 
 interface WMCandidate {
@@ -783,7 +780,7 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
 
       const content = entity.metadata
 
-      const identity = sourceIdentity( entity.id, content as Record<string, unknown> | undefined )
+      const identity = sourceIdentity( entity.id )
       if( alreadyRemembered.has( identity ) ) continue
 
       // Skip meta-percepts (percepts about other percepts)

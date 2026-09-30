@@ -61,14 +61,14 @@ describe('episodic consolidation — identity, not a text prefix', () => {
     const c = new EpisodicConsolidator({ autoIndex: false })
     for( let t = 10; t < 15; t++ ) await c.react( 1000, t, stateOf( t, [ ada ] ), ctx )
     expect( c.getAllEpisodes() ).toHaveLength( 1 )
-    expect( c.getAllEpisodes()[0]!.sourceId?.startsWith(`${ ada.id }#`) ).toBe( true )
+    expect( c.getAllEpisodes()[0]!.sourceId ).toBe( ada.id )
   } )
 
   it('carries the identity through a snapshot, so a restart does not remember it again', async () => {
     const first = new EpisodicConsolidator({ autoIndex: false })
     const out   = ( await first.react( 1000, 10, stateOf( 10, [ ada ] ), ctx ) ).commands as StateCommands
     const persisted = ( out.set ?? [] ).filter( e => e.type === 'episodic_memory')
-    expect( String( persisted[0]!.metadata!['sourceId'] ).startsWith(`${ ada.id }#`) ).toBe( true )
+    expect( persisted[0]!.metadata!['sourceId'] ).toBe( ada.id )
 
     // A woken mind: the episode comes back from state, and the WM item is still there.
     const woken = new EpisodicConsolidator({ autoIndex: false })
@@ -76,20 +76,16 @@ describe('episodic consolidation — identity, not a text prefix', () => {
     expect( woken.getAllEpisodes() ).toHaveLength( 1 )
   } )
 
-  it('does not mistake a reused id for a memory it already has', async () => {
-    // WorkingMemory's own ids come from a counter that restarts at 0 every boot.
-    // Keyed on the id alone, session 2's first item would be "already remembered"
-    // because session 1's first item had the same id.
-    const item = ( content: string ) => ({ id: 'wm-item-wm-0', type: 'working_memory.item',
-      metadata: { wmType: 'thought', content, activation: 0.9, attendedCount: 5, tags: [], tick: 3 } })
-
-    const first = new EpisodicConsolidator({ autoIndex: false })
-    const out   = ( await first.react( 1000, 3, stateOf( 3, [ item('the payments PR is blocked') ] ), ctx ) ).commands as StateCommands
-    const persisted = ( out.set ?? [] ).filter( e => e.type === 'episodic_memory')
-
-    const woken = new EpisodicConsolidator({ autoIndex: false })
-    await woken.react( 1000, 4, stateOf( 4, [ ...persisted as never[], item('the demo moved to Thursday') ] ), ctx )
-    expect( woken.getAllEpisodes() ).toHaveLength( 2 )
+  it('stays one memory while what it holds drifts', async () => {
+    // WorkingMemory names a goal's item for the goal (`wm-goal-<id>`) and rewrites
+    // its priority every tick. Keyed on content, each drift was a new "memory":
+    // 1,334 episodes of a handful of goals in a 10K-tick soak once forgetting ran
+    // in days. The id names the thing; the thing is remembered once.
+    const c = new EpisodicConsolidator({ autoIndex: false })
+    const goal = ( tick: number, priority: number ) => ({ id: 'wm-item-wm-goal-goal-4', type: 'working_memory.item',
+      metadata: { wmType: 'goal', content: { description: 'Find rest opportunity', priority }, activation: 0.9, attendedCount: 4, tags: [ 'goal' ], tick } })
+    for( let t = 5; t < 12; t++ ) await c.react( 1000, t, stateOf( t, [ goal( t, 0.8 + t * 0.0004 ) ] ), ctx )
+    expect( c.getAllEpisodes() ).toHaveLength( 1 )
   } )
 
   it('stays the same item while WorkingMemory rewrites its bookkeeping', async () => {

@@ -86,9 +86,12 @@ reads it into `## What I've Said Lately` and the "they answered" line, and
       prefix was boilerplate — `{"wmType":"conversation.exchange","activation":…`
       — so a different person saying a different thing was dropped as "already
       remembered" (reproduced live: Ada consolidated, Bo never did). Identity is
-      now the WM item's id plus a hash of its stable content: the id alone would
-      collide across boots (WorkingMemory's ids are a counter from 0), the content
-      alone would merge a thing said twice.
+      now the WM item's id: every runtime writer names an item for the thing it
+      holds, for its whole life (`wm-goal-<goal>`, `wm-percept-<percept>`,
+      `wm-plan-<plan>`, `wm-exchange-<entity>-<tick>-<hash>`). Content is NOT part
+      of it — a goal's priority drifts every tick, and keyed on content one goal
+      became 1,334 "memories" in a 10K-tick soak once forgetting ran in days.
+      `WorkingMemory.load()`'s boot-restarting counter ids are test-only.
 - [x] Conversation WM item ids are deterministic (sim tick + hash of the words,
       the `_sentKey` recipe). They were wall-clock "telemetry only" until an
       episode began to remember its source; a wall-clock id in durable state is a

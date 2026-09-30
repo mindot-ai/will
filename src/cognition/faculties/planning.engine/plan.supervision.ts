@@ -392,7 +392,7 @@ export class PlanSupervisor {
       }
 
       case 'abandon': {
-        this._host.planFailed( plan, `Facet abandoned: ${decision.reasoning.slice( 0, 100 )}`)
+        this._host.planFailed( plan, `Facet abandoned: ${decision.reasoning}`)
         this.cleanupFacet( plan.id )
         break
       }
@@ -421,7 +421,7 @@ export class PlanSupervisor {
             payload: {
               planId:             plan.id,
               goalId:             plan.goalId,
-              reason:             decision.reasoning.slice( 0, 120 ),
+              reason:             decision.reasoning,
               stepCount:          plan.steps.length,
               requestingEntityId: plan.requestingEntityId,
               requestingThreadId: plan.requestingThreadId,
@@ -480,7 +480,7 @@ export class PlanSupervisor {
           payload: {
             planId:             plan.id,
             goalId:             plan.goalId,
-            reason:             decision.reasoning.slice( 0, 120 ),
+            reason:             decision.reasoning,
             requestingEntityId: plan.requestingEntityId,
             requestingThreadId: plan.requestingThreadId,
           }

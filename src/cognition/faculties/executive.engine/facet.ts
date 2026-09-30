@@ -362,7 +362,10 @@ export class ExecutiveFacet {
     // not a report from a superior. Naming it "Master sync" gave the facet a second
     // party to address — and it addressed it, out loud, on the outbound channel.
     if( payload.reasoning )
-      this._masterSyncHistory.push(`[tick ${payload.tick}] ${payload.reasoning.slice( 0, 400 )}`)
+      // Whole. It arrived cut to 600 and was cut again to 400 here; how MANY
+      // entries a facet sees is a per-call question (LOSSLESS P5), what each one
+      // says is not (P1).
+      this._masterSyncHistory.push(`[tick ${payload.tick}] ${payload.reasoning}`)
 
     // Keep only last 5 sync entries
     if( this._masterSyncHistory.length > 5 )
@@ -591,7 +594,7 @@ export class ExecutiveFacet {
     this._lastConfidence = output.confidence
 
     // Store reasoning for continuity
-    this._facetReasoningHistory.push(`[Report: ${report.type}] ${output.reasoning.slice( 0, 400 )}`)
+    this._facetReasoningHistory.push(`[Report: ${report.type}] ${output.reasoning}`)
     if( this._facetReasoningHistory.length > 10 )
       this._facetReasoningHistory = this._facetReasoningHistory.slice( -10 )
 

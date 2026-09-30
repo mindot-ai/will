@@ -516,7 +516,6 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
       params: {
         summaryInterval,
         summaryBufferSize,
-        maxCharsPerEntry: 600,
       },
     },
   ]

@@ -687,7 +687,7 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
         action:             step.action,
         success:            outcome.success,
         outcomeQuality:     outcome.outcomeQuality,
-        description:        outcome.description.slice( 0, 300 ),
+        description:        outcome.description,
         completedSteps:     plan.steps.filter( s => s.status === 'completed' || s.status === 'skipped').length,
         totalSteps:         plan.steps.length,
         requestingEntityId: plan.requestingEntityId,
@@ -703,7 +703,7 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
       action:         step.action,
       success:        outcome.success,
       outcomeQuality: outcome.outcomeQuality,
-      description:    outcome.description.slice( 0, 300 ),
+      description:    outcome.description,
       completedSteps: plan.steps.filter( s => s.status === 'completed' || s.status === 'skipped').length,
       totalSteps:     plan.steps.length,
     } as any)

@@ -1336,7 +1336,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         sourceEngine: this.name,
         salience: 0.8,
         payload: {
-          reasoning: executiveOutput.reasoning.slice( 0, 600 ),
+          reasoning: executiveOutput.reasoning,
           confidence: executiveOutput.confidence,
           actionTypes: executiveOutput.actions.map( a => a.type ),
           coherenceVersion: this._coherenceVersion,
@@ -1637,7 +1637,9 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       ...( payload.subjectEntityId ? { subjectEntityId: payload.subjectEntityId } : {} ),
       ...( payload.subjectName     ? { subjectName:     payload.subjectName }     : {} ),
       ...( payload.threadId        ? { threadId:        payload.threadId }        : {} ),
-      body: { ...payload.body, reasoning: ( payload.body.reasoning ?? '').slice( 0, 400 ) },
+      // The facet's reasoning, whole — the tract #160 built to carry what it
+      // concluded was still clipping it to 400 characters (LOSSLESS P1).
+      body: { ...payload.body, reasoning: payload.body.reasoning ?? '' },
     })
 
     logger.info(

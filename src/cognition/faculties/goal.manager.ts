@@ -596,7 +596,7 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
       // entity holds that entity's deep-frozen arrays by reference, so the push
       // threw and the goal stayed active forever — still competing for salience,
       // with the rest of the deferred-effects flush for that tick lost with it.
-      if( reason ) goal.abandonedReason = reason.slice( 0, 200 )
+      if( reason ) goal.abandonedReason = reason
 
       this._sessionLogger?.write({
         type:        'goal.abandoned',
@@ -605,7 +605,7 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
         description: goal.description,
         priority:    goal.priority,
         progress:    goal.progress,
-        reason:      reason?.slice( 0, 200 ),
+        reason,
         age:         ( this._currentTick as unknown as number ) - ( goal.activatedAt as unknown as number ),
       } as any)
 
@@ -614,7 +614,7 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
       this._bus?.publish({
         type: 'goal.abandoned', version: 1, sourceEngine: this.name,
         salience: 0.55,
-        payload: { goalId: goal.id, reason: reason?.slice( 0, 200 ) },
+        payload: { goalId: goal.id, reason },
       })
     }
   }

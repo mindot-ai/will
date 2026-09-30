@@ -8271,11 +8271,17 @@ var WorkingMemory = class {
    * `attention.focus` entities AttentionAllocator writes. (A second, bus-driven
    * branch used to sit above this one, labelled "preferred"; the event behind it was
    * never published, so this loop has always been the only path — see #114.)
+   *
+   * And this path was dark too, from v0.1.0: AttentionAllocator names what it is
+   * focused on `entityId`, and this read `targetEntityId`. No item was ever marked
+   * attended — attention protection, rehearsal and every `attendedCount` the
+   * consolidator weighs were a design that never ran. What the mind attended to
+   * faded exactly as fast as what it ignored.
    */
   _applyAttention(state, tick) {
     for (const entity of state.entities.values()) {
       if (entity.type !== "attention.focus") continue;
-      const targetId = entity.metadata?.targetEntityId;
+      const targetId = entity.metadata?.entityId;
       if (!targetId) continue;
       const item = this._items.find((i) => i.sourceEntityId === targetId);
       if (item && !item.attendedAt.includes(tick)) item.attendedAt.push(tick);

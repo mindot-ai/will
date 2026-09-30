@@ -877,7 +877,7 @@ export class AuditionEngine extends BaseSenseEngine {
         // learning, which is a reason not to choose it.
         const silent   = output.noMessage !== undefined
         if( silent )
-          logger.info(`[audition-engine] chose silence toward ${ speakerName ?? percept.speakerEntityId }: ${ output.noMessage!.slice( 0, 120 ) }`)
+          logger.info(`[audition-engine] chose silence toward ${ speakerName ?? percept.speakerEntityId }: ${ output.noMessage! }`)
         const rawReply = silent ? '' : ( output.replyText?.trim() ?? '')
         const bubbles  = rawReply.split( /\n{2,}/ )
                                   .map( b => b.trim() )
@@ -1001,7 +1001,7 @@ export class AuditionEngine extends BaseSenseEngine {
         // speech is the one case where saying nothing must be cheaper than
         // saying something — nobody is waiting on this.
         if( output.noMessage !== undefined ){
-          logger.info(`[audition-engine] chose not to reach out to ${ entityName }: ${ output.noMessage.slice( 0, 120 ) }`)
+          logger.info(`[audition-engine] chose not to reach out to ${ entityName }: ${ output.noMessage }`)
           return { reply: '', replyBubbles: [], withheld: true, targetEntityId: entityId, requiresMasterAttention: false }
         }
         const rawReply = output.replyText?.trim() ?? ''
@@ -1294,7 +1294,7 @@ export class AuditionEngine extends BaseSenseEngine {
         // OutboxWriter not yet attached — log only (dev / test contexts)
         else logger.info(
             `[audition-engine] Facet reply for ${entityId} (no outbox writer — not delivered): ` +
-            `"${d.reply.slice( 0, 80 )}${d.reply.length > 80 ? '…' : ''}"`
+            `"${d.reply}"`
           )
       }
 

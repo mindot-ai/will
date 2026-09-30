@@ -144,7 +144,7 @@ export class OutboxWriter {
     const ids: string[] = []
     bubbles.forEach( ( bubble, i ) => {
       if( !pushToOutbox ){ ids.push( this._genId(`-${ i }`) ); return }
-      logger.info(`[outbox-writer] reply → ${ entityId } bubble[${ i }] "${ bubble.slice( 0, 80 ) }"`)
+      logger.info(`[outbox-writer] reply → ${ entityId } bubble[${ i }] "${ bubble }"`)
       ids.push( this.enqueue({
         targetEntityId:   entityId,
         targetEntityName: entityName,

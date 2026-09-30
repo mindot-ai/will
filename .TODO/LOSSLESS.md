@@ -1,6 +1,6 @@
 # LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut
 
-> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P3 of 6 landed, unreleased
+> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P4 of 6 landed, unreleased
 
 > **The rule:** *lossless, not unbounded.* Every cut that loses data — at intake, in
 > transit between the mind's own parts, in what it keeps, in its artifact, in its
@@ -311,16 +311,30 @@ Found doing P3b and **not** changed:
 - **The event log, if ever wired, rewrites the whole file on every flush** (read
   all, append 100, write all).
 
-### P4 — the operator's record is whole
+### P4 — the operator's record is whole ✅
 
-- [ ] Session log: `engine.ts:1148` reasoning 1,000, `facet.ts:580` 500,
-      `engine.ts:1115`/`facet.ts:556` response excerpt 600, errors 200/300,
-      `spaced.repetition.ts:523` statement 100, `outbox.writer.ts:163-164` +
-      `proactive.communicator.ts:249-250` messages 300 / preview 100
-- [ ] Provider error bodies `llm/index.ts:792,983,1022,1063`, `host/boot.ts:164` (300)
-- [ ] Logger lines that quote content (80/120/60): outbox, proactive, audition,
-      reafference, planning — whole
-- [ ] `core/metrics.ts:96` debug flush shows 10 points — show all
+The trace an operator judges the mind by is built from the session log (Lora's
+host tails it), so every cut here was a cut in our analysis of her.
+
+- [x] **A facet's response whole** (was 600). The master writes every prompt and
+      response to `debug/`, so its 600-character excerpt is a preview beside
+      `responsePath` and stays; a facet writes no file, so its excerpt was the only
+      record of what two-thirds of her decisions said
+- [x] Reasoning whole: the master's `executive.output` (was 1,000) and a facet's
+      `executive.facet.output` (500) — the lines the trace's `decided` rows carry
+- [x] Errors whole: the session-log `error` (300) and the logged failure (200),
+      master and facet; provider error bodies on every wire (300) and the boot
+      probe's (300) — a refusal's cause is often past the first 300 characters of
+      an HTML error page
+- [x] `spaced.repetition.ts` statement (100); the metrics debug flush (10 points,
+      then "… and N more" of points spliced out and gone); logger lines quoting
+      her words or decisions — outbox (80), proactive (80), audition (120/80),
+      planning (40). A test scans every source file for a logger line quoting
+      through a fixed-length cut
+- [x] Already whole before P4: `outbox.writer` / `proactive.communicator` session
+      messages (P0) and `reafference` (P0)
+- Not an engine cut: the host console lines in `executive/coo/lora.ts`
+  (`brief()`) — the trace FILE it writes is whole
 
 ### P5 — each call lossless, not unbounded
 

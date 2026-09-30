@@ -813,7 +813,7 @@ export class LLMDirector {
 
     if( !res.ok ){
       clearTimeout( timer )
-      throw new Error(`Anthropic stream ${res.status}: ${( await res.text() ).slice(0, 300)}`)
+      throw new Error(`Anthropic stream ${res.status}: ${await res.text()}`)
     }
 
     const reader  = res.body!.getReader()
@@ -1007,7 +1007,7 @@ export class LLMDirector {
     })
 
     if( !res.ok )
-      throw new Error(`${ep.provider} API ${res.status}: ${( await res.text() ).slice(0, 300)}`)
+      throw new Error(`${ep.provider} API ${res.status}: ${await res.text()}`)
 
     const
     data = await res.json() as {
@@ -1048,7 +1048,7 @@ export class LLMDirector {
     })
 
     if( !res.ok )
-      throw new Error(`OpenAI API ${res.status}: ${( await res.text() ).slice(0, 300)}`)
+      throw new Error(`OpenAI API ${res.status}: ${await res.text()}`)
 
     const
     data = await res.json() as {
@@ -1090,7 +1090,7 @@ export class LLMDirector {
     )
 
     if( !res.ok )
-      throw new Error(`Google API ${res.status}: ${( await res.text() ).slice(0, 300)}`)
+      throw new Error(`Google API ${res.status}: ${await res.text()}`)
 
     const data = await res.json() as {
       candidates?:   Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>

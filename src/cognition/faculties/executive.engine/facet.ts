@@ -556,19 +556,21 @@ export class ExecutiveFacet {
         completionTokens: result.outputTok,
         cacheReadTokens:  result.cacheReadTok ?? 0,
         cacheWriteTokens: result.cacheWriteTok ?? 0,
-        responseExcerpt: result.text.slice( 0, 600 )
+        // Whole. A facet writes no response file (the master does), so this line
+        // was the only record of what it said — and it kept 600 characters.
+        response: result.text
       } )
     }
     catch( err ){
       const msg = err instanceof Error ? err.message : String( err )
-      logger.error(`[executive.facet] ${this.facetId} LLM call failed: ${msg.slice( 0, 200 )}`)
+      logger.error(`[executive.facet] ${this.facetId} LLM call failed: ${msg}`)
 
       this._sessionLogger?.write( {
         type: 'executive.facet.response',
         tick: currentState.tick,
         facetId: this.facetId,
         latencyMs: wallClock() - llmStart,
-        error: msg.slice( 0, 300 )
+        error: msg
       } )
 
       output = buildFallbackOutput( currentState, [] )
@@ -580,7 +582,7 @@ export class ExecutiveFacet {
       tick: currentState.tick,
       facetId: this.facetId,
       confidence: output.confidence,
-      reasoning: output.reasoning.slice( 0, 500 ),
+      reasoning: output.reasoning,
       actions: output.actions,
       newBeliefs: output.newBeliefs ?? [],
       plansCount: output.plans?.length ?? 0,

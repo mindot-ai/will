@@ -14,6 +14,7 @@
 
 import { WillConfig } from '#stem/mind'
 import type { StateManager } from '#core/state.manager'
+import { DEFAULT_FORGETTING_RATE_PER_SECOND } from '#faculties/forgetting.curve'
 
 export interface EngineConfigEntity {
   id:     string
@@ -259,7 +260,7 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
       id: 'engine-config-forgetting',
       engine: 'forgetting',
       params: {
-        baseForgettingRate: 0.02,
+        baseForgettingRate: DEFAULT_FORGETTING_RATE_PER_SECOND,
         emotionProtection:  0.7,
         pruningThreshold:   0.01,
         maxPrunePerTick:    10,

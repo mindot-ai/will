@@ -10214,6 +10214,7 @@ var SpacedRepetition = class {
 };
 
 // src/cognition/faculties/forgetting.curve.ts
+var DEFAULT_FORGETTING_RATE_PER_SECOND = (0.25 - 0.01) / (3 * 86400);
 var ForgettingCurve = class {
   name = "forgetting-curve";
   _baseForgettingRate;
@@ -10225,7 +10226,7 @@ var ForgettingCurve = class {
   _model = new GenerativeModel();
   constructor(config = {}) {
     this._bus = config.bus ?? null;
-    this._baseForgettingRate = config.baseForgettingRate ?? 0.02;
+    this._baseForgettingRate = config.baseForgettingRate ?? DEFAULT_FORGETTING_RATE_PER_SECOND;
     this._emotionProtection = config.emotionProtection ?? 0.7;
     this._pruningThreshold = config.pruningThreshold ?? 0.01;
     this._maxPrunePerTick = config.maxPrunePerTick ?? 10;
@@ -26667,7 +26668,7 @@ function buildEngineConfigEntities(config, executiveInterval) {
       id: "engine-config-forgetting",
       engine: "forgetting",
       params: {
-        baseForgettingRate: 0.02,
+        baseForgettingRate: DEFAULT_FORGETTING_RATE_PER_SECOND,
         emotionProtection: 0.7,
         pruningThreshold: 0.01,
         maxPrunePerTick: 10
@@ -28236,7 +28237,7 @@ var PMALoader = class {
         id: "engine-config-forgetting",
         engine: "forgetting-curve",
         params: {
-          baseForgettingRate: 1 - pma.identity.memoryPersistence * 0.7
+          baseForgettingRate: DEFAULT_FORGETTING_RATE_PER_SECOND * (1 - pma.identity.memoryPersistence * 0.7)
         }
       }, "incoming");
     }

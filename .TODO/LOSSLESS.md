@@ -97,11 +97,13 @@ reads it into `## What I've Said Lately` and the "they answered" line, and
       episode began to remember its source; a wall-clock id in durable state is a
       run that cannot replay (caught by `replay.conversation.test.ts`).
 
-What P0 surfaced and did not change — the forgetting curve, which is MIND: on
-the one live mind, `episodic_memory` held **zero** entities on every one of 2,095
-ticks of a 35-minute run; an unrecalled episode starts near 0.43 and decays at
-`0.02 × seconds` to the 0.01 prune line. Whether that rate is how this mind
-should forget is a calibration question for its owner, not a cut.
+What P0 surfaced, and its owner then recalibrated outside this epoch — the
+forgetting curve, which is MIND: the one live mind held **zero** episodes on
+every one of 2,095 ticks of a 35-minute run. The default rate (0.02/s) forgot a
+typical episode in ~20 s, and every mind woken from its artifact ran at
+`1 − memoryPersistence × 0.7` (0.44–0.79/s) as an ABSOLUTE rate — gone within
+the tick. Now set in days of running time, persistence a multiplier on it
+(`DEFAULT_FORGETTING_RATE_PER_SECOND`, forgetting.curve.ts).
 
 ### P1 — what she thinks is whole, in transit and in record ✅
 

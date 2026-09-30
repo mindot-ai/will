@@ -160,8 +160,7 @@ export class OutboxWriter {
       targetEntityId:   entityId,
       targetEntityName: entityName,
       messageCount:     bubbles.length,
-      messages:         bubbles.map( b => b.slice( 0, 300 ) ),
-      preview:          bubbles[0]?.slice( 0, 100 ) ?? '',
+      messages:         bubbles,
       threadId,
       source:           'audition-facet',
     })

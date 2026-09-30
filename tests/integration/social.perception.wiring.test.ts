@@ -74,7 +74,7 @@ describe('#113 — an inbound message reaches social cognition', () => {
     const m = received[0]!.metadata as any
     expect( m.sourceKeid ).toBe('alice')       // SocialPerception reads this as "who acted"
     expect( m.directedAtSelf ).toBe( true )    // an inbound turn is addressed to us
-    expect( m.preview ).toContain('connect later')
+    expect( m.text ).toContain('connect later')   // whole, as `text` (LOSSLESS P0)
     // Valence is deliberately unset — the words have not been appraised, and
     // inventing a number here would feed reputation a sentiment nobody measured.
     expect( m.valence ).toBeUndefined()

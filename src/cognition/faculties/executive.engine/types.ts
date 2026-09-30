@@ -326,8 +326,8 @@ export interface ExecutiveContext {
   spokenTurns: Array<{
     /** Who it was said to, by name where the mind knows one. */
     target:  string
-    /** The opening words — enough to recognise a thing already said. */
-    preview: string
+    /** What was said, whole. */
+    text:    string
     /** Ticks since it was said. */
     age:     number
     /** Unset while still in the air; the mind is told which. */

@@ -8311,6 +8311,9 @@ var WorkingMemory = class {
 };
 
 // src/cognition/faculties/episodic.consolidator.ts
+function sourceIdentity(id) {
+  return id;
+}
 var EpisodicConsolidator = class {
   name = "episodic-consolidator";
   _consolidationThreshold;
@@ -8435,6 +8438,7 @@ var EpisodicConsolidator = class {
         lastRetrievedAt: null,
         tags: candidate.tags,
         sourceType: candidate.type,
+        sourceId: candidate.id,
         createdAt: now,
         outcomeStatus: _inferOutcomeStatus(candidate.type, candidate.tags)
       };
@@ -8725,6 +8729,7 @@ var EpisodicConsolidator = class {
         lastRetrievedAt: episode.lastRetrievedAt,
         tags: episode.tags,
         sourceType: episode.sourceType,
+        ...episode.sourceId !== void 0 ? { sourceId: episode.sourceId } : {},
         tick: episode.timestamp,
         createdAt: episode.createdAt
       }
@@ -8751,6 +8756,7 @@ var EpisodicConsolidator = class {
         lastRetrievedAt: m["lastRetrievedAt"] ?? null,
         tags: m["tags"] ?? [],
         sourceType: m["sourceType"] ?? "percept",
+        ...typeof m["sourceId"] === "string" ? { sourceId: m["sourceId"] } : {},
         createdAt: m["createdAt"] ?? entity.createdAt
       };
       this._store.push(episode);
@@ -8774,19 +8780,18 @@ var EpisodicConsolidator = class {
   // ── Internal ─────────────────────────────────────────────
   _findCandidates(state) {
     const candidates = [];
-    const recentHashes = /* @__PURE__ */ new Set();
-    for (const memory of this._store.slice(-20)) {
-      const contentStr = typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
-      recentHashes.add(contentStr.slice(0, 100));
-    }
+    const alreadyRemembered = /* @__PURE__ */ new Set();
+    for (const memory of this._store)
+      if (memory.sourceId) alreadyRemembered.add(memory.sourceId);
     for (const entity of state.entities.values()) {
       if (entity.type !== "working_memory.item") continue;
-      const content = entity.metadata;
-      const contentStr = JSON.stringify(content).slice(0, 100);
-      if (recentHashes.has(contentStr)) continue;
+      entity.metadata;
+      const identity = sourceIdentity(entity.id);
+      if (alreadyRemembered.has(identity)) continue;
       const category = entity.metadata?.tags;
       if (category && (category.includes("episodic_memory") || category.includes("percept") || category.includes("percept.social"))) continue;
       candidates.push({
+        id: identity,
         type: entity.metadata?.wmType ?? "unknown",
         content: entity.metadata,
         activation: entity.metadata?.activation ?? 0,
@@ -11606,6 +11611,9 @@ function meta2(e) {
 function str2(v) {
   return typeof v === "string" ? v : void 0;
 }
+function wordsOf(m) {
+  return str2(m["text"]) ?? str2(m["preview"]) ?? "";
+}
 function num(v) {
   return typeof v === "number" && Number.isFinite(v) ? v : void 0;
 }
@@ -11621,7 +11629,7 @@ function readSpokenTurns(entities) {
       entityId: id,
       targetEntityId: canonicalOf(aliases, target),
       targetEntityName: str2(m["targetEntityName"]),
-      preview: str2(m["preview"]) ?? "",
+      text: wordsOf(m),
       tick: tickOf(e, m),
       answeredAt: num(m["answeredAt"]),
       answeredWith: str2(m["answeredWith"]),
@@ -11642,7 +11650,7 @@ function lastHeardByEntity(entities) {
     const source = canonicalOf(aliases, raw);
     const at = tickOf(e, m);
     if (at > (out.get(source)?.tick ?? -Infinity))
-      out.set(source, { tick: at, preview: str2(m["preview"]) ?? "" });
+      out.set(source, { tick: at, text: wordsOf(m) });
   }
   return out;
 }
@@ -11667,7 +11675,7 @@ function resolveReplyExpectations(entities, tick, windowTicks = DEFAULT_REPLY_WI
     if (t.isAck || t.answeredAt !== void 0) continue;
     const heard = lastHeard.get(t.targetEntityId);
     if (heard !== void 0 && heard.tick > t.tick) {
-      answered.push({ turn: t, at: heard.tick, with: heard.preview });
+      answered.push({ turn: t, at: heard.tick, with: heard.text });
       continue;
     }
     if (t.unansweredAt !== void 0) continue;
@@ -11818,7 +11826,7 @@ async function buildExecutiveContext(state, deps, recallQuery) {
     // the same person rendered as both `FKEM` and `discord:15255…` in one list,
     // which reads as two people. The roster holds the current best name.
     target: nameOf2(t.targetEntityId) ?? t.targetEntityName ?? t.targetEntityId,
-    preview: t.preview,
+    text: t.text,
     age: Math.max(0, state.tick - t.tick),
     answered: t.answeredAt !== void 0,
     ...t.answeredWith ? { answeredWith: t.answeredWith } : {}
@@ -12709,11 +12717,10 @@ ${lines.join("\n")}${tail}`;
    */
   static _buildSpokenTurnsSection(spokenTurns) {
     if (!spokenTurns?.length) return "";
-    const clip = (s, n) => s.length > n ? `${s.slice(0, n)}\u2026` : s;
     const lines = spokenTurns.map((t) => {
-      const words = t.preview.trim();
-      const said = words ? ` \u2014 "${clip(words, 80)}"` : "";
-      const back = t.answered ? t.answeredWith?.trim() ? ` \u2014 they answered: "${clip(t.answeredWith.trim(), 100)}"` : " \u2014 they answered (I do not have their words here)" : " \u2014 no answer yet";
+      const words = t.text.trim();
+      const said = words ? ` \u2014 "${words}"` : "";
+      const back = t.answered ? t.answeredWith?.trim() ? ` \u2014 they answered: "${t.answeredWith.trim()}"` : " \u2014 they answered (I do not have their words here)" : " \u2014 no answer yet";
       return `- **${t.target}** \xB7 ${t.age} ticks ago${said}${back}`;
     });
     const open = spokenTurns.filter((t) => !t.answered).length;
@@ -13067,6 +13074,19 @@ function isRateLimitError(err) {
   const msg = err.message;
   return msg.includes("rate_limit_error") || err.statusCode === 429 || msg.includes("rate limit") || msg.includes("429");
 }
+var RETRYABLE_STATUS = /* @__PURE__ */ new Set([429, 500, 502, 503, 504, 529]);
+function statusOf(err) {
+  const field = err.statusCode ?? err.status;
+  if (typeof field === "number") return field;
+  const m = err.message.match(/\b(?:API|stream)\s+(\d{3})\b/);
+  return m ? parseInt(m[1], 10) : void 0;
+}
+function isRetryableError(err) {
+  if (!(err instanceof Error)) return false;
+  const status = statusOf(err);
+  if (status !== void 0) return RETRYABLE_STATUS.has(status);
+  return isRateLimitError(err);
+}
 async function withGate(fn, label, gate = llmGate) {
   let attempt = 0;
   while (true) {
@@ -13076,7 +13096,7 @@ async function withGate(fn, label, gate = llmGate) {
       const result = await fn();
       return result;
     } catch (err) {
-      if (isRateLimitError(err) && attempt < maxRetries()) {
+      if (isRetryableError(err) && attempt < maxRetries()) {
         attempt++;
         const base = baseDelayMs();
         retryDelay = Math.min(
@@ -13088,7 +13108,7 @@ async function withGate(fn, label, gate = llmGate) {
       release();
     }
     logger.warn(
-      `[LLMGate] ${label} rate limited \u2014 retry ${attempt}/${maxRetries()} in ${Math.round(retryDelay)}ms  (running=${gate.running} queued=${gate.queued})`
+      `[LLMGate] ${label} transient error \u2014 retry ${attempt}/${maxRetries()} in ${Math.round(retryDelay)}ms  (running=${gate.running} queued=${gate.queued})`
     );
     await new Promise((r) => setTimeout(r, retryDelay));
   }
@@ -20664,7 +20684,9 @@ function buildConversationExchange(input) {
       activation,
       attendedCount,
       tags: ["conversation", "exchange", `entity:${entityId}`],
-      summary: userMessage ? `${name}: "${userMessage.slice(0, 100)}" \u2192 "${willReply.slice(0, 100)}"` : `I \u2192 ${name}: "${willReply.slice(0, 140)}"`,
+      // Whole. This label is what recall renders for the exchange, so a cut here
+      // was a cut of her memory of the conversation, 100 characters a side.
+      summary: userMessage ? `${name}: "${userMessage}" \u2192 "${willReply}"` : `I \u2192 ${name}: "${willReply}"`,
       entityId,
       entityName: name,
       userMessage,
@@ -20941,7 +20963,7 @@ var ThreadDigestManager = class _ThreadDigestManager {
   _threads = /* @__PURE__ */ new Map();
   append(threadId, role, content) {
     const lines = this._threads.get(threadId) ?? [];
-    lines.push(`${role}: ${content.slice(0, 200)}`);
+    lines.push(`${role}: ${content}`);
     if (lines.length > _ThreadDigestManager.MAX_TURNS)
       lines.splice(0, lines.length - _ThreadDigestManager.MAX_TURNS);
     this._threads.set(threadId, lines);
@@ -21241,9 +21263,11 @@ var AuditionEngine = class extends BaseSenseEngine {
       threadId,
       digest: this._digests.getDigest(threadId),
       // What a heard turn amounts to, for readers that do not know this is
-      // audition. Bounded, because `summary` renders into the executive prompt
-      // and a pasted essay would take the whole percept budget.
-      summary: `${speakerName} said: ${content}`.slice(0, PERCEPT_SUMMARY_CAP),
+      // audition — whole. It was cut to PERCEPT_SUMMARY_CAP (100), which is all
+      // the master ever saw of what someone said to it; the full text reached
+      // only the conversation facet. A pasted essay is a per-call budget
+      // question, answered by LOSSLESS P5, not by cutting the words (P0).
+      summary: `${speakerName} said: ${content}`,
       salience,
       // Arrival metadata for an EXTERNAL inbound message (network/RPC boundary):
       // no sim clock in scope here and the value is not replayed — wallClock() is
@@ -21597,7 +21621,8 @@ var AuditionEngine = class extends BaseSenseEngine {
         directedAtSelf: true,
         // an inbound turn is addressed to us by definition
         action: "communication",
-        preview: content.slice(0, 140),
+        // What they said, whole: this is what "they answered: …" shows the mind.
+        text: content,
         chars: content.length,
         ...threadId ? { threadId } : {}
       }
@@ -21624,7 +21649,7 @@ var AuditionEngine = class extends BaseSenseEngine {
         targetEntityId: entityId,
         targetEntityName: entityName,
         messageCount: bubbles.length,
-        preview: bubbles[0]?.slice(0, 100) ?? "",
+        text: bubbles.join("\n"),
         effectorName: "text",
         source: "audition-facet",
         tick: this._lastDecisionTick,
@@ -21646,8 +21671,9 @@ var AuditionEngine = class extends BaseSenseEngine {
       threadId,
       activation: Math.min(1, Math.max(0.6, conf)),
       attendedCount: 1,
-      idSeed: wallClock()
-      // wallClock id — telemetry only (R2)
+      // Deterministic, like _sentKey: the episode this becomes keeps the id as its
+      // source, so it is durable state, not telemetry (R2, LOSSLESS P0).
+      idSeed: `${this._lastDecisionTick}-${fnv1a(`${inbound}\u2192${reply}`)}`
     }));
   }
   // ── Facet decision handling ─────────────────────────────────
@@ -24125,7 +24151,7 @@ var ReafferenceEngine = class {
       merge(turn.entityId, { unansweredAt: tick });
       this._emitResponsiveness(turn.targetEntityId, false, tick - turn.tick, tick);
       logger.info(
-        `[reafference] no answer from ${turn.targetEntityName ?? turn.targetEntityId} after ${tick - turn.tick} ticks \u2014 "${turn.preview.slice(0, 60)}"`
+        `[reafference] no answer from ${turn.targetEntityName ?? turn.targetEntityId} after ${tick - turn.tick} ticks \u2014 "${turn.text}"`
       );
     }
     return { answered: answered.length, unanswered: unanswered.length };
@@ -25177,8 +25203,7 @@ var OutboxWriter = class {
       targetEntityId: entityId,
       targetEntityName: entityName,
       messageCount: bubbles.length,
-      messages: bubbles.map((b) => b.slice(0, 300)),
-      preview: bubbles[0]?.slice(0, 100) ?? "",
+      messages: bubbles,
       threadId,
       source: "audition-facet"
     });
@@ -26211,7 +26236,7 @@ var ProactiveCommunicator = class {
     });
     return {
       success: true,
-      description: `I broadcast: "${finalContent.slice(0, 80)}${finalContent.length > 80 ? "\u2026" : ""}"`,
+      description: `I broadcast: "${finalContent}"`,
       commands,
       feedback: {
         outcomeQuality: 0.75,
@@ -26270,7 +26295,8 @@ var ProactiveCommunicator = class {
         targetEntityId,
         targetEntityName,
         messageCount: bubbles.length,
-        preview: bubbles[0]?.slice(0, 100) ?? "",
+        // Every bubble, whole — the record a turn is later judged by (LOSSLESS P0).
+        text: bubbles.join("\n"),
         effectorName: effectorName2,
         tick: deliveryTick,
         delivered: false,
@@ -26285,8 +26311,7 @@ var ProactiveCommunicator = class {
       targetEntityId,
       targetEntityName,
       messageCount: bubbles.length,
-      messages: bubbles.map((b) => b.slice(0, 300)),
-      preview: bubbles[0]?.slice(0, 100) ?? "",
+      messages: bubbles,
       isAck
     });
     const fullReply = bubbles.join(" ");
@@ -26297,12 +26322,13 @@ var ProactiveCommunicator = class {
       userMessage: originalMessage,
       willReply: fullReply,
       tick: request.parameters?.tick ?? 0,
-      idSeed: wallClock(),
+      // Deterministic: the episode this becomes keeps the id (see idSeed).
+      idSeed: `${deliveryTick}-${fnv1a(`${originalMessage ?? ""}\u2192${fullReply}`)}`,
       createdAt: wallClock()
     }));
     return {
       success: true,
-      description: `I reach out to ${targetEntityName}: "${fullReply.slice(0, 80)}${fullReply.length > 80 ? "\u2026" : ""}"`,
+      description: `I reach out to ${targetEntityName}: "${fullReply}"`,
       commands,
       feedback: {
         // NOT a success yet. This reports the TRANSPORT, and the act's point is to be
@@ -29550,7 +29576,7 @@ var EscalationLifecycle = class {
           // the line readable next to the people in the same list.
           targetEntityName: "everyone here",
           messageCount: 1,
-          preview: content.slice(0, 100),
+          text: content,
           effectorName: "broadcast",
           tick,
           delivered: false

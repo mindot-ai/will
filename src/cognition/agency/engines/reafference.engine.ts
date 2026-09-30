@@ -413,7 +413,7 @@ export class ReafferenceEngine implements CognitiveEngine {
       this._emitResponsiveness( turn.targetEntityId, false, tick - turn.tick, tick )
       logger.info(
         `[reafference] no answer from ${ turn.targetEntityName ?? turn.targetEntityId } ` +
-        `after ${ tick - turn.tick } ticks — "${ turn.preview.slice( 0, 60 ) }"`
+        `after ${ tick - turn.tick } ticks — "${ turn.text }"`
       )
     }
 

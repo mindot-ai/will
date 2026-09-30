@@ -42,16 +42,6 @@ const DISCORD_CDN_HOSTS = new Set( [ 'cdn.discordapp.com', 'media.discordapp.net
 const MAX_FETCH_BYTES = 256 * 1024
 
 /**
- * How much of her own message to quote back when someone reacts to it.
- *
- * Enough to identify WHICH thing was agreed with — a bare "someone reacted 👍"
- * closes the answered loop but tells the mind nothing about what was affirmed,
- * and 0.9.0 established that an answer without its content is worse than none:
- * it invites acting on an answer never seen.
- */
-const REACTION_QUOTE_CHARS = 140
-
-/**
  * What to call the room this was said in — `#general`, `#general › release-cut`,
  * or `#general in Mindot` when the server is known.
  *
@@ -269,7 +259,11 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
     if( !emoji ) return
 
     const who  = user.displayName ?? user.username
-    const said = ( msg.cleanContent || msg.content || '').trim().slice( 0, REACTION_QUOTE_CHARS )
+    // The reacted-to message, whole. A bare "someone reacted 👍" tells the mind
+    // nothing about what was affirmed, and 0.9.0 established that an answer
+    // without its content is worse than none. Quoting 140 characters of it was
+    // the same mistake at a smaller size (LOSSLESS P0).
+    const said = ( msg.cleanContent || msg.content || '').trim()
 
     // Described, bracketed, first person — the same shape `renderAttachments` uses
     // for a file, and for the same reason: this reached the mind through the

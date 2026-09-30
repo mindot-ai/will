@@ -93,3 +93,21 @@ describe('ProactiveCommunicator — outbound conversation memory (§8 option a)'
     expect( sessions ).toHaveLength( 0 )
   } )
 } )
+
+// ── LOSSLESS P0 — what she said, whole ───────────────────────
+describe('ProactiveCommunicator — what she said is recorded whole (LOSSLESS P0)', () => {
+  const FIRST  = 'The release review is Monday. ' + 'The checklist, the rollback plan and both sign-offs are ready. '.repeat( 2 )
+  const SECOND = 'Can you confirm 2pm UTC?'
+
+  it('keeps every bubble in the sent record and in the act it reports', async () => {
+    const { exec } = make()
+    const res = await exec.executeAction( req({ targetEntityName: 'Alice', messages: [ FIRST, SECOND ], tick: 5 }), {} as any )
+
+    expect( FIRST.length ).toBeGreaterThan( 100 )
+    const sent = ( res.commands!.set ?? [] ).find( ( c: any ) => c.type === 'conversation.sent') as any
+    expect( sent.metadata.text ).toBe(`${ FIRST }\n${ SECOND }`)
+    // The act's own description feeds "What Became Of What I Did" — cut to 80 before.
+    expect( res.description ).toContain( SECOND )
+  } )
+} )
+

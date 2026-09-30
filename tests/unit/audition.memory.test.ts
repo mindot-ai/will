@@ -11,6 +11,7 @@
  *   - Recall failure is non-fatal.
  */
 
+import { OutboxWriter } from '#stem/tracts/outbox.writer'
 import { describe, it, expect } from 'vitest'
 import { AuditionEngine } from '#senses/audition.engine/engine'
 import { createTestBus }  from '#cognition/bus'
@@ -181,3 +182,54 @@ describe('AuditionEngine — salience inputs (§3) + thread keying (§2)', () =>
     expect( threads ).toEqual( ['t1', 't2'] )
   } )
 } )
+
+// ── LOSSLESS P0 — the record of a turn is whole ──────────────
+describe('AuditionEngine — the record of a turn is whole (LOSSLESS P0)', () => {
+  const LONG_IN  = 'Monday is fine, but '
+                 + 'the payments migration has to land first, so we will not have the numbers before noon. '.repeat( 2 )
+                 + 'Make it 2pm, not 3pm.'
+  const BUBBLES  = [ 'Understood: 2pm, not 3pm.', 'I will tell Fabrice the review moved, and why.' ]
+
+  function twoBubbleExecutive(){
+    return {
+      spawnFacet(){
+        let sub: (( d: any ) => void) | null = null
+        const handle = {
+          facetId: 'f1',
+          report(){
+            sub?.({
+              decision: { reply: BUBBLES.join(' '), replyBubbles: BUBBLES, targetEntityId: 'alice', requiresMasterAttention: false },
+              reasoning: '', confidence: 0.9,
+            })
+          },
+          subscribe( fn: any ){ sub = fn; return () => { sub = null } },
+          setFocus(){}, setStateRef(){}, onChunk(){}, onReaped(){}, destroy(){},
+        }
+        return { attention: 'available' as const, handle }
+      },
+    }
+  }
+
+  it('records what was heard whole, and every bubble of what was said back', async () => {
+    const entities: any[] = []
+    const engine = new AuditionEngine()
+    engine.attachBus( createTestBus() )
+    engine.attachExecutiveEngine( twoBubbleExecutive() as any )
+    engine.attachMemorySink( e => entities.push( e ) )
+    // The sent record is written on the real delivery path only: `talk` granted
+    // and an outbox to deliver through.
+    engine.attachGrants( { isAllowed: () => true } as never )
+    engine.attachOutboxWriter( new OutboxWriter({ outbox: [], willId: 'w' }) )
+
+    await engine.sense( text( LONG_IN ) )
+
+    const heard = entities.find( x => x.type === 'conversation.received')
+    expect( LONG_IN.length ).toBeGreaterThan( 140 )          // past the old cut, or this proves nothing
+    expect( heard.metadata.text ).toBe( LONG_IN )
+
+    const spoke = entities.find( x => x.type === 'conversation.sent')
+    expect( spoke.metadata.text ).toBe( BUBBLES.join('\n') )  // the second bubble was never recorded before
+    expect( spoke.metadata.messageCount ).toBe( 2 )
+  } )
+} )
+

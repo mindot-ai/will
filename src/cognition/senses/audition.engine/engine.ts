@@ -76,7 +76,6 @@ import type {
   Transduced,
   VoiceChunk
 } from '#senses/index'
-import { PERCEPT_SUMMARY_CAP } from '#cognition/percept.entity'
 import { validateFacetHandoff, type HandoffBody } from '#faculties/executive.engine/escalation.buffer'
 import { fnv1a } from '#agency/consequence'
 import type { OutreachResult } from '#agency/engines/motor.schema.executor'
@@ -278,7 +277,9 @@ export class ThreadDigestManager {
 
   append( threadId: string, role: 'user' | 'will', content: string ): void {
     const lines = this._threads.get( threadId ) ?? []
-    lines.push(`${role}: ${content.slice( 0, 200 )}`)
+    // Each turn whole. How MANY turns a facet sees is a per-call question
+    // (LOSSLESS P5); what a turn said is not up for cutting (P0).
+    lines.push(`${role}: ${content}`)
     if( lines.length > ThreadDigestManager.MAX_TURNS )
       lines.splice( 0, lines.length - ThreadDigestManager.MAX_TURNS )
 
@@ -617,9 +618,11 @@ export class AuditionEngine extends BaseSenseEngine {
       threadId,
       digest: this._digests.getDigest( threadId ),
       // What a heard turn amounts to, for readers that do not know this is
-      // audition. Bounded, because `summary` renders into the executive prompt
-      // and a pasted essay would take the whole percept budget.
-      summary: `${ speakerName } said: ${ content }`.slice( 0, PERCEPT_SUMMARY_CAP ),
+      // audition — whole. It was cut to PERCEPT_SUMMARY_CAP (100), which is all
+      // the master ever saw of what someone said to it; the full text reached
+      // only the conversation facet. A pasted essay is a per-call budget
+      // question, answered by LOSSLESS P5, not by cutting the words (P0).
+      summary: `${ speakerName } said: ${ content }`,
       salience,
       // Arrival metadata for an EXTERNAL inbound message (network/RPC boundary):
       // no sim clock in scope here and the value is not replayed — wallClock() is
@@ -1131,7 +1134,8 @@ export class AuditionEngine extends BaseSenseEngine {
         sourceName:     speakerName,
         directedAtSelf: true,          // an inbound turn is addressed to us by definition
         action:         'communication',
-        preview:        content.slice( 0, 140 ),
+        // What they said, whole: this is what "they answered: …" shows the mind.
+        text:           content,
         chars:          content.length,
         ...( threadId ? { threadId } : {} ),
       },
@@ -1176,7 +1180,7 @@ export class AuditionEngine extends BaseSenseEngine {
         targetEntityId:   entityId,
         targetEntityName: entityName,
         messageCount:     bubbles.length,
-        preview:          bubbles[0]?.slice( 0, 100 ) ?? '',
+        text:             bubbles.join('\n'),
         effectorName:     'text',
         source:           'audition-facet',
         tick:             this._lastDecisionTick,
@@ -1203,7 +1207,9 @@ export class AuditionEngine extends BaseSenseEngine {
       threadId,
       activation:    Math.min( 1, Math.max( 0.6, conf ) ),
       attendedCount: 1,
-      idSeed:        wallClock(),   // wallClock id — telemetry only (R2)
+      // Deterministic, like _sentKey: the episode this becomes keeps the id as its
+      // source, so it is durable state, not telemetry (R2, LOSSLESS P0).
+      idSeed:        `${ this._lastDecisionTick }-${ fnv1a(`${ inbound }\u2192${ reply }`) }`,
     }) )
   }
 

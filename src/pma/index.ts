@@ -16,7 +16,7 @@
 //   PMADistiller — reads simulation state + JSONL profile logs → PMASnapshot
 //   PMALoader    — seeds a fresh simulation from a PMASnapshot
 //
-// Artifact format: plain JSON, ~10–50 KB depending on belief count.
+// Artifact format: plain JSON; its size is what the mind knows (LOSSLESS P3).
 // schemaVersion is bumped on any breaking change to PMASnapshot.
 //
 // Typical usage in WillManager:
@@ -48,6 +48,7 @@ import {
   type CompetenceSnapshot,
 } from '#agency/competence.codec'
 import { mergeIdentity, composeIdentityPrompt, readPersona, IDENTITY_ENTITY_ID } from '#cognition/identity.entity'
+import type { Handle } from '#cognition/social.identity'
 
 // ── Schema version ─────────────────────────────────────────────
 // Bump this when any field is removed or semantically changed.
@@ -86,7 +87,7 @@ export interface PMABelief {
   confidence:         number
   supportingEpisodes: number
   tags:               string[]
-  /** Up to 20 history entries — see BeliefHistoryEntry in semantic.integrator.ts */
+  /** The whole history — see BeliefHistoryEntry in semantic.engine/types.ts */
   history:            BeliefHistoryEntry[]
 }
 
@@ -201,6 +202,9 @@ export interface PMARelationshipStub {
     reliability:          number
     encounterCount:       number
     resolutionConfidence: number
+    /** Where they are reached. Without it a re-embodied Will knew who someone was and could not address them. */
+    handles?:             Handle[]
+    suspectedSameAs?:     string[]
   }
 }
 
@@ -208,7 +212,7 @@ export interface PMARelationshipStub {
  * PMASnapshot — the portable identity artifact.
  *
  * Top-level contract:
- *   - ~10–50 KB for a typical Will (50 beliefs × history)
+ *   - Whole: every belief, every goal still held, everyone known (LOSSLESS P3)
  *   - Self-contained: can bootstrap a Will with no other files
  *   - Versioned: schemaVersion guards against stale artifacts
  */
@@ -223,13 +227,13 @@ export interface PMASnapshot {
   sourceSessionId:  string
 
   identity:          PMAIdentity
-  /** Top 50 beliefs ranked by confidence × log(1 + supportingEpisodes) */
+  /** Every belief, ranked by confidence × log(1 + supportingEpisodes) */
   beliefs:           PMABelief[]
-  /** Top 10 active/in_progress goals by priority */
+  /** Every goal still held (not completed or abandoned), by priority */
   goals:             PMAGoal[]
   emotionalBaseline: PMAEmotionalBaseline
   behavioral:        PMABehavioral
-  /** Top 20 relationship stubs (bonds + reputation) by interaction count */
+  /** Every relationship stub, most salient first */
   relationships:     PMARelationshipStub[]
   /** Total episodic memory count at snapshot time (metadata only — episodes not stored) */
   episodicCount:     number
@@ -440,14 +444,16 @@ export class PMADistiller {
       })
     }
 
-    // Rank by confidence × log(1 + supportingEpisodes); cap at 50
+    // Rank by confidence × log(1 + supportingEpisodes) — and keep them all. The
+    // artifact carried the top 50: a Will woken from it alone (a new machine, a
+    // lost data dir, `persist` off) came back knowing fifty things (LOSSLESS P3).
     raw.sort( ( a, b ) => {
       const sa = a.confidence * Math.log( 1 + a.supportingEpisodes )
       const sb = b.confidence * Math.log( 1 + b.supportingEpisodes )
       return sb - sa
     })
 
-    return raw.slice( 0, 50 )
+    return raw
   }
 
   private _extractGoals( state: SimulationState ): PMAGoal[] {
@@ -457,8 +463,12 @@ export class PMADistiller {
       if( entity.type !== 'goal') continue
 
       const m      = entity.metadata ?? {}
+      // Every goal still held. This kept `active` and `in_progress` — and there is
+      // no `in_progress` status, so a pending goal (demoted by the capacity rule,
+      // not given up) or a blocked one never left the Will, and the top ten of
+      // the rest were all that did.
       const status = ( m['status'] as string ) ?? 'active'
-      if( status !== 'active' && status !== 'in_progress') continue
+      if( status === 'completed' || status === 'abandoned') continue
 
       goals.push({
         id:                  entity.id,
@@ -473,7 +483,7 @@ export class PMADistiller {
     }
 
     goals.sort( ( a, b ) => b.priority - a.priority )
-    return goals.slice( 0, 10 )
+    return goals
   }
 
   private _extractRelationships( state: SimulationState ): PMARelationshipStub[] {
@@ -549,6 +559,8 @@ export class PMADistiller {
           reliability:          ( m['reliability']          as number ) ?? 0.5,
           encounterCount:       ( m['encounterCount']       as number ) ?? 0,
           resolutionConfidence: ( m['resolutionConfidence'] as number ) ?? 0,
+          ...( Array.isArray( m['handles'] )         ? { handles:         m['handles']         as Handle[] } : {} ),
+          ...( Array.isArray( m['suspectedSameAs'] ) ? { suspectedSameAs: m['suspectedSameAs'] as string[] } : {} ),
         }
         stubs.set( keid, stub )
       }
@@ -589,9 +601,9 @@ export class PMADistiller {
       + ( s.dossier?.resolutionConfidence ?? 0 ) * 0.5
       + Math.min( 1, ( ( s.attachment?.interactionCount ?? 0 ) + ( s.reputation?.interactionCount ?? 0 ) ) * 0.02 )
 
+    // All of them, most salient first. This carried twenty.
     return Array.from( stubs.values() )
       .sort( ( a, b ) => salienceOf( b ) - salienceOf( a ) )
-      .slice( 0, 20 )
   }
 
   private _readEmotionalBio(
@@ -771,17 +783,24 @@ export class PMADistiller {
  * Seeding order matters:
  *   1. Identity → sets 'identity-self' entity so the executive has
  *      character from tick 1.
- *   2. Beliefs → injected via semanticIntegrator.integrateExecutiveBelief()
- *      with cause='pma-load'. Existing beliefs are merged, not duplicated.
- *   3. Goals → re-injected via goalManager.addGoal() for active goals.
- *      Progress is not restored — goals start fresh.
+ *   2. Beliefs → restored verbatim via semanticIntegrator.restoreBeliefs().
+ *   3. Goals → restored verbatim via goalManager.restoreGoals() — progress and
+ *      status (pending included) come back as they were.
  *   4. Emotional baseline → sets affect.valence + affect.arousal metrics so
  *      the affective system doesn't start from a cold 0/0 state.
  *   5. Temperament → sets identity traits that influence emotional set-point
  *   6. Behavioral parameters → configure executive and memory engines
  *
- * Call AFTER createWill() / assembleMind() but BEFORE the tick loop starts,
- * and only when no prior snapshot was restored (avoids overwriting live state).
+ * Call AFTER createWill() / assembleMind() but BEFORE the tick loop starts.
+ *
+ * A woken state wins. `Will.wake` restores the latest snapshot inside
+ * createWill and THEN loads the artifact — this used to say "only when no prior
+ * snapshot was restored", and the wake path never honoured it. So the artifact
+ * overwrote the fuller record on every wake: goal progress to 0, every belief's
+ * last update to tick 0 (stale at once), a person's dossier without the handles
+ * they are reached at, a theory-of-mind model down to its one-line gist. Where the
+ * snapshot holds a thing, the snapshot's is kept; the artifact fills only what it
+ * lacks — which, on a Will with no snapshot, is everything (LOSSLESS P3).
  */
 export class PMALoader {
 
@@ -798,6 +817,17 @@ export class PMALoader {
     cognition:           Cognition,
   ): void {
     const sm = simulation.stateManager
+    // What the woken state already holds — see "A woken state wins" above.
+    const held = sm.snapshot().entities
+    const heardFrom = new Set<string>()
+    for( const e of held.values() )
+      if( e.type === 'episodic_memory' && e.metadata?.['sourceType'] === 'conversation.exchange'){
+        const who = ( e.metadata['content'] as Record<string, unknown> | undefined )?.['entityId']
+        if( typeof who === 'string') heardFrom.add( who )
+      }
+    const seed = ( entity: Parameters<typeof sm.setEntity>[0] ): void => {
+      if( !held.has( entity.id ) ) sm.setEntity( entity )
+    }
 
     // ── 1. Identity (with enhanced fields) ────────────────────
     // MERGING (see cognition/identity.entity). An artifact carries what the mind
@@ -863,7 +893,7 @@ export class PMALoader {
     // another (dropping ids) and re-cap confidence by evidence — both corrupt
     // the reconstruction. The live merge/decay dynamics resume once the Will ticks.
     cognition.semanticIntegrator.restoreBeliefs(
-      pma.beliefs.map( b => ( {
+      pma.beliefs.filter( b => !held.has( b.id ) ).map( b => ( {
         id:                 b.id,
         statement:          b.statement,
         category:           b.category as Belief['category'],
@@ -876,20 +906,9 @@ export class PMALoader {
     )
 
     // ── 3. Goals ──────────────────────────────────────────────
-    for( const g of pma.goals ){
-      if( g.status !== 'active' && g.status !== 'in_progress') continue
-
-      cognition.goalManager.addGoal(
-        g.description,
-        g.priority,
-        g.tags,
-        undefined,
-        undefined,
-        g.completionType,
-        g.completionCondition,
-        g.id
-      )
-    }
+    cognition.goalManager.restoreGoals(
+      pma.goals.filter( g => !held.has( g.id ) )
+    )
 
     // ── 4. Emotional baseline ─────────────────────────────────
     const valence = pma.emotionalBaseline.avgValence
@@ -966,7 +985,7 @@ export class PMALoader {
     const now = Date.now()
     for( const rel of pma.relationships ){
       if( rel.attachment ){
-        sm.setEntity({
+        seed({
           id:        `bond-${rel.keid}`,
           type:      'attachment.bond',
           createdAt: now,
@@ -986,7 +1005,7 @@ export class PMALoader {
       }
 
       if( rel.reputation ){
-        sm.setEntity({
+        seed({
           id:        `reputation-${rel.keid}`,
           type:      'reputation',
           createdAt: now,
@@ -1010,7 +1029,7 @@ export class PMALoader {
       if( rel.mentalModel ){
         // Re-seed the tom-<id> gist in the format TheoryOfMind._restoreFromState() reads,
         // so a re-embodied Will recovers its *sense* of this mind (not the lost detail).
-        sm.setEntity({
+        seed({
           id:        `tom-${rel.keid}`,
           type:      'theory_of_mind',
           createdAt: now,
@@ -1031,7 +1050,7 @@ export class PMALoader {
         // reads, so a re-embodied Will recovers its sense of *who/what* this is — the
         // crystallised residue (kind, name, how familiar, how it feels), not the lost
         // encounter trail. lastSeenTick resets to 0 (a fresh embodiment).
-        sm.setEntity({
+        seed({
           id:        `ke-${rel.keid}`,
           type:      'known-entity',
           createdAt: now,
@@ -1046,6 +1065,8 @@ export class PMALoader {
             encounterCount:       rel.dossier.encounterCount,
             lastSeenTick:         0,
             resolutionConfidence: rel.dossier.resolutionConfidence,
+            ...( rel.dossier.handles         ? { handles:         rel.dossier.handles }         : {} ),
+            ...( rel.dossier.suspectedSameAs ? { suspectedSameAs: rel.dossier.suspectedSameAs } : {} ),
           },
         })
       }
@@ -1056,7 +1077,10 @@ export class PMALoader {
       // EpisodicConsolidator consolidates it into episodic + vector memory, and
       // the executive/facets surface it via unified recall — no cold restart,
       // no dedicated ConversationManager.
-      if( rel.lastConversationDigest ){
+      // Only for someone the woken state holds no conversation with: a snapshot
+      // already carries the exchange itself, and seeding its digest again made a
+      // second memory of the same conversation on every wake.
+      if( rel.lastConversationDigest && !heardFrom.has( rel.keid ) ){
         sm.setEntity({
           id:        `wm-exchange-restored-${rel.keid}`,
           type:      'working_memory.item',

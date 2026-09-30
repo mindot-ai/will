@@ -35,7 +35,7 @@ export class PMAController {
     // Re-validate the artifact's persona at the load boundary (Phase 2): a stored
     // or tampered PMA must not inject a collapsed / colliding / injected self on
     // reload, the same way creation guards the operator-supplied identity.
-    const guard = validateWillIdentity({ identity: {
+    const guard = validateWillIdentity({ source: 'artifact', identity: {
       prompt: pma.identity.prompt,
       values: pma.identity.values,
       traits: pma.identity.traits,

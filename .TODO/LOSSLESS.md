@@ -1,6 +1,6 @@
 # LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut
 
-> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P2 and P3a of 6 landed, unreleased
+> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P3 of 6 landed, unreleased
 
 > **The rule:** *lossless, not unbounded.* Every cut that loses data — at intake, in
 > transit between the mind's own parts, in what it keeps, in its artifact, in its
@@ -266,16 +266,50 @@ Found doing P3a and **not** changed — each is the model of a mind, and the own
   tick since the last update, so a live fade would drop a colleague's model
   minutes after they went quiet.
 
-**P3b — the artifact and the transport**
+**P3b — the artifact, and waking ✅**
 
-- [ ] **The artifact:** `pma/index.ts:449` beliefs 50, `:475` goals 10, `:593`
-      relationships 20, `:1092` emotional bio read from the last n log lines;
-      `agency/competence.codec.ts:40,65` skills 50
-- [ ] `stem/guards/identity.guard.ts:150-152,177` values past 12 and style past 200
-      are truncated with a warning — reject instead, like the prompt limit does
-- [ ] `stem/tracts/transport.controller.ts:42,100` drops the oldest un-acked outbound
-      envelope past 1,000; `surface/host/utterances.ts:15` drops past 50
-- [ ] `cognition/event.log.ts:22` in-memory ring 10,000 — verify the disk copy is whole
+- [x] **The artifact is whole.** It carried the top 50 beliefs, 10 goals, 20
+      relationships and 50 skills — and of goals only `active` ones: the filter
+      also accepted `in_progress`, a status that does not exist, so a pending goal
+      (demoted by capacity, not given up) or a blocked one never left the Will.
+      Every belief, every goal still held, everyone known, every skill above the
+      habit floor (the floor is forgetting, and stays). A dossier stub now carries
+      the `handles` a person is reached at, and `suspectedSameAs`
+- [x] **Waking does not overwrite the mind.** `Will.wake` restores the latest
+      snapshot inside createWill and THEN loads the artifact; the loader's doc said
+      "only when no prior snapshot was restored", and the wake path never honoured
+      it. So EVERY wake: goal progress reset to 0 (via addGoal); every belief
+      re-dated to tick 0, stale at once; the dossiers of the people the mind knew
+      best replaced by stubs with **no handles** — it knew who they were and could
+      not reach them — and theory-of-mind models by one-line gists; and the last
+      conversation with each person remembered a second time. Now the snapshot wins
+      where it holds a thing and the artifact fills only what it lacks.
+      `GoalManager.restoreGoals` restores progress and status verbatim
+- [x] **A new goal never takes a held goal's name.** The id counter restarts at
+      0 each boot while a woken mind's goals return as goal-1…goal-N, so its first
+      new goal was `goal-1` — and overwrote the one already there
+- [x] **Identity guard.** Too many values or too long a style from an OPERATOR is
+      an error now, as too long a prompt is (it was truncated with a warning). The
+      mind's own identity, reloaded from its artifact, is kept whole — the
+      self-model grows its values, and rejecting them there would refuse to wake it
+- [x] `surface/host/utterances.ts` holds every word until a host takes it (was 50)
+- [x] Reclassified **NONE**: the transport's 1,000 un-acked envelopes (anything it
+      could drop has already expired in the outbox — 100 ticks); the event log's
+      in-memory ring (no live mind wires an event log: `createProductionBus()`
+      takes none); the artifact's top-3 actions and 5-session emotional baseline
+      (statistics over records kept whole on disk)
+
+Found doing P3b and **not** changed:
+
+- **The executive's `identityUpdates.values` and `.style` are never applied.** The
+  output schema asks for them and the identity nudge prompts for them every 30
+  ticks; only `traits` are read (the narrator). Values change only through the
+  self-model's own heuristic. Asked for and dropped — the self-observation shape.
+- **The transport re-emits what the mind already knows failed.** Un-acked
+  envelopes are kept for reconnect after their outbox entry has expired, so a
+  reconnect delivers messages the mind recorded as undelivered.
+- **The event log, if ever wired, rewrites the whole file on every flush** (read
+  all, append 100, write all).
 
 ### P4 — the operator's record is whole
 

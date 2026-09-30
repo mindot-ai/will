@@ -512,8 +512,13 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
     requestingEntityId?: string,
     requestingThreadId?: string,
   ): string {
-    this._goalCounter++
-    const goalId = id ?? `goal-${this._goalCounter}`
+    // Never a name already held. The counter restarts at 0 on every boot while a
+    // woken mind's goals come back as goal-1…goal-N, so its first new goal was
+    // `goal-1` — and `set` overwrote the goal already there (LOSSLESS P3).
+    let goalId = id
+    if( goalId === undefined )
+      do goalId = `goal-${ ++this._goalCounter }`
+      while( this._goals.has( goalId ) )
 
     this._goals.set( goalId, {
       id: goalId,
@@ -540,6 +545,38 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
     }
 
     return goalId
+  }
+
+  /**
+   * Seed goals verbatim from an artifact — progress and status as they were —
+   * for ids not already held. The loader used addGoal, which writes progress 0,
+   * status 'active' and activation now: a restored goal forgot how far it had got,
+   * and a pending one came back competing for a slot it had lost.
+   */
+  restoreGoals( goals: ReadonlyArray<{
+    id: string; description: string; priority: number; progress: number; status: string
+    tags: string[]; completionType: GoalState['completionType']; completionCondition?: string
+  }> ): void {
+    for( const g of goals ){
+      if( this._goals.has( g.id ) ) continue
+      // An artifact from before `pending` was carried knows only live goals.
+      const status = ( [ 'active', 'blocked', 'pending', 'pending_verification' ] as const )
+        .find( s => s === g.status ) ?? 'active'
+      this._goals.set( g.id, {
+        id:                  g.id,
+        description:         g.description,
+        priority:            g.priority,
+        basePriority:        g.priority,
+        progress:            g.progress,
+        status,
+        subGoals:            [],
+        activatedAt:         this._currentTick,
+        tags:                [ ...g.tags ],
+        beliefsAtActivation: this._currentBeliefCount,
+        completionType:      g.completionType,
+        completionCondition: g.completionCondition,
+      })
+    }
   }
 
   /**

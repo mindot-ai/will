@@ -12,18 +12,16 @@
 
 import type { Will, WillMessage } from '#surface/sdk/will'
 
-const BUFFER_CAP = 50
-
 export class UtteranceTap {
   private readonly _will: Will
   private readonly _pending: WillMessage[] = []
 
   constructor( will: Will ){
     this._will = will
-    will.on('message', m => {
-      this._pending.push( m )
-      if( this._pending.length > BUFFER_CAP ) this._pending.shift()
-    } )
+    // Every word, until a caller takes it. Past 50 the oldest was dropped, so a
+    // host that polled late never learned the mind had said it (LOSSLESS P3). It
+    // holds only what she said and nobody has read yet.
+    will.on('message', m => { this._pending.push( m ) } )
   }
 
   /** Consume the oldest buffered utterance (optionally only one addressed to `to`). */

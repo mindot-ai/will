@@ -1,6 +1,6 @@
 # LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut
 
-> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P2 of 6 landed, unreleased
+> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P2 and P3a of 6 landed, unreleased
 
 > **The rule:** *lossless, not unbounded.* Every cut that loses data — at intake, in
 > transit between the mind's own parts, in what it keeps, in its artifact, in its
@@ -221,15 +221,52 @@ Found doing P2 and **not** changed — each is a decision:
 
 ### P3 — what she keeps is whole
 
-- [ ] `semantic.engine/integrator.ts:73,652-656,722-726` belief store: past 500,
-      every belief under 0.3 is deleted, then the rest cut to 500. (Decay and the
-      0.12 prune are MIND and stay.) `:599` history per belief kept to 20
-- [ ] `known.entity.tracker.ts:210` people past 50 forgotten by count;
-      `reputation.tracker.ts:94` (20); `theory.of.mind.ts:82` (10)
-- [ ] `bias.detector.ts:348,354` evidence 10, biases 15; `introspection.engine.ts:127,152`
-      history 30; `autobiographical.narrator.ts:163,213` themes 10, pivotal events 20
-- [ ] `memory/vector.adapter.ts:83,287-294` evicts ~10% of the semantic index at
-      10,000 episodes — evicted memories stop being recallable by meaning
+**P3a — the mind's own stores ✅** (the artifact, below, is P3b)
+
+Every count cap here dropped from memory and **not from state** — forgotten
+in-session, restored on the next boot. The cut was a lie twice.
+
+- [x] **Beliefs.** Past 500 the store deleted EVERY belief under 0.3 — not the
+      fewest to get back to 500 — the one just formed included. Gone; decay bounds
+      the store. And the mind's own prune (decay to 0.12) now deletes the entity:
+      it was left behind, so the PMA, the bias detector and the self-model read a
+      belief the mind had let go, and a restart restored it
+- [x] **Belief history whole** (was the last 20). A run of decay steps is one
+      entry (`since`, `steps`, total `delta`): decay is a fixed step every tick
+      once stale, ~680 entries per fading belief, which is why a cap looked needed
+- [x] **People, reputations, theory-of-mind models** — past 50 / 20 / 10 dropped
+      from memory, not state. Caps gone. A named referent is kept; an unnamed,
+      unresolved blip that fades is still forgotten (Phase 4, deletes properly)
+- [x] **Recall by meaning.** The index evicted ~10% at 10,000 — remembered, then
+      unreachable by meaning. Default now none (`maxIndexedEpisodes` stays a host
+      option). Removing it surfaced what the eviction had been hiding: indexing is
+      fire-and-forget, so an episode forgotten while its embedding was in flight
+      had its vector land afterwards for a memory that no longer existed. Lora's
+      first self's index held **9,671 vectors against zero live episodes**, and
+      dead hits take recall's top-k slots. Closed (a delete in flight cancels the
+      insert), and recall lets go of any dead hit it meets, so an old index heals
+- [x] Reclassified **NONE**, each checked for a reader: bias evidence (a statistic
+      over beliefs and decisions kept elsewhere; nothing reads it) and the 15-bias
+      prune (one entry per bias type — it cannot fire); introspection history 30
+      (an in-memory mirror feeding a metric — her reflections persist whole as the
+      executive's own records); the narrator's 10 themes (every chapter keeps its
+      themes whole in `narrative_chapter`) and 20 pivotal events (a pointer list
+      over kept episodes, re-pushed each pass — the heuristic line P1 rejected)
+
+Found doing P3a and **not** changed — each is the model of a mind, and the owner's:
+
+- **Belief decay runs every tick.** Unreinforced for 300 ticks, a belief loses
+  0.001 a tick and is let go ~680 ticks later: at ~1 tick/s, a fact nobody
+  repeats is gone in about 16 minutes. The forgetting-curve question again —
+  minutes where days were meant — against spaced repetition that reinforces
+  beliefs toward 1.0 on its own schedule.
+- **Theory of mind's fade cannot fire, and should not as written.** Model
+  confidence is floored at 0.05 and pruned below 0.05; its decay grows with every
+  tick since the last update, so a live fade would drop a colleague's model
+  minutes after they went quiet.
+
+**P3b — the artifact and the transport**
+
 - [ ] **The artifact:** `pma/index.ts:449` beliefs 50, `:475` goals 10, `:593`
       relationships 20, `:1092` emotional bio read from the last n log lines;
       `agency/competence.codec.ts:40,65` skills 50

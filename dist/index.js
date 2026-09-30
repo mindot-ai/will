@@ -8594,6 +8594,8 @@ var EpisodicConsolidator = class {
     for (const r of results) {
       const episode = this._storeMap.get(r.episodeId);
       if (episode) resolved.push({ episode, similarity: r.similarity });
+      else void this._vectorMemory.delete(r.episodeId).catch(() => {
+      });
     }
     if (useAffect) {
       const target = Math.max(-1, Math.min(1, bias.valence));
@@ -9339,7 +9341,6 @@ var SemanticIntegrator = class _SemanticIntegrator {
   name = "semantic-integrator";
   _minIntervalTicks;
   _minNewEpisodes;
-  _maxBeliefs;
   _beliefStalenessThreshold;
   _beliefDecayRate;
   _semanticSimilarityThreshold;
@@ -9364,7 +9365,6 @@ var SemanticIntegrator = class _SemanticIntegrator {
     this._bus = config.bus ?? null;
     this._minIntervalTicks = config.minIntervalTicks ?? 30;
     this._minNewEpisodes = config.minNewEpisodes ?? 10;
-    this._maxBeliefs = config.maxBeliefs ?? 500;
     this._beliefStalenessThreshold = config.beliefStalenessThreshold ?? 300;
     this._beliefDecayRate = config.beliefDecayRate ?? 1e-3;
     this._semanticSimilarityThreshold = config.semanticSimilarityThreshold ?? 0.65;
@@ -9500,7 +9500,6 @@ var SemanticIntegrator = class _SemanticIntegrator {
     const p = readEffectiveParams(state, "engine-config-semantic");
     if (p.minIntervalTicks != null) this._minIntervalTicks = p.minIntervalTicks;
     if (p.minNewEpisodes != null) this._minNewEpisodes = p.minNewEpisodes;
-    if (p.maxBeliefs != null) this._maxBeliefs = p.maxBeliefs;
     if (p.beliefStalenessThreshold != null) this._beliefStalenessThreshold = p.beliefStalenessThreshold;
     if (p.beliefDecayRate != null) this._beliefDecayRate = p.beliefDecayRate;
   }
@@ -9510,7 +9509,7 @@ var SemanticIntegrator = class _SemanticIntegrator {
       this._restoreFromState(state);
       this._restored = true;
     }
-    const commands = { set: [], metrics: [] };
+    const commands = { set: [], delete: [], metrics: [] };
     if (this._episodicConsolidator && this._shouldRunHeuristic(tick)) {
       const newBeliefs = await this._heuristicPatternDetection(tick, state);
       for (const belief of newBeliefs)
@@ -9529,6 +9528,8 @@ var SemanticIntegrator = class _SemanticIntegrator {
           _SemanticIntegrator._recordHistory(belief, tick, prev, "decayed");
       }
     }
+    for (const b of this._beliefs)
+      if (b.confidence <= 0.12) commands.delete.push(b.id);
     this._beliefs = this._beliefs.filter((b) => b.confidence > 0.12);
     for (const belief of this._beliefs)
       commands.set.push({
@@ -9744,19 +9745,28 @@ var SemanticIntegrator = class _SemanticIntegrator {
     return parts.length > 0 ? parts.join(". ") : "What patterns emerge from my recent experiences?";
   }
   // ── Belief management ────────────────────────────────────
-  static _MAX_HISTORY = 20;
-  /** Append a history entry to a belief, dropping the oldest if the buffer is full. */
+  /**
+   * Append a history entry to a belief. Whole — it kept the last 20.
+   *
+   * A run of decay steps is kept as ONE entry (`since`, `steps`, total `delta`).
+   * Decay is a fixed step every integration pass once a belief is stale, so a
+   * belief fading from 0.8 to its prune wrote ~680 entries, ~2,900 a day — which
+   * is why a cap looked necessary. The run says everything the steps did.
+   */
   static _recordHistory(belief, tick, prevConfidence, cause) {
-    const entry = {
+    const delta = belief.confidence - prevConfidence;
+    const last = belief.history?.at(-1);
+    const run = cause === "decayed" && last?.cause === "decayed";
+    const entry = run ? {
       tick,
       confidence: belief.confidence,
-      delta: belief.confidence - prevConfidence,
-      cause
-    };
-    const next = belief.history ? [...belief.history, entry] : [entry];
-    if (next.length > _SemanticIntegrator._MAX_HISTORY)
-      next.shift();
-    belief.history = next;
+      delta: last.delta + delta,
+      cause,
+      since: last.since ?? last.tick,
+      steps: (last.steps ?? 1) + 1
+    } : { tick, confidence: belief.confidence, delta, cause };
+    const kept = belief.history ?? [];
+    belief.history = [...run ? kept.slice(0, -1) : kept, entry];
   }
   _integrateBelief(newBelief, cause = "created") {
     const existing = this._beliefs.find((b) => this._shouldMerge(b, newBelief));
@@ -9779,9 +9789,6 @@ var SemanticIntegrator = class _SemanticIntegrator {
       }];
     }
     this._beliefs.push(newBelief);
-    if (this._beliefs.length > this._maxBeliefs) {
-      this._beliefs = this._beliefs.filter((b) => b.confidence >= 0.3).sort((a, b) => b.confidence - a.confidence).slice(0, this._maxBeliefs);
-    }
     return newBelief;
   }
   /**
@@ -9832,8 +9839,6 @@ var SemanticIntegrator = class _SemanticIntegrator {
         confidence: Math.max(0, Math.min(1, b.confidence)),
         history: b.history && b.history.length > 0 ? [...b.history] : [{ tick: b.lastUpdatedAt, confidence: b.confidence, delta: b.confidence, cause: "restored" }]
       });
-    if (this._beliefs.length > this._maxBeliefs)
-      this._beliefs = this._beliefs.filter((b) => b.confidence >= 0.3).sort((a, b) => b.confidence - a.confidence).slice(0, this._maxBeliefs);
   }
   getBeliefs() {
     return this._beliefs;
@@ -19825,7 +19830,6 @@ var PersonaConsolidator = class {
 // src/cognition/faculties/theory.of.mind.ts
 var TheoryOfMind = class {
   name = "theory-of-mind";
-  _maxModeledAgents;
   _beliefDecayRate;
   _confidenceThreshold;
   _models = /* @__PURE__ */ new Map();
@@ -19835,7 +19839,6 @@ var TheoryOfMind = class {
   _model = new GenerativeModel();
   constructor(config = {}) {
     this._bus = config.bus ?? null;
-    this._maxModeledAgents = config.maxModeledAgents ?? 10;
     this._beliefDecayRate = config.beliefDecayRate ?? 2e-3;
     this._confidenceThreshold = config.confidenceThreshold ?? 0.3;
   }
@@ -20014,11 +20017,6 @@ var TheoryOfMind = class {
     }
     for (const id of toPrune)
       this._models.delete(id);
-    if (this._models.size > this._maxModeledAgents) {
-      const sorted = Array.from(this._models.entries()).sort((a, b) => b[1].modelConfidence - a[1].modelConfidence);
-      for (const [id] of sorted.slice(this._maxModeledAgents))
-        this._models.delete(id);
-    }
   }
 };
 
@@ -20169,7 +20167,6 @@ var EmpathySimulator = class {
 // src/cognition/faculties/reputation.tracker.ts
 var ReputationTracker = class {
   name = "reputation-tracker";
-  _maxTrackedAgents;
   _decayRate;
   _minInteractions;
   _trustGrowthStep;
@@ -20183,7 +20180,6 @@ var ReputationTracker = class {
   _model = new GenerativeModel();
   constructor(config = {}) {
     this._bus = config.bus ?? null;
-    this._maxTrackedAgents = config.maxTrackedAgents ?? 20;
     this._decayRate = config.decayRate ?? 1e-3;
     this._minInteractions = config.minInteractions ?? 3;
     this._trustGrowthStep = config.trustGrowthStep ?? 0.05;
@@ -20265,7 +20261,6 @@ var ReputationTracker = class {
         rep.confidence = Math.max(0.05, rep.confidence - this._decayRate * ticksSince);
       }
     }
-    this._prune();
     for (const rep of this._reputations.values()) {
       if (rep.observations === 0) continue;
       commands.set.push({
@@ -20355,12 +20350,6 @@ var ReputationTracker = class {
     this._reputations.set(keid, rep);
     return rep;
   }
-  _prune() {
-    if (this._reputations.size <= this._maxTrackedAgents) return;
-    const sorted = Array.from(this._reputations.entries()).sort((a, b) => b[1].interactionCount - a[1].interactionCount);
-    for (const [id] of sorted.slice(this._maxTrackedAgents))
-      this._reputations.delete(id);
-  }
 };
 
 // src/cognition/faculties/known.entity.tracker.ts
@@ -20378,7 +20367,6 @@ var KnownEntityTracker = class {
   _decayRate;
   _curiosityGain;
   _reliabilityRate;
-  _maxTracked;
   _dossiers = /* @__PURE__ */ new Map();
   // Recognition (Phase 5): alias keid → the canonical keid it was fused into. Incoming
   // references are redirected so an aliased referent never re-forms its own dossier.
@@ -20405,7 +20393,6 @@ var KnownEntityTracker = class {
     this._decayRate = config.familiarityDecayRate ?? 2e-5;
     this._curiosityGain = config.curiosityGain ?? 1;
     this._reliabilityRate = config.reliabilityRate ?? 0.2;
-    this._maxTracked = config.maxTracked ?? 50;
     this._bus = config.bus ?? null;
   }
   attachBus(bus) {
@@ -20512,7 +20499,6 @@ var KnownEntityTracker = class {
       touched = true;
     }
     if (this._recognise(commands)) touched = true;
-    this._prune();
     for (const d of [...this._dossiers.values()])
       if (d.familiarity < FORGET_FLOOR && !d.name && d.resolutionConfidence < CURIOUS_RESOLUTION) {
         this._dossiers.delete(d.keid);
@@ -20711,29 +20697,6 @@ var KnownEntityTracker = class {
     };
     this._dossiers.set(anchor, d);
     return d;
-  }
-  /** Keep the most-familiar dossiers; absence-faded acquaintances fall away (forgetting). */
-  /**
-   * Forget the least-held referents when over capacity.
-   *
-   * Ranked by more than exposure, deliberately. This sorted on `familiarity`
-   * alone, which is MERE EXPOSURE — and now that a referent need not be a person
-   * (a document, a repo, a room), things get far more exposure than people do. A
-   * mind that touched sixty files would have evicted a colleague it speaks to
-   * weekly in favour of a config file it opened a lot, silently, taking that
-   * person's reputation, theory-of-mind model and attachment bond with it.
-   *
-   * So a referent the mind has actually got to know is stickier than one it has
-   * merely seen often: knowing their NAME is the single strongest signal (it is
-   * what distinguishes a someone from a blip), then how resolved the referent is,
-   * then exposure. Nothing here is about being a person — a named, well-resolved
-   * document outranks a glimpsed stranger, which is correct.
-   */
-  _prune() {
-    if (this._dossiers.size <= this._maxTracked) return;
-    const hold = (d) => (d.name ? 1 : 0) + d.resolutionConfidence + d.familiarity;
-    const sorted = [...this._dossiers.values()].sort((a, b) => hold(b) - hold(a) || (a.keid < b.keid ? -1 : 1));
-    for (const d of sorted.slice(this._maxTracked)) this._dossiers.delete(d.keid);
   }
   _restoreFromState(state) {
     for (const entity of state.entities.values())
@@ -25741,13 +25704,23 @@ var DefaultVectorMemoryAdapter = class {
    *  monotonic counter — not persisted; rebuilt from insertion order on load. */
   _accessTick = /* @__PURE__ */ new Map();
   _accessClock = 0;
+  /**
+   * Episodes whose embedding is on its way, and those forgotten meanwhile.
+   * Indexing is fire-and-forget (the embedding is a network call); an episode
+   * forgotten before its vector arrived was deleted from an index that did not
+   * hold it yet, and the vector then landed for a memory that no longer
+   * existed. A mind forgetting within seconds banked 9,671 of them against zero
+   * live episodes, and they took recall's top-k slots from the living.
+   */
+  _inFlight = /* @__PURE__ */ new Set();
+  _cancelled = /* @__PURE__ */ new Set();
   constructor(embedder, config = {}, storage = new BunStorageAdapter(), indexImpl = new HNSWIndex(config)) {
     this._embedder = embedder;
     this._storage = storage;
     this._index = indexImpl;
     this._persistPath = config.persistPath ?? "./data/vector_index";
     this._metaPath = `${this._persistPath}.meta`;
-    this._maxIndexedEpisodes = config.maxIndexedEpisodes ?? 1e4;
+    this._maxIndexedEpisodes = config.maxIndexedEpisodes ?? Infinity;
     this._minSimilarity = config.minSimilarity ?? 0.35;
   }
   /** Record that `id` was just inserted or recalled, so eviction keeps the
@@ -25762,7 +25735,8 @@ var DefaultVectorMemoryAdapter = class {
     if (this._indexedIds.has(episode.id)) return;
     if (this._index.size >= this._maxIndexedEpisodes)
       await this._evictColdest();
-    const embedding = await this._embedder.embed(episodeContentToText(content), "index");
+    const embedding = await this._embedInFlight([episode.id], () => this._embedder.embed(episodeContentToText(content), "index"));
+    if (this._cancelled.delete(episode.id)) return;
     const record = {
       id: episode.id,
       vector: embedding,
@@ -25788,10 +25762,11 @@ var DefaultVectorMemoryAdapter = class {
     while (this._index.size > 0 && this._index.size + newEpisodes.length > this._maxIndexedEpisodes)
       await this._evictColdest();
     const contents = newEpisodes.map((e) => episodeContentToText(e.content));
-    const embeddings = await this._embedder.embedBatch(contents, "index");
+    const embeddings = await this._embedInFlight(newEpisodes.map((e) => e.episode.id), () => this._embedder.embedBatch(contents, "index"));
     for (let i = 0; i < newEpisodes.length; i++) {
       const { episode } = newEpisodes[i];
       const embedding = embeddings[i];
+      if (this._cancelled.delete(episode.id)) continue;
       const record = {
         id: episode.id,
         vector: embedding,
@@ -25812,6 +25787,18 @@ var DefaultVectorMemoryAdapter = class {
     this._dirty = true;
     this._schedulePersist();
   }
+  /** Run an embedding call with its ids marked in flight, so a delete meanwhile cancels them. */
+  async _embedInFlight(ids, embed) {
+    for (const id of ids) this._inFlight.add(id);
+    try {
+      return await embed();
+    } catch (err) {
+      for (const id of ids) this._cancelled.delete(id);
+      throw err;
+    } finally {
+      for (const id of ids) this._inFlight.delete(id);
+    }
+  }
   async search(query, filter) {
     const embedding = await this._embedder.embed(episodeContentToText(query), "recall");
     return this.searchWithVector(embedding, filter);
@@ -25824,6 +25811,7 @@ var DefaultVectorMemoryAdapter = class {
     return results;
   }
   async delete(episodeId) {
+    if (this._inFlight.has(episodeId)) this._cancelled.add(episodeId);
     if (await this._index.delete(episodeId)) {
       this._indexedIds.delete(episodeId);
       this._accessTick.delete(episodeId);
@@ -26717,7 +26705,6 @@ function buildEngineConfigEntities(config, executiveInterval) {
       params: {
         minIntervalTicks: 30,
         minNewEpisodes: 10,
-        maxBeliefs: 500,
         beliefStalenessThreshold: 300,
         beliefDecayRate: 1e-3
       }
@@ -26930,7 +26917,6 @@ function buildEngineConfigEntities(config, executiveInterval) {
       id: "engine-config-theory-of-mind",
       engine: "theory-of-mind",
       params: {
-        maxModeledAgents: 10,
         beliefDecayRate: 2e-3,
         confidenceThreshold: 0.3
       }
@@ -26947,7 +26933,6 @@ function buildEngineConfigEntities(config, executiveInterval) {
       id: "engine-config-reputation",
       engine: "reputation",
       params: {
-        maxTrackedAgents: 20,
         decayRate: 1e-3,
         minInteractions: 3,
         // How much a cooperative interaction raises an agent's cooperativeness (trust step).

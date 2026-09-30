@@ -33,8 +33,6 @@ import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import { GenerativeModel } from '#cognition/generative.model'
 
 export interface TheoryOfMindConfig {
-  /** Maximum agents to model simultaneously */
-  maxModeledAgents?: number
   /** How quickly belief confidence decays without observation */
   beliefDecayRate?: number
   /** Minimum confidence to consider a belief reliable */
@@ -61,7 +59,6 @@ export interface AgentMentalModel {
 export class TheoryOfMind implements SimulationEngine, CognitiveEngine {
   readonly name     = 'theory-of-mind'
   
-  private _maxModeledAgents: number
   private _beliefDecayRate: number
   private _confidenceThreshold: number
 
@@ -79,7 +76,6 @@ export class TheoryOfMind implements SimulationEngine, CognitiveEngine {
 
   constructor( config: TheoryOfMindConfig = {} ){
     this._bus = config.bus ?? null
-    this._maxModeledAgents   = config.maxModeledAgents   ?? 10
     this._beliefDecayRate    = config.beliefDecayRate    ?? 0.002
     this._confidenceThreshold = config.confidenceThreshold ?? 0.3
   }
@@ -321,13 +317,10 @@ export class TheoryOfMind implements SimulationEngine, CognitiveEngine {
     for( const id of toPrune )
       this._models.delete( id )
 
-    // Also prune if over capacity — keep highest confidence
-    if( this._models.size > this._maxModeledAgents ){
-      const sorted = Array.from( this._models.entries() )
-        .sort( ( a, b ) => b[1].modelConfidence - a[1].modelConfidence )
-
-      for( const [ id ] of sorted.slice( this._maxModeledAgents ) )
-        this._models.delete( id )
-    }
+    // No count cap (it kept the 10 most confident models, dropping the rest from
+    // memory and not from state — restored next boot). Note the fade above cannot
+    // fire: modelConfidence is floored at 0.05, so nothing is ever < 0.05. Left
+    // as is — its decay grows with every tick since the last update, so a live
+    // fade would drop a colleague's model minutes after they went quiet.
   }
 }

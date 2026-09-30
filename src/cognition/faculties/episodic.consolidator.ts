@@ -509,6 +509,10 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
     for( const r of results ){
       const episode = this._storeMap.get( r.episodeId )
       if( episode ) resolved.push( { episode, similarity: r.similarity } )
+      // A vector for a memory that is gone took a slot a living one should have
+      // had, and would take it again on every query near it. Let it go now.
+      // (An index saved before the race was closed can hold thousands.)
+      else void this._vectorMemory.delete( r.episodeId ).catch( () => {} )
     }
 
     if( useAffect ){

@@ -20,7 +20,6 @@ export const _STOP_WORDS = new Set([
 export interface SemanticIntegratorConfig {
   minIntervalTicks?: number
   minNewEpisodes?: number
-  maxBeliefs?: number
   /** Ticks without reinforcement before a belief starts losing confidence */
   beliefStalenessThreshold?: number
   /** Confidence lost per tick once a belief goes stale */
@@ -37,6 +36,10 @@ export interface BeliefHistoryEntry {
   confidence: number  // confidence value after this event
   delta:      number  // change from previous (positive = gained, negative = lost)
   cause:      string  // 'created' | 'reinforced' | 'decayed' | 'executive' | 'heuristic' | 'self-model' | 'semantic'
+  /** A run of consecutive decay steps, kept as one entry: the first step's tick… */
+  since?:     Tick
+  /** …and how many steps; `tick`/`confidence` are the last, `delta` the run's total. */
+  steps?:     number
 }
 
 export interface Belief {

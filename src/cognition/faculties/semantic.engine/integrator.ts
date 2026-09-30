@@ -40,7 +40,6 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
   
   private _minIntervalTicks: number
   private _minNewEpisodes: number
-  private _maxBeliefs: number
   private _beliefStalenessThreshold: number
   private _beliefDecayRate: number
   private _semanticSimilarityThreshold: number
@@ -71,7 +70,6 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
     this._bus = config.bus ?? null
     this._minIntervalTicks        = config.minIntervalTicks        ?? 30
     this._minNewEpisodes          = config.minNewEpisodes          ?? 10
-    this._maxBeliefs              = config.maxBeliefs              ?? 500
     this._beliefStalenessThreshold = config.beliefStalenessThreshold ?? 300
     this._beliefDecayRate          = config.beliefDecayRate          ?? 0.001
     this._semanticSimilarityThreshold = config.semanticSimilarityThreshold ?? 0.65
@@ -228,7 +226,6 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
     const p = readEffectiveParams( state, 'engine-config-semantic')
     if( p.minIntervalTicks         != null ) this._minIntervalTicks         = p.minIntervalTicks
     if( p.minNewEpisodes           != null ) this._minNewEpisodes           = p.minNewEpisodes
-    if( p.maxBeliefs               != null ) this._maxBeliefs               = p.maxBeliefs
     if( p.beliefStalenessThreshold != null ) this._beliefStalenessThreshold = p.beliefStalenessThreshold
     if( p.beliefDecayRate          != null ) this._beliefDecayRate          = p.beliefDecayRate
   }
@@ -250,7 +247,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
       this._restored = true
     }
 
-    const commands: StateCommands = { set: [], metrics: [] }
+    const commands: StateCommands = { set: [], delete: [], metrics: [] }
 
     // Executive beliefs are integrated in real-time via integrateExecutiveBelief()
     // called by the ExecutiveEngine's onReasoningComplete().
@@ -288,7 +285,12 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
       }
     }
 
-    // Prune beliefs that have decayed to near-zero
+    // Prune beliefs that have decayed to near-zero — and from state too. The
+    // entity was left behind, so the bias detector, the self-model and the PMA
+    // (all of which read `belief` entities) went on reading a belief the mind had
+    // let go, and a restart restored it: forgetting did not survive a restart.
+    for( const b of this._beliefs )
+      if( b.confidence <= 0.12 ) commands.delete!.push( b.id )
     this._beliefs = this._beliefs.filter( b => b.confidence > 0.12 )
 
     // Persist all beliefs
@@ -596,28 +598,32 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
 
   // ── Belief management ────────────────────────────────────
 
-  private static readonly _MAX_HISTORY = 20
-
-  /** Append a history entry to a belief, dropping the oldest if the buffer is full. */
+  /**
+   * Append a history entry to a belief. Whole — it kept the last 20.
+   *
+   * A run of decay steps is kept as ONE entry (`since`, `steps`, total `delta`).
+   * Decay is a fixed step every integration pass once a belief is stale, so a
+   * belief fading from 0.8 to its prune wrote ~680 entries, ~2,900 a day — which
+   * is why a cap looked necessary. The run says everything the steps did.
+   */
   private static _recordHistory(
     belief: Belief,
     tick: Tick,
     prevConfidence: number,
     cause: string
   ): void {
-    const entry: BeliefHistoryEntry = {
-      tick,
-      confidence: belief.confidence,
-      delta:      belief.confidence - prevConfidence,
-      cause,
-    }
+    const delta = belief.confidence - prevConfidence
+    const last  = belief.history?.at( -1 )
+    const run   = cause === 'decayed' && last?.cause === 'decayed'
+    const entry: BeliefHistoryEntry = run
+      ? { tick, confidence: belief.confidence, delta: last!.delta + delta, cause,
+          since: last!.since ?? last!.tick, steps: ( last!.steps ?? 1 ) + 1 }
+      : { tick, confidence: belief.confidence, delta, cause }
     // Build a fresh array rather than mutating in place: a belief loaded from a
     // PMA (or a frozen snapshot) carries a readonly `history`, and .push() on it
     // throws "Attempted to assign to readonly property".
-    const next = belief.history ? [ ...belief.history, entry ] : [ entry ]
-    if( next.length > SemanticIntegrator._MAX_HISTORY )
-      next.shift()
-    belief.history = next
+    const kept = belief.history ?? []
+    belief.history = [ ...( run ? kept.slice( 0, -1 ) : kept ), entry ]
   }
 
   private _integrateBelief( newBelief: Belief, cause = 'created'): Belief {
@@ -647,14 +653,11 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
         cause,
       }]
     }
+    // No count cap. Past 500 this deleted EVERY belief under 0.3 — not the fewest
+    // needed to get back to 500, all of them, the one just formed included. What
+    // bounds the store is decay: an unreinforced belief fades and is let go at
+    // 0.12 (LOSSLESS P3).
     this._beliefs.push( newBelief )
-
-    if( this._beliefs.length > this._maxBeliefs ){
-      this._beliefs = this._beliefs
-        .filter( b => b.confidence >= 0.3 )
-        .sort( ( a, b ) => b.confidence - a.confidence )
-        .slice( 0, this._maxBeliefs )
-    }
 
     return newBelief
   }
@@ -718,12 +721,6 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
           ? [ ...b.history ]
           : [ { tick: b.lastUpdatedAt, confidence: b.confidence, delta: b.confidence, cause: 'restored' } ],
       })
-
-    if( this._beliefs.length > this._maxBeliefs )
-      this._beliefs = this._beliefs
-        .filter( b => b.confidence >= 0.3 )
-        .sort( ( a, b ) => b.confidence - a.confidence )
-        .slice( 0, this._maxBeliefs )
   }
 
   getBeliefs(): ReadonlyArray<Belief> {

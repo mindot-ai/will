@@ -31,8 +31,27 @@ import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import { GenerativeModel, type GenerativeModelSnapshot } from '#cognition/generative.model'
 
+/**
+ * How fast an episode fades, per second of the mind's running time — set in DAYS.
+ *
+ * Decay is linear: `strength − rate × seconds`, pruned below `pruningThreshold`
+ * (0.01). The weakest episode that can exist is born at the consolidation
+ * threshold (0.25), and at this rate it lasts THREE DAYS unrecalled; a typical
+ * one (~0.43) about five; the strongest (1.0) about twelve. Emotion, recall and
+ * sleep slow it further, exactly as before.
+ *
+ * It was 0.02 — a typical episode gone in about twenty seconds — and a mind
+ * woken from its artifact got `1 − memoryPersistence × 0.7` (0.44–0.79) as the
+ * absolute rate, so every production Will forgot a new episode within the tick
+ * it was made. Measured on one: zero episodes on every one of 2,095 ticks.
+ *
+ * "Running time", because the sim clock only advances while the mind is awake:
+ * three days of it is weeks of calendar for a mind that runs a few hours a day.
+ */
+export const DEFAULT_FORGETTING_RATE_PER_SECOND = ( 0.25 - 0.01 ) / ( 3 * 86_400 )
+
 export interface ForgettingCurveConfig {
-  /** Base forgetting rate (Ebbinghaus: ~0.3 per log-time unit) */
+  /** Per second of running time. See DEFAULT_FORGETTING_RATE_PER_SECOND. */
   baseForgettingRate?: number
   /** How much emotional intensity slows forgetting (0-1, 1 = no forgetting) */
   emotionProtection?: number
@@ -60,7 +79,7 @@ export class ForgettingCurve implements SimulationEngine, CognitiveEngine {
 
   constructor( config: ForgettingCurveConfig = {} ){
     this._bus = config.bus ?? null
-    this._baseForgettingRate = config.baseForgettingRate ?? 0.02
+    this._baseForgettingRate = config.baseForgettingRate ?? DEFAULT_FORGETTING_RATE_PER_SECOND
     this._emotionProtection  = config.emotionProtection  ?? 0.7
     this._pruningThreshold   = config.pruningThreshold   ?? 0.01
     this._maxPrunePerTick    = config.maxPrunePerTick    ?? 10

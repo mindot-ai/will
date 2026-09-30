@@ -33,6 +33,7 @@ import { join }                     from 'node:path'
 
 import type { SimulationState }    from '#core/types'
 import { mergeEngineConfig }        from '#cognition/config.mirror.entities'
+import { DEFAULT_FORGETTING_RATE_PER_SECOND } from '#faculties/forgetting.curve'
 import type { DefaultSimulation }  from '#core/simulation'
 import type { Cognition }          from '#types'
 import type {
@@ -946,10 +947,17 @@ export class PMALoader {
       // MERGE — the mirror seeds emotionProtection / pruningThreshold /
       // maxPrunePerTick here and the PMA carries only baseForgettingRate, so a
       // whole-entity write dropped three params on every restore.
+      //
+      // Persistence SCALES the base rate; it is not a rate. This wrote
+      // `1 − persistence × 0.7` straight in — 0.44–0.79 per second for the
+      // persistence range distill infers (0.3–0.8) — so every Will woken from its
+      // artifact forgot a new episode within the tick it was made. The relative
+      // shape the formula meant is kept: persistence 1 forgets at 0.3× the base,
+      // persistence 0 at 1×.
       mergeEngineConfig( sm, {
         id: 'engine-config-forgetting', engine: 'forgetting-curve',
         params: {
-          baseForgettingRate: 1 - ( pma.identity.memoryPersistence * 0.7 ),
+          baseForgettingRate: DEFAULT_FORGETTING_RATE_PER_SECOND * ( 1 - pma.identity.memoryPersistence * 0.7 ),
         },
       }, 'incoming')
     }

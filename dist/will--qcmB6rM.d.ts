@@ -6024,6 +6024,7 @@ declare class IntrospectionEngine implements SimulationEngine, CognitiveEngine {
     private _introspectionHistory;
     private _emittedEntityIds;
     private _executiveEngine;
+    private _takenExecutiveOutput;
     private _affectArousal;
     private _bus;
     private readonly _model;

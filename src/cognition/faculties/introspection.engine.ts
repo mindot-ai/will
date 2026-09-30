@@ -46,6 +46,7 @@ export class IntrospectionEngine implements SimulationEngine, CognitiveEngine {
   private _introspectionHistory: IntrospectionResult[] = []
   private _emittedEntityIds: string[] = []
   private _executiveEngine: ExecutiveEngine | null = null
+  private _takenExecutiveOutput: unknown = null
 
   private _affectArousal: number = 0.3
 
@@ -109,10 +110,16 @@ export class IntrospectionEngine implements SimulationEngine, CognitiveEngine {
     let introspectedThisTick = false
     let significance = 0
 
-    // Try executive output first
+    // Try executive output first. While it is fresh it pre-empts the heuristic —
+    // but it is one introspection, taken once. It was re-taken on every tick of
+    // the fresh window (15 by default): one reflection became fourteen history
+    // entries, fourteen entities and fourteen "insights", and the copy the prompt
+    // read back had lost the executive's recommendations.
     const executiveOutput = this._executiveEngine?.latestOutput
+    const executiveFresh  = !!executiveOutput?.introspection && !!this._executiveEngine?.isFresh( tick )
 
-    if( executiveOutput?.introspection && this._executiveEngine?.isFresh( tick ) ){
+    if( executiveFresh && executiveOutput?.introspection && executiveOutput !== this._takenExecutiveOutput ){
+      this._takenExecutiveOutput = executiveOutput
       const result: IntrospectionResult = {
         question: 'Executive introspection',
         explanation: executiveOutput.introspection.explanation,
@@ -136,6 +143,7 @@ export class IntrospectionEngine implements SimulationEngine, CognitiveEngine {
           explanation: result.explanation,
           identifiedBiases: result.identifiedBiases,
           lessons: result.lessons,
+          recommendations: executiveOutput.introspection.recommendations ?? [],
           source: 'executive',
         },
       })
@@ -144,7 +152,7 @@ export class IntrospectionEngine implements SimulationEngine, CognitiveEngine {
       significance = result.identifiedBiases.length + result.lessons.length
       commands.metrics!.push([ 'introspection.source', 1 ])
     }
-    else if( this._shouldHeuristicIntrospect( state, tick ) ){
+    else if( !executiveFresh && this._shouldHeuristicIntrospect( state, tick ) ){
       const result = this._heuristicIntrospection( state, tick )
 
       this._introspectionHistory.push( result )

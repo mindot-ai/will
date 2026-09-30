@@ -135,11 +135,19 @@ Reclassified while doing it, both measured:
   reverted: it is a statistic over episodes that are themselves kept, and a quiet
   mind writes one every 50 ticks — ~1,700 a day of boilerplate, which the
   bounded-growth soak caught.
-- **Self-observations are read by nothing.** `self_observation` entities have no
-  reader anywhere in `src/` — `## Recent Self-Reflection` comes from
-  introspection. The mind is asked for them every cycle and pays output tokens
-  for them. Kept whole now; whether anything should read them is a separate
-  decision, not a cut.
+- **Self-observations were read by nothing** — now read. `## Recent
+  Self-Reflection` renders them whole, newest first, with a count of the ones not
+  in view (6 shown; the recall act is P5). Wiring it surfaced the section's other
+  loss: the introspection engine re-took the executive's introspection on every
+  tick of the fresh window (14 copies of one reflection), and the copy the prompt
+  read had `lessons` where it read `lessonsLearned`, and no recommendations — the
+  mind was shown its biases and never what it had decided to do about them. Taken
+  once now, carried whole, read under either name.
+- **Open — a facet's mind-wide output goes nowhere.** A facet on the standard
+  output format (plan supervision) is asked for BELIEFS, INTROSPECTION, NARRATIVE
+  and SELF_OBS like the master, and its decision callback carries none of them
+  on; only the master's output becomes state. Either carry them to the master or
+  stop asking a facet for them — a decision, not a cut.
 
 ### P2 — what she takes in is whole, and kept ✅
 

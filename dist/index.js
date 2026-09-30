@@ -12245,7 +12245,7 @@ ${roleDescription}${architectureBlock}
 - **introspection**: Include when significant events occurred or I notice patterns. When I spot a cognitive bias in my own reasoning, name it in 'identifiedBiases' using its common term where one fits (e.g. overgeneralization, confirmation bias, recency bias) \u2014 this lets my self-assessment line up with the patterns my faculties detect on their own. What I can introspect on is what is written above: my state, my goals, my percepts, what I did and what came of it. I have NO view of the machinery underneath \u2014 no entity ids, no salience numbers, no queue depths, no engine internals. So when I am asked why I did something, I answer from what I can actually see, and where I cannot see, I say I do not know. Naming a mechanism I have no access to is not introspection, it is invention, and it is worse than the silence it replaces: it sends whoever asked me looking for something that was never there.
 - **narrative**: Extend my life story only from events grounded in my episodic memory or current percepts. Do not extend with invented scenarios.
 - **newGoals/goalsToAbandon/goalsToReprioritize**: Manage my goal hierarchy.
-- **selfObservations**: Notice patterns in my own thinking, feeling, or behavior.
+- **selfObservations**: Notice patterns in my own thinking, feeling, or behavior. What I noticed before is under "## Recent Self-Reflection" \u2014 add what is new, or what has changed, rather than noticing the same thing again.
 - **identityUpdates.traits**: Array of {key, value} where value is a DELTA to apply to my trait (e.g., +0.05 to increase a trait by 5%).
 - **identityUpdates.values**: Full list of values to set (replaces existing).
 - **knownEntityUpdates**: What I've learned about someone/something I'm dealing with. Array of {keid, name?, learned?, feeling?, sameAs?}. Use the keid from "## People I Know". Set name only when I actually learn their name; learned is an array of facts about them (stored as memories); feeling is how I feel toward them (-1..1). **sameAs** is another keid I have concluded is this same someone met under a different handle \u2014 it fuses my two records into one, so I use it only when I actually know, not when I merely suspect. Record only what I genuinely learned this turn.
@@ -12829,28 +12829,64 @@ ${lines.join("\n")}
 
 `;
   }
+  /**
+   * What I last concluded about myself, and what I have noticed about myself since.
+   *
+   * Self-observations were asked for every cycle, paid for in output tokens, kept
+   * — and read by nothing: a live mind wrote "the deliberation process itself has
+   * become the avoidance mechanism" and never saw that it had. They render here
+   * whole, newest first; past the most recent few, the section says exactly how
+   * many are not in view rather than letting them fall away unmentioned (LOSSLESS
+   * P5 adds the act that pulls one back).
+   */
   static _buildRecentIntrospectionSection(state) {
+    const SELF_OBSERVATIONS_SHOWN = 6;
     let latest = null;
+    const observations = [];
     for (const entity of state.entities.values()) {
-      if (entity.type !== "introspection") continue;
-      if (!latest || entity.updatedAt > latest.updatedAt)
+      if (entity.type === "introspection" && (!latest || entity.updatedAt > latest.updatedAt))
         latest = { updatedAt: entity.updatedAt, meta: entity.metadata ?? {} };
+      if (entity.type === "self_observation") {
+        const text = entity.metadata?.["observation"]?.trim();
+        if (text) observations.push({
+          tick: entity.metadata?.["tick"] ?? 0,
+          // `self-obs-<tick>-<idx>` — and a woken mind's `self-obs-slot-<n>`.
+          order: Number(entity.id.split("-").at(-1)) || 0,
+          text
+        });
+      }
     }
-    if (!latest) return "";
-    const explanation = latest.meta["explanation"] ?? "";
-    if (!explanation) return "";
-    const biases = latest.meta["identifiedBiases"] ?? [];
-    const lessons = latest.meta["lessonsLearned"] ?? [];
-    const recommendations = latest.meta["recommendations"] ?? [];
-    let section = `## Recent Self-Reflection
-${explanation}`;
-    if (biases.length > 0) section += `
+    const parts = [];
+    const explanation = latest?.meta["explanation"] ?? "";
+    if (latest && explanation) {
+      const biases = latest.meta["identifiedBiases"] ?? [];
+      const lessons = latest.meta["lessonsLearned"] ?? latest.meta["lessons"] ?? [];
+      const recommendations = latest.meta["recommendations"] ?? [];
+      let reflection = explanation;
+      if (biases.length > 0) reflection += `
 Patterns noticed: ${biases.join("; ")}`;
-    if (lessons.length > 0) section += `
+      if (lessons.length > 0) reflection += `
 Lessons learned: ${lessons.join("; ")}`;
-    if (recommendations.length > 0) section += `
+      if (recommendations.length > 0) reflection += `
 Recommendations: ${recommendations.join("; ")}`;
-    return section + "\n\n";
+      parts.push(reflection);
+    }
+    if (observations.length > 0) {
+      observations.sort((a, b) => b.tick - a.tick || a.order - b.order);
+      const now = state.tick;
+      const shown = observations.slice(0, SELF_OBSERVATIONS_SHOWN).map((o) => `- ${Math.max(0, now - o.tick)} ticks ago \u2014 "${o.text}"`);
+      const more = observations.length - shown.length;
+      parts.push(
+        `What I have noticed about myself, newest first:
+${shown.join("\n")}` + (more > 0 ? `
+${more} earlier observation${more === 1 ? " is" : "s are"} not in view.` : "")
+      );
+    }
+    if (parts.length === 0) return "";
+    return `## Recent Self-Reflection
+${parts.join("\n\n")}
+
+`;
   }
   /**
    * B5 — Identity nudge: gently prompt the Will to reflect on its values or
@@ -18864,6 +18900,7 @@ var IntrospectionEngine = class {
   _introspectionHistory = [];
   _emittedEntityIds = [];
   _executiveEngine = null;
+  _takenExecutiveOutput = null;
   _affectArousal = 0.3;
   _bus = null;
   _model = new GenerativeModel();
@@ -18910,7 +18947,9 @@ var IntrospectionEngine = class {
     let introspectedThisTick = false;
     let significance = 0;
     const executiveOutput = this._executiveEngine?.latestOutput;
-    if (executiveOutput?.introspection && this._executiveEngine?.isFresh(tick)) {
+    const executiveFresh = !!executiveOutput?.introspection && !!this._executiveEngine?.isFresh(tick);
+    if (executiveFresh && executiveOutput?.introspection && executiveOutput !== this._takenExecutiveOutput) {
+      this._takenExecutiveOutput = executiveOutput;
       const result = {
         question: "Executive introspection",
         explanation: executiveOutput.introspection.explanation,
@@ -18932,13 +18971,14 @@ var IntrospectionEngine = class {
           explanation: result.explanation,
           identifiedBiases: result.identifiedBiases,
           lessons: result.lessons,
+          recommendations: executiveOutput.introspection.recommendations ?? [],
           source: "executive"
         }
       });
       introspectedThisTick = true;
       significance = result.identifiedBiases.length + result.lessons.length;
       commands.metrics.push(["introspection.source", 1]);
-    } else if (this._shouldHeuristicIntrospect(state, tick)) {
+    } else if (!executiveFresh && this._shouldHeuristicIntrospect(state, tick)) {
       const result = this._heuristicIntrospection(state, tick);
       this._introspectionHistory.push(result);
       if (this._introspectionHistory.length > 50)

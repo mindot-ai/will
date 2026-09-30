@@ -17,6 +17,7 @@ import type { PMASnapshot } from '#pma/index'
 import { PMA_SCHEMA_VERSION, PMALoader, PMADistiller } from '#pma/index'
 import { describe, it, expect } from 'vitest'
 import { PMAEvalHarness, STANDARD_PROBES } from '#pma/eval'
+import { DEFAULT_FORGETTING_RATE_PER_SECOND } from '#faculties/forgetting.curve'
 
 // ── Minimal Will config for testing ───────────────────────────
 
@@ -318,10 +319,12 @@ describe('PMA Reconstruction Fidelity', () => {
       e.type === 'engine.config' && e.metadata?.['engine'] === 'forgetting-curve'
     )
     expect( forgettingConfig ).toBeDefined()
-    // memoryPersistence 0.70 → baseForgettingRate = 1 - (0.70 * 0.7) = 0.51
-    const expectedRate    = 1 - (0.70 * 0.7)
+    // memoryPersistence 0.70 SCALES the base rate: 1 - (0.70 * 0.7) = 0.51 of it.
+    // It used to BE the rate — 0.51 per second, every new episode gone within its
+    // own tick. Compared as a ratio: at ~5e-7 an absolute toBeCloseTo( x, 2 )
+    // would pass for a rate of zero.
     const forgettingParams = forgettingConfig?.metadata?.['params'] as Record<string, number> | undefined
-    expect( forgettingParams?.['baseForgettingRate'] ).toBeCloseTo( expectedRate, 2 )
+    expect( forgettingParams!['baseForgettingRate']! / DEFAULT_FORGETTING_RATE_PER_SECOND ).toBeCloseTo( 0.51, 6 )
   })
 
   it('achieves reasonable emotional baseline fidelity', async () => {

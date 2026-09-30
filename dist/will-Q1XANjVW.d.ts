@@ -5498,7 +5498,7 @@ declare class SpacedRepetition implements SimulationEngine, CognitiveEngine {
  */
 
 interface ForgettingCurveConfig {
-    /** Base forgetting rate (Ebbinghaus: ~0.3 per log-time unit) */
+    /** Per second of running time. See DEFAULT_FORGETTING_RATE_PER_SECOND. */
     baseForgettingRate?: number;
     /** How much emotional intensity slows forgetting (0-1, 1 = no forgetting) */
     emotionProtection?: number;

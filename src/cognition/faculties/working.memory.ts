@@ -16,7 +16,8 @@
  *   - Rapid decay without rehearsal (items fade in ~2-10 seconds)
  *   - Attentional boost (attended items resist decay)
  *   - Chunking (related items can be grouped into single slots)
- *   - Recency effect (newest items displace oldest when at capacity)
+ *   - Recency effect (newest items displace oldest when at capacity — and among
+ *     things that arrive together, the most salient win the slots)
  *
  * Receives modulation from:
  *   - SleepPressureRegulator (fatigue reduces capacity)
@@ -33,6 +34,7 @@ import type {
   ReadonlySimulationState,
   StateCommands,
   SimulationEvent,
+  SimulationEntity,
 } from '#core/types'
 import type { SimulationEngine, EngineResult, CognitiveEngine } from '#cognition/types'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
@@ -63,7 +65,16 @@ interface WMItem {
   createdAt: Tick
   sourceEntityId?: string
   tags: string[]
+  /** A percept's salience when it arrived — breaks ties between equally active items. */
+  salience?: number
 }
+
+/** A percept enters working memory at this activation, whatever its salience. */
+const PERCEPT_ACTIVATION = 0.75
+
+/** Is `a` weaker than `b`? Activation first; between equals, the less salient. */
+const weaker = ( a: WMItem, b: WMItem ): boolean =>
+  a.activation < b.activation || ( a.activation === b.activation && ( a.salience ?? 0 ) < ( b.salience ?? 0 ) )
 
 export class WorkingMemory implements SimulationEngine, CognitiveEngine {
   readonly name     = 'working-memory'
@@ -75,6 +86,8 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
   private _emitEvents:          boolean
 
   private _items: WMItem[] = []
+  /** Percepts that have already competed for a slot — each competes once. */
+  private _consideredPercepts = new Set<string>()
   private _modulatedCapacity: number
   private _activeGoalCount  = 0
 
@@ -267,16 +280,49 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
   /**
    * Read the latest percept entities from state and inject them as WM items.
    * Skips generic placeholder summaries to avoid noise.
+   *
+   * Each percept competes for a slot once, the most salient first, and takes one
+   * only from something weaker than itself. Every newcomer used to be admitted by
+   * evicting the FIRST least-active item — in a batch that all arrives at the same
+   * activation, the one admitted before it, i.e. the more salient one. Given
+   * twenty percepts the buffer kept the seven least salient (0.05–0.35) and lost
+   * everything above 0.4; and the evicted, still in state for two more ticks, were
+   * re-admitted each tick against items that had since decayed, so the churn
+   * repeated. Capacity, decay and recency are unchanged: a fresh percept still
+   * displaces anything that has faded, and nothing that is attended.
    */
   private _ingestPercepts( state: ReadonlySimulationState, tick: Tick ): void {
+    const fresh: Array<{ entity: SimulationEntity; summary: string; salience: number }> = []
+    const present = new Set<string>()
+
     for( const entity of state.entities.values() ){
       if( entity.type !== 'percept') continue
+      present.add( entity.id )
+      if( this._consideredPercepts.has( entity.id ) ) continue
+      this._consideredPercepts.add( entity.id )
       if( this._items.some( i => i.sourceEntityId === entity.id ) ) continue
 
       const summary = ( entity.metadata?.summary ?? entity.metadata?.content ?? '') as string
       if( !summary || summary.startsWith('New percept:') ) continue
 
-      this._evictIfNeeded()
+      const salience = typeof entity.metadata?.salience === 'number' ? entity.metadata.salience : 0
+      fresh.push({ entity, summary, salience })
+    }
+
+    // Percepts are swept from state after two ticks; forget having seen them then.
+    for( const id of this._consideredPercepts )
+      if( !present.has( id ) ) this._consideredPercepts.delete( id )
+
+    fresh.sort( ( a, b ) => b.salience - a.salience || ( a.entity.id < b.entity.id ? -1 : a.entity.id > b.entity.id ? 1 : 0 ) )
+
+    for( const { entity, summary, salience } of fresh ){
+      if( this._items.length >= this._modulatedCapacity ){
+        const at = this._weakestIndex()
+        const candidate = { activation: PERCEPT_ACTIVATION, salience } as WMItem
+        // Sorted, so nothing after this one would win either.
+        if( !weaker( this._items[at]!, candidate ) ) break
+        this._items.splice( at, 1 )
+      }
       this._items.push({
         id: `wm-percept-${entity.id}`,
         type: 'percept',
@@ -286,11 +332,12 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
         // answer a question it already had the answer to.
         content: { summary, entityId: entity.id,
                    ...( entity.metadata?.data !== undefined ? { data: entity.metadata.data } : {} ) },
-        activation: 0.75,
+        activation: PERCEPT_ACTIVATION,
         attendedAt: [],
         createdAt: tick,
         sourceEntityId: entity.id,
         tags: [ 'percept', ...(( entity.metadata?.tags as string[] ) ?? []) ],
+        salience,
       })
     }
   }
@@ -390,12 +437,14 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
 
   private _evictIfNeeded(): void {
     if( this._items.length < this._modulatedCapacity ) return
+    this._items.splice( this._weakestIndex(), 1 )
+  }
+
+  /** The item that loses a slot first: least active, then least salient, then earliest. */
+  private _weakestIndex(): number {
     let minIdx = 0
-    for( let i = 1; i < this._items.length; i++ ){
-      const cur = this._items[i]
-      const best = this._items[minIdx]
-      if( cur !== undefined && best !== undefined && cur.activation < best.activation ) minIdx = i
-    }
-    this._items.splice( minIdx, 1 )
+    for( let i = 1; i < this._items.length; i++ )
+      if( weaker( this._items[i]!, this._items[minIdx]! ) ) minIdx = i
+    return minIdx
   }
 }

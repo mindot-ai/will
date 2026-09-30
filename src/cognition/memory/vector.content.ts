@@ -32,13 +32,16 @@ export function episodeContentToText( content: unknown ): string {
 
     // Most WM items carry a top-level human summary.
     if( typeof m['summary'] === 'string' && m['summary'] ) return m['summary'] as string
+    if( typeof m['description'] === 'string' && m['description'] ) return m['description'] as string
 
-    // Descriptor items nest their payload (e.g. plan: { content: { summary } }).
+    // Descriptor items nest their payload (plan: { content: { summary } }, a
+    // percept: { content: { summary, data } }, a goal: { content: { description } }).
     const nested = m['content']
     if( typeof nested === 'string' && nested ) return nested
     if( nested && typeof nested === 'object'){
       const nm = nested as Record<string, unknown>
       if( typeof nm['summary'] === 'string' && nm['summary'] ) return nm['summary'] as string
+      if( typeof nm['description'] === 'string' && nm['description'] ) return nm['description'] as string
     }
   }
 

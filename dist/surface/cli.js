@@ -1730,7 +1730,7 @@ function topicMatches(pattern, topic) {
 }
 var METRIC_QUEUE_MAX = 500;
 function isCriticalEvent(type) {
-  return type.startsWith("executive.") || type.startsWith("goal.") || type.startsWith("effector.") || type.startsWith("action.") || type === "engine.snapshot";
+  return type.startsWith("executive.") || type.startsWith("goal.") || type.startsWith("effector.") || type.startsWith("action.") || type.startsWith("senses.") || type === "engine.snapshot";
 }
 var InProcessCognitiveTransport = class {
   _subscriptions = /* @__PURE__ */ new Map();
@@ -1739,6 +1739,8 @@ var InProcessCognitiveTransport = class {
   // Metric queue — bounded with drop-oldest on overflow
   _metricQueue = [];
   _droppedCount = 0;
+  /** Dropped since the last flush, by event type — reported, then cleared, on flush. */
+  _droppedSinceFlush = /* @__PURE__ */ new Map();
   subscribe(engineId, topics, handler) {
     this._subscriptions.set(engineId, { engineId, topics, handler });
   }
@@ -1750,15 +1752,20 @@ var InProcessCognitiveTransport = class {
       this._criticalQueue.push({ event, targets: matchedEngines });
     } else {
       if (this._metricQueue.length >= METRIC_QUEUE_MAX) {
-        this._metricQueue.shift();
+        const oldest = this._metricQueue.shift();
         this._droppedCount++;
-        if (this._droppedCount % 100 === 1)
-          logger.warn(`[CognitiveBus] metric queue overflow \u2014 dropped ${this._droppedCount} events`);
+        this._droppedSinceFlush.set(oldest.event.type, (this._droppedSinceFlush.get(oldest.event.type) ?? 0) + 1);
       }
       this._metricQueue.push({ event, targets: matchedEngines });
     }
   }
   flush() {
+    if (this._droppedSinceFlush.size > 0) {
+      const byType = [...this._droppedSinceFlush].map(([type, n2]) => `${type} \xD7${n2}`).join(", ");
+      const n = [...this._droppedSinceFlush.values()].reduce((a, b) => a + b, 0);
+      logger.warn(`[CognitiveBus] metric queue full \u2014 dropped ${n} event${n === 1 ? "" : "s"} this flush (${byType}); ${this._droppedCount} in total`);
+      this._droppedSinceFlush.clear();
+    }
     const batch = [...this._criticalQueue.splice(0), ...this._metricQueue.splice(0)];
     for (const { event, targets } of batch) {
       for (const engineId of targets) {
@@ -3859,11 +3866,13 @@ function episodeContentToText(content) {
     if (user || reply)
       return [user, reply].filter(Boolean).join(" \u2192 ");
     if (typeof m["summary"] === "string" && m["summary"]) return m["summary"];
+    if (typeof m["description"] === "string" && m["description"]) return m["description"];
     const nested = m["content"];
     if (typeof nested === "string" && nested) return nested;
     if (nested && typeof nested === "object") {
       const nm = nested;
       if (typeof nm["summary"] === "string" && nm["summary"]) return nm["summary"];
+      if (typeof nm["description"] === "string" && nm["description"]) return nm["description"];
     }
   }
   try {
@@ -7006,7 +7015,6 @@ function endogenousTypes(engines) {
 // src/cognition/faculties/exteroception.ts
 var Exteroception = class {
   name = "exteroception";
-  _maxPerceptsPerTick;
   _defaultSalience;
   _highPriorityTypes;
   /**
@@ -7024,7 +7032,6 @@ var Exteroception = class {
   constructor(config = {}) {
     this._bus = config.bus ?? null;
     this._boundary = config.endogenous ?? null;
-    this._maxPerceptsPerTick = config.maxPerceptsPerTick ?? 50;
     this._defaultSalience = config.defaultSalience ?? 0.3;
     this._highPriorityTypes = new Set(config.highPriorityTypes ?? [
       "message",
@@ -7077,11 +7084,10 @@ var Exteroception = class {
   }
   async react(_delta, tick, state, context) {
     const commands = { set: [], delete: [], metrics: [] };
-    const rawPercepts = this._scanWorld(state);
-    const capped = rawPercepts.slice(0, this._maxPerceptsPerTick);
+    const perceived = this._scanWorld(state);
     const consequences = liveConsequences(state.entities, tick);
-    for (let i = 0; i < capped.length; i++) {
-      const rp = capped[i];
+    for (let i = 0; i < perceived.length; i++) {
+      const rp = perceived[i];
       const textHit = consequences.length > 0 && rp.matchText ? matchConsequenceText(consequences, rp.matchText) : null;
       const entityHit = !textHit && consequences.length > 0 ? matchConsequenceEntity(consequences, rp.entityId, rp.changeType) : null;
       const hit = textHit ?? entityHit;
@@ -7102,14 +7108,14 @@ var Exteroception = class {
     }
     commands.delete = this._collectStalePerceptIds(state, tick);
     commands.metrics.push(
-      ["perception.percepts_this_tick", capped.length],
+      ["perception.percepts_this_tick", perceived.length],
       ["perception.total_entities_observed", state.entities.size]
     );
     const _bus = this._bus;
-    if (capped.length > 0) this._model.observe("percept.rate", capped.length);
-    if (_bus && capped.length > 0) {
+    if (perceived.length > 0) this._model.observe("percept.rate", perceived.length);
+    if (_bus && perceived.length > 0) {
       const countByCategory = /* @__PURE__ */ new Map();
-      for (const rp of capped)
+      for (const rp of perceived)
         countByCategory.set(rp.category, (countByCategory.get(rp.category) ?? 0) + 1);
       for (const [category, count] of countByCategory)
         _bus.publish({ type: "percept.category.updated", version: 1, sourceEngine: this.name, salience: Math.min(1, count * 0.15 + 0.2), payload: { category, count } });
@@ -7221,10 +7227,8 @@ var Exteroception = class {
     if (name) {
       return changeType === "appeared" ? `${name} appears` : `${name} changed`;
     }
-    if (description) {
-      return description.slice(0, PERCEPT_SUMMARY_CAP);
-    }
-    return `New ${entity.type}: ${entity.id.slice(0, 30)}`;
+    if (description) return description;
+    return `New ${entity.type}: ${entity.id}`;
   }
   /**
    * Compute salience of a percept based on entity characteristics.
@@ -7618,7 +7622,6 @@ var SocialPerception = class {
   name = "social-perception";
   _agentTypes;
   _signalTypes;
-  _maxPerceptsPerTick;
   // Track previously observed actions for change detection
   _previousActions = /* @__PURE__ */ new Map();
   // keid → last action
@@ -7644,7 +7647,6 @@ var SocialPerception = class {
       "social_signal",
       "communication"
     ]);
-    this._maxPerceptsPerTick = config.maxPerceptsPerTick ?? 20;
   }
   attachBus(bus) {
     this._bus = bus;
@@ -7669,10 +7671,9 @@ var SocialPerception = class {
   }
   async react(_delta, tick, state, context) {
     const events = [], commands = { set: [], delete: [], metrics: [] };
-    const socialPercepts = this._scanSocialSignals(state);
-    const capped = socialPercepts.slice(0, this._maxPerceptsPerTick);
-    for (let i = 0; i < capped.length; i++) {
-      const sp = capped[i];
+    const perceived = this._scanSocialSignals(state);
+    for (let i = 0; i < perceived.length; i++) {
+      const sp = perceived[i];
       commands.set.push({
         id: `social-percept-${tick}-${i}`,
         type: "percept.social",
@@ -7697,11 +7698,11 @@ var SocialPerception = class {
     }
     const activeAgents = this._countActiveAgents(state);
     commands.metrics.push(
-      ["social.percepts_this_tick", capped.length],
+      ["social.percepts_this_tick", perceived.length],
       ["social.active_agents", activeAgents],
-      ["social.directed_at_self", capped.filter((sp) => sp.directedAtSelf).length]
+      ["social.directed_at_self", perceived.filter((sp) => sp.directedAtSelf).length]
     );
-    const evaluationThreat = this._computeEvaluationThreat(capped);
+    const evaluationThreat = this._computeEvaluationThreat(perceived);
     commands.metrics.push(["social.evaluation_threat", evaluationThreat]);
     commands.delete = this._collectStale(state, tick);
     const _bus = this._bus;
@@ -7711,7 +7712,7 @@ var SocialPerception = class {
         _bus.publish({ type: "social.agents.present", version: 1, sourceEngine: this.name, salience: Math.max(0.3, predErr.salience), payload: { activeAgents } });
     }
     if (_bus) {
-      for (const sp of capped) {
+      for (const sp of perceived) {
         if (!sp.directedAtSelf && Math.abs(sp.valence) < 0.2) continue;
         _bus.publish({
           type: "interaction.occurred",
@@ -9701,6 +9702,8 @@ var AffectiveBlender = class {
 };
 
 // src/cognition/faculties/working.memory.ts
+var PERCEPT_ACTIVATION = 0.75;
+var weaker = (a, b) => a.activation < b.activation || a.activation === b.activation && (a.salience ?? 0) < (b.salience ?? 0);
 var WorkingMemory = class {
   name = "working-memory";
   _maxChunks;
@@ -9709,6 +9712,8 @@ var WorkingMemory = class {
   _retrievalThreshold;
   _emitEvents;
   _items = [];
+  /** Percepts that have already competed for a slot — each competes once. */
+  _consideredPercepts = /* @__PURE__ */ new Set();
   _modulatedCapacity;
   _activeGoalCount = 0;
   /**
@@ -9856,14 +9861,41 @@ var WorkingMemory = class {
   /**
    * Read the latest percept entities from state and inject them as WM items.
    * Skips generic placeholder summaries to avoid noise.
+   *
+   * Each percept competes for a slot once, the most salient first, and takes one
+   * only from something weaker than itself. Every newcomer used to be admitted by
+   * evicting the FIRST least-active item — in a batch that all arrives at the same
+   * activation, the one admitted before it, i.e. the more salient one. Given
+   * twenty percepts the buffer kept the seven least salient (0.05–0.35) and lost
+   * everything above 0.4; and the evicted, still in state for two more ticks, were
+   * re-admitted each tick against items that had since decayed, so the churn
+   * repeated. Capacity, decay and recency are unchanged: a fresh percept still
+   * displaces anything that has faded, and nothing that is attended.
    */
   _ingestPercepts(state, tick) {
+    const fresh = [];
+    const present = /* @__PURE__ */ new Set();
     for (const entity of state.entities.values()) {
       if (entity.type !== "percept") continue;
+      present.add(entity.id);
+      if (this._consideredPercepts.has(entity.id)) continue;
+      this._consideredPercepts.add(entity.id);
       if (this._items.some((i) => i.sourceEntityId === entity.id)) continue;
       const summary = entity.metadata?.summary ?? entity.metadata?.content ?? "";
       if (!summary || summary.startsWith("New percept:")) continue;
-      this._evictIfNeeded();
+      const salience = typeof entity.metadata?.salience === "number" ? entity.metadata.salience : 0;
+      fresh.push({ entity, summary, salience });
+    }
+    for (const id of this._consideredPercepts)
+      if (!present.has(id)) this._consideredPercepts.delete(id);
+    fresh.sort((a, b) => b.salience - a.salience || (a.entity.id < b.entity.id ? -1 : a.entity.id > b.entity.id ? 1 : 0));
+    for (const { entity, summary, salience } of fresh) {
+      if (this._items.length >= this._modulatedCapacity) {
+        const at = this._weakestIndex();
+        const candidate = { activation: PERCEPT_ACTIVATION, salience };
+        if (!weaker(this._items[at], candidate)) break;
+        this._items.splice(at, 1);
+      }
       this._items.push({
         id: `wm-percept-${entity.id}`,
         type: "percept",
@@ -9876,11 +9908,12 @@ var WorkingMemory = class {
           entityId: entity.id,
           ...entity.metadata?.data !== void 0 ? { data: entity.metadata.data } : {}
         },
-        activation: 0.75,
+        activation: PERCEPT_ACTIVATION,
         attendedAt: [],
         createdAt: tick,
         sourceEntityId: entity.id,
-        tags: ["percept", ...entity.metadata?.tags ?? []]
+        tags: ["percept", ...entity.metadata?.tags ?? []],
+        salience
       });
     }
   }
@@ -9968,13 +10001,14 @@ var WorkingMemory = class {
   }
   _evictIfNeeded() {
     if (this._items.length < this._modulatedCapacity) return;
+    this._items.splice(this._weakestIndex(), 1);
+  }
+  /** The item that loses a slot first: least active, then least salient, then earliest. */
+  _weakestIndex() {
     let minIdx = 0;
-    for (let i = 1; i < this._items.length; i++) {
-      const cur = this._items[i];
-      const best = this._items[minIdx];
-      if (cur !== void 0 && best !== void 0 && cur.activation < best.activation) minIdx = i;
-    }
-    this._items.splice(minIdx, 1);
+    for (let i = 1; i < this._items.length; i++)
+      if (weaker(this._items[i], this._items[minIdx])) minIdx = i;
+    return minIdx;
   }
 };
 
@@ -9986,7 +10020,6 @@ var EpisodicConsolidator = class {
   name = "episodic-consolidator";
   _consolidationThreshold;
   _emotionBoost;
-  _maxPerTick;
   // No maxStoredEpisodes — unlimited storage
   _store = [];
   _storeMap = /* @__PURE__ */ new Map();
@@ -10016,7 +10049,6 @@ var EpisodicConsolidator = class {
     this._bus = config.bus ?? null;
     this._consolidationThreshold = config.consolidationThreshold ?? 0.25;
     this._emotionBoost = config.emotionBoost ?? 2;
-    this._maxPerTick = config.maxPerTick ?? 5;
     this._vectorMemory = config.vectorMemory ?? null;
     this._embedder = config.embedder ?? null;
     this._autoIndex = config.autoIndex ?? true;
@@ -10032,7 +10064,6 @@ var EpisodicConsolidator = class {
     if (!p) return;
     if (p.consolidationThreshold != null) this._consolidationThreshold = p.consolidationThreshold;
     if (p.emotionBoost != null) this._emotionBoost = p.emotionBoost;
-    if (p.maxPerTick != null) this._maxPerTick = p.maxPerTick;
   }
   subscribes() {
     return [
@@ -10084,7 +10115,6 @@ var EpisodicConsolidator = class {
     let consolidated = 0;
     const newEpisodes = [];
     for (const candidate of candidates) {
-      if (consolidated >= this._maxPerTick) break;
       const wmActivation = candidate.activation, attendedCount = candidate.attendedCount, rehearsalBonus = Math.min(1, attendedCount / 10), emotionalIntensity = this._computeEmotionalIntensity(currentEmotions), emotionBonus = emotionalIntensity * this._emotionBoost, consolidationStrength = Math.min(1, wmActivation * 0.4 + rehearsalBonus * 0.3 + emotionBonus * 0.3);
       if (consolidationStrength < this._consolidationThreshold) continue;
       const _inferOutcomeStatus = (type, tags) => {
@@ -10457,7 +10487,7 @@ var EpisodicConsolidator = class {
       const identity = sourceIdentity(entity.id);
       if (alreadyRemembered.has(identity)) continue;
       const category = entity.metadata?.tags;
-      if (category && (category.includes("episodic_memory") || category.includes("percept") || category.includes("percept.social"))) continue;
+      if (category?.includes("episodic_memory")) continue;
       candidates.push({
         id: identity,
         type: entity.metadata?.wmType ?? "unknown",
@@ -11352,10 +11382,7 @@ var SemanticIntegrator = class _SemanticIntegrator {
     if (topTags.length > 0) {
       parts.push(`Themes: ${topTags.join(", ")}`);
     }
-    const contentSamples = episodes.slice(0, 3).map((ep) => {
-      const content = typeof ep.content === "string" ? ep.content : JSON.stringify(ep.content);
-      return content.slice(0, 150);
-    });
+    const contentSamples = episodes.slice(0, 3).map((ep) => episodeContentToText(ep.content).slice(0, 150));
     if (contentSamples.length > 0) {
       parts.push(`Recent experiences: ${contentSamples.join("; ")}`);
     }
@@ -25558,7 +25585,6 @@ function buildEngineConfigEntities(config, executiveInterval) {
       id: "engine-config-exteroception",
       engine: "exteroception",
       params: {
-        maxPerceptsPerTick: 50,
         defaultSalience: 0.3
       }
     },
@@ -25567,13 +25593,6 @@ function buildEngineConfigEntities(config, executiveInterval) {
       engine: "interoception",
       params: {
         emitDetailEvent: 0
-      }
-    },
-    {
-      id: "engine-config-social-perception",
-      engine: "social-perception",
-      params: {
-        maxPerceptsPerTick: 20
       }
     },
     {
@@ -25695,8 +25714,7 @@ function buildEngineConfigEntities(config, executiveInterval) {
       engine: "episodic",
       params: {
         consolidationThreshold: 0.25,
-        emotionBoost: 2,
-        maxPerTick: 5
+        emotionBoost: 2
       }
     },
     {

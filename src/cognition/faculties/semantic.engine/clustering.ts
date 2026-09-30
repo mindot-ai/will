@@ -23,6 +23,7 @@ import type { EpisodicConsolidator, EpisodicMemory } from '#faculties/episodic.c
 import type { CognitiveBus } from '#cognition/bus'
 import { GenerativeModel } from '#cognition/generative.model'
 import { _STOP_WORDS, Belief } from '#faculties/semantic.engine/types'
+import { episodeContentToText } from '#memory/vector.content'
 
 export interface Cluster {
   id: string
@@ -426,13 +427,16 @@ export class SemanticClustering {
     // Extract common themes from episode content
     const contentWords = new Map<string, number>()
     
-    for( const ep of episodes.slice( 0, 20 ) ){
+    // Every episode in the cluster, every word — it is naming what they share, and
+    // read only the first twenty and ten words of each, it named their openings
+    // (LOSSLESS P2).
+    for( const ep of episodes ){
       const text = this._episodeToText( ep )
       const words = text.toLowerCase()
                         .split(/\s+/)
                         .filter( w => w.length > 3 && !_STOP_WORDS.has( w ) )
-      
-      for( const word of words.slice( 0, 10 ) )
+
+      for( const word of words )
         contentWords.set( word, ( contentWords.get( word ) ?? 0 ) + 1 )
     }
 
@@ -627,20 +631,16 @@ export class SemanticClustering {
 
   // ── Helpers ──────────────────────────────────────────────
 
+  /**
+   * What the episode was about — the same text the vector index embeds. This
+   * kept its own reading, which found a summary only at the top level: an episode
+   * consolidated from working memory nests it (`{ wmType, content: { summary } }`),
+   * so a percept or a goal read as its JSON, and any two of them overlapped on
+   * `wmtype`, `content`, `summary`, `activation`, `attendedcount` — enough to be
+   * clustered together and named after those words.
+   */
   private _episodeToText( episode: EpisodicMemory ): string {
-    if( typeof episode.content === 'string')
-      return episode.content
-
-    if( typeof episode.content === 'object' && episode.content !== null ){
-      const content = episode.content as Record<string, unknown>
-      if( typeof content['summary'] === 'string') return content['summary']
-      if( typeof content['description'] === 'string') return content['description']
-      if( typeof content['userMessage'] === 'string') return content['userMessage']
-
-      return JSON.stringify( episode.content )
-    }
-
-    return String( episode.content )
+    return episodeContentToText( episode.content )
   }
 
   private _episodeToQuery( episode: EpisodicMemory ): string {

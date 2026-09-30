@@ -29,6 +29,7 @@ import { GenerativeModel } from '#cognition/generative.model'
 import { readEffectiveParams } from '#cognition/persona.prior'
 import { _STOP_WORDS, type Belief, type BeliefHistoryEntry, type SemanticIntegratorConfig } from '#faculties/semantic.engine/types'
 import { SemanticClustering } from '#faculties/semantic.engine/clustering'
+import { episodeContentToText } from '#memory/vector.content'
 
 // Re-export the belief types so consumers that import SemanticIntegrator from
 // this module can also pull Belief/BeliefHistoryEntry from the same path.
@@ -570,15 +571,14 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
       parts.push(`Themes: ${topTags.join(', ')}`)
     }
     
-    // Add a sample of recent episode content (first 3, truncated)
+    // What the three most recent episodes were about. This is a search probe, not
+    // a record — nothing is lost by keeping it short enough to embed. What was
+    // wrong was what it held: the first 150 characters of each episode's JSON,
+    // which for anything consolidated from working memory is
+    // `{"wmType":…,"activation":…,"attendedCount":…` — a probe for boilerplate.
     const contentSamples = episodes
       .slice( 0, 3 )
-      .map( ep => {
-        const content = typeof ep.content === 'string' 
-          ? ep.content 
-          : JSON.stringify( ep.content )
-        return content.slice( 0, 150 )
-      })
+      .map( ep => episodeContentToText( ep.content ).slice( 0, 150 ) )
     
     if( contentSamples.length > 0 ){
       parts.push(`Recent experiences: ${contentSamples.join('; ')}`)

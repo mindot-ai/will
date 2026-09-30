@@ -1803,8 +1803,6 @@ interface EpisodicConsolidatorConfig {
     consolidationThreshold?: number;
     /** How much emotional intensity boosts consolidation (multiplier) */
     emotionBoost?: number;
-    /** Maximum episodes to consolidate per tick */
-    maxPerTick?: number;
     /** Optional vector memory adapter for semantic search */
     vectorMemory?: VectorMemoryAdapter;
     /** Optional embedding provider (required if vectorMemory provided) */
@@ -1849,7 +1847,6 @@ declare class EpisodicConsolidator implements SimulationEngine, CognitiveEngine 
     readonly name = "episodic-consolidator";
     private _consolidationThreshold;
     private _emotionBoost;
-    private _maxPerTick;
     private _store;
     private _storeMap;
     private _restored;
@@ -2464,8 +2461,6 @@ declare class CircadianOscillator implements SimulationEngine, CognitiveEngine {
  */
 
 interface ExteroceptionConfig {
-    /** Maximum percepts to produce per tick */
-    maxPerceptsPerTick?: number;
     /** Default salience for unmarked percepts */
     defaultSalience?: number;
     /** Whether to emit percept events */
@@ -2485,7 +2480,6 @@ interface ExteroceptionConfig {
 }
 declare class Exteroception implements SimulationEngine, CognitiveEngine {
     readonly name = "exteroception";
-    private _maxPerceptsPerTick;
     private _defaultSalience;
     private _highPriorityTypes;
     /**
@@ -2653,15 +2647,12 @@ interface SocialPerceptionConfig {
     agentTypes?: string[];
     /** Entity types that represent social signals */
     signalTypes?: string[];
-    /** Maximum social percepts per tick */
-    maxPerceptsPerTick?: number;
     bus?: CognitiveBus;
 }
 declare class SocialPerception implements SimulationEngine, CognitiveEngine {
     readonly name = "social-perception";
     private _agentTypes;
     private _signalTypes;
-    private _maxPerceptsPerTick;
     private _previousActions;
     private _bus;
     private readonly _model;
@@ -3336,7 +3327,8 @@ declare class AffectiveBlender implements SimulationEngine, CognitiveEngine {
  *   - Rapid decay without rehearsal (items fade in ~2-10 seconds)
  *   - Attentional boost (attended items resist decay)
  *   - Chunking (related items can be grouped into single slots)
- *   - Recency effect (newest items displace oldest when at capacity)
+ *   - Recency effect (newest items displace oldest when at capacity — and among
+ *     things that arrive together, the most salient win the slots)
  *
  * Receives modulation from:
  *   - SleepPressureRegulator (fatigue reduces capacity)
@@ -3368,6 +3360,8 @@ interface WMItem {
     createdAt: Tick;
     sourceEntityId?: string;
     tags: string[];
+    /** A percept's salience when it arrived — breaks ties between equally active items. */
+    salience?: number;
 }
 declare class WorkingMemory implements SimulationEngine, CognitiveEngine {
     readonly name = "working-memory";
@@ -3377,6 +3371,8 @@ declare class WorkingMemory implements SimulationEngine, CognitiveEngine {
     private _retrievalThreshold;
     private _emitEvents;
     private _items;
+    /** Percepts that have already competed for a slot — each competes once. */
+    private _consideredPercepts;
     private _modulatedCapacity;
     private _activeGoalCount;
     /**
@@ -3410,6 +3406,16 @@ declare class WorkingMemory implements SimulationEngine, CognitiveEngine {
     /**
      * Read the latest percept entities from state and inject them as WM items.
      * Skips generic placeholder summaries to avoid noise.
+     *
+     * Each percept competes for a slot once, the most salient first, and takes one
+     * only from something weaker than itself. Every newcomer used to be admitted by
+     * evicting the FIRST least-active item — in a batch that all arrives at the same
+     * activation, the one admitted before it, i.e. the more salient one. Given
+     * twenty percepts the buffer kept the seven least salient (0.05–0.35) and lost
+     * everything above 0.4; and the evicted, still in state for two more ticks, were
+     * re-admitted each tick against items that had since decayed, so the churn
+     * repeated. Capacity, decay and recency are unchanged: a fresh percept still
+     * displaces anything that has faded, and nothing that is attended.
      */
     private _ingestPercepts;
     /**
@@ -3435,6 +3441,8 @@ declare class WorkingMemory implements SimulationEngine, CognitiveEngine {
      */
     private _persistItems;
     private _evictIfNeeded;
+    /** The item that loses a slot first: least active, then least salient, then earliest. */
+    private _weakestIndex;
 }
 
 /** Forwards each entry to the consumer (the stem bridges it onto the transport). */
@@ -3575,6 +3583,14 @@ declare class SemanticClustering {
     private _trendToBelief;
     private _detectAnomalies;
     private _anomalyToBelief;
+    /**
+     * What the episode was about — the same text the vector index embeds. This
+     * kept its own reading, which found a summary only at the top level: an episode
+     * consolidated from working memory nests it (`{ wmType, content: { summary } }`),
+     * so a percept or a goal read as its JSON, and any two of them overlapped on
+     * `wmtype`, `content`, `summary`, `activation`, `attendedcount` — enough to be
+     * clustered together and named after those words.
+     */
     private _episodeToText;
     private _episodeToQuery;
     private _contentSimilarity;

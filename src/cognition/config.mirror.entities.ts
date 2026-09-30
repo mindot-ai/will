@@ -102,7 +102,6 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
       id: 'engine-config-exteroception',
       engine: 'exteroception',
       params: {
-        maxPerceptsPerTick: 50,
         defaultSalience:    0.3,
       },
     },
@@ -111,13 +110,6 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
       engine: 'interoception',
       params: {
         emitDetailEvent: 0,
-      },
-    },
-    {
-      id: 'engine-config-social-perception',
-      engine: 'social-perception',
-      params: {
-        maxPerceptsPerTick: 20,
       },
     },
     {
@@ -242,7 +234,6 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
       params: {
         consolidationThreshold: 0.25,
         emotionBoost:           2.0,
-        maxPerTick:             5,
       },
     },
     {

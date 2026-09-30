@@ -27,7 +27,7 @@
 //        96  attention.demand
 //         3  will.identity      its own identity entity
 //
-// `maxPerceptsPerTick` is 50. The affordance field alone churns ~116 entities a
+// `maxPerceptsPerTick` was 50. The affordance field alone churns ~116 entities a
 // tick, so the sensory cap was consumed by self-noise before the world said
 // anything — and nothing downstream filters by category, so working memory, the
 // novelty detector, the attention allocator and episodic consolidation all ate

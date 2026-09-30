@@ -32,12 +32,11 @@ export interface CompetenceSnapshot {
 export interface DistillOptions {
   /** Skills below this habit strength are not carried (the forgetting floor). */
   minHabit?: number
-  /** Cap on carried skills, ranked by consolidation. */
+  /** A host-chosen cap on carried skills, ranked by consolidation. Unset: every skill above the floor. */
   maxSkills?: number
 }
 
 const DEFAULT_MIN_HABIT = 0.2
-const DEFAULT_MAX_SKILLS = 50
 
 /** Consolidation score — how much a skill has "set" — used for ranking the carry. */
 function consolidation( s: LearnedSkill ): number {
@@ -56,7 +55,10 @@ export function distillCompetence(
   opts: DistillOptions = {},
 ): CompetenceSnapshot {
   const minHabit  = opts.minHabit  ?? DEFAULT_MIN_HABIT
-  const maxSkills = opts.maxSkills ?? DEFAULT_MAX_SKILLS
+  // Every skill above the habit floor (the floor is forgetting, and stays). The
+  // artifact carried the 50 most consolidated: a Will woken from it alone lost
+  // whatever it had learned past its fiftieth skill (LOSSLESS P3).
+  const maxSkills = opts.maxSkills ?? Infinity
 
   const { composites, skills } = repertoire.export( minHabit )
 

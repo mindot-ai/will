@@ -3869,6 +3869,22 @@ declare class GoalManager implements SimulationEngine, CognitiveEngine {
      */
     addGoal(description: string, basePriority: number, tags?: string[], parentGoalId?: string, deadline?: Tick, completionType?: GoalState['completionType'], completionCondition?: string, id?: string, requestingEntityId?: string, requestingThreadId?: string): string;
     /**
+     * Seed goals verbatim from an artifact — progress and status as they were —
+     * for ids not already held. The loader used addGoal, which writes progress 0,
+     * status 'active' and activation now: a restored goal forgot how far it had got,
+     * and a pending one came back competing for a slot it had lost.
+     */
+    restoreGoals(goals: ReadonlyArray<{
+        id: string;
+        description: string;
+        priority: number;
+        progress: number;
+        status: string;
+        tags: string[];
+        completionType: GoalState['completionType'];
+        completionCondition?: string;
+    }>): void;
+    /**
      * Get all active goals sorted by priority.
      */
     getActiveGoals(): GoalState[];
@@ -8864,7 +8880,7 @@ interface PMABelief {
     confidence: number;
     supportingEpisodes: number;
     tags: string[];
-    /** Up to 20 history entries — see BeliefHistoryEntry in semantic.integrator.ts */
+    /** The whole history — see BeliefHistoryEntry in semantic.engine/types.ts */
     history: BeliefHistoryEntry[];
 }
 interface PMAGoal {
@@ -8961,13 +8977,16 @@ interface PMARelationshipStub {
         reliability: number;
         encounterCount: number;
         resolutionConfidence: number;
+        /** Where they are reached. Without it a re-embodied Will knew who someone was and could not address them. */
+        handles?: Handle[];
+        suspectedSameAs?: string[];
     };
 }
 /**
  * PMASnapshot — the portable identity artifact.
  *
  * Top-level contract:
- *   - ~10–50 KB for a typical Will (50 beliefs × history)
+ *   - Whole: every belief, every goal still held, everyone known (LOSSLESS P3)
  *   - Self-contained: can bootstrap a Will with no other files
  *   - Versioned: schemaVersion guards against stale artifacts
  */
@@ -8981,13 +9000,13 @@ interface PMASnapshot {
     /** Session ID that triggered distillation */
     sourceSessionId: string;
     identity: PMAIdentity;
-    /** Top 50 beliefs ranked by confidence × log(1 + supportingEpisodes) */
+    /** Every belief, ranked by confidence × log(1 + supportingEpisodes) */
     beliefs: PMABelief[];
-    /** Top 10 active/in_progress goals by priority */
+    /** Every goal still held (not completed or abandoned), by priority */
     goals: PMAGoal[];
     emotionalBaseline: PMAEmotionalBaseline;
     behavioral: PMABehavioral;
-    /** Top 20 relationship stubs (bonds + reputation) by interaction count */
+    /** Every relationship stub, most salient first */
     relationships: PMARelationshipStub[];
     /** Total episodic memory count at snapshot time (metadata only — episodes not stored) */
     episodicCount: number;

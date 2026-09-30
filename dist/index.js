@@ -10768,8 +10768,11 @@ var GoalManager = class {
    * Add a goal to the manager.
    */
   addGoal(description, basePriority, tags = [], parentGoalId, deadline, completionType = "epistemic", completionCondition, id, requestingEntityId, requestingThreadId) {
-    this._goalCounter++;
-    const goalId = id ?? `goal-${this._goalCounter}`;
+    let goalId = id;
+    if (goalId === void 0)
+      do
+        goalId = `goal-${++this._goalCounter}`;
+      while (this._goals.has(goalId));
     this._goals.set(goalId, {
       id: goalId,
       description,
@@ -10793,6 +10796,32 @@ var GoalManager = class {
       if (parent) parent.subGoals.push(goalId);
     }
     return goalId;
+  }
+  /**
+   * Seed goals verbatim from an artifact — progress and status as they were —
+   * for ids not already held. The loader used addGoal, which writes progress 0,
+   * status 'active' and activation now: a restored goal forgot how far it had got,
+   * and a pending one came back competing for a slot it had lost.
+   */
+  restoreGoals(goals) {
+    for (const g of goals) {
+      if (this._goals.has(g.id)) continue;
+      const status = ["active", "blocked", "pending", "pending_verification"].find((s) => s === g.status) ?? "active";
+      this._goals.set(g.id, {
+        id: g.id,
+        description: g.description,
+        priority: g.priority,
+        basePriority: g.priority,
+        progress: g.progress,
+        status,
+        subGoals: [],
+        activatedAt: this._currentTick,
+        tags: [...g.tags],
+        beliefsAtActivation: this._currentBeliefCount,
+        completionType: g.completionType,
+        completionCondition: g.completionCondition
+      });
+    }
   }
   /**
    * Get all active goals sorted by priority.
@@ -25103,11 +25132,10 @@ function validateWillIdentity(input) {
     if (re.test(prompt)) claimedSenses.add(sense);
   if (claimedSenses.size)
     warnings.push(`identity.prompt claims capabilities the Will lacks (${[...claimedSenses].join(", ")}) \u2014 it perceives through text/conversation and may hallucinate using them.`);
-  let values = Array.from(new Set((id.values ?? []).map((v) => String(v).trim()).filter(Boolean)));
-  if (values.length > MAX_VALUES) {
-    warnings.push(`identity.values has more than ${MAX_VALUES} entries; truncated.`);
-    values = values.slice(0, MAX_VALUES);
-  }
+  const operator = (input.source ?? "operator") === "operator";
+  const values = Array.from(new Set((id.values ?? []).map((v) => String(v).trim()).filter(Boolean)));
+  if (operator && values.length > MAX_VALUES)
+    errors.push(`identity.values has ${values.length} entries (max ${MAX_VALUES}) \u2014 a Will weighs decisions against these; name the few that matter.`);
   const valuesEmpty = values.length === 0;
   if (valuesEmpty) warnings.push("identity.values is empty \u2014 values ground the Will\u2019s decisions; consider seeding a few.");
   const traits = {};
@@ -25127,11 +25155,9 @@ function validateWillIdentity(input) {
       warnings.push(`trait "${key}" is not a recognised trait \u2014 it may be ignored by the persona layer.`);
     traits[key] = clamped;
   }
-  let style = (id.style ?? "").trim();
-  if (style.length > MAX_STYLE_CHARS) {
-    warnings.push("identity.style is long; it reads better as a short phrase.");
-    style = style.slice(0, MAX_STYLE_CHARS);
-  }
+  const style = (id.style ?? "").trim();
+  if (operator && style.length > MAX_STYLE_CHARS)
+    errors.push(`identity.style is ${style.length} chars (max ${MAX_STYLE_CHARS}) \u2014 it reads better as a short phrase.`);
   if (GENERIC_STYLES.has(style.toLowerCase()))
     warnings.push("identity.style is generic \u2014 a distinct voice prevents collapse into a generic chatbot tone.");
   let effectors = input.effectors ?? null;
@@ -27802,13 +27828,12 @@ var ReplayController = class {
 // src/cognition/agency/competence.codec.ts
 var COMPETENCE_SCHEMA_VERSION = 1;
 var DEFAULT_MIN_HABIT = 0.2;
-var DEFAULT_MAX_SKILLS = 50;
 function consolidation(s) {
   return s.habitStrength * 0.6 + s.valueEstimate * 0.2 + Math.min(1, s.enactments * 0.02) * 0.2;
 }
 function distillCompetence(repertoire, opts = {}) {
   const minHabit = opts.minHabit ?? DEFAULT_MIN_HABIT;
-  const maxSkills = opts.maxSkills ?? DEFAULT_MAX_SKILLS;
+  const maxSkills = opts.maxSkills ?? Infinity;
   const { composites, skills } = repertoire.export(minHabit);
   const carriedSkills = [...skills].sort((a, b) => consolidation(b) - consolidation(a)).slice(0, maxSkills);
   const carriedIds = new Set(carriedSkills.map((s) => s.schema));
@@ -27958,7 +27983,7 @@ var PMADistiller = class {
       const sb = b.confidence * Math.log(1 + b.supportingEpisodes);
       return sb - sa;
     });
-    return raw.slice(0, 50);
+    return raw;
   }
   _extractGoals(state) {
     const goals = [];
@@ -27966,7 +27991,7 @@ var PMADistiller = class {
       if (entity.type !== "goal") continue;
       const m = entity.metadata ?? {};
       const status = m["status"] ?? "active";
-      if (status !== "active" && status !== "in_progress") continue;
+      if (status === "completed" || status === "abandoned") continue;
       goals.push({
         id: entity.id,
         description: m["description"] ?? "",
@@ -27979,7 +28004,7 @@ var PMADistiller = class {
       });
     }
     goals.sort((a, b) => b.priority - a.priority);
-    return goals.slice(0, 10);
+    return goals;
   }
   _extractRelationships(state) {
     const stubs = /* @__PURE__ */ new Map();
@@ -28040,7 +28065,9 @@ var PMADistiller = class {
           valence: m["valence"] ?? 0,
           reliability: m["reliability"] ?? 0.5,
           encounterCount: m["encounterCount"] ?? 0,
-          resolutionConfidence: m["resolutionConfidence"] ?? 0
+          resolutionConfidence: m["resolutionConfidence"] ?? 0,
+          ...Array.isArray(m["handles"]) ? { handles: m["handles"] } : {},
+          ...Array.isArray(m["suspectedSameAs"]) ? { suspectedSameAs: m["suspectedSameAs"] } : {}
         };
         stubs.set(keid, stub);
       } else if (entity.type === "episodic_memory" && entity.metadata?.["sourceType"] === "conversation.exchange") {
@@ -28060,7 +28087,7 @@ var PMADistiller = class {
       }
     }
     const salienceOf2 = (s) => (s.attachment?.attachmentStrength ?? 0) * 2 + (s.dossier?.familiarity ?? 0) + (s.dossier?.resolutionConfidence ?? 0) * 0.5 + Math.min(1, ((s.attachment?.interactionCount ?? 0) + (s.reputation?.interactionCount ?? 0)) * 0.02);
-    return Array.from(stubs.values()).sort((a, b) => salienceOf2(b) - salienceOf2(a)).slice(0, 20);
+    return Array.from(stubs.values()).sort((a, b) => salienceOf2(b) - salienceOf2(a));
   }
   _readEmotionalBio(willId, dataDir) {
     const defaultBaseline = {
@@ -28191,6 +28218,16 @@ var PMALoader = class {
    */
   load(pma, simulation, cognition) {
     const sm = simulation.stateManager;
+    const held = sm.snapshot().entities;
+    const heardFrom = /* @__PURE__ */ new Set();
+    for (const e of held.values())
+      if (e.type === "episodic_memory" && e.metadata?.["sourceType"] === "conversation.exchange") {
+        const who = e.metadata["content"]?.["entityId"];
+        if (typeof who === "string") heardFrom.add(who);
+      }
+    const seed = (entity) => {
+      if (!held.has(entity.id)) sm.setEntity(entity);
+    };
     const environment = sm.getEntity(IDENTITY_ENTITY_ID)?.metadata?.["environment"];
     const persona = readPersona({ prompt: pma.identity.prompt });
     mergeIdentity(sm, {
@@ -28226,7 +28263,7 @@ var PMALoader = class {
     }
     loadCompetence(pma.competence, cognition.schemaRepertoire);
     cognition.semanticIntegrator.restoreBeliefs(
-      pma.beliefs.map((b) => ({
+      pma.beliefs.filter((b) => !held.has(b.id)).map((b) => ({
         id: b.id,
         statement: b.statement,
         category: b.category,
@@ -28237,19 +28274,9 @@ var PMALoader = class {
         history: b.history
       }))
     );
-    for (const g of pma.goals) {
-      if (g.status !== "active" && g.status !== "in_progress") continue;
-      cognition.goalManager.addGoal(
-        g.description,
-        g.priority,
-        g.tags,
-        void 0,
-        void 0,
-        g.completionType,
-        g.completionCondition,
-        g.id
-      );
-    }
+    cognition.goalManager.restoreGoals(
+      pma.goals.filter((g) => !held.has(g.id))
+    );
     const valence = pma.emotionalBaseline.avgValence;
     const arousal = pma.emotionalBaseline.arousalProfile === "high-energy" ? 0.65 : pma.emotionalBaseline.arousalProfile === "calm" ? 0.3 : 0.45;
     sm.setMetric("affect.valence", valence);
@@ -28287,7 +28314,7 @@ var PMALoader = class {
     const now = Date.now();
     for (const rel of pma.relationships) {
       if (rel.attachment) {
-        sm.setEntity({
+        seed({
           id: `bond-${rel.keid}`,
           type: "attachment.bond",
           createdAt: now,
@@ -28306,7 +28333,7 @@ var PMALoader = class {
         });
       }
       if (rel.reputation) {
-        sm.setEntity({
+        seed({
           id: `reputation-${rel.keid}`,
           type: "reputation",
           createdAt: now,
@@ -28327,7 +28354,7 @@ var PMALoader = class {
         });
       }
       if (rel.mentalModel) {
-        sm.setEntity({
+        seed({
           id: `tom-${rel.keid}`,
           type: "theory_of_mind",
           createdAt: now,
@@ -28343,7 +28370,7 @@ var PMALoader = class {
         });
       }
       if (rel.dossier) {
-        sm.setEntity({
+        seed({
           id: `ke-${rel.keid}`,
           type: "known-entity",
           createdAt: now,
@@ -28357,11 +28384,13 @@ var PMALoader = class {
             reliability: rel.dossier.reliability,
             encounterCount: rel.dossier.encounterCount,
             lastSeenTick: 0,
-            resolutionConfidence: rel.dossier.resolutionConfidence
+            resolutionConfidence: rel.dossier.resolutionConfidence,
+            ...rel.dossier.handles ? { handles: rel.dossier.handles } : {},
+            ...rel.dossier.suspectedSameAs ? { suspectedSameAs: rel.dossier.suspectedSameAs } : {}
           }
         });
       }
-      if (rel.lastConversationDigest) {
+      if (rel.lastConversationDigest && !heardFrom.has(rel.keid)) {
         sm.setEntity({
           id: `wm-exchange-restored-${rel.keid}`,
           type: "working_memory.item",
@@ -28760,7 +28789,7 @@ var PMAController = class {
   load(id, instance, pma) {
     if (instance.status === "active")
       throw new Error(`Cannot load PMA into an active Will (${id}). Pause first.`);
-    const guard = validateWillIdentity({ identity: {
+    const guard = validateWillIdentity({ source: "artifact", identity: {
       prompt: pma.identity.prompt,
       values: pma.identity.values,
       traits: pma.identity.traits,

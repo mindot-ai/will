@@ -30,6 +30,15 @@ export interface IdentityGuardInput {
   effectors?:      string[] | null
   /** Profile world-context block, if any. */
   profileContext?: string
+  /**
+   * Whose identity this is. 'operator' (default): configuration a host wrote —
+   * too many values or too long a style is an error, as too long a prompt is.
+   * 'artifact': the mind's own, reloaded from its PMA — its values and style are
+   * kept whole. The mind grows its own values (the self-model adds them); a limit
+   * that rejected them would refuse to wake it, and one that truncated them — as
+   * this did, for both sources — cut back what it had become on every wake.
+   */
+  source?:         'operator' | 'artifact'
 }
 
 export interface IdentityGuardResult {
@@ -146,11 +155,10 @@ export function validateWillIdentity( input: IdentityGuardInput ): IdentityGuard
     warnings.push(`identity.prompt claims capabilities the Will lacks (${[ ...claimedSenses ].join(', ')}) — it perceives through text/conversation and may hallucinate using them.`)
 
   // ── values ───────────────────────────────────────────────────
-  let values = Array.from( new Set( ( id.values ?? [] ).map( v => String( v ).trim() ).filter( Boolean ) ) )
-  if( values.length > MAX_VALUES ){
-    warnings.push(`identity.values has more than ${MAX_VALUES} entries; truncated.`)
-    values = values.slice( 0, MAX_VALUES )
-  }
+  const operator = ( input.source ?? 'operator') === 'operator'
+  const values = Array.from( new Set( ( id.values ?? [] ).map( v => String( v ).trim() ).filter( Boolean ) ) )
+  if( operator && values.length > MAX_VALUES )
+    errors.push(`identity.values has ${values.length} entries (max ${MAX_VALUES}) — a Will weighs decisions against these; name the few that matter.`)
   const valuesEmpty = values.length === 0
   if( valuesEmpty ) warnings.push('identity.values is empty — values ground the Will’s decisions; consider seeding a few.')
 
@@ -171,11 +179,9 @@ export function validateWillIdentity( input: IdentityGuardInput ): IdentityGuard
   }
 
   // ── style ─────────────────────────────────────────────────────
-  let style = ( id.style ?? '').trim()
-  if( style.length > MAX_STYLE_CHARS ){
-    warnings.push('identity.style is long; it reads better as a short phrase.')
-    style = style.slice( 0, MAX_STYLE_CHARS )
-  }
+  const style = ( id.style ?? '').trim()
+  if( operator && style.length > MAX_STYLE_CHARS )
+    errors.push(`identity.style is ${style.length} chars (max ${MAX_STYLE_CHARS}) — it reads better as a short phrase.`)
   if( GENERIC_STYLES.has( style.toLowerCase() ) )
     warnings.push('identity.style is generic — a distinct voice prevents collapse into a generic chatbot tone.')
 

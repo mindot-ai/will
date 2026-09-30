@@ -30,8 +30,6 @@ import { GenerativeModel } from '#cognition/generative.model'
 import { readEffectiveParams } from '#cognition/persona.prior'
 
 export interface ReputationTrackerConfig {
-  /** Maximum agents to track */
-  maxTrackedAgents?: number
   /** How quickly reputation decays without new observations */
   decayRate?: number
   /** Minimum interactions before reputation is considered reliable */
@@ -70,7 +68,6 @@ interface Reputation {
 export class ReputationTracker implements SimulationEngine, CognitiveEngine {
   readonly name     = 'reputation-tracker'
   
-  private _maxTrackedAgents: number
   private _decayRate: number
   private _minInteractions: number
   private _trustGrowthStep: number
@@ -91,7 +88,6 @@ export class ReputationTracker implements SimulationEngine, CognitiveEngine {
 
   constructor( config: ReputationTrackerConfig = {} ){
     this._bus = config.bus ?? null
-    this._maxTrackedAgents = config.maxTrackedAgents ?? 20
     this._decayRate        = config.decayRate        ?? 0.001
     this._minInteractions  = config.minInteractions  ?? 3
     this._trustGrowthStep  = config.trustGrowthStep  ?? 0.05
@@ -233,10 +229,11 @@ export class ReputationTracker implements SimulationEngine, CognitiveEngine {
       }
     }
 
-    // 3. Prune
-    this._prune()
+    // No count cap: past 20 the least-interacted agents were dropped from memory
+    // but not from state — forgotten in-session, restored on the next boot. The
+    // people a mind deals with are bounded by its world (LOSSLESS P3).
 
-    // 4. Persist
+    // 3. Persist
     for( const rep of this._reputations.values() ){
       // Gated on evidence, not on acts. A reputation built entirely out of being
       // ignored has `interactionCount` 0 by design, and the old gate dropped it on
@@ -344,15 +341,5 @@ export class ReputationTracker implements SimulationEngine, CognitiveEngine {
 
     this._reputations.set( keid, rep )
     return rep
-  }
-
-  private _prune(): void {
-    if( this._reputations.size <= this._maxTrackedAgents ) return
-
-    const sorted = Array.from( this._reputations.entries() )
-      .sort( ( a, b ) => b[1].interactionCount - a[1].interactionCount )
-
-    for( const [ id ] of sorted.slice( this._maxTrackedAgents ) )
-      this._reputations.delete( id )
   }
 }

@@ -68,6 +68,16 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
    *  monotonic counter — not persisted; rebuilt from insertion order on load. */
   private _accessTick: Map<string, number> = new Map()
   private _accessClock: number = 0
+  /**
+   * Episodes whose embedding is on its way, and those forgotten meanwhile.
+   * Indexing is fire-and-forget (the embedding is a network call); an episode
+   * forgotten before its vector arrived was deleted from an index that did not
+   * hold it yet, and the vector then landed for a memory that no longer
+   * existed. A mind forgetting within seconds banked 9,671 of them against zero
+   * live episodes, and they took recall's top-k slots from the living.
+   */
+  private _inFlight  = new Set<string>()
+  private _cancelled = new Set<string>()
 
   constructor(
     embedder: EmbeddingProvider,
@@ -80,7 +90,11 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
     this._index = indexImpl
     this._persistPath = config.persistPath ?? './data/vector_index'
     this._metaPath = `${this._persistPath}.meta`
-    this._maxIndexedEpisodes = config.maxIndexedEpisodes ?? 10000
+    // No eviction unless a host asks for a bound. At 10,000 this dropped ~10% of
+    // the index, least-recently-used first: the episodes stayed remembered and
+    // became unreachable by meaning. The index follows the store, and the store
+    // is bounded by forgetting, which deletes the vector too (LOSSLESS P3).
+    this._maxIndexedEpisodes = config.maxIndexedEpisodes ?? Infinity
     // 0.35 suits real sentence embeddings (e.g. text-embedding-3-small), where
     // genuinely related-but-reworded memories commonly score 0.3–0.5 cosine. The
     // old 0.65 floor was high enough that semantic recall returned nothing for
@@ -104,7 +118,9 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
     if( this._index.size >= this._maxIndexedEpisodes )
       await this._evictColdest()
 
-    const embedding = await this._embedder.embed( episodeContentToText( content ), 'index')
+    const embedding = await this._embedInFlight( [ episode.id ], () => this._embedder.embed( episodeContentToText( content ), 'index') )
+    // Forgotten while its vector was on the way: nothing to index.
+    if( this._cancelled.delete( episode.id ) ) return
 
     const record: VectorRecord = {
       id: episode.id,
@@ -138,11 +154,12 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
       await this._evictColdest()
 
     const contents = newEpisodes.map( e => episodeContentToText( e.content ) )
-    const embeddings = await this._embedder.embedBatch( contents, 'index')
+    const embeddings = await this._embedInFlight( newEpisodes.map( e => e.episode.id ), () => this._embedder.embedBatch( contents, 'index') )
 
     for( let i = 0; i < newEpisodes.length; i++ ){
       const { episode } = newEpisodes[i]!
       const embedding = embeddings[i]!
+      if( this._cancelled.delete( episode.id ) ) continue
 
       const record: VectorRecord = {
         id: episode.id,
@@ -166,6 +183,18 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
     this._schedulePersist()
   }
 
+  /** Run an embedding call with its ids marked in flight, so a delete meanwhile cancels them. */
+  private async _embedInFlight<T>( ids: string[], embed: () => Promise<T> ): Promise<T> {
+    for( const id of ids ) this._inFlight.add( id )
+    try { return await embed() }
+    catch( err ){
+      // Nothing will be inserted; a cancel left behind would skip a later re-index.
+      for( const id of ids ) this._cancelled.delete( id )
+      throw err
+    }
+    finally { for( const id of ids ) this._inFlight.delete( id ) }
+  }
+
   async search( query: unknown, filter?: VectorQueryFilter ): Promise<VectorQueryResult[]> {
     const embedding = await this._embedder.embed( episodeContentToText( query ), 'recall')
     return this.searchWithVector( embedding, filter )
@@ -184,6 +213,7 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
   }
 
   async delete( episodeId: string ): Promise<void> {
+    if( this._inFlight.has( episodeId ) ) this._cancelled.add( episodeId )
     if( await this._index.delete( episodeId ) ){
       this._indexedIds.delete( episodeId )
       this._accessTick.delete( episodeId )

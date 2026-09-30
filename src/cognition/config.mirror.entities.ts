@@ -242,7 +242,6 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
       params: {
         minIntervalTicks:         30,
         minNewEpisodes:           10,
-        maxBeliefs:               500,
         beliefStalenessThreshold: 300,
         beliefDecayRate:          0.001,
       },
@@ -457,7 +456,6 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
       id: 'engine-config-theory-of-mind',
       engine: 'theory-of-mind',
       params: {
-        maxModeledAgents:      10,
         beliefDecayRate:       0.002,
         confidenceThreshold:   0.3,
       },
@@ -474,7 +472,6 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
       id: 'engine-config-reputation',
       engine: 'reputation',
       params: {
-        maxTrackedAgents: 20,
         decayRate:        0.001,
         minInteractions:  3,
         // How much a cooperative interaction raises an agent's cooperativeness (trust step).

@@ -2007,7 +2007,7 @@ interface VectorMemoryConfig {
     dimensions?: number;
     /** Similarity metric: 'cosine', 'euclidean', or 'dot' */
     similarityMetric?: 'cosine' | 'euclidean' | 'dot';
-    /** Maximum number of episodes to index (older entries evicted) */
+    /** A host-chosen bound on the index — least-recently-used evicted past it. Unset: none; the index follows the store, which forgetting bounds. */
     maxIndexedEpisodes?: number;
     /** Minimum similarity threshold for query results (0-1). Default 0.35, tuned
      *  for real sentence embeddings (text-embedding-3-small); raise for higher
@@ -2121,6 +2121,16 @@ declare class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
      *  monotonic counter — not persisted; rebuilt from insertion order on load. */
     private _accessTick;
     private _accessClock;
+    /**
+     * Episodes whose embedding is on its way, and those forgotten meanwhile.
+     * Indexing is fire-and-forget (the embedding is a network call); an episode
+     * forgotten before its vector arrived was deleted from an index that did not
+     * hold it yet, and the vector then landed for a memory that no longer
+     * existed. A mind forgetting within seconds banked 9,671 of them against zero
+     * live episodes, and they took recall's top-k slots from the living.
+     */
+    private _inFlight;
+    private _cancelled;
     constructor(embedder: EmbeddingProvider, config?: VectorMemoryConfig & {
         persistPath?: string;
     }, storage?: StorageAdapter, indexImpl?: VectorIndex);
@@ -2133,6 +2143,8 @@ declare class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
         episode: EpisodicMemory;
         content: unknown;
     }>): Promise<void>;
+    /** Run an embedding call with its ids marked in flight, so a delete meanwhile cancels them. */
+    private _embedInFlight;
     search(query: unknown, filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
     searchWithVector(embedding: number[], filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
     delete(episodeId: string): Promise<void>;
@@ -3500,7 +3512,6 @@ declare class SessionLogger {
 interface SemanticIntegratorConfig {
     minIntervalTicks?: number;
     minNewEpisodes?: number;
-    maxBeliefs?: number;
     /** Ticks without reinforcement before a belief starts losing confidence */
     beliefStalenessThreshold?: number;
     /** Confidence lost per tick once a belief goes stale */
@@ -3516,6 +3527,10 @@ interface BeliefHistoryEntry {
     confidence: number;
     delta: number;
     cause: string;
+    /** A run of consecutive decay steps, kept as one entry: the first step's tick… */
+    since?: Tick;
+    /** …and how many steps; `tick`/`confidence` are the last, `delta` the run's total. */
+    steps?: number;
 }
 interface Belief {
     id: string;
@@ -3608,7 +3623,6 @@ declare class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
     readonly name = "semantic-integrator";
     private _minIntervalTicks;
     private _minNewEpisodes;
-    private _maxBeliefs;
     private _beliefStalenessThreshold;
     private _beliefDecayRate;
     private _semanticSimilarityThreshold;
@@ -3679,8 +3693,14 @@ declare class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
      * Combines content snippets and tags to create a representative query.
      */
     private _buildSemanticQueryForPatterns;
-    private static readonly _MAX_HISTORY;
-    /** Append a history entry to a belief, dropping the oldest if the buffer is full. */
+    /**
+     * Append a history entry to a belief. Whole — it kept the last 20.
+     *
+     * A run of decay steps is kept as ONE entry (`since`, `steps`, total `delta`).
+     * Decay is a fixed step every integration pass once a belief is stale, so a
+     * belief fading from 0.8 to its prune wrote ~680 entries, ~2,900 a day — which
+     * is why a cap looked necessary. The run says everything the steps did.
+     */
     private static _recordHistory;
     private _integrateBelief;
     /**
@@ -6170,8 +6190,6 @@ declare class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
  */
 
 interface TheoryOfMindConfig {
-    /** Maximum agents to model simultaneously */
-    maxModeledAgents?: number;
     /** How quickly belief confidence decays without observation */
     beliefDecayRate?: number;
     /** Minimum confidence to consider a belief reliable */
@@ -6211,7 +6229,6 @@ interface AgentMentalModel {
 }
 declare class TheoryOfMind implements SimulationEngine, CognitiveEngine {
     readonly name = "theory-of-mind";
-    private _maxModeledAgents;
     private _beliefDecayRate;
     private _confidenceThreshold;
     private _models;
@@ -6317,8 +6334,6 @@ declare class EmpathySimulator implements SimulationEngine, CognitiveEngine {
  */
 
 interface ReputationTrackerConfig {
-    /** Maximum agents to track */
-    maxTrackedAgents?: number;
     /** How quickly reputation decays without new observations */
     decayRate?: number;
     /** Minimum interactions before reputation is considered reliable */
@@ -6354,7 +6369,6 @@ interface Reputation {
 }
 declare class ReputationTracker implements SimulationEngine, CognitiveEngine {
     readonly name = "reputation-tracker";
-    private _maxTrackedAgents;
     private _decayRate;
     private _minInteractions;
     private _trustGrowthStep;
@@ -6382,7 +6396,6 @@ declare class ReputationTracker implements SimulationEngine, CognitiveEngine {
      */
     private _restoreFromState;
     private _getOrCreate;
-    private _prune;
 }
 
 /**
@@ -6447,8 +6460,6 @@ interface KnownEntityTrackerConfig {
     curiosityGain?: number;
     /** EMA weight per action outcome — how fast a reliability judgment is revised. Channel A: analytical. */
     reliabilityRate?: number;
-    /** Maximum dossiers retained (lowest familiarity pruned). */
-    maxTracked?: number;
     bus?: CognitiveBus;
 }
 interface KnownEntity {
@@ -6501,7 +6512,6 @@ declare class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     private _decayRate;
     private _curiosityGain;
     private _reliabilityRate;
-    private _maxTracked;
     private _dossiers;
     private _aliases;
     /** True after dossiers have been rehydrated from persisted state on first tick. */
@@ -6576,24 +6586,6 @@ declare class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
      * same anchor instead of becoming a second person nobody could connect.
      */
     private _getOrCreate;
-    /** Keep the most-familiar dossiers; absence-faded acquaintances fall away (forgetting). */
-    /**
-     * Forget the least-held referents when over capacity.
-     *
-     * Ranked by more than exposure, deliberately. This sorted on `familiarity`
-     * alone, which is MERE EXPOSURE — and now that a referent need not be a person
-     * (a document, a repo, a room), things get far more exposure than people do. A
-     * mind that touched sixty files would have evicted a colleague it speaks to
-     * weekly in favour of a config file it opened a lot, silently, taking that
-     * person's reputation, theory-of-mind model and attachment bond with it.
-     *
-     * So a referent the mind has actually got to know is stickier than one it has
-     * merely seen often: knowing their NAME is the single strongest signal (it is
-     * what distinguishes a someone from a blip), then how resolved the referent is,
-     * then exposure. Nothing here is about being a person — a named, well-resolved
-     * document outranks a glimpsed stranger, which is correct.
-     */
-    private _prune;
     private _restoreFromState;
 }
 

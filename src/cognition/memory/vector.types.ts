@@ -17,7 +17,7 @@ export interface VectorMemoryConfig {
   dimensions?: number
   /** Similarity metric: 'cosine', 'euclidean', or 'dot' */
   similarityMetric?: 'cosine' | 'euclidean' | 'dot'
-  /** Maximum number of episodes to index (older entries evicted) */
+  /** A host-chosen bound on the index — least-recently-used evicted past it. Unset: none; the index follows the store, which forgetting bounds. */
   maxIndexedEpisodes?: number
   /** Minimum similarity threshold for query results (0-1). Default 0.35, tuned
    *  for real sentence embeddings (text-embedding-3-small); raise for higher

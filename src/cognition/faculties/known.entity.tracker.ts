@@ -51,8 +51,6 @@ export interface KnownEntityTrackerConfig {
   curiosityGain?: number
   /** EMA weight per action outcome — how fast a reliability judgment is revised. Channel A: analytical. */
   reliabilityRate?: number
-  /** Maximum dossiers retained (lowest familiarity pruned). */
-  maxTracked?: number
   bus?: CognitiveBus
 }
 
@@ -149,7 +147,6 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
   private _decayRate:      number
   private _curiosityGain:  number
   private _reliabilityRate: number
-  private _maxTracked:     number
 
   private _dossiers = new Map<string, KnownEntity>()
   // Recognition (Phase 5): alias keid → the canonical keid it was fused into. Incoming
@@ -207,7 +204,6 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     this._decayRate       = config.familiarityDecayRate  ?? 0.00002
     this._curiosityGain   = config.curiosityGain         ?? 1.0
     this._reliabilityRate = config.reliabilityRate       ?? 0.2
-    this._maxTracked      = config.maxTracked            ?? 50
     this._bus = config.bus ?? null
   }
   attachBus( bus: CognitiveBus ): void { this._bus = bus }
@@ -390,7 +386,11 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     // resolve to the canonical, without destructive re-keying.
     if( this._recognise( commands ) ) touched = true
 
-    this._prune()
+    // No count cap. Past 50 the least-held referents were dropped from memory — and
+    // NOT from state, so they were forgotten in-session and restored on the next
+    // boot, taking their reputation, theory-of-mind model and attachment bond with
+    // them meanwhile. A team server passes 50 people and rooms in a week. What a
+    // mind lets go of is the forgetting below (LOSSLESS P3).
 
     // Forgetting (Phase 4): an unidentified blip that has faded out of familiarity is let
     // go — dropped from memory and the persisted entity deleted. A named/resolved entity is
@@ -636,32 +636,6 @@ export class KnownEntityTracker implements SimulationEngine, CognitiveEngine {
     }
     this._dossiers.set( anchor, d )
     return d
-  }
-
-  /** Keep the most-familiar dossiers; absence-faded acquaintances fall away (forgetting). */
-  /**
-   * Forget the least-held referents when over capacity.
-   *
-   * Ranked by more than exposure, deliberately. This sorted on `familiarity`
-   * alone, which is MERE EXPOSURE — and now that a referent need not be a person
-   * (a document, a repo, a room), things get far more exposure than people do. A
-   * mind that touched sixty files would have evicted a colleague it speaks to
-   * weekly in favour of a config file it opened a lot, silently, taking that
-   * person's reputation, theory-of-mind model and attachment bond with it.
-   *
-   * So a referent the mind has actually got to know is stickier than one it has
-   * merely seen often: knowing their NAME is the single strongest signal (it is
-   * what distinguishes a someone from a blip), then how resolved the referent is,
-   * then exposure. Nothing here is about being a person — a named, well-resolved
-   * document outranks a glimpsed stranger, which is correct.
-   */
-  private _prune(): void {
-    if( this._dossiers.size <= this._maxTracked ) return
-    const hold = ( d: KnownEntity ): number =>
-      ( d.name ? 1 : 0 ) + d.resolutionConfidence + d.familiarity
-    const sorted = [ ...this._dossiers.values() ]
-      .sort( ( a, b ) => hold( b ) - hold( a ) || ( a.keid < b.keid ? -1 : 1 ) )
-    for( const d of sorted.slice( this._maxTracked ) ) this._dossiers.delete( d.keid )
   }
 
   private _restoreFromState( state: ReadonlySimulationState ): void {

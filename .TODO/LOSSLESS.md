@@ -1,6 +1,6 @@
 # LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut
 
-> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P1 of 6 landed, unreleased
+> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P2 of 6 landed, unreleased
 
 > **The rule:** *lossless, not unbounded.* Every cut that loses data — at intake, in
 > transit between the mind's own parts, in what it keeps, in its artifact, in its
@@ -149,19 +149,75 @@ Reclassified while doing it, both measured:
   on; only the master's output becomes state. Either carry them to the master or
   stop asking a facet for them — a decision, not a cut.
 
-### P2 — what she takes in is whole
+### P2 — what she takes in is whole, and kept ✅
 
-- [ ] `surface/channels/types.ts:52-54,114` attachments: 24,000 chars, 4 files;
-      `discord.ts:42,402` fetch cut at 256 KB — whole (oversize → P5 paging)
-- [ ] `exteroception.ts:101,158` **drops percepts past 50 per tick**;
-      `social.perception.ts:100,133` past 20 — nothing dropped at the door
-- [x] ~~`episodic.consolidator.ts:734-745` prefix dedup~~ — landed in P0
-- [ ] `semantic.engine/integrator.ts:566-580` episode content 150 in pattern text
-- [ ] `semantic.engine/clustering.ts:429,435` pattern detection reads the first 20
-      episodes / 10 words — verify whether this is a sampling window (MIND) or a
-      cut of what it was asked to analyse (LOSS) before changing it
-- [ ] `bus.ts:89` metric queue drops the oldest past 500 — count and surface every
-      drop before deciding whether the bound itself goes
+- [x] **Nothing dropped at the door.** Exteroception dropped every change past the
+      50th in a tick, social perception every signal past the 20th — and each
+      records what it scanned as seen (a received turn is swept the same tick), so
+      what a cap dropped was never perceived at all. Both caps and their mirror
+      params gone; a world entity's description reaches its percept whole (was 100)
+- [x] **Working memory keeps the most salient of what arrives together.** It
+      admitted each newcomer by evicting the FIRST least-active item — in a batch
+      at equal activation, the one admitted just before, i.e. the more salient.
+      Measured: of 20 percepts it kept the 7 LEAST salient (0.05–0.35); and the
+      evicted, still in state, were re-admitted next tick and displaced the
+      winners, then lost again — a period-2 oscillation. Now each percept competes
+      once, most salient first, for a slot held by something weaker. Capacity,
+      decay and recency unchanged. This had to land with the caps: uncapped, a
+      burst would have filled working memory with the noise floor
+- [x] **What she perceives becomes memory.** The consolidator skipped every item
+      tagged `percept` as a "meta-percept" (v0.1.0); every percept carries the
+      tag, and the sense boundary has since made percepts-about-percepts
+      impossible — so it dropped only the world, including the answer each of her
+      own acts brings back (effector observations arrive as somatosensation
+      percepts with their data). Nothing she read on GitHub outlived working
+      memory. Now remembered, data whole
+- [x] **Every strong-enough candidate consolidated, not five a tick.** An item
+      another engine writes into working memory lives one tick; a woken mind is
+      handed its last conversation with each person that way (`pma` §8) and kept
+      five of twelve. `maxPerTick` removed, and ignored in a woken mind's saved
+      config (the forgetting-rate trap: a default change does not reach a mind
+      that persisted the old value)
+- [x] **Clustering reads the whole cluster, and what each memory was about.** It
+      named a cluster from the first 20 episodes' first 10 words (LOSS) — and its
+      own text reader found a summary only at the top level, so any episode
+      consolidated from working memory read as its JSON: two unrelated percepts
+      overlapped on `wmtype`, `content`, `summary`, `activation` and clustered.
+      It now reads `episodeContentToText`, the text the vector index embeds, which
+      learned the goal shape (`content.description`)
+- [x] `integrator.ts` pattern probe — reclassified **NONE**: a search query, kept
+      short enough to embed. Its fault was what it held — the first 150
+      characters of each episode's JSON; it now probes with their meaning
+- [x] **The bus never drops intake; every other drop is reported.** `senses.*`
+      events are critical now — KnownEntityTracker builds who she knows from them
+      and nothing else. Metric drops were logged on the 1st, 101st, 201st… with
+      no type; now every flush that dropped says how many, of what. Whether the
+      500 bound goes is decided from that record
+- [→] Attachments (24,000 chars / 4 files / 256 KB fetch) **moved to P5**. The
+      bridge's cut is the only thing bounding a call until the mind has a
+      window-aware path for an oversize item; removed first, one 1 MB log
+      (~250k tokens) fails the conversation call outright
+
+Found doing P2 and **not** changed — each is a decision:
+
+- **Attention has never reached working memory.** `AttentionAllocator` writes
+  `attention.focus.metadata.entityId`; `WorkingMemory._applyAttention` reads
+  `targetEntityId`. No item has ever been marked attended: attention protection
+  (decay ×0.4) and rehearsal (+0.02 after 3 attended ticks) are dark, and
+  `attendedCount` is 0 for every item working memory owns. Wiring it is MIND as
+  designed, but it changes what every mind holds and for how long.
+- **A percept is remembered by a margin of 0.018.** It enters at 0.75, decays one
+  tick (0.08/s) before the consolidator's first look: 0.67 × 0.4 = 0.268 against
+  a 0.25 threshold. At ~1 tick/s (Lora) it holds; at a slower tick it silently
+  stops. A goal (0.65 → 0.57 → 0.228) is never remembered on activation alone.
+- **A world entity re-set every tick becomes an episode every tick.**
+  Exteroception perceives a change of `updatedAt`, not of content. Lora has no
+  host world entities (her percepts come from her senses), but a host with a
+  heartbeat entity would accrete ~86k episodes a day, forgotten over ~3.
+- Host-supplied social signal types that persist in state (`message`, `action`,
+  …) are re-perceived every tick; only `conversation.received` is swept.
+- An observation episode is embedded by its ≤100-character sense label, not its
+  data — recall by meaning of what she read is P5.
 
 ### P3 — what she keeps is whole
 
@@ -210,6 +266,10 @@ The design work. Three parts, in order:
 3. **An oversize single item is referenced, never cut.** Past a share of the
    window, an observation or attachment renders as its size plus a handle; the
    mind reads it in pages through the same act. Every byte stays reachable.
+
+Attachments land here, moved from P2: the bridge delivers a file whole
+(`surface/channels/types.ts` 24,000 chars / 4 files, `discord.ts` 256 KB fetch
+today), the mind keeps it whole, and a call sees it through part 3.
 
 Single-item text cuts in VIEW are removed here: `effectors.ts:57,73`
 `MEANING_CAP` (it hides every GitHub tool's required args today),

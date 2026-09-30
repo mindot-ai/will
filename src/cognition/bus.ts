@@ -83,8 +83,10 @@ function topicMatches( pattern: string, topic: string ): boolean {
 }
 
 // ── Per-category inbox policy (Phase A) ─────────────────────
-// critical — goal changes, executive broadcasts, effector events: never dropped
-// metric   — *.state.changed, clock.tick, high-frequency signals: drop-oldest on overflow
+// critical — goal changes, executive broadcasts, effector events, what the senses
+//            took in: never dropped
+// metric   — *.state.changed, clock.tick, high-frequency signals: drop-oldest on
+//            overflow, and every drop is reported by type on the flush it happened
 
 const METRIC_QUEUE_MAX = 500
 
@@ -93,6 +95,10 @@ function isCriticalEvent( type: string ): boolean {
     || type.startsWith('goal.')
     || type.startsWith('effector.')
     || type.startsWith('action.')
+    // Intake. KnownEntityTracker builds who the mind knows from `senses.*.percept`
+    // and from nowhere else, so a dropped one was someone heard and never known —
+    // lost at the door, which is the one place nothing may be (LOSSLESS P2).
+    || type.startsWith('senses.')
     || type === 'engine.snapshot'
 }
 
@@ -105,6 +111,8 @@ export class InProcessCognitiveTransport implements CognitiveBusTransport {
   // Metric queue — bounded with drop-oldest on overflow
   private _metricQueue:   Array<{ event: CognitiveEvent; targets: string[] }> = []
   private _droppedCount = 0
+  /** Dropped since the last flush, by event type — reported, then cleared, on flush. */
+  private _droppedSinceFlush = new Map<string, number>()
 
   subscribe( engineId: string, topics: string[], handler: CognitiveEventHandler ): void {
     this._subscriptions.set( engineId, { engineId, topics, handler })
@@ -119,16 +127,25 @@ export class InProcessCognitiveTransport implements CognitiveBusTransport {
       this._criticalQueue.push({ event, targets: matchedEngines })
     } else {
       if( this._metricQueue.length >= METRIC_QUEUE_MAX ){
-        this._metricQueue.shift()   // drop oldest metric event
+        const oldest = this._metricQueue.shift()!   // drop oldest metric event
         this._droppedCount++
-        if( this._droppedCount % 100 === 1 )
-          logger.warn(`[CognitiveBus] metric queue overflow — dropped ${this._droppedCount} events`)
+        this._droppedSinceFlush.set( oldest.event.type, ( this._droppedSinceFlush.get( oldest.event.type ) ?? 0 ) + 1 )
       }
       this._metricQueue.push({ event, targets: matchedEngines })
     }
   }
 
   flush(): void {
+    // Every drop, counted and named. This logged the 1st, 101st, 201st… with a
+    // running total and nothing about what was lost, so whether the bound should
+    // exist at all could not be judged from the record.
+    if( this._droppedSinceFlush.size > 0 ){
+      const byType = [ ...this._droppedSinceFlush ].map( ( [ type, n ] ) => `${ type } ×${ n }` ).join(', ')
+      const n      = [ ...this._droppedSinceFlush.values() ].reduce( ( a, b ) => a + b, 0 )
+      logger.warn(`[CognitiveBus] metric queue full — dropped ${ n } event${ n === 1 ? '' : 's'} this flush (${ byType }); ${ this._droppedCount } in total`)
+      this._droppedSinceFlush.clear()
+    }
+
     // Critical events delivered first, then metrics (preserves priority ordering)
     const batch = [ ...this._criticalQueue.splice(0), ...this._metricQueue.splice(0) ]
     for( const { event, targets } of batch ){

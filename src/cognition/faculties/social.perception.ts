@@ -38,8 +38,6 @@ export interface SocialPerceptionConfig {
   agentTypes?: string[]
   /** Entity types that represent social signals */
   signalTypes?: string[]
-  /** Maximum social percepts per tick */
-  maxPerceptsPerTick?: number
   bus?: CognitiveBus
 }
 
@@ -58,7 +56,6 @@ export class SocialPerception implements SimulationEngine, CognitiveEngine {
   
   private _agentTypes: Set<string>
   private _signalTypes: Set<string>
-  private _maxPerceptsPerTick: number
 
   // Track previously observed actions for change detection
   private _previousActions = new Map<string, string>()  // keid → last action
@@ -97,7 +94,6 @@ export class SocialPerception implements SimulationEngine, CognitiveEngine {
       'conversation.received',                          // someone spoke to us
       'message', 'action', 'expression', 'social_signal', 'communication',
     ])
-    this._maxPerceptsPerTick = config.maxPerceptsPerTick ?? 20
   }
   attachBus( bus: CognitiveBus ): void { this._bus = bus }
 
@@ -129,12 +125,13 @@ export class SocialPerception implements SimulationEngine, CognitiveEngine {
     events:   Array<Omit<SimulationEvent, 'id' | 'timestamp' | 'tick'>> = [],
     commands: StateCommands = { set: [], delete: [], metrics: [] }
 
-    const socialPercepts = this._scanSocialSignals( state )
-    const capped = socialPercepts.slice( 0, this._maxPerceptsPerTick )
+    // Every signal, not the first twenty: `_scanSocialSignals` marks each one seen,
+    // so a signal past a per-tick cap was never perceived at all (LOSSLESS P2).
+    const perceived = this._scanSocialSignals( state )
 
     // Convert to percept entities
-    for( let i = 0; i < capped.length; i++ ){
-      const sp = capped[i]!
+    for( let i = 0; i < perceived.length; i++ ){
+      const sp = perceived[i]!
 
       commands.set!.push({
         id: `social-percept-${tick}-${i}`,
@@ -165,13 +162,13 @@ export class SocialPerception implements SimulationEngine, CognitiveEngine {
     // Social presence metrics
     const activeAgents = this._countActiveAgents( state )
     commands.metrics!.push(
-      [ 'social.percepts_this_tick', capped.length ],
+      [ 'social.percepts_this_tick', perceived.length ],
       [ 'social.active_agents', activeAgents ],
-      [ 'social.directed_at_self', capped.filter( sp => sp.directedAtSelf ).length ],
+      [ 'social.directed_at_self', perceived.filter( sp => sp.directedAtSelf ).length ],
     )
 
     // Social evaluation threat — how much social scrutiny exists
-    const evaluationThreat = this._computeEvaluationThreat( capped )
+    const evaluationThreat = this._computeEvaluationThreat( perceived )
     commands.metrics!.push([ 'social.evaluation_threat', evaluationThreat ])
 
     // Cleanup
@@ -189,7 +186,7 @@ export class SocialPerception implements SimulationEngine, CognitiveEngine {
     // interaction.occurred — one event per significant percept so subscribers
     // (theory.of.mind, attachment.evaluator, etc.) get rich per-agent context
     if( _bus ){
-      for( const sp of capped ){
+      for( const sp of perceived ){
         if( !sp.directedAtSelf && Math.abs( sp.valence ) < 0.2 ) continue
         _bus.publish({
           type: 'interaction.occurred', version: 1, sourceEngine: this.name,

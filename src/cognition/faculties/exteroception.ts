@@ -29,7 +29,7 @@ import type {
 import type { SimulationEngine, EngineResult, CognitiveEngine } from '#cognition/types'
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
-import { perceptEntity, PERCEPT_SUMMARY_CAP } from '#cognition/percept.entity'
+import { perceptEntity } from '#cognition/percept.entity'
 import { GenerativeModel } from '#cognition/generative.model'
 import {
   ATTENUATION, CORRESPONDENCE_ATTENUATION,
@@ -38,8 +38,6 @@ import {
 import { MIND_OWN_ENTITY_TYPES } from '#cognition/sense.boundary'
 
 export interface ExteroceptionConfig {
-  /** Maximum percepts to produce per tick */
-  maxPerceptsPerTick?: number
   /** Default salience for unmarked percepts */
   defaultSalience?: number
   /** Whether to emit percept events */
@@ -75,7 +73,6 @@ interface RawPercept {
 export class Exteroception implements SimulationEngine, CognitiveEngine {
   readonly name     = 'exteroception'
   
-  private _maxPerceptsPerTick: number
   private _defaultSalience: number
   private _highPriorityTypes: Set<string>
   /**
@@ -98,7 +95,6 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
   constructor( config: ExteroceptionConfig = {} ){
     this._bus = config.bus ?? null
     this._boundary = config.endogenous ?? null
-    this._maxPerceptsPerTick = config.maxPerceptsPerTick ?? 50
     this._defaultSalience    = config.defaultSalience    ?? 0.3
     this._highPriorityTypes  = new Set( config.highPriorityTypes ?? [
       'message', 'notification', 'alert', 'threat', 'goal',
@@ -152,10 +148,11 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
   ): Promise<EngineResult> {
     const commands: StateCommands = { set: [], delete: [], metrics: [] }
 
-    const rawPercepts = this._scanWorld( state )
-
-    // Cap percepts per tick
-    const capped = rawPercepts.slice( 0, this._maxPerceptsPerTick )
+    // Every change, not the first fifty. `_scanWorld` records each entity as seen,
+    // so what a per-tick cap dropped was never perceived at all — not later, not
+    // ever. Which of them the mind attends to is attention's job and working
+    // memory's capacity (both by salience), not the door's (LOSSLESS P2).
+    const perceived = this._scanWorld( state )
 
     // Corollary discharge (EXAFFERENCE P2): everything this engine perceives is
     // world-ingress afference — split it. A percept matching a live expected-
@@ -167,8 +164,8 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
     const consequences = liveConsequences( state.entities, tick )
 
     // Convert raw percepts to entities
-    for( let i = 0; i < capped.length; i++ ){
-      const rp = capped[i]!
+    for( let i = 0; i < perceived.length; i++ ){
+      const rp = perceived[i]!
 
       const textHit = consequences.length > 0 && rp.matchText
         ? matchConsequenceText( consequences, rp.matchText )
@@ -212,7 +209,7 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
 
     // Aggregate metrics
     commands.metrics!.push(
-      [ 'perception.percepts_this_tick', capped.length ],
+      [ 'perception.percepts_this_tick', perceived.length ],
       [ 'perception.total_entities_observed', state.entities.size ],
     )
 
@@ -222,13 +219,13 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
     // baseline honest. What is gone is the `percept.batch.ingested` event it used
     // to publish: one publisher, zero subscribers, ever.
     const _bus = this._bus
-    if( capped.length > 0 ) this._model.observe('percept.rate', capped.length )
+    if( perceived.length > 0 ) this._model.observe('percept.rate', perceived.length )
 
     // percept.category.updated — one event per distinct category so subscribers
     // (aesthetic.evaluator etc.) get a structured signal without scanning percepts
-    if( _bus && capped.length > 0 ){
+    if( _bus && perceived.length > 0 ){
       const countByCategory = new Map<string, number>()
-      for( const rp of capped )
+      for( const rp of perceived )
         countByCategory.set( rp.category, ( countByCategory.get( rp.category ) ?? 0 ) + 1 )
       for( const [ category, count ] of countByCategory )
         _bus.publish({ type: 'percept.category.updated', version: 1, sourceEngine: this.name, salience: Math.min( 1, count * 0.15 + 0.2 ), payload: { category, count } })
@@ -374,11 +371,10 @@ private _scanWorld( state: ReadonlySimulationState ): RawPercept[] {
       return changeType === 'appeared'
         ? `${name} appears` : `${name} changed`
     }
-    if( description ){
-      return description.slice( 0, PERCEPT_SUMMARY_CAP )
-    }
+    // Whole. What the world says about itself is not the engine's to shorten.
+    if( description ) return description
 
-    return `New ${entity.type}: ${entity.id.slice(0, 30)}`
+    return `New ${entity.type}: ${entity.id}`
   }
 
   /**

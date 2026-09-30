@@ -46,8 +46,6 @@ export interface EpisodicConsolidatorConfig {
   consolidationThreshold?: number
   /** How much emotional intensity boosts consolidation (multiplier) */
   emotionBoost?: number
-  /** Maximum episodes to consolidate per tick */
-  maxPerTick?: number
   /** Optional vector memory adapter for semantic search */
   vectorMemory?: VectorMemoryAdapter
   /** Optional embedding provider (required if vectorMemory provided) */
@@ -120,7 +118,6 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
 
   private _consolidationThreshold: number
   private _emotionBoost: number
-  private _maxPerTick: number
   // No maxStoredEpisodes — unlimited storage
 
   private _store:    EpisodicMemory[]              = []
@@ -157,7 +154,6 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
     this._bus = config.bus ?? null
     this._consolidationThreshold = config.consolidationThreshold ?? 0.25
     this._emotionBoost           = config.emotionBoost           ?? 2.0
-    this._maxPerTick             = config.maxPerTick             ?? 5
     this._vectorMemory           = config.vectorMemory           ?? null
     this._embedder               = config.embedder               ?? null
     this._autoIndex              = config.autoIndex              ?? true
@@ -175,7 +171,6 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
 
     if( p.consolidationThreshold != null ) this._consolidationThreshold = p.consolidationThreshold
     if( p.emotionBoost != null ) this._emotionBoost = p.emotionBoost
-    if( p.maxPerTick != null ) this._maxPerTick = p.maxPerTick
   }
 
   subscribes(): string[] {
@@ -250,7 +245,13 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
     const newEpisodes: EpisodicMemory[] = []
 
     for( const candidate of candidates ){
-      if( consolidated >= this._maxPerTick ) break
+      // Every candidate that is strong enough, not the first five. What decides
+      // whether something is remembered is its strength (below); a per-tick count
+      // decided only which of them were lost, because an item another engine
+      // writes into working memory is there for one tick. A woken mind is handed
+      // its last conversation with each person that way (pma §8) and kept five of
+      // them (LOSSLESS P2). A persisted `maxPerTick` in a woken mind's config is
+      // ignored.
 
       // Compute consolidation strength
       const
@@ -783,9 +784,17 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
       const identity = sourceIdentity( entity.id )
       if( alreadyRemembered.has( identity ) ) continue
 
-      // Skip meta-percepts (percepts about other percepts)
+      // A memory recalled into working memory is not a new experience.
+      //
+      // This also skipped every item tagged `percept` or `percept.social`, as
+      // "meta-percepts (percepts about other percepts)". Every percept item carries
+      // that tag, so nothing the mind perceived — a change in the world, the answer
+      // an act of its own brought back — ever became an episode: held in working
+      // memory, with its data, for the seconds before it decayed, then gone.
+      // Percepts about percepts cannot arise any more (the sense boundary puts both
+      // types inside the mind), so the guard only ever dropped the world (LOSSLESS P2).
       const category = entity.metadata?.tags as string[] | undefined
-      if( category && ( category.includes('episodic_memory') || category.includes('percept') || category.includes('percept.social') ) ) continue
+      if( category?.includes('episodic_memory') ) continue
 
       candidates.push( {
         id:   identity,

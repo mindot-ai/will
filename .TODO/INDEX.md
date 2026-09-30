@@ -4,12 +4,12 @@
 > document in this folder and the release headers in `CHANGELOG.md`.
 > Do not edit by hand — edit the document, then re-emit.
 
-Day zero is **2026-05-28**. 45 documents, 8 releases.
+Day zero is **2026-05-28**. 46 documents, 8 releases.
 What each level means, and what it may be cited for, is [STANDING.md](STANDING.md).
 
 - **SHIPPED** · 30 — in the engine, gated by CI, carried by a release
 - **OBSERVED** · 8 — true of the real system at a moment, established by looking
-- **DESIGNED** · 6 — reasoned to a plan of record — intent, not capability
+- **DESIGNED** · 7 — reasoned to a plan of record — intent, not capability
 - **SPECULATIVE** · 1 — a hypothesis the project is holding
 
 > Dates before 2026-07-02 predate this repository — `will` was split out and
@@ -225,4 +225,10 @@ sketch, deliberately short — its design depends on decisions made in [[SIGNAL_
 four runs of one COO Will on Discord, the earliest recorded on or before 2026-08-21; each sighting is n=1 unless it says otherwise
 
 **2026-08-31 · RELEASE v0.10.0** — *the mind knows its own doing from the world's*
+
+## September 2026
+
+**2026-09-30 · DESIGNED** · [LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut](LOSSLESS.md)
+
+scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); 0 of 6 phases landed
 

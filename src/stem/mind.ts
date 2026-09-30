@@ -1004,7 +1004,6 @@ function _constructCognition(
     const summarizer = new ExecutiveSummarizer({
       summaryInterval:   parseInt( process.env.WILL_SUMMARY_INTERVAL   ?? '10'),
       bufferSize:        parseInt( process.env.WILL_SUMMARY_BUFFER_SIZE ?? '12'),
-      maxCharsPerEntry:  600,
     })
     executiveEngine.attachSummarizer( summarizer )
   }

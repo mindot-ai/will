@@ -254,8 +254,23 @@ export interface CallEndpoint {
 
 // ── LLM call result ──────────────────────────────────────────
 
+/** A provider's stop reason, and whether it means the output ceiling cut the response. */
+function stopped( reason: string | null | undefined, ceiling: string ): Pick<LLMCallResult, 'stopReason' | 'truncated'> {
+  if( !reason ) return {}
+  return reason === ceiling ? { stopReason: reason, truncated: true } : { stopReason: reason }
+}
+
 export interface LLMCallResult {
   text: string
+  /** The provider's own reason for stopping, as it sent it. */
+  stopReason?: string
+  /**
+   * The response hit `maxOutputTokens` and is INCOMPLETE. Normalised across
+   * wires (`max_tokens`, `length`, `MAX_TOKENS`). Before this nothing read the
+   * stop reason, so a cut response was parsed as though it were whole — an
+   * unclosed block silently completed to the end of the string (LOSSLESS P1).
+   */
+  truncated?: boolean
   inputTok: number
   outputTok: number
   /** Anthropic prompt-cache: tokens served from cache (~0.1× cost). Telemetry. */
@@ -654,6 +669,14 @@ export class LLMDirector {
    * are forwarded so the tracker prices them at 0.1× / 1.25× input.
    */
   private _track( result: LLMCallResult, meta: LLMCallMeta, tick: Tick, latencyMs: number, estPromptTokens?: number, ep: CallEndpoint = this._defaultEndpoint ): void {
+    // Every completion, streamed or not, passes here — so this is where a cut
+    // response stops being silent.
+    if( result.truncated )
+      logger.warn(
+        `[llm] OUTPUT CUT — ${ meta.function } on ${ ep.provider }/${ ep.model } stopped at ` +
+        `maxOutputTokens=${ ep.maxOutputTokens } (${ result.outputTok } out, stop "${ result.stopReason }"). ` +
+        `The response is incomplete.`
+      )
     this._tokenTracker?.recordUsage({
       // The endpoint that actually served this call — routed or default.
       // Pricing must follow the real model, or routed spend is attributed
@@ -678,6 +701,7 @@ export class LLMDirector {
       estPromptTokens,
       tick,
       latencyMs,
+      ...( result.truncated ? { truncated: true } : {} ),
     })
   }
 
@@ -796,6 +820,7 @@ export class LLMDirector {
     const decoder = new TextDecoder()
     let   buffer  = ''
     let   fullText  = ''
+    let   stopReason: string | undefined
     const tokens: StreamTokens = {
       inputTok: 0, outputTok: 0, cacheReadTok: 0, cacheWriteTok: 0 }
 
@@ -817,7 +842,7 @@ export class LLMDirector {
           try {
             const ev = JSON.parse( raw ) as {
               type: string
-              delta?: { type: string; text?: string; stop_reason?: string }
+              delta?: { type: string; text?: string; stop_reason?: string | null }
               message?: { usage?: StreamUsage }
               usage?:   StreamUsage
             }
@@ -842,8 +867,10 @@ export class LLMDirector {
               fullText += ev.delta.text
               onChunk( ev.delta.text )
             }
-            else if( ev.type === 'message_delta' && ev.usage )
-              foldStreamUsage( tokens, ev.usage )
+            else if( ev.type === 'message_delta'){
+              if( ev.usage ) foldStreamUsage( tokens, ev.usage )
+              if( ev.delta?.stop_reason ) stopReason = ev.delta.stop_reason
+            }
           }
           catch { /* ignore malformed events */ }
         }
@@ -863,7 +890,7 @@ export class LLMDirector {
       reader.releaseLock()
     }
 
-    return { text: fullText, ...tokens }
+    return { text: fullText, ...tokens, ...stopped( stopReason, 'max_tokens') }
   }
 
   /**
@@ -985,6 +1012,7 @@ export class LLMDirector {
     const
     data = await res.json() as {
       content: Array<{ type: string; text: string }>
+      stop_reason?: string | null
       usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
     },
     text = data.content.find( b => b.type === 'text')?.text ?? ''
@@ -995,6 +1023,7 @@ export class LLMDirector {
       outputTok:     data.usage.output_tokens,
       cacheReadTok:  data.usage.cache_read_input_tokens     ?? 0,
       cacheWriteTok: data.usage.cache_creation_input_tokens ?? 0,
+      ...stopped( data.stop_reason, 'max_tokens'),
     }
   }
 
@@ -1023,7 +1052,7 @@ export class LLMDirector {
 
     const
     data = await res.json() as {
-      choices: Array<{ message: { content: string } }>
+      choices: Array<{ message: { content: string }; finish_reason?: string | null }>
       usage: { prompt_tokens: number; completion_tokens: number }
     },
     text = data.choices[0]?.message?.content ?? ''
@@ -1031,7 +1060,8 @@ export class LLMDirector {
     return {
       text,
       inputTok: data.usage.prompt_tokens,
-      outputTok: data.usage.completion_tokens
+      outputTok: data.usage.completion_tokens,
+      ...stopped( data.choices[0]?.finish_reason, 'length'),
     }
   }
 
@@ -1063,7 +1093,7 @@ export class LLMDirector {
       throw new Error(`Google API ${res.status}: ${( await res.text() ).slice(0, 300)}`)
 
     const data = await res.json() as {
-      candidates?:   Array<{ content?: { parts?: Array<{ text?: string }> } }>
+      candidates?:   Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>
       usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number }
     }
 
@@ -1075,6 +1105,7 @@ export class LLMDirector {
       text,
       inputTok:  data.usageMetadata?.promptTokenCount     ?? 0,
       outputTok: data.usageMetadata?.candidatesTokenCount ?? 0,
+      ...stopped( data.candidates?.[ 0 ]?.finishReason, 'MAX_TOKENS'),
     }
   }
 

@@ -242,6 +242,8 @@ export interface TokenUsage {
   tick: Tick
   /** Latency in milliseconds */
   latencyMs: number
+  /** The response hit its output ceiling and is incomplete (LOSSLESS P1). */
+  truncated?: boolean
 }
 
 /** What callers pass to {@link TokenTracker.recordUsage} — cost and label are derived. */
@@ -435,6 +437,7 @@ export class TokenTracker implements SimulationEngine {
       // coerces this to 0 has silently invented a measurement.
       demand:        full.demand,
       latencyMs:     full.latencyMs,
+      ...( full.truncated ? { truncated: true } : {} ),
     }
 
     // Production transport — listeners (bridged onto the transport by the stem)

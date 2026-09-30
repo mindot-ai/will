@@ -199,14 +199,21 @@ export class AutobiographicalNarrator implements SimulationEngine, CognitiveEngi
 
         this._narrative.version++
         this._narrative.lastUpdatedAt = tick
+        // `story` is a derived window, nothing renders it whole, and what it drops
+        // is not lost: every chapter the executive writes is kept whole as its own
+        // `narrative_chapter` (commands.ts), and this heuristic line is a statistic
+        // over episodes that are themselves kept. Persisting it was tried and is
+        // NOT lossless-worthy — a quiet mind writes one every 50 ticks, ~1,700 a
+        // day of boilerplate (bounded-growth soak, LOSSLESS P1).
         this._narrative.story = ( this._narrative.story + '\n\n' + chapter )
           .slice( -this._maxNarrativeLength )
         this._narrative.currentSelfView = this._heuristicSelfView( state )
 
         for( const ep of significant.slice( 0, 3 ) ){
+          // Whole — it was the first 150 characters of the episode.
           const summary = typeof ep.content === 'string'
-            ? ep.content.slice( 0, 150 )
-            : JSON.stringify( ep.content ).slice( 0, 150 )
+            ? ep.content
+            : JSON.stringify( ep.content )
           this._narrative.pivotalEvents.push(`[tick ${ep.timestamp}] ${summary}`)
         }
         if( this._narrative.pivotalEvents.length > 20 )

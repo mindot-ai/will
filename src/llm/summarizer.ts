@@ -22,10 +22,8 @@ import { BACKGROUND_DEMAND } from '#llm/index'
 export interface SummarizerConfig {
   /** How many executive calls between summarization runs. Default: 10 */
   summaryInterval?: number
-  /** How many reasoning excerpts to keep in the rolling buffer. Default: 12 */
+  /** How many reasoning passes to keep in the rolling buffer. Default: 12 */
   bufferSize?: number
-  /** Max chars to keep per reasoning entry before truncating. Default: 600 */
-  maxCharsPerEntry?: number
 }
 
 // System prompt sent with every summarization call.
@@ -49,12 +47,10 @@ export class ExecutiveSummarizer {
 
   private readonly _interval:         number
   private readonly _bufferSize:       number
-  private readonly _maxCharsPerEntry: number
 
   constructor( config: SummarizerConfig = {} ){
     this._interval         = config.summaryInterval  ?? 10
     this._bufferSize       = config.bufferSize       ?? 12
-    this._maxCharsPerEntry = config.maxCharsPerEntry ?? 600
   }
 
   /**
@@ -72,7 +68,10 @@ export class ExecutiveSummarizer {
    * Triggers background summarization when the interval is hit.
    */
   record( reasoning: string ): void {
-    this._buffer.push( reasoning.slice( 0, this._maxCharsPerEntry ) )
+    // Whole. Summarising is lossy by nature — that is what consolidation is —
+    // but what it summarises was cut to 600 characters first, so `## Memory
+    // Continuity` was a summary of excerpts (LOSSLESS P1).
+    this._buffer.push( reasoning )
     if( this._buffer.length > this._bufferSize ) this._buffer.shift()
 
     this._callCount++
@@ -122,7 +121,7 @@ export class ExecutiveSummarizer {
    * synchronously, so a verbatim snapshot()-after-record() is reproduced here.
    */
   projectedSnapshot( reasoning: string ): { summary: string; buffer: string[]; callCount: number } {
-    const buffer = [ ...this._buffer, reasoning.slice( 0, this._maxCharsPerEntry ) ]
+    const buffer = [ ...this._buffer, reasoning ]
     if( buffer.length > this._bufferSize ) buffer.shift()
     return { summary: this._summary, buffer, callCount: this._callCount + 1 }
   }

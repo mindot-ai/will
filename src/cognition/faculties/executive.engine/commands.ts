@@ -210,7 +210,10 @@ export function buildStateCommands(
 
     // If this output also contains conversation replies, auto-tag any new goals
     // with communication metadata so _nudgeActionGoals can match them.
-    for( const goal of output.newGoals.slice( 0, 2 ) )
+    // Every goal the mind formed. This took the first two and dropped the rest
+    // unread (LOSSLESS P1); how many can be ACTIVE at once is GoalManager's
+    // capacity rule, which demotes the lowest to pending — a mechanism, not a cut.
+    for( const goal of output.newGoals )
       effects.push( () => goalManager.addGoal(
         goal.description,
         goal.priority,
@@ -241,10 +244,14 @@ export function buildStateCommands(
   // from enaction); the executive no longer composes effectors in its output.
 
   // ── Apply Self-Observations ────────────────────────────────
+  //
+  // Every one, each kept. This took the first five and wrote them into a ring of
+  // twenty slots (`self-obs-slot-${ (tick + idx) % 20 }`), so each new observation
+  // overwrote an old one — sometimes one from the same cycle (LOSSLESS P1).
   if( output.selfObservations )
-    output.selfObservations.slice( 0, 5 ).forEach( ( obs, idx ) => {
+    output.selfObservations.forEach( ( obs, idx ) => {
       commands.set!.push({
-        id: `self-obs-slot-${(footprint.tickObserved + idx) % 20}`,
+        id: `self-obs-${ footprint.tickObserved }-${ idx }`,
         type: 'self_observation',
         metadata: { observation: obs, tick: footprint.tickObserved }
       })
@@ -305,7 +312,7 @@ export function publishCognitiveEvents(
     salience: 0.8,
     payload: {
       confidence: output.confidence,
-      reasoning: output.reasoning.slice( 0, 400 ),
+      reasoning: output.reasoning,
       actionTypes: output.actions.map( a => a.type ),
       tick: footprint.tickObserved,
       coherenceVersion
@@ -322,7 +329,7 @@ export function publishCognitiveEvents(
       payload: {
         actionType: action.type,
         confidence: output.confidence,
-        reasoning: action.reasoning.slice( 0, 200 ),
+        reasoning: action.reasoning,
         tick: footprint.tickObserved
       }
     })

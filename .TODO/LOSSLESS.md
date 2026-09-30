@@ -1,6 +1,6 @@
 # LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut
 
-> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0 of 6 landed, unreleased
+> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P1 of 6 landed, unreleased
 
 > **The rule:** *lossless, not unbounded.* Every cut that loses data — at intake, in
 > transit between the mind's own parts, in what it keeps, in its artifact, in its
@@ -103,24 +103,41 @@ ticks of a 35-minute run; an unrecalled episode starts near 0.43 and decays at
 `0.02 × seconds` to the 0.01 prune line. Whether that rate is how this mind
 should forget is a calibration question for its owner, not a cut.
 
-### P1 — what she thinks is whole, in transit and in record
+### P1 — what she thinks is whole, in transit and in record ✅
 
-- [ ] Bus payloads: `commands.ts:308` (400), `:325` (200), `engine.ts:1339` (600),
-      `engine.ts:1640` facet-sync body (400) — the tract #160 built to carry "what
-      it concluded" still clips it
-- [ ] `facet.ts:365` master-sync history entries (400), `:594` facet reasoning
-      history (400) — whole (the counts, 5 and 10, are P5)
-- [ ] `commands.ts:213` **drops every new goal after the second**; `:245` **drops
-      every self-observation after the fifth** — the mind's own output discarded
-- [ ] `goal.manager.ts:599,608,617` abandon reason (200); `planning.engine/engine.ts:690,706`
-      outcome (300); `plan.supervision.ts:395,424,483` reasons (100/120)
-- [ ] `llm/summarizer.ts:75,125` — reasoning cut to 600 before it is summarised
-      into `## Memory Continuity`
-- [ ] `autobiographical.narrator.ts:157,203` — the life story keeps its LAST 5,000
-      characters: her beginning is deleted as she lives. `:208-209` episode 150
-- [ ] Output ceiling: no provider stop reason is read, so a response that hits
-      `maxOutputTokens` (default 8,096) is cut mid-JSON and parsed as if whole.
-      Read the stop reason; never silent. (Never hit yet: max 3,171.)
+- [x] Bus payloads whole: `executive.interpretation.formed` (was 400),
+      `executive.decision.rationale` (200), `executive.master.sync` (600), and the
+      facet-handoff escalation body (400) — the tract #160 built to carry "what it
+      concluded" was still clipping it
+- [x] A facet's history entries whole: master sync (cut again to 400) and its own
+      reasoning (400). The counts, 5 and 10, are P5
+- [x] **Every new goal the mind forms is added** (was the first two); GoalManager's
+      capacity rule demotes the lowest to pending — a mechanism, not a cut
+- [x] **Every self-observation kept, each under its own id** (was the first five,
+      written into a 20-slot ring that overwrote itself, sometimes within a cycle)
+- [x] Goal abandon reason (200), plan outcome (300) and supervision reasons
+      (100/120) whole
+- [x] The summariser's input whole (600 per entry; the option is gone). The
+      summary itself is consolidation, and stays lossy by nature
+- [x] Pivotal events keep the episode's text whole (was 150)
+- [x] **The output ceiling is never silent.** Every wire reads why the provider
+      stopped (`max_tokens` / `length` / `MAX_TOKENS`), a cut response is marked
+      `truncated`, warned about at the one place every completion passes, and
+      flagged in the ledger. (Never hit yet on the live mind: max 3,171 of 8,096.)
+
+Reclassified while doing it, both measured:
+
+- **The narrator's `story` is a VIEW, not a loss.** Every chapter the executive
+  writes is kept whole as its own `narrative_chapter`, and nothing renders the
+  story whole. Persisting the narrator's own heuristic line was tried and
+  reverted: it is a statistic over episodes that are themselves kept, and a quiet
+  mind writes one every 50 ticks — ~1,700 a day of boilerplate, which the
+  bounded-growth soak caught.
+- **Self-observations are read by nothing.** `self_observation` entities have no
+  reader anywhere in `src/` — `## Recent Self-Reflection` comes from
+  introspection. The mind is asked for them every cycle and pays output tokens
+  for them. Kept whole now; whether anything should read them is a separate
+  decision, not a cut.
 
 ### P2 — what she takes in is whole
 

@@ -230,5 +230,5 @@ four runs of one COO Will on Discord, the earliest recorded on or before 2026-08
 
 **2026-09-30 · DESIGNED** · [LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut](LOSSLESS.md)
 
-scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0 of 6 landed, unreleased
+scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P1 of 6 landed, unreleased
 

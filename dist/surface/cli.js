@@ -2866,6 +2866,10 @@ function anthropicWireHeaders(provider, apiKey) {
     ...provider === "anthropic" ? {} : { Authorization: `Bearer ${apiKey}` }
   };
 }
+function stopped(reason, ceiling) {
+  if (!reason) return {};
+  return reason === ceiling ? { stopReason: reason, truncated: true } : { stopReason: reason };
+}
 function foldStreamUsage(acc, u) {
   if (u.input_tokens) acc.inputTok = u.input_tokens;
   if (u.output_tokens) acc.outputTok = u.output_tokens;
@@ -3080,6 +3084,10 @@ var LLMDirector = class {
    * are forwarded so the tracker prices them at 0.1× / 1.25× input.
    */
   _track(result, meta3, tick, latencyMs, estPromptTokens, ep = this._defaultEndpoint) {
+    if (result.truncated)
+      logger.warn(
+        `[llm] OUTPUT CUT \u2014 ${meta3.function} on ${ep.provider}/${ep.model} stopped at maxOutputTokens=${ep.maxOutputTokens} (${result.outputTok} out, stop "${result.stopReason}"). The response is incomplete.`
+      );
     this._tokenTracker?.recordUsage({
       // The endpoint that actually served this call — routed or default.
       // Pricing must follow the real model, or routed spend is attributed
@@ -3103,7 +3111,8 @@ var LLMDirector = class {
       label: meta3.label,
       estPromptTokens,
       tick,
-      latencyMs
+      latencyMs,
+      ...result.truncated ? { truncated: true } : {}
     });
   }
   /** Pre-cache prompt size estimate (chars/4) — mirrors the old token-report `ourEstTok`. */
@@ -3184,6 +3193,7 @@ var LLMDirector = class {
     const decoder = new TextDecoder();
     let buffer = "";
     let fullText = "";
+    let stopReason;
     const tokens = {
       inputTok: 0,
       outputTok: 0,
@@ -3209,8 +3219,10 @@ var LLMDirector = class {
             else if (ev.type === "content_block_delta" && ev.delta?.text) {
               fullText += ev.delta.text;
               onChunk(ev.delta.text);
-            } else if (ev.type === "message_delta" && ev.usage)
-              foldStreamUsage(tokens, ev.usage);
+            } else if (ev.type === "message_delta") {
+              if (ev.usage) foldStreamUsage(tokens, ev.usage);
+              if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
+            }
           } catch {
           }
         }
@@ -3223,7 +3235,7 @@ var LLMDirector = class {
       clearTimeout(timer);
       reader.releaseLock();
     }
-    return { text: fullText, ...tokens };
+    return { text: fullText, ...tokens, ...stopped(stopReason, "max_tokens") };
   }
   /**
    * Call the LLM directly via fetch — no SDK, no middleware.
@@ -3313,7 +3325,8 @@ var LLMDirector = class {
       inputTok: data.usage.input_tokens,
       outputTok: data.usage.output_tokens,
       cacheReadTok: data.usage.cache_read_input_tokens ?? 0,
-      cacheWriteTok: data.usage.cache_creation_input_tokens ?? 0
+      cacheWriteTok: data.usage.cache_creation_input_tokens ?? 0,
+      ...stopped(data.stop_reason, "max_tokens")
     };
   }
   async _callOpenAI(ep, systemPrompt, userMessage, temperature) {
@@ -3340,7 +3353,8 @@ var LLMDirector = class {
     return {
       text,
       inputTok: data.usage.prompt_tokens,
-      outputTok: data.usage.completion_tokens
+      outputTok: data.usage.completion_tokens,
+      ...stopped(data.choices[0]?.finish_reason, "length")
     };
   }
   async _callGoogle(ep, systemPrompt, userMessage, temperature) {
@@ -3370,7 +3384,8 @@ var LLMDirector = class {
     return {
       text,
       inputTok: data.usageMetadata?.promptTokenCount ?? 0,
-      outputTok: data.usageMetadata?.candidatesTokenCount ?? 0
+      outputTok: data.usageMetadata?.candidatesTokenCount ?? 0,
+      ...stopped(data.candidates?.[0]?.finishReason, "MAX_TOKENS")
     };
   }
   /**
@@ -3443,11 +3458,9 @@ var ExecutiveSummarizer = class {
   _llmDirector = null;
   _interval;
   _bufferSize;
-  _maxCharsPerEntry;
   constructor(config = {}) {
     this._interval = config.summaryInterval ?? 10;
     this._bufferSize = config.bufferSize ?? 12;
-    this._maxCharsPerEntry = config.maxCharsPerEntry ?? 600;
   }
   /**
    * Inject the LLMDirector. Called by ExecutiveEngine once its director is ready.
@@ -3462,7 +3475,7 @@ var ExecutiveSummarizer = class {
    * Triggers background summarization when the interval is hit.
    */
   record(reasoning) {
-    this._buffer.push(reasoning.slice(0, this._maxCharsPerEntry));
+    this._buffer.push(reasoning);
     if (this._buffer.length > this._bufferSize) this._buffer.shift();
     this._callCount++;
     if (this._callCount % this._interval === 0 && !this._summarizing)
@@ -3510,7 +3523,7 @@ var ExecutiveSummarizer = class {
    * synchronously, so a verbatim snapshot()-after-record() is reproduced here.
    */
   projectedSnapshot(reasoning) {
-    const buffer = [...this._buffer, reasoning.slice(0, this._maxCharsPerEntry)];
+    const buffer = [...this._buffer, reasoning];
     if (buffer.length > this._bufferSize) buffer.shift();
     return { summary: this._summary, buffer, callCount: this._callCount + 1 };
   }
@@ -5252,7 +5265,8 @@ var TokenTracker = class {
       // Undefined stays undefined — see TokenUsage.demand. A consumer that
       // coerces this to 0 has silently invented a measurement.
       demand: full.demand,
-      latencyMs: full.latencyMs
+      latencyMs: full.latencyMs,
+      ...full.truncated ? { truncated: true } : {}
     };
     for (const fn of this._recordListeners) {
       try {
@@ -10581,7 +10595,7 @@ function buildStateCommands(output, footprint, state, deps, recentActionTypes) {
     const goalManager = deps.goalManager;
     const requestingEntityId = deps.requestingEntityId;
     const requestingThreadId = deps.requestingThreadId;
-    for (const goal of output.newGoals.slice(0, 2))
+    for (const goal of output.newGoals)
       effects.push(() => goalManager.addGoal(
         goal.description,
         goal.priority,
@@ -10607,9 +10621,9 @@ function buildStateCommands(output, footprint, state, deps, recentActionTypes) {
       effects.push(() => goalManager.updateGoalPriority(gr.goalId, gr.newPriority));
   }
   if (output.selfObservations)
-    output.selfObservations.slice(0, 5).forEach((obs, idx) => {
+    output.selfObservations.forEach((obs, idx) => {
       commands.set.push({
-        id: `self-obs-slot-${(footprint.tickObserved + idx) % 20}`,
+        id: `self-obs-${footprint.tickObserved}-${idx}`,
         type: "self_observation",
         metadata: { observation: obs, tick: footprint.tickObserved }
       });
@@ -10646,7 +10660,7 @@ function publishCognitiveEvents(output, footprint, bus, coherenceVersion, salien
     salience: 0.8,
     payload: {
       confidence: output.confidence,
-      reasoning: output.reasoning.slice(0, 400),
+      reasoning: output.reasoning,
       actionTypes: output.actions.map((a) => a.type),
       tick: footprint.tickObserved,
       coherenceVersion
@@ -10661,7 +10675,7 @@ function publishCognitiveEvents(output, footprint, bus, coherenceVersion, salien
       payload: {
         actionType: action.type,
         confidence: output.confidence,
-        reasoning: action.reasoning.slice(0, 200),
+        reasoning: action.reasoning,
         tick: footprint.tickObserved
       }
     });
@@ -12439,7 +12453,7 @@ var GoalManager = class {
     const goal = this._goals.get(goalId);
     if (goal && goal.status === "active") {
       goal.status = "abandoned";
-      if (reason) goal.abandonedReason = reason.slice(0, 200);
+      if (reason) goal.abandonedReason = reason;
       this._sessionLogger?.write({
         type: "goal.abandoned",
         tick: this._currentTick,
@@ -12447,7 +12461,7 @@ var GoalManager = class {
         description: goal.description,
         priority: goal.priority,
         progress: goal.progress,
-        reason: reason?.slice(0, 200),
+        reason,
         age: this._currentTick - goal.activatedAt
       });
       this._bus?.publish({
@@ -12455,7 +12469,7 @@ var GoalManager = class {
         version: 1,
         sourceEngine: this.name,
         salience: 0.55,
-        payload: { goalId: goal.id, reason: reason?.slice(0, 200) }
+        payload: { goalId: goal.id, reason }
       });
     }
   }
@@ -15661,7 +15675,7 @@ var ExecutiveFacet = class {
     if (payload.facetId && payload.facetId !== this.facetId) return;
     logger.info(`[executive.facet] ${this.facetId} synced from master (tick=${payload.tick})`);
     if (payload.reasoning)
-      this._masterSyncHistory.push(`[tick ${payload.tick}] ${payload.reasoning.slice(0, 400)}`);
+      this._masterSyncHistory.push(`[tick ${payload.tick}] ${payload.reasoning}`);
     if (this._masterSyncHistory.length > 5)
       this._masterSyncHistory = this._masterSyncHistory.slice(-5);
   };
@@ -15822,7 +15836,7 @@ ${this._facetReasoningHistory.join("\n")}` : "";
       hasNarrative: !!output.narrative
     });
     this._lastConfidence = output.confidence;
-    this._facetReasoningHistory.push(`[Report: ${report.type}] ${output.reasoning.slice(0, 400)}`);
+    this._facetReasoningHistory.push(`[Report: ${report.type}] ${output.reasoning}`);
     if (this._facetReasoningHistory.length > 10)
       this._facetReasoningHistory = this._facetReasoningHistory.slice(-10);
     const decision = {
@@ -17137,7 +17151,7 @@ var ExecutiveEngine = class extends AsyncEngine {
         sourceEngine: this.name,
         salience: 0.8,
         payload: {
-          reasoning: executiveOutput.reasoning.slice(0, 600),
+          reasoning: executiveOutput.reasoning,
           confidence: executiveOutput.confidence,
           actionTypes: executiveOutput.actions.map((a) => a.type),
           coherenceVersion: this._coherenceVersion,
@@ -17329,7 +17343,9 @@ var ExecutiveEngine = class extends AsyncEngine {
       ...payload.subjectEntityId ? { subjectEntityId: payload.subjectEntityId } : {},
       ...payload.subjectName ? { subjectName: payload.subjectName } : {},
       ...payload.threadId ? { threadId: payload.threadId } : {},
-      body: { ...payload.body, reasoning: (payload.body.reasoning ?? "").slice(0, 400) }
+      // The facet's reasoning, whole — the tract #160 built to carry what it
+      // concluded was still clipping it to 400 characters (LOSSLESS P1).
+      body: { ...payload.body, reasoning: payload.body.reasoning ?? "" }
     });
     logger.info(
       `[executive] master queued escalation percept from ${from} (confidence=${payload.confidence?.toFixed(2)})`
@@ -17892,7 +17908,7 @@ Progress update.`;
         break;
       }
       case "abandon": {
-        this._host.planFailed(plan, `Facet abandoned: ${decision.reasoning.slice(0, 100)}`);
+        this._host.planFailed(plan, `Facet abandoned: ${decision.reasoning}`);
         this.cleanupFacet(plan.id);
         break;
       }
@@ -17916,7 +17932,7 @@ Progress update.`;
             payload: {
               planId: plan.id,
               goalId: plan.goalId,
-              reason: decision.reasoning.slice(0, 120),
+              reason: decision.reasoning,
               stepCount: plan.steps.length,
               requestingEntityId: plan.requestingEntityId,
               requestingThreadId: plan.requestingThreadId
@@ -17965,7 +17981,7 @@ Progress update.`;
           payload: {
             planId: plan.id,
             goalId: plan.goalId,
-            reason: decision.reasoning.slice(0, 120),
+            reason: decision.reasoning,
             requestingEntityId: plan.requestingEntityId,
             requestingThreadId: plan.requestingThreadId
           }
@@ -18448,7 +18464,7 @@ var PlanningEngine = class {
         action: step.action,
         success: outcome.success,
         outcomeQuality: outcome.outcomeQuality,
-        description: outcome.description.slice(0, 300),
+        description: outcome.description,
         completedSteps: plan.steps.filter((s) => s.status === "completed" || s.status === "skipped").length,
         totalSteps: plan.steps.length,
         requestingEntityId: plan.requestingEntityId,
@@ -18463,7 +18479,7 @@ var PlanningEngine = class {
       action: step.action,
       success: outcome.success,
       outcomeQuality: outcome.outcomeQuality,
-      description: outcome.description.slice(0, 300),
+      description: outcome.description,
       completedSteps: plan.steps.filter((s) => s.status === "completed" || s.status === "skipped").length,
       totalSteps: plan.steps.length
     });
@@ -19944,7 +19960,7 @@ var AutobiographicalNarrator = class {
         this._narrative.story = (this._narrative.story + "\n\n" + chapter).slice(-this._maxNarrativeLength);
         this._narrative.currentSelfView = this._heuristicSelfView(state);
         for (const ep of significant.slice(0, 3)) {
-          const summary = typeof ep.content === "string" ? ep.content.slice(0, 150) : JSON.stringify(ep.content).slice(0, 150);
+          const summary = typeof ep.content === "string" ? ep.content : JSON.stringify(ep.content);
           this._narrative.pivotalEvents.push(`[tick ${ep.timestamp}] ${summary}`);
         }
         if (this._narrative.pivotalEvents.length > 20)
@@ -25948,8 +25964,7 @@ function buildEngineConfigEntities(config, executiveInterval) {
       engine: "summarizer",
       params: {
         summaryInterval,
-        summaryBufferSize,
-        maxCharsPerEntry: 600
+        summaryBufferSize
       }
     }
   ];
@@ -26240,8 +26255,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   if (anatomy !== "reflex") {
     const summarizer = new ExecutiveSummarizer({
       summaryInterval: parseInt(process.env.WILL_SUMMARY_INTERVAL ?? "10"),
-      bufferSize: parseInt(process.env.WILL_SUMMARY_BUFFER_SIZE ?? "12"),
-      maxCharsPerEntry: 600
+      bufferSize: parseInt(process.env.WILL_SUMMARY_BUFFER_SIZE ?? "12")
     });
     executiveEngine.attachSummarizer(summarizer);
   }

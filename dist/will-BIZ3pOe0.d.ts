@@ -1582,6 +1582,8 @@ interface TokenUsage {
     tick: Tick;
     /** Latency in milliseconds */
     latencyMs: number;
+    /** The response hit its output ceiling and is incomplete (LOSSLESS P1). */
+    truncated?: boolean;
 }
 /** What callers pass to {@link TokenTracker.recordUsage} — cost and label are derived. */
 type RecordUsageInput = Omit<TokenUsage, 'estimatedCostUsd' | 'label' | 'priced'> & {
@@ -4365,6 +4367,15 @@ interface ProviderCredential {
 }
 interface LLMCallResult {
     text: string;
+    /** The provider's own reason for stopping, as it sent it. */
+    stopReason?: string;
+    /**
+     * The response hit `maxOutputTokens` and is INCOMPLETE. Normalised across
+     * wires (`max_tokens`, `length`, `MAX_TOKENS`). Before this nothing read the
+     * stop reason, so a cut response was parsed as though it were whole — an
+     * unclosed block silently completed to the end of the string (LOSSLESS P1).
+     */
+    truncated?: boolean;
     inputTok: number;
     outputTok: number;
     /** Anthropic prompt-cache: tokens served from cache (~0.1× cost). Telemetry. */
@@ -4557,10 +4568,8 @@ declare class LLMDirector {
 interface SummarizerConfig {
     /** How many executive calls between summarization runs. Default: 10 */
     summaryInterval?: number;
-    /** How many reasoning excerpts to keep in the rolling buffer. Default: 12 */
+    /** How many reasoning passes to keep in the rolling buffer. Default: 12 */
     bufferSize?: number;
-    /** Max chars to keep per reasoning entry before truncating. Default: 600 */
-    maxCharsPerEntry?: number;
 }
 declare class ExecutiveSummarizer {
     private _buffer;
@@ -4570,7 +4579,6 @@ declare class ExecutiveSummarizer {
     private _llmDirector;
     private readonly _interval;
     private readonly _bufferSize;
-    private readonly _maxCharsPerEntry;
     constructor(config?: SummarizerConfig);
     /**
      * Inject the LLMDirector. Called by ExecutiveEngine once its director is ready.

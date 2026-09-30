@@ -200,12 +200,13 @@ Reclassified while doing it, both measured:
 
 Found doing P2 and **not** changed — each is a decision:
 
-- **Attention has never reached working memory.** `AttentionAllocator` writes
-  `attention.focus.metadata.entityId`; `WorkingMemory._applyAttention` reads
-  `targetEntityId`. No item has ever been marked attended: attention protection
-  (decay ×0.4) and rehearsal (+0.02 after 3 attended ticks) are dark, and
-  `attendedCount` is 0 for every item working memory owns. Wiring it is MIND as
-  designed, but it changes what every mind holds and for how long.
+- ~~**Attention has never reached working memory.**~~ Wired (its own PR, after
+  P2). `AttentionAllocator` writes `attention.focus.metadata.entityId`;
+  `WorkingMemory._applyAttention` read `targetEntityId` — since v0.1.0 no item
+  was marked attended, so protection (decay ×0.4) and rehearsal (+0.02 after 3
+  attended ticks) never ran. Measured on one salient change: held 8 ticks
+  ignored, 45 attended — and still let go, because a focus nothing reinforces
+  decays. 100K-tick soak green.
 - **A percept is remembered by a margin of 0.018.** It enters at 0.75, decays one
   tick (0.08/s) before the consolidator's first look: 0.67 × 0.4 = 0.268 against
   a 0.25 threshold. At ~1 tick/s (Lora) it holds; at a slower tick it silently

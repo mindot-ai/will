@@ -494,15 +494,22 @@ reach:
       are the same ranking; `extractKnownEntities` and `extractPercepts` keep
       their signatures.
 
-**Found doing P5c — `ACTION_RECORD_KEEP` is a LOSS, not MIND.** Asked by the design
+**Found doing P5c — `ACTION_RECORD_KEEP` was a LOSS, not MIND ✅ (fixed next).** Asked by the design
 before calling it MIND: is every act's outcome remembered some other way? An act
 that brings something back is — its answer is a percept, then working memory, then
 an episode (P2). An act whose result is only its FATE ("unban ran.", failed,
 withheld) is not: `action.outcome` feeds calibration, goals, planning, the self-model
 and reliability as signals, and nothing keeps it; past the six newest records, the
-mind has no memory that it did it. Remembered the way speech is (a
-`working_memory.item` that consolidates into an episode) is the fix — its own PR,
-since it changes what she remembers.
+mind has no memory that it did it. Now each act is offered to memory the way
+speech is — a `working_memory.item` for the tick the consolidator reads it, named for
+its record so one act is one memory — as strongly as its schema says it matters: an
+act toward someone (`binds: 'entity'`), through a host's ability (`source:
+'external'`), or that failed goes in as a spoken turn does; an objectless stance
+goes in faintly and the consolidator's threshold decides (MIND). The first cut
+judged "mattering" by the act having words, and every stance has a sentence: the
+bounded-growth soak caught a quiet mind remembering one every two ticks (2,524 →
+5,074 entities over the second half). The six-record window stays: it is the
+working record; the episode is the memory.
 
 **Not in P5c:** a facet's master-sync (5) and reasoning history (10), and audition's
 thread digest (5). The first two are a seat's train of thought — working windows
@@ -557,8 +564,8 @@ Single-item text cuts in VIEW are removed here: ~~`effectors.ts:57,73`
 Count caps that become ranked + counted + recallable: ~~`MAX_SURFACED_ABILITIES` 8~~
 (removed — abilities are not a ranked view, every one is shown), ~~`BELIEF_PROMPT_LIMIT` 30 /
 `PER_CATEGORY_CAP` 8, known entities 6, percepts 10, recalled memories 8,
-`SPOKEN_TURNS_SHOWN`, `TRAIT_SURFACE_CAP` 6~~ (P5c), `ACTION_RECORD_KEEP` 6 (a LOSS —
-next), thread digest 5 turns, facet master-sync 5 / reasoning history 10.
+`SPOKEN_TURNS_SHOWN`, `TRAIT_SURFACE_CAP` 6~~ (P5c), `ACTION_RECORD_KEEP` 6 (the working
+window stays; every act that matters is now an episode), thread digest 5 turns, facet master-sync 5 / reasoning history 10.
 
 ---
 

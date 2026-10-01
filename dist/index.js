@@ -5253,6 +5253,36 @@ function staleActionRecordIds(entities, keep = ACTION_RECORD_KEEP) {
   all.sort((a, b) => b.r.tick - a.r.tick || (a.r.type < b.r.type ? -1 : a.r.type > b.r.type ? 1 : 0));
   return all.slice(keep).map((x) => x.id);
 }
+var ACT_SIGNIFICANT = { activation: 0.85, attendedCount: 3 };
+var ACT_FAINT = { activation: 0.2, attendedCount: 0 };
+function actMatters(r, kind) {
+  return r.status === "failed" || !kind || kind.binds === "entity" || kind.source === "external";
+}
+function actMemoryEntity(recordId, r, targetName, kind) {
+  const toward = r.targetEntityId ? ` toward ${targetName ?? "someone"}` : "";
+  const outcome = r.outcome.trim();
+  const said = outcome ? ` \u2014 ${outcome}` : "";
+  const summary = r.status === "withheld" ? `I held back from ${r.type}${toward}${said}` : r.status === "failed" ? `I tried ${r.type}${toward}, and it failed${said}` : `I did ${r.type}${toward}${said}`;
+  const { activation, attendedCount } = actMatters(r, kind) ? ACT_SIGNIFICANT : ACT_FAINT;
+  return {
+    id: `wm-act-${recordId}`,
+    type: "working_memory.item",
+    metadata: {
+      wmType: "action.outcome",
+      activation,
+      encoding: activation,
+      attendedCount,
+      tags: ["action", r.status, `act:${r.type}`, ...r.targetEntityId ? [`entity:${r.targetEntityId}`] : []],
+      summary,
+      actionType: r.type,
+      status: r.status,
+      ...outcome ? { outcome } : {},
+      ...r.targetEntityId ? { targetEntityId: r.targetEntityId, ...targetName ? { targetName } : {} } : {},
+      ...r.planId ? { planId: r.planId } : {},
+      tick: r.tick
+    }
+  };
+}
 
 // src/cognition/sense.boundary.ts
 var MIND_OWN_ENTITY_TYPES = /* @__PURE__ */ new Set([
@@ -15919,6 +15949,8 @@ var ExecutiveEngine = class extends AsyncEngine {
    * so a failed call does not lose the request.
    */
   _pendingRecall = [];
+  /** Action records already offered to memory — see `_actsToRemember`. */
+  _actsOffered = /* @__PURE__ */ new Set();
   // ── Cognitive models ───────────────────────────────────────
   _model = new GenerativeModel();
   _generativeModel = new GenerativeModel(0.2, 100);
@@ -16293,7 +16325,38 @@ var ExecutiveEngine = class extends AsyncEngine {
       result.commands ??= {};
       result.commands.delete = [...result.commands.delete ?? [], ...stale];
     }
+    const acts = this._actsToRemember(state);
+    if (acts.length > 0) {
+      result.commands ??= {};
+      result.commands.set = [...result.commands.set ?? [], ...acts];
+    }
     return result;
+  }
+  /**
+   * The memory item for each act recorded since last tick, named for whom it was
+   * toward as she knows them now. Each act is offered once: the consolidator reads
+   * the item the tick it lands and working memory sweeps it after, as with a
+   * conversation turn. A woken mind offers its last few again; the consolidator
+   * knows an act it already remembers by the item's id.
+   */
+  _actsToRemember(state) {
+    const out = [];
+    const present = /* @__PURE__ */ new Set();
+    const aliases = readAliases(state.entities);
+    for (const [id, e] of state.entities) {
+      if (e.type !== ACTION_RECORD_TYPE) continue;
+      present.add(id);
+      if (this._actsOffered.has(id)) continue;
+      const r = readActionRecord(e.metadata);
+      if (!r) continue;
+      this._actsOffered.add(id);
+      const target = r.targetEntityId ? canonicalOf(aliases, r.targetEntityId) : void 0;
+      const innate = INNATE_SCHEMAS.find((x) => x.id === r.type);
+      const held = state.entities.get(schemaEntityId(r.type))?.metadata;
+      out.push(actMemoryEntity(id, r, target ? nameOf(state.entities, target) : void 0, innate ?? held));
+    }
+    for (const id of this._actsOffered) if (!present.has(id)) this._actsOffered.delete(id);
+    return out;
   }
   /**
    * What the mind is attending to because a facet is reasoning about it, as

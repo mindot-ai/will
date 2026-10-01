@@ -366,8 +366,26 @@ export async function buildExecutiveContext(
     behavioralDisposition,
     selfTuning,
     knownEntities: extractKnownEntities( state ),
+    actionReports: extractActionReports( state ),
     currentFocus: extractCurrentFocus( state, goals )
   }
+}
+
+/**
+ * Why something I reached for came to nothing, in my own words.
+ *
+ * These were written for the mind to find out — "silence here is what let a Will
+ * spend eleven consecutive actions on an invented `query`" — and reached it only as
+ * world percepts. The sense boundary (#118) rightly stopped the mind perceiving its
+ * own records, and nothing read them after: every report since went unread.
+ */
+const ACTION_REPORT_TYPES = new Set([ 'action.unresolved', 'action.unaddressed', 'action.untargeted' ])
+export function extractActionReports( state: ReadonlySimulationState ): string[] | undefined {
+  const out: string[] = []
+  for( const e of state.entities.values() )
+    if( ACTION_REPORT_TYPES.has( e.type ) && typeof e.metadata?.['summary'] === 'string')
+      out.push( e.metadata['summary'] as string )
+  return out.length > 0 ? out.sort() : undefined
 }
 
 /**
@@ -393,8 +411,10 @@ export function extractAbilities( state: ReadonlySimulationState ): ExecutiveCon
 
   for( const e of state.entities.values() ){
     const m = e.metadata as Record<string, unknown> | undefined
-    if( e.type === SCHEMA_ENTITY_TYPE && m?.['source'] === 'external' && typeof m['id'] === 'string')
-      entry( m['id'] as string, typeof m['description'] === 'string' ? m['description'] as string : undefined )
+    if( e.type === SCHEMA_ENTITY_TYPE && m?.['source'] === 'external' && typeof m['id'] === 'string'){
+      const a = entry( m['id'] as string, typeof m['description'] === 'string' ? m['description'] as string : undefined )
+      if( m['binds'] === 'entity' || m['binds'] === 'object') a.towardReferent = true
+    }
   }
 
   for( const e of state.entities.values() ){

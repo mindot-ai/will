@@ -262,6 +262,8 @@ export interface ExecutiveContext {
     description?: string
     /** Who or what the field offers it toward this moment, by display name. */
     targets?: string[]
+    /** It is an act toward someone or something — willed toward a referent I know. */
+    towardReferent?: boolean
     /** The field offers it, but not available now (a precondition, or a refusal). */
     unavailable?: boolean
   }>
@@ -297,6 +299,12 @@ export interface ExecutiveContext {
    * live mind ever received, and it could see what it had SAID but never what it
    * had DONE. See `action.record.ts`.
    */
+  /**
+   * What I reached for this cycle and why nothing came of it — a name I do not
+   * hold, someone I cannot reach, an act toward no one I know. Written by the
+   * executive's own commands (`action.unresolved` / `.unaddressed` / `.untargeted`).
+   */
+  actionReports?: string[]
   recentActions: Array<{
     /** Effector name that was invoked */
     type: string

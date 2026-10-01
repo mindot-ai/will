@@ -482,18 +482,28 @@ function buildIdeomotorIntents(
   // The host abilities the mind HOLDS (mirrored `agency.schema`, source 'external'),
   // and any the live field affords. It read the field alone, which attention caps:
   // an ability bound to someone was there only when its target won a place, so
-  // willing it at any other moment was reported as "not a thing I can do". A willed
-  // act still only ENTERS the competition — the synthesizer admits it at the
-  // ideomotor salience and the selector decides — so this widens what she can
-  // reach for, not what bypasses the field.
+  // willing it at any other moment was reported as "not a thing I can do".
+  //
+  // Still found in the situation, not looked up in a catalog. An ability that binds
+  // a referent is a relation to someone or something in the world as perceived, so
+  // it is willed TOWARD a referent the mind knows — exactly as `reach-out` is — and
+  // without one nothing is willed and the mind is told. Willed, it only ENTERS the
+  // competition: the synthesizer admits it at the ideomotor salience, checks the
+  // body and the policy, and the selector decides.
   const externalBySchema = new Map<string, string>()
+  const bindsReferent    = new Set<string>()
   for( const e of state.entities.values() ){
     const m = e.metadata as Record<string, unknown> | undefined
     const schema = e.type === 'affordance' && m?.['source'] === 'external' ? m['schema']
                  : e.type === SCHEMA_ENTITY_TYPE && m?.['source'] === 'external' ? m['id']
                  : undefined
-    if( typeof schema === 'string') externalBySchema.set( schema.toLowerCase(), schema )
+    if( typeof schema !== 'string') continue
+    externalBySchema.set( schema.toLowerCase(), schema )
+    if( e.type === SCHEMA_ENTITY_TYPE ? m?.['binds'] === 'entity' || m?.['binds'] === 'object' : !!m?.['targetEntityId'] )
+      bindsReferent.add( schema )
   }
+  /** Abilities that bind a referent, willed toward no one the mind knows. */
+  const untargeted = new Map<string, string | undefined>()
 
   for( const action of output.actions ){
     const t = action.type.toLowerCase()
@@ -578,6 +588,7 @@ function buildIdeomotorIntents(
     if( seen.has(`ability:${ schema }`) ) continue
     seen.add(`ability:${ schema }`)
     const keid = action.target ? resolveKnownEntity( action.target, state ) : undefined
+    if( !keid && bindsReferent.has( schema ) ){ untargeted.set( schema, action.target ); continue }
     set.push({
       id:   `ideomotor-${ schema }${ keid ? `-${ keid }` : '' }`,
       type: 'ideomotor.intent',
@@ -635,6 +646,23 @@ function buildIdeomotorIntents(
       },
     })
 
+  // An act toward someone, willed toward no one it knows — same principle again.
+  if( untargeted.size > 0 )
+    set.push({
+      id:   'action.untargeted',
+      type: 'action.untargeted',
+      metadata: {
+        names:   [ ...untargeted.keys() ],
+        summary: [ ...untargeted ].map( ( [ ability, named ] ) => named
+          ? `I reached for '${ ability }' toward '${ named }', but that is no one and nothing I know here.`
+          : `I reached for '${ ability }' without saying toward whom.` ).join(' ')
+          + ' An act like that is toward someone or something in my world, so nothing happened.',
+        salience: 0.75,
+        origin:   'executive',
+        tick:     footprint.tickObserved,
+      },
+    })
+
   // Clear stale executive-sourced intents the executive no longer imagines this cycle.
   const currentIds = new Set( set.map( s => s.id ) )
   const del: string[] = []
@@ -650,6 +678,8 @@ function buildIdeomotorIntents(
     del.push('action.unresolved')
   if( unaddressed.size === 0 && state.entities.has('action.unaddressed') )
     del.push('action.unaddressed')
+  if( untargeted.size === 0 && state.entities.has('action.untargeted') )
+    del.push('action.untargeted')
 
   return { set, delete: del }
 }

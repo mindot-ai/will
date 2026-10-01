@@ -13,8 +13,10 @@
  * at 300 characters, taking the required args that come last.
  *
  * What she holds is now in state (`agency.schema`, mirrored each tick like learned
- * composites), in view whole, and willable. Willing still only ENTERS the
- * competition: the synthesizer admits the intent and the selector decides.
+ * composites), in view whole, and willable. Still FOUND IN THE SITUATION, not looked
+ * up: an ability that binds a referent is willed toward someone or something she
+ * knows (as `reach-out` is), or nothing is willed and she is told; and willed, it
+ * only ENTERS the competition — the synthesizer admits it and the selector decides.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -22,7 +24,7 @@ import { SchemaRepertoire } from '#agency/schemas/repertoire'
 import { externalSchemas } from '#agency/schemas/external'
 import { ReafferenceEngine } from '#agency/engines/reafference.engine'
 import { AffordanceSynthesizer } from '#agency/engines/affordance.synthesizer'
-import { extractAbilities } from '#faculties/executive.engine/context'
+import { extractAbilities, extractActionReports, buildExecutiveContext } from '#faculties/executive.engine/context'
 import { buildStateCommands, type CommandDependencies } from '#faculties/executive.engine/commands'
 import { buildUserMessage } from '#faculties/executive.engine/prompt.factory'
 import { GenerativeModel } from '#cognition/generative.model'
@@ -70,7 +72,7 @@ describe('she sees every ability she holds, whole', () => {
     const prompt = buildUserMessage( { context: { ...context(), abilities: extractAbilities( s as never ) },
       state: s as never, qualityModulation: 1, epistemicUncertainty: 0.3, deps: { summarizer: null },
       focus: { title: 'T', content: 'c' }, mode: 'master' } as never )
-    expect( prompt ).toContain('- **unban** — Lift a ban on someone in the server.')
+    expect( prompt ).toContain('- **unban** (toward someone or something I know — this moment offers it toward no one) — Lift a ban on someone in the server.')
   } )
 
   it('says who the field offers one toward, and when one is offered but not available', () => {
@@ -100,10 +102,39 @@ describe('she can reach for any ability she holds — and it still competes', ()
     expect( out.set!.some( e => e.type === 'action.unresolved') ).toBe( false )
   } )
 
-  it('a name she does not hold is still reported, not swallowed', async () => {
+  it('a name she does not hold is still reported, not swallowed — and the report reaches her', async () => {
     const s = await mirrored( holding() )
     const out = decide( s, { type: 'ban', reasoning: 'r', expectedOutcome: '' } )
     expect( out.set!.find( e => e.type === 'action.unresolved')!.metadata!['names'] ).toEqual( [ 'ban' ] )
+    apply( s, out )
+    expect( render( s ) ).toMatch( /What I reached for and could not do:\n- I named 'ban' as an action, but that is not a thing I can do/ )
+  } )
+
+  it('an act toward someone, willed toward no one she knows, is not willed — and she is told', async () => {
+    const s = await mirrored( holding() )
+    const out = decide( s, { type: 'unban', target: 'Zed', reasoning: 'r', expectedOutcome: '' } )
+    expect( out.set!.some( e => e.type === 'ideomotor.intent') ).toBe( false )
+    apply( s, out )
+    expect( render( s ) ).toContain("I reached for 'unban' toward 'Zed', but that is no one and nothing I know here.")
+
+    const bare = decide( s, { type: 'warn', reasoning: 'r', expectedOutcome: '' } )
+    expect( bare.set!.find( e => e.type === 'action.untargeted')!.metadata!['summary'] )
+      .toContain("I reached for 'warn' without saying toward whom.")
+  } )
+
+  it('the context the executive is built from carries the reports and every ability', async () => {
+    const s = await mirrored( holding() )
+    apply( s, decide( s, { type: 'unban', target: 'Zed', reasoning: 'r', expectedOutcome: '' } ) )
+    const ctx = await buildExecutiveContext( s as never,
+      { workingMemory: null, goalManager: null, episodicConsolidator: null, semanticIntegrator: null } )
+    expect( ctx.actionReports ).toHaveLength( 1 )
+    expect( ctx.abilities ).toHaveLength( DECLARED.length )
+  } )
+
+  it('an ability that binds nothing needs no one', async () => {
+    const s = await mirrored( holding() )
+    const out = decide( s, { type: 'gh_tool_04', reasoning: 'r', expectedOutcome: '', args: { path: 'README.md' } } )
+    expect( out.set!.find( e => e.id === 'ideomotor-gh_tool_04')!.metadata!['parameters'] ).toEqual( { path: 'README.md' } )
   } )
 
   it('the willed act enters the field through the synthesizer', async () => {
@@ -138,6 +169,13 @@ function decide( s: Mut, action: ExecutiveOutputFull['actions'][number] ){
     intendedCommands: {}, source: 'executive-engine' }
   return buildStateCommands( { actions: [ action ], reasoning: 'r', confidence: 0.8 } as ExecutiveOutputFull,
     footprint as never, s as never, deps, [] ).commands
+}
+
+function render( s: Mut ): string {
+  return buildUserMessage( { context: { ...context(), abilities: extractAbilities( s as never ),
+      actionReports: extractActionReports( s as never ) },
+    state: s as never, qualityModulation: 1, epistemicUncertainty: 0.3, deps: { summarizer: null },
+    focus: { title: 'T', content: 'c' }, mode: 'master' } as never )
 }
 
 function context(): ExecutiveContext {

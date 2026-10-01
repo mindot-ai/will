@@ -390,7 +390,16 @@ won a place, and willing it otherwise was answered "not a thing I can do". Held
 abilities are now mirrored to state (`agency.schema`, source `external`, like learned
 composites; a restore never turns one into a learned composite), all of them render
 with their whole meaning and who the field offers each toward, and the executive can
-will any it holds — the act still only ENTERS the competition.
+will any it holds. **Still found in the situation, not looked up in a catalog**
+(AGENCY_PIPELINE's north star): an ability that binds a referent is willed toward
+someone or something the mind knows, as `reach-out` is — without one nothing is
+willed and she is told (`action.untargeted`) — and a willed act only ENTERS the
+competition, where the synthesizer checks body and policy and the selector decides.
+One that binds nothing sits on the floor, offered every tick. Doing this found the
+reports of what she reached for and could not (`action.unresolved` /
+`.unaddressed`) dark since #118: written to be found out, they reached her only as
+world percepts, and the sense boundary rightly stopped that with nothing reading
+them after. They render under `## What Became Of What I Did` now.
 
 Single-item text cuts in VIEW are removed here: ~~`effectors.ts:57,73`
 `MEANING_CAP`~~ (done, above),

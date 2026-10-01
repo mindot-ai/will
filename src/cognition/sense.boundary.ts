@@ -132,7 +132,7 @@ export const MIND_OWN_ENTITY_TYPES: ReadonlySet<string> = new Set([
   // a Will a PolicyArbiter that refuses, and it starts perceiving its own
   // permissions changing as events in the world.
   AVAILABILITY_ENTITY_TYPE,
-  'action.unresolved', 'action.unaddressed',
+  'action.unresolved', 'action.unaddressed', 'action.untargeted',
   CONSEQUENCE_TYPE,   // forward-model records  (EXAFFERENCE P1/P2)
   REVOCATION_TYPE,    // commitment tombstones  (EXAFFERENCE P4)
   SETTLEMENT_TYPE,    // verdicts System 2 reached — having thought about it

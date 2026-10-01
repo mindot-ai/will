@@ -236,5 +236,5 @@ scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments)
 
 **2026-10-01 · DESIGNED** · [LOSSLESS P5 — every call fits its window, and nothing leaves a call silently](LOSSLESS_P5.md)
 
-traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; 6 decisions open for the owner
+traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; the owner took all six recommendations (D1–D6) the same day
 

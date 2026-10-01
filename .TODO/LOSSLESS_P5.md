@@ -1,6 +1,6 @@
 # LOSSLESS P5 — every call fits its window, and nothing leaves a call silently
 
-> **Standing:** DESIGNED · 2026-10-01 · traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; 6 decisions open for the owner
+> **Standing:** DESIGNED · 2026-10-01 · traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; the owner took all six recommendations (D1–D6) the same day
 
 > The last phase of [[LOSSLESS]]. P0–P4 made what the mind takes in, thinks, says and
 > keeps whole. This phase is about what a **single LLM call** is shown. That view
@@ -149,7 +149,7 @@ executive's other cognitive outputs (beliefs, goals, people) are not acts either
 
 | Section | Today | Ranked by | Count + recall |
 |---|---|---|---|
-| Abilities | first 8 **by iteration order** (`context.ts:379`) — the Lora unban flip-flop | what the competition weighs: expected reward, habit, plan bias | names of all the rest; `{"section":"abilities"}` shows their meanings |
+| ~~Abilities~~ | — | — | **Not a view.** Done ahead of P5 (#195, the owner's call): every ability she holds, whole, with who the situation offers it toward |
 | Beliefs | 30, ≤8 per category, "[+N omitted]" | unchanged (dedup, confidence × recency × goal match) | `query` / `page` |
 | People | 6 by recency (`context.ts:502`) | recency, then closeness | names of the rest; `page` |
 | Percepts | top 10 by salience (`context.ts:663`, `prompt.factory.ts:816`) | salience | `page` |
@@ -224,9 +224,31 @@ prompt must stay under budget, every page must be reachable through `[RECALL]`, 
 pages must concatenate back to the data byte for byte, and a recorded run must
 replay byte-identical.
 
-## Decisions for the owner
+## How P5 keeps the agency epoch's rules
 
-| # | Decision | Recommendation |
+Asked by the owner, and the line every part is held to:
+
+- **Remembering is not perceiving, and it is not acting.** SIGNAL_BOUNDARY's rules
+  govern what crosses from the world — every input an afference envelope, reafferent
+  or exafferent, never untagged — and EXAFFERENCE's what goes out to it (efference
+  copy, ack, reafference). A recall reads the mind's own stores and consults no
+  world, so it is neither: `## Brought Back` items are **never** written as percepts
+  or working-memory items (no new afference, nothing for the sense boundary to
+  admit), and each keeps the provenance it arrived with — *"what I found by acting:
+  `list_pull_requests`, tick 2210 (reafferent)"*. Fresh information about the world
+  is still only had by acting: re-running the tool is an act, with its efference copy
+  and its reafference.
+- **Actions are found in the situation, not looked up in a catalog**
+  (AGENCY_PIPELINE). P5 changes what a call is SHOWN; it changes nothing about how
+  an act is found, competed for, enacted or learned from. `[RECALL]` is attention,
+  like the executive's other cognitive outputs (beliefs, goals, people) — not an act,
+  so it never enters the field, never competes, and reafference learns nothing from
+  it. (#195 keeps the same rule for abilities: an act toward someone is willed toward
+  someone the mind knows, and only ENTERS the competition.)
+
+## Decisions — taken 2026-10-01 (all six recommendations)
+
+| # | Decision | Taken |
 |---|---|---|
 | **D1** | How she reaches past the view | (a) a `[RECALL]` request honoured on the same seat's next call, not an innate act |
 | **D2** | No window declared | A conservative default of 128k tokens, not "today's behaviour" |

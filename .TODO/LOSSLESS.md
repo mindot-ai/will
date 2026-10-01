@@ -1,6 +1,6 @@
 # LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut
 
-> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P4 and P5a–P5c landed, unreleased
+> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P4 and P5a–P5d landed, unreleased
 
 > **The rule:** *lossless, not unbounded.* Every cut that loses data — at intake, in
 > transit between the mind's own parts, in what it keeps, in its artifact, in its
@@ -517,6 +517,23 @@ over reasoning the master keeps whole in its own records — and the digest's ol
 turns are conversation episodes, already reachable by a memories search. Whether
 each says so is the next look.
 
+**P5d — a file someone hands over is its own item, whole ✅**
+
+- [x] **The channel reads each file whole, or names it and says why not.** The
+      24,000-character inline cap, the four-file limit and the 256 KB fetch are
+      gone; Discord's CDN allowlist stays (security, not size), and above one
+      declared ceiling (`ATTACHMENT_READ_CEILING`, 20 MB — D4) a file is named,
+      not read at all, and she is told why. A `SharedFile` rides beside the
+      words (`Stimulus.attachments` → `TextMessage.attachments`).
+- [x] **Each read file is its own percept**, exafferent, from who shared it, its
+      text the percept's data — so P5a pages it (a header and a page in a call,
+      any page by `[RECALL]`), working memory holds it and an episode keeps it.
+- [x] **The words carry a reference, not the file**: `[Ada shared spec.md
+      (text/markdown, 412 KB) — doc:…; a document I was handed, not something said
+      to me]`. Inlined, a document rode everywhere the words go — the focus, the
+      thread digest, every "they answered" line, conversation memory. Done per
+      message before a burst is folded into one turn, so each keeps its files.
+
 The sketch it started from — the design work, in three parts:
 
 1. **A context window the engine knows.** Host-declared per model, beside prices
@@ -532,9 +549,7 @@ The sketch it started from — the design work, in three parts:
    window, an observation or attachment renders as its size plus a handle; the
    mind reads it in pages through the same act. Every byte stays reachable.
 
-Attachments land here, moved from P2: the bridge delivers a file whole
-(`surface/channels/types.ts` 24,000 chars / 4 files, `discord.ts` 256 KB fetch
-today), the mind keeps it whole, and a call sees it through part 3.
+~~Attachments land here, moved from P2~~ — landed as P5d, above.
 
 **Done ahead of P5 (owner's call, 2026-10-01): a Will sees every ability it holds,
 whole.** `MAX_SURFACED_ABILITIES` (the first 8 of the affordance field by iteration

@@ -110,7 +110,7 @@ export type {
 } from '#pma/eval'
 
 // Sensory input types — used by callers of WillManager.senseText()
-export type { TextMessage, VoiceChunk, SensoryInput } from '#senses/index'
+export type { TextMessage, VoiceChunk, SensoryInput, SharedFile } from '#senses/index'
 // Provenance — whose doing a signal was. Required on every signal, because
 // nothing inside the mind can tell its own echo from a stranger saying the same
 // words: only the host knows, so the host says. `asProvenance` is for untyped

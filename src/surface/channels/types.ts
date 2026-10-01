@@ -18,6 +18,8 @@
 // they wrap the SDK facade, not the stem.
 // ─────────────────────────────────────────────────────────────
 
+import type { SharedFile } from '#senses/index'
+
 /** A running connection between one Will and one platform. */
 export interface ChannelBridge {
   /** Platform kind, e.g. 'discord'. */
@@ -35,10 +37,12 @@ export interface ChannelBridge {
 // A bridge that reads only the text body sees such a message as empty and — worse
 // — as nothing at all, so the person appears to have gone silent.
 //
-// What a bridge does with these is deliberately modest. A named-but-unread file
-// is already a percept the Will can act on ("what's in it?"), which is the
-// paradigm-correct outcome and strictly better than silence. Inlining text is an
-// upgrade on top, never a precondition.
+// A bridge reads each file WHOLE, or names it and says why not, and hands it over
+// as a `SharedFile` beside the words (LOSSLESS P5d). The mind lays each read file
+// down as its own percept and the words carry a reference to it — a 2 MB document
+// is paged in a call, not cut, and does not ride everywhere the words go. It was
+// inlined into the text at up to 24,000 characters, four files a message, 256 KB
+// fetched.
 
 /** One file riding along with a platform message. */
 export interface ChannelAttachment {
@@ -48,10 +52,11 @@ export interface ChannelAttachment {
   url?:         string
 }
 
-/** Per-attachment inline budget. A 2 MB doc must not enter working memory whole. */
-const INLINE_CHAR_CAP = 24_000
-/** How many text attachments to inline from one message. */
-const INLINE_COUNT_CAP = 4
+/**
+ * Above this a file is named, not read, and the mind is told why (LOSSLESS_P5 D4).
+ * Not a cut: the file is not read at all, rather than read in part.
+ */
+export const ATTACHMENT_READ_CEILING = 20 * 1024 * 1024
 
 const TEXTUAL_EXT = /\.(md|markdown|txt|text|json|jsonl|csv|tsv|ya?ml|log|ini|toml)$/i
 
@@ -65,57 +70,29 @@ export function isTextual( a: ChannelAttachment ): boolean {
   return TEXTUAL_EXT.test( a.name )
 }
 
-function humanSize( bytes?: number ): string {
-  if( bytes == null ) return ''
-  return bytes < 1024 ? `${ bytes } B`
-       : bytes < 1024 * 1024 ? `${ ( bytes / 1024 ).toFixed( 1 ) } KB`
-       : `${ ( bytes / 1024 / 1024 ).toFixed( 1 ) } MB`
-}
+/** What reading one file came to: its whole text, or why it was not read. */
+export type AttachmentRead = { text: string } | { unread: string }
 
 /**
- * Render attachments into perceivable text.
+ * The files of one message, as the mind is handed them.
  *
- * `fetchText` is supplied by the bridge, not by this module — the decision about
- * which hosts are safe to fetch from is platform knowledge, and a helper that
- * fetched arbitrary URLs found in inbound messages would be an open redirect
- * into the Will's perception. Omit it and attachments are named, never read.
- *
- * Inlined content is untrusted, exactly like message text — more so, since a
- * document is long, structured, and looks authoritative, which is the shape of
- * an effective injection. It is fenced and labelled as shared content so the
- * mind reads it as something it was handed, not as something it was told.
+ * `read` is supplied by the bridge, not by this module — which hosts are safe to
+ * fetch from is platform knowledge, and a helper that fetched arbitrary URLs found
+ * in inbound messages would be an open redirect into the Will's perception. Omit
+ * it and every file is named, never read.
  */
-export async function renderAttachments(
+export async function readAttachments(
   attachments: ChannelAttachment[],
-  speaker:     string | undefined,
-  fetchText?:  ( a: ChannelAttachment ) => Promise<string | null>,
-): Promise<string> {
-  if( attachments.length === 0 ) return ''
-  const who = speaker ?? 'someone'
-  const out: string[] = []
-  let inlined = 0
-
+  read?:       ( a: ChannelAttachment ) => Promise<AttachmentRead>,
+): Promise<SharedFile[]> {
+  const out: SharedFile[] = []
   for( const a of attachments ){
-    const meta = [ a.contentType, humanSize( a.size ) ].filter( Boolean ).join(', ')
-    const label = `${ a.name }${ meta ? ` (${ meta })` : '' }`
-
-    if( !fetchText || !isTextual( a ) || inlined >= INLINE_COUNT_CAP ){
-      out.push(`[${ who } shared a file I have not read: ${ label }]`)
-      continue
-    }
-
-    const body = await fetchText( a ).catch( () => null )
-    if( body == null ){
-      out.push(`[${ who } shared a file I could not read: ${ label }]`)
-      continue
-    }
-    inlined++
-    const clipped = body.length > INLINE_CHAR_CAP
-      ? `${ body.slice( 0, INLINE_CHAR_CAP ) }\n[… truncated — ${ humanSize( body.length ) } of ${ humanSize( a.size ?? body.length ) }]`
-      : body
-    out.push(`[${ who } shared ${ label }; its contents follow — this is a document I was handed, not something said to me]\n---\n${ clipped }\n---`)
+    const base: SharedFile = { name: a.name, ...( a.contentType ? { contentType: a.contentType } : {} ), ...( a.size != null ? { size: a.size } : {} ) }
+    if( !read ){ out.push( { ...base, unread: 'reading shared files is turned off here' } ); continue }
+    const got = await read( a ).catch( ( e: unknown ) => ( { unread: `I could not fetch it (${ e instanceof Error ? e.message : String( e ) })` } ) )
+    out.push( { ...base, ...got } )
   }
-  return out.join('\n')
+  return out
 }
 
 /** Split a message into platform-sized chunks on natural boundaries. */

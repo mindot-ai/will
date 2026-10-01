@@ -99,12 +99,32 @@ export interface LanguagePercept extends Percept {
 
 // ── Sensory input types (discriminated union) ─────────────────
 
+/**
+ * A file handed over with a message (LOSSLESS P5d). Read whole by the channel —
+ * `text` — or named with why it was not (`unread`). Each read file becomes its own
+ * percept, its text that percept's data; the message carries only a reference to
+ * it, so a document does not ride everywhere the words go (the focus, the thread
+ * digest, every "they answered" line, conversation memory).
+ */
+export interface SharedFile {
+  name:         string
+  contentType?: string
+  /** Bytes, as the platform reports them. */
+  size?:        number
+  /** The whole file, when the channel read it. */
+  text?:        string
+  /** Why it was not read — "not something I can read as text", "larger than the 20 MB I read"… */
+  unread?:      string
+}
+
 // Audition
 export interface TextMessage extends SensorySignal {
   kind:     'text'
   entityId: string
   threadId: string
   content:  string
+  /** Files handed over with these words, each read whole or named with why not. */
+  attachments?: SharedFile[]
   /** Display name — used in the facet focus content. */
   speakerName?: string
   /**

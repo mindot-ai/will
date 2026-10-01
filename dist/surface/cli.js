@@ -22973,6 +22973,10 @@ var ShellSenseEngine = class extends BaseSenseEngine {
 };
 
 // src/cognition/senses/audition.engine/engine.ts
+var SHARED_FILE_SALIENCE = 0.75;
+function fileSize(bytes) {
+  return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
 function partitionOutwardIntents(actions, boundKeid, boundName) {
   const mine = new Set([boundKeid, boundName].map((s) => s.trim().toLowerCase()).filter(Boolean));
   const out = [];
@@ -23283,7 +23287,7 @@ var AuditionEngine = class extends BaseSenseEngine {
    * so callers awaiting ingest() still see their turn through.
    */
   async _perceive(input) {
-    const msg = input;
+    const msg = this._withSharedFiles(input);
     const entityId = msg.entityId;
     const open = this._coalesce.get(entityId);
     if (open && !open.started) {
@@ -23299,6 +23303,48 @@ var AuditionEngine = class extends BaseSenseEngine {
     this._coalesce.set(entityId, entry);
     void this._enqueue(entityId, () => this._runCoalesced(entityId, entry));
     return done;
+  }
+  /**
+   * Files handed over with a message become their own percepts (LOSSLESS P5d).
+   *
+   * Each read file is laid down as an exafferent percept whose data is the file
+   * whole — so P5a's view pages it, working memory and recall keep it, and
+   * `[RECALL]` reaches any page of it by its handle. The words carry only a
+   * reference, `[Ada shared spec.md (412 KB) — doc:…]`: inlined, a document rode
+   * everywhere the words go — the focus, the thread digest, every "they answered"
+   * line, conversation memory — and was cut to fit (24,000 characters, four
+   * files). Done per message, before a burst is folded into one turn, so each
+   * message's files stay its own.
+   *
+   * Fenced and labelled as handed over, as before: a document is long,
+   * structured and looks authoritative — the shape of an effective injection —
+   * so the mind reads it as something it was given, not something it was told.
+   */
+  _withSharedFiles(msg) {
+    if (msg.kind !== "text" || !msg.attachments?.length) return msg;
+    const text = msg;
+    const who = text.speakerName ?? "someone";
+    const tick = this._now?.() ?? 0;
+    const refs = text.attachments.map((f) => {
+      const meta3 = [f.contentType, f.size !== void 0 ? fileSize(f.size) : void 0].filter(Boolean).join(", ");
+      const label = `${f.name}${meta3 ? ` (${meta3})` : ""}`;
+      if (f.text === void 0 || !this._trace)
+        return `[${who} shared a file I have not read: ${label}${f.unread ? ` \u2014 ${f.unread}` : ""}]`;
+      const id = `heard-file-${tick}-${fnv1a(`${text.entityId}\0${f.name}\0${f.text}`)}`;
+      this._trace(perceptEntity({
+        id,
+        tick,
+        salience: SHARED_FILE_SALIENCE,
+        category: this.domain,
+        summary: `${who} shared ${label}`,
+        provenance: text.provenance,
+        entityId: text.entityId,
+        ...text.sourceIntentId ? { sourceIntentId: text.sourceIntentId } : {},
+        data: f.text
+      }));
+      return `[${who} shared ${label} \u2014 doc:${id}; a document I was handed, not something said to me]`;
+    });
+    return { ...msg, content: [text.content, ...refs].filter(Boolean).join("\n") };
   }
   /** Extract the textual content of a message (voice → transcription). */
   _contentOf(msg) {
@@ -31426,7 +31472,8 @@ var Will = class _Will {
       // left to fall back to — the four-state hole is closed at every door into
       // this mind, which was the point of the epoch.
       provenance: stimulus.provenance,
-      ...stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {}
+      ...stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {},
+      ...stimulus.attachments?.length ? { attachments: stimulus.attachments } : {}
     });
   }
   /**
@@ -32254,8 +32301,7 @@ var ChannelRoster = class {
 };
 
 // src/surface/channels/types.ts
-var INLINE_CHAR_CAP = 24e3;
-var INLINE_COUNT_CAP = 4;
+var ATTACHMENT_READ_CEILING = 20 * 1024 * 1024;
 var TEXTUAL_EXT = /\.(md|markdown|txt|text|json|jsonl|csv|tsv|ya?ml|log|ini|toml)$/i;
 function isTextual(a) {
   const ct = a.contentType?.split(";")[0]?.trim().toLowerCase() ?? "";
@@ -32263,36 +32309,18 @@ function isTextual(a) {
   if (ct === "application/json" || ct === "application/x-yaml") return true;
   return TEXTUAL_EXT.test(a.name);
 }
-function humanSize2(bytes) {
-  if (bytes == null) return "";
-  return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-async function renderAttachments(attachments, speaker, fetchText) {
-  if (attachments.length === 0) return "";
-  const who = speaker ?? "someone";
+async function readAttachments(attachments, read) {
   const out = [];
-  let inlined = 0;
   for (const a of attachments) {
-    const meta3 = [a.contentType, humanSize2(a.size)].filter(Boolean).join(", ");
-    const label = `${a.name}${meta3 ? ` (${meta3})` : ""}`;
-    if (!fetchText || !isTextual(a) || inlined >= INLINE_COUNT_CAP) {
-      out.push(`[${who} shared a file I have not read: ${label}]`);
+    const base = { name: a.name, ...a.contentType ? { contentType: a.contentType } : {}, ...a.size != null ? { size: a.size } : {} };
+    if (!read) {
+      out.push({ ...base, unread: "reading shared files is turned off here" });
       continue;
     }
-    const body = await fetchText(a).catch(() => null);
-    if (body == null) {
-      out.push(`[${who} shared a file I could not read: ${label}]`);
-      continue;
-    }
-    inlined++;
-    const clipped = body.length > INLINE_CHAR_CAP ? `${body.slice(0, INLINE_CHAR_CAP)}
-[\u2026 truncated \u2014 ${humanSize2(body.length)} of ${humanSize2(a.size ?? body.length)}]` : body;
-    out.push(`[${who} shared ${label}; its contents follow \u2014 this is a document I was handed, not something said to me]
----
-${clipped}
----`);
+    const got = await read(a).catch((e) => ({ unread: `I could not fetch it (${e instanceof Error ? e.message : String(e)})` }));
+    out.push({ ...base, ...got });
   }
-  return out.join("\n");
+  return out;
 }
 function chunkText(text, max) {
   if (text.length <= max) return [text];
@@ -32312,7 +32340,6 @@ function chunkText(text, max) {
 // src/surface/channels/discord.ts
 var DISCORD_MESSAGE_LIMIT = 2e3;
 var DISCORD_CDN_HOSTS = /* @__PURE__ */ new Set(["cdn.discordapp.com", "media.discordapp.net"]);
-var MAX_FETCH_BYTES = 256 * 1024;
 function roomLabel(message) {
   if (!message.guildId) return void 0;
   const own = message.channel?.name;
@@ -32386,14 +32413,10 @@ async function connectDiscord(will, opts) {
     const said = (message.cleanContent || message.content).trim();
     const files = collectAttachments(message);
     if (!said && files.length === 0) return;
-    const shared = await renderAttachments(
-      files,
-      speaker,
-      opts.readAttachments === false ? void 0 : fetchAttachmentText
-    );
-    const text = [said, shared].filter(Boolean).join("\n");
+    const shared = await readAttachments(files, opts.readAttachments === false ? void 0 : readAttachment);
     await will.sense({
-      text,
+      text: said,
+      ...shared.length > 0 ? { attachments: shared } : {},
       from: entityId,
       thread: `discord:${message.channelId}`,
       // `isDM` has been computed on every inbound since this bridge shipped and
@@ -32424,28 +32447,31 @@ async function connectDiscord(will, opts) {
       });
     return out;
   }
-  async function fetchAttachmentText(a) {
-    if (!a.url || !isTextual(a)) return null;
+  async function readAttachment(a) {
+    if (!isTextual(a)) return { unread: "not something I can read as text" };
+    if (!a.url) return { unread: "Discord gave no way to fetch it" };
     let host;
     try {
       host = new URL(a.url).hostname;
     } catch {
-      return null;
+      return { unread: "its address is not one I can read" };
     }
     if (!DISCORD_CDN_HOSTS.has(host)) {
       log(`refusing to fetch attachment '${a.name}' from non-CDN host ${host}`);
-      return null;
+      return { unread: `it is not on Discord's own servers (${host}), and I only read files from there` };
     }
-    if (a.size != null && a.size > MAX_FETCH_BYTES) {
+    const tooLarge = { unread: `it is larger than the ${ATTACHMENT_READ_CEILING / 1024 / 1024} MB I read` };
+    if (a.size != null && a.size > ATTACHMENT_READ_CEILING) {
       log(`attachment '${a.name}' is ${a.size} bytes \u2014 naming it without reading`);
-      return null;
+      return tooLarge;
     }
-    const res = await fetch(a.url, { signal: AbortSignal.timeout(1e4) });
+    const res = await fetch(a.url, { signal: AbortSignal.timeout(3e4) });
     if (!res.ok) {
       log(`attachment '${a.name}' fetch failed: ${res.status}`);
-      return null;
+      return { unread: `I could not fetch it (HTTP ${res.status})` };
     }
-    return (await res.text()).slice(0, MAX_FETCH_BYTES);
+    const text = await res.text();
+    return new TextEncoder().encode(text).length > ATTACHMENT_READ_CEILING ? tooLarge : { text };
   }
   will.effector("inspect", async (_args, ctx) => {
     const address = (ctx.targetAddresses ?? []).find((a) => a.startsWith("discord:"));

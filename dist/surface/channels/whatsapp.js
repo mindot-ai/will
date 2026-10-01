@@ -54,8 +54,6 @@ var ChannelRoster = class {
     }
   }
 };
-
-// src/surface/channels/types.ts
 function chunkText(text, max) {
   if (text.length <= max) return [text];
   const chunks = [];

@@ -1,3 +1,5 @@
+import './will-eDdJkyin.js';
+
 /** A running connection between one Will and one platform. */
 interface ChannelBridge {
     /** Platform kind, e.g. 'discord'. */

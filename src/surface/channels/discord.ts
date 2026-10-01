@@ -24,7 +24,7 @@
 
 import type { Will, WillMessage } from '#surface/sdk/will'
 import { ChannelRoster } from '#surface/channels/roster'
-import { chunkText, renderAttachments, isTextual, type ChannelBridge, type ChannelAttachment } from '#surface/channels/types'
+import { chunkText, readAttachments, isTextual, ATTACHMENT_READ_CEILING, type ChannelBridge, type ChannelAttachment, type AttachmentRead } from '#surface/channels/types'
 
 const DISCORD_MESSAGE_LIMIT = 2000
 
@@ -37,9 +37,6 @@ const DISCORD_MESSAGE_LIMIT = 2000
  */
 const DISCORD_CDN_HOSTS = new Set( [ 'cdn.discordapp.com', 'media.discordapp.net' ] )
 
-/** Refuse to pull a large file into a percept — the cap in renderAttachments
- *  bounds what is *kept*, this bounds what is fetched at all. */
-const MAX_FETCH_BYTES = 256 * 1024
 
 /**
  * What to call the room this was said in — `#general`, `#general › release-cut`,
@@ -177,10 +174,11 @@ export interface DiscordBridgeOptions {
   /** Roster path (default: ./.will/<willId>.discord.json). */
   rosterPath?: string
   /**
-   * Read the contents of text-like attachments (.md, .txt, .json, …) into the
-   * percept, rather than only naming them. Default true.
+   * Read text-like attachments (.md, .txt, .json, …) WHOLE, each its own percept,
+   * rather than only naming them. Default true.
    *
-   * Only Discord's own CDN is ever fetched, and only up to a size cap. Set false
+   * Only Discord's own CDN is ever fetched; above `ATTACHMENT_READ_CEILING` a file
+   * is named, not read, and the mind is told why. Set false
    * for a bridge that should never pull remote bytes — the Will still perceives
    * that a file arrived and can ask about it.
    */
@@ -265,8 +263,8 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
     // the same mistake at a smaller size (LOSSLESS P0).
     const said = ( msg.cleanContent || msg.content || '').trim()
 
-    // Described, bracketed, first person — the same shape `renderAttachments` uses
-    // for a file, and for the same reason: this reached the mind through the
+    // Described, bracketed, first person — the shape a shared file's reference
+    // takes, and for the same reason: this reached the mind through the
     // conversation but nobody SAID it, and a percept that reads like speech invites
     // the mind to answer words that were never spoken.
     const text = said
@@ -323,14 +321,13 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
     // into a .md upload. Only a message with neither words nor files is nothing.
     if( !said && files.length === 0 ) return
 
-    const shared = await renderAttachments(
-      files, speaker,
-      opts.readAttachments === false ? undefined : fetchAttachmentText,
-    )
-    const text = [ said, shared ].filter( Boolean ).join('\n')
+    // Each file whole, or named with why not — handed over beside the words, not
+    // inlined into them (LOSSLESS P5d).
+    const shared = await readAttachments( files, opts.readAttachments === false ? undefined : readAttachment )
 
     await will.sense( {
-      text,
+      text:   said,
+      ...( shared.length > 0 ? { attachments: shared } : {} ),
       from:   entityId,
       thread: `discord:${ message.channelId }`,
       // `isDM` has been computed on every inbound since this bridge shipped and
@@ -374,26 +371,32 @@ export async function connectDiscord( will: Will, opts: DiscordBridgeOptions ): 
     return out
   }
 
-  /** Fetch one text attachment — Discord CDN only, size-capped. */
-  async function fetchAttachmentText( a: ChannelAttachment ): Promise<string | null> {
-    if( !a.url || !isTextual( a ) ) return null
+  /**
+   * Read one attachment whole — from Discord's own CDN only, and only text. Above
+   * the ceiling it is named, not read (LOSSLESS_P5 D4); nothing is read in part.
+   */
+  async function readAttachment( a: ChannelAttachment ): Promise<AttachmentRead> {
+    if( !isTextual( a ) ) return { unread: 'not something I can read as text' }
+    if( !a.url ) return { unread: 'Discord gave no way to fetch it' }
     let host: string
     try { host = new URL( a.url ).hostname }
-    catch { return null }
+    catch { return { unread: 'its address is not one I can read' } }
     if( !DISCORD_CDN_HOSTS.has( host ) ){
       log(`refusing to fetch attachment '${ a.name }' from non-CDN host ${ host }`)
-      return null
+      return { unread: `it is not on Discord's own servers (${ host }), and I only read files from there` }
     }
-    if( a.size != null && a.size > MAX_FETCH_BYTES ){
+    const tooLarge = { unread: `it is larger than the ${ ATTACHMENT_READ_CEILING / 1024 / 1024 } MB I read` }
+    if( a.size != null && a.size > ATTACHMENT_READ_CEILING ){
       log(`attachment '${ a.name }' is ${ a.size } bytes — naming it without reading`)
-      return null
+      return tooLarge
     }
-    const res = await fetch( a.url, { signal: AbortSignal.timeout( 10_000 ) } )
+    const res = await fetch( a.url, { signal: AbortSignal.timeout( 30_000 ) } )
     if( !res.ok ){
       log(`attachment '${ a.name }' fetch failed: ${ res.status }`)
-      return null
+      return { unread: `I could not fetch it (HTTP ${ res.status })` }
     }
-    return ( await res.text() ).slice( 0, MAX_FETCH_BYTES )
+    const text = await res.text()
+    return new TextEncoder().encode( text ).length > ATTACHMENT_READ_CEILING ? tooLarge : { text }
   }
 
   // ── the Will looks at something here, and Discord answers ─────────────────

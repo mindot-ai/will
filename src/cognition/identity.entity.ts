@@ -78,6 +78,70 @@ export function identityCommand( state: ReadonlySimulationState, patch: Identity
   }
 }
 
+/** Styles that say nothing about how a mind speaks — left open by whoever made it. */
+const GENERIC_STYLES = new Set( [
+  '', 'natural', 'authentic', 'natural and authentic',
+  'helpful', 'friendly', 'professional', 'assistant', 'neutral',
+] )
+
+export const isGenericStyle = ( style: string | undefined ): boolean =>
+  GENERIC_STYLES.has( ( style ?? '').trim().toLowerCase() )
+
+/** What the mind concluded about who it is, in one cycle's `[IDENTITY]` block. */
+export interface IdentityUpdates {
+  traits?: Array<{ key: string; value: number }>
+  values?: string[]
+  style?:  string
+}
+
+/**
+ * What the mind concluded about who it is — every cycle's, in order — applied
+ * as one merged command, or none when nothing changes.
+ *
+ *   traits  a delta each, clamped to 0..1
+ *   values  added. None is removed: the prompt said "replaces existing", and a
+ *           value an operator gave the mind is not the mind's to drop
+ *   style   taken while the style is still generic — filling what was left
+ *           open, never replacing a voice someone gave it
+ *
+ * The prompt asked for values (and, every 30 ticks, for style) and nothing
+ * applied either; traits were applied by the narrator only when its 50-tick
+ * pass happened to find the output fresh — so a delta was missed, or applied
+ * twice. Applied here, once each.
+ */
+export function identityUpdateCommand(
+  state: ReadonlySimulationState,
+  updates: readonly IdentityUpdates[],
+): EntityInput | null {
+  const current = state.entities.get( IDENTITY_ENTITY_ID )?.metadata
+  if( !current ) return null
+
+  const traits = { ...( ( current['traits'] as Record<string, number> | undefined ) ?? {} ) }
+  const values = [ ...( ( current['values'] as string[] | undefined ) ?? [] ) ]
+  let   style  = ( current['style'] as string | undefined ) ?? ''
+  let changed  = false
+
+  for( const u of updates ){
+    for( const t of u.traits ?? [] ){
+      if( typeof t?.key !== 'string' || !Number.isFinite( t.value ) ) continue
+      const next = Math.max( 0, Math.min( 1, ( traits[ t.key ] ?? 0.5 ) + t.value ) )
+      if( next !== traits[ t.key ] ){ traits[ t.key ] = next; changed = true }
+    }
+    for( const raw of u.values ?? [] ){
+      const v = typeof raw === 'string' ? raw.trim() : ''
+      if( v && !values.some( x => x.toLowerCase() === v.toLowerCase() ) ){ values.push( v ); changed = true }
+    }
+    const said = typeof u.style === 'string' ? u.style.trim() : ''
+    if( said && isGenericStyle( style ) && !isGenericStyle( said ) ){ style = said; changed = true }
+  }
+
+  if( !changed ) return null
+  return identityCommand( state, {
+    traits, values, style,
+    version: ( ( current['version'] as number | undefined ) ?? 1 ) + 1,
+  } )
+}
+
 /**
  * Merge into `identity-self` directly — for the off-tick seeding paths that hold
  * a StateManager rather than returning commands (mind assembly, PMA load).

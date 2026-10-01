@@ -266,6 +266,7 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
             completionType: string; completionCondition?: string
           }>
           goalsToAbandon?: Array<{ goalId: string; reason: string }>
+          goalsToReprioritize?: Array<{ goalId: string; newPriority: number; reason: string }>
           newBeliefs?: Array<{
             statement: string; category: string; confidence: number
             evidence: 'single_observation' | 'recurring_pattern' | 'strong_pattern'; tags: string[]
@@ -289,6 +290,11 @@ export class GoalManager implements SimulationEngine, CognitiveEngine {
         if( payload.goalsToAbandon )
           for( const ga of payload.goalsToAbandon )
             this.abandonGoal( ga.goalId, ga.reason )
+
+        // A facet re-weighing a goal is the mind re-weighing it, as the master's is.
+        if( payload.goalsToReprioritize )
+          for( const gr of payload.goalsToReprioritize )
+            this.updateGoalPriority( gr.goalId, gr.newPriority )
           
         if( payload.goalId && payload.goalProgress !== undefined ){
           const goal = this._goals.get( payload.goalId )

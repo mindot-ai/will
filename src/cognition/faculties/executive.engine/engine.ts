@@ -79,8 +79,13 @@ import { readEffectiveParams } from '#cognition/persona.prior'
 import {
   buildStateCommands,
   publishCognitiveEvents,
-  type CommandDependencies
+  selfRecords,
+  publishSelfReflection,
+  publishSkills,
+  type CommandDependencies,
+  type SelfAccount,
 } from '#faculties/executive.engine/commands'
+import { identityUpdateCommand, type IdentityUpdates } from '#cognition/identity.entity'
 import { DeferredEffectQueue } from '#faculties/executive.engine/deferred.effects'
 import { EscalationBuffer, type HandoffBody } from '#faculties/executive.engine/escalation.buffer'
 import { FacetSupervisor } from '#faculties/executive.engine/facet.supervisor'
@@ -234,6 +239,25 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     /** Commitments the facet declared toward a THIRD party while attending here. */
     promised?:  Array<{ what: string; target?: string; gist?: string; tick: number }>
   }>()
+
+  /**
+   * What a facet concluded about the mind itself — its reflection, a chapter of
+   * its story, what it noticed about itself, a skill it named — carried back on
+   * `executive.facet.sync` and written on the next tick's state.
+   *
+   * A facet is the same mind (two-thirds of its decisions are made in one), its
+   * prompt asks for every one of these, and none of them went anywhere: only the
+   * master's output became state. Measured on Lora's archived runs: 18 of 364
+   * facet decisions carried an introspection and 27 a narrative, all dropped.
+   */
+  private _selfAccounts: Array<{ source: string; tick: number; confidence: number; account: SelfAccount }> = []
+
+  /**
+   * What any cycle — the master's or a facet's — concluded about who the mind is,
+   * applied on the next tick's state so a merge never rests on a snapshot the
+   * reasoning started from (see identityUpdateCommand).
+   */
+  private _identityUpdates: IdentityUpdates[] = []
 
   // ── Cognitive models ───────────────────────────────────────
   private readonly _model = new GenerativeModel()
@@ -674,6 +698,13 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     this._facetSupervisor.pump( state )
 
     const result = await super.react( delta, tick, state, context )
+
+    // The mind's account of itself, from facets and from any cycle's [IDENTITY].
+    const self = this._drainSelfAccounts( state )
+    if( self.length ){
+      result.commands ??= {}
+      result.commands.set = [ ...( result.commands.set ?? [] ), ...self ]
+    }
 
     // Reasoning facets occupy attention. Merged into whatever this tick already
     // produced — AsyncEngine.react returns commands on every tick, reasoning or not,
@@ -1292,6 +1323,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // pre-commit validator can still abort. Queue them; the DeferredEffectQueue
     // runs them on the next react() once this tick is confirmed committed.
     this._deferred.enqueue( footprint.tickObserved as unknown as number, effects )
+    if( executiveOutput.identityUpdates ) this._identityUpdates.push( executiveOutput.identityUpdates )
 
     // Publish cognitive events
     publishCognitiveEvents(
@@ -1484,6 +1516,14 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       tick?: number
       subjectEntityId?: string
       subjectName?: string
+      self?: SelfAccount
+    }
+
+    if( payload.self ){
+      const tick = payload.tick ?? this._currentTick
+      this._selfAccounts.push({ source: payload.facetId ?? 'facet', tick,
+        confidence: payload.confidence ?? 0.5, account: payload.self })
+      if( payload.self.identityUpdates ) this._identityUpdates.push( payload.self.identityUpdates )
     }
 
     // Remember WHO this facet is with, and WHAT it worked out there. The second
@@ -1524,6 +1564,21 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         ? ` (with ${payload.subjectName ?? payload.subjectEntityId})` : '') +
       ` (confidence=${payload.confidence?.toFixed( 2 )})`
     )
+  }
+
+  /** The queued self-accounts and identity updates, as records on `state` (see the fields). */
+  private _drainSelfAccounts( state: ReadonlySimulationState ): EntityInput[] {
+    const set: EntityInput[] = []
+    for( const { source, tick, confidence, account } of this._selfAccounts.splice( 0 ) ){
+      set.push( ...selfRecords( account, source, tick ) )
+      if( this._bus ){
+        publishSelfReflection( this._bus, account.introspection, confidence, tick )
+        publishSkills( this._bus, account.newSkills, tick )
+      }
+    }
+    const identity = identityUpdateCommand( state, this._identityUpdates.splice( 0 ) )
+    if( identity ) set.push( identity )
+    return set
   }
 
   /**

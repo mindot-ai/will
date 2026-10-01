@@ -15,7 +15,7 @@ import { readIdentityName } from '#cognition/identity.entity'
 import { readSpokenTurns } from '#agency/conversation.aim'
 import { nameOf as referentName } from '#cognition/social.identity'
 import { SCHEMA_ENTITY_TYPE } from '#agency/schemas/repertoire'
-import type { BroughtBack } from '#faculties/executive.engine/view'
+import { compactText, type BroughtBack } from '#faculties/executive.engine/view'
 
 /** How many of the mind's own recent utterances it is shown. Enough to notice a
  *  repetition, few enough not to crowd out what is happening now. */
@@ -636,7 +636,8 @@ function _extractEpisodeContent( raw: unknown ): string {
   }
   // Goal: { description }
   if( typeof c['description'] === 'string') return c['description']
-  return JSON.stringify( raw ).slice( 0, 200 )
+  // A shape none of the above knows: itself, whole (it was cut at 200).
+  return compactText( raw )
 }
 
 function mapEpisodeToMemory( ep: {
@@ -680,19 +681,20 @@ function itemData( content: unknown ): unknown {
   return undefined
 }
 
+/** A held item's label, whole — it was cut at 120 (LOSSLESS P5b). */
 function extractSummary( content: unknown ): string {
   if( typeof content === 'string')
-    return content.slice( 0, 120 )
+    return content
 
   if( content && typeof content === 'object'){
     const obj = content as Record<string, unknown>
 
     return (obj.summary as string)
             ?? (obj.description as string)
-            ?? JSON.stringify( content ).slice( 0, 120 )
+            ?? compactText( { ...obj, data: undefined } )   // its data renders beneath
   }
 
-  return String( content ?? '').slice( 0, 120 )
+  return String( content ?? '')
 }
 
 function extractPercepts( state: ReadonlySimulationState ): ExecutiveContext['percepts'] {

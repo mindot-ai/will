@@ -1,6 +1,6 @@
 # LOSSLESS P5 — every call fits its window, and nothing leaves a call silently
 
-> **Standing:** DESIGNED · 2026-10-01 · traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; the owner took all six recommendations (D1–D6) the same day
+> **Standing:** DESIGNED · 2026-10-01 · traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; the owner took all six recommendations (D1–D6) the same day; P5a and P5b landed
 
 > The last phase of [[LOSSLESS]]. P0–P4 made what the mind takes in, thinks, says and
 > keeps whole. This phase is about what a **single LLM call** is shown. That view
@@ -168,16 +168,20 @@ small window they shrink further, still counted.
 working record, not a memory system"). Before calling that MIND, P5c checks whether
 every act's outcome is remembered some other way.
 
-### Part 4 — single-item text cuts in VIEW are removed
+### Part 4 — single-item text cuts in VIEW are removed ✅
 
 Each of these becomes whole, and Part 2 handles anything that turns out to be oversize:
 
-- `surface/mcp/effectors.ts` `MEANING_CAP` 300. It hides the required args of GitHub
-  tools, so she cannot supply them and the act fails;
-- `prompt.factory.ts` `MEMORY_CONTINUITY_CAP` 1,200, which labels its cut `[...summarized]`;
-- `RECALL_CHAR_BUDGET` 1,200;
-- `context.ts` `extractSummary` 120 / 200;
-- the plan's expected outcome, 80.
+- ~~`surface/mcp/effectors.ts` `MEANING_CAP` 300~~ (#195). It hid the required args
+  of GitHub tools, so she could not supply them and the act failed;
+- ~~`prompt.factory.ts` `MEMORY_CONTINUITY_CAP` 1,200~~, which labelled its cut
+  `[...summarized]` — it cut every summary she ever had (P5b);
+- ~~`RECALL_CHAR_BUDGET` 1,200~~ (P5a);
+- ~~`context.ts` `extractSummary` 120 / 200~~ (P5b);
+- ~~the plan's expected outcome, 80~~ (P5b);
+- ~~a host's own `summary` at `PERCEPT_SUMMARY_CAP` 100~~ — found in P5b. The cap
+  now bounds only labels the engine composes, and a percept's id no longer hashes
+  a bounded label (two answers that began alike were one percept).
 
 ### Part 5 — what she read is recallable by meaning
 
@@ -216,8 +220,8 @@ window, that is a configuration error, raised loudly at assembly.
 
 | | What | Why first |
 |---|---|---|
-| **P5a** | Window, estimate, budget, Part 2 paging, one render per item, `[RECALL]` for `doc` pages, the safety net | Closes the overflow P2 opened, before Lora's first GitHub boot |
-| **P5b** | Part 4: text cuts removed, `MEANING_CAP` first | Her GitHub tools' required args |
+| **P5a** ✅ | Window, estimate, budget, Part 2 paging, one render per item, `[RECALL]` for `doc` pages, the safety net | Closes the overflow P2 opened, before Lora's first GitHub boot |
+| **P5b** ✅ | Part 4: text cuts removed, `MEANING_CAP` first | Her GitHub tools' required args |
 | **P5c** | Part 3: honest counts, ranked abilities, `[RECALL]` for sections, queries and memories | The silent drops |
 | **P5d** | Attachments as items | Depends on P5a's paging |
 | **P5e** | Part 5: chunked embedding of what she read | Depends on P5a's pages |

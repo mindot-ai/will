@@ -1,6 +1,6 @@
 # LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut
 
-> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P4 and P5a landed, unreleased
+> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P4, P5a and P5b landed, unreleased
 
 > **The rule:** *lossless, not unbounded.* Every cut that loses data — at intake, in
 > transit between the mind's own parts, in what it keeps, in its artifact, in its
@@ -431,6 +431,45 @@ prompt (twice while its percept lives), and one 30-PR listing is ~135k tokens.
       Recorded on the call's own record (`executive.call` / `executive.facet.call`
       `view`: window, budget, mode, inline, tightened, overBudget).
 
+**P5b — no single thing she is shown is cut ✅** — each cut measured on Lora's
+recorded prompts (742) and snapshots before it went:
+
+- [x] **`## Memory Continuity` whole.** Cut at 1,200 characters and marked
+      `[...summarized]` on the belief that a rolling summary grows. It does not:
+      each run REPLACES it with one 150–250-word paragraph, and that is its bound.
+      Her 70 summaries ran 1,270–1,654 characters, so all 731 prompts that had one
+      were cut — and the cut took the paragraph's end, what she had noticed about
+      herself.
+- [x] **A plan's expected outcome whole** — the line she is told to judge the plan
+      by. Cut at 80; her three plans ran 140–205, all 843 rendered lines cut.
+- [x] **A held or remembered item's label whole** (`extractSummary` 120, the
+      episode fallback 200). No writer reaches either today — working memory
+      admits percepts, which carry a label — so they were the defence, and it cut.
+      A label-less held item's data still renders once, beneath.
+- [x] **A host's own words whole — found doing this, not in the design.**
+      Somatosensation cut a host's `summary` at `PERCEPT_SUMMARY_CAP` (100) as if
+      the engine had written it, and the data beneath leaves `summary` out (it is
+      the label), so the rest was read nowhere — against SIGNAL_BOUNDARY's "it may
+      not bound what a host sent", and the SDK's "nothing truncates it". The cap
+      now bounds only what the engine composes: a long bare-string payload (every
+      MCP answer) is labelled by its signal's name and a glance —
+      `list_pull_requests: [{"number":…` — not by its own first hundred
+      characters, and it renders whole beneath. Exteroception already kept the
+      world's words whole.
+- [x] **Two answers are two percepts — a loss the label cut caused.** A percept's
+      id hashed its source and its LABEL, a bounded glance, so two answers that
+      began alike on one tick (two calls of one tool, or two "Done (no output).")
+      were one id, and the second overwrote the first: its data, and which act it
+      answered. The id now hashes the data and the act too; the same signal twice
+      on one tick still coalesces.
+
+Checked and left: the narrator's `story` (a VIEW nothing renders, P1); the
+integrator's 150-character episode samples (a search probe, not a record); the
+master's 600-character response excerpt (a preview beside the whole file, P4);
+the identity guard's limits (it refuses, it does not cut); Discord's message
+splitting. The conversation-memory cut seen in her August prompts (100 a side)
+was P0's (#180).
+
 The sketch it started from — the design work, in three parts:
 
 1. **A context window the engine knows.** Host-declared per model, beside prices
@@ -471,10 +510,9 @@ world percepts, and the sense boundary rightly stopped that with nothing reading
 them after. They render under `## What Became Of What I Did` now.
 
 Single-item text cuts in VIEW are removed here: ~~`effectors.ts:57,73`
-`MEANING_CAP`~~ (done, above),
-`prompt.factory.ts:699-702` `MEMORY_CONTINUITY_CAP` — which labels a truncation
-`[...summarized]` — `:1169` `RECALL_CHAR_BUDGET`, `context.ts:594,628-638`
-`extractSummary` (120/200), `prompt.factory.ts:1302` expected outcome (80).
+`MEANING_CAP`~~ (done, above), ~~`MEMORY_CONTINUITY_CAP`~~,
+~~`RECALL_CHAR_BUDGET`~~ (P5a), ~~`extractSummary` (120/200)~~, ~~expected outcome
+(80)~~, ~~a host's `summary` at `PERCEPT_SUMMARY_CAP`~~ (P5b).
 
 Count caps that become ranked + counted + recallable: ~~`MAX_SURFACED_ABILITIES` 8~~
 (removed — abilities are not a ranked view, every one is shown), `BELIEF_PROMPT_LIMIT` 30 /

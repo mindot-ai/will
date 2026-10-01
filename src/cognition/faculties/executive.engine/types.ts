@@ -324,7 +324,7 @@ export interface ExecutiveContext {
     status: 'completed' | 'failed' | 'withheld'
     /** Tick the action was executed or dispatched */
     tick: number
-    /** Short outcome description — truncated to 120 chars */
+    /** How the act went, whole — a fate, short by nature (P2) */
     outcome: string
     /** planId if this action came from a plan step */
     planId?: string

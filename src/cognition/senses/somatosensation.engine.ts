@@ -88,13 +88,20 @@ export class SomatosensationEngine extends BaseSenseEngine {
  * happens to have words may put a `summary` on its data and they are used
  * instead; it is an option, never an obligation.
  *
- * Bounded by `PERCEPT_SUMMARY_CAP` because the ENGINE writes it. The data it
- * labels is beside it, whole and uncapped.
+ * A host's words are never bounded here, only the engine's own (LOSSLESS P5b,
+ * SIGNAL_BOUNDARY: "it may not bound what a host sent"). A host's `summary` IS
+ * the label, whole: the data beneath leaves it out, because it is already the
+ * label, so a cut here was a cut of the only place she reads it. A bare string is
+ * the payload itself, rendered whole beneath — short, it is its own label; long,
+ * the label is the ENGINE's: the signal's name and a glance, bounded by
+ * `PERCEPT_SUMMARY_CAP` because the engine wrote it. So a tool's 135k-token answer
+ * is labelled `list_pull_requests: [{"number":…` — by what was done, not by the
+ * first hundred characters of what came back.
  */
 function labelFor( signal: string, data: unknown ): string {
-  const words = hostWords( data )
-  if( words ) return words.length > PERCEPT_SUMMARY_CAP
-    ? `${ words.slice( 0, PERCEPT_SUMMARY_CAP - 1 ) }\u2026` : words
+  const words = hostSummary( data )
+  if( words ) return words
+  if( typeof data === 'string' && data.length > 0 && data.length <= PERCEPT_SUMMARY_CAP ) return data
 
   const rendered = compact( data )
   const label = rendered ? `${ signal }: ${ rendered }` : `Something happened: ${ signal }.`
@@ -102,9 +109,8 @@ function labelFor( signal: string, data: unknown ): string {
     ? `${ label.slice( 0, PERCEPT_SUMMARY_CAP - 1 ) }\u2026` : label
 }
 
-/** A host's own words, if it chose to offer any. Optional, never required. */
-function hostWords( data: unknown ): string | undefined {
-  if( typeof data === 'string') return data.length > 0 ? data : undefined
+/** A host's own words for what it sent, if it chose to offer any. Optional, never required. */
+function hostSummary( data: unknown ): string | undefined {
   if( typeof data === 'object' && data !== null && !Array.isArray( data ) ){
     const s = ( data as Record<string, unknown> )['summary']
     if( typeof s === 'string' && s.length > 0 ) return s

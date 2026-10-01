@@ -207,7 +207,7 @@ export class ProactiveCommunicator {
 
     const outboxMessageIds: string[] = []
     bubbles.forEach( ( bubble, i ) => {
-      logger.info(`[communication] pushing to outbox: ${effectorName} → ${targetEntityId} "${bubble.slice( 0, 80 )}"`)
+      logger.info(`[communication] pushing to outbox: ${effectorName} → ${targetEntityId} "${bubble}"`)
       outboxMessageIds.push( this._writer.enqueue({
         targetEntityId,
         targetEntityName,

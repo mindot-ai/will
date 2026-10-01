@@ -552,7 +552,7 @@ export class SpacedRepetition implements SimulationEngine, CognitiveEngine {
       type: 'belief.spaced_repetition',
       tick,
       beliefId: belief.id,
-      statement: belief.statement.slice( 0, 100 ),
+      statement: belief.statement,
       oldConfidence: prevConfidence,
       newConfidence: belief.confidence,
       cause

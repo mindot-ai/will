@@ -308,9 +308,8 @@ var DefaultMetricCollector = class {
       await this._flushCallback(points);
     else {
       logger.info(`[Metrics] Flushed ${points.length} points`);
-      for (const point of points.slice(0, 10))
+      for (const point of points)
         logger.info(`  ${point.type}: ${point.name}=${point.value} @ tick ${point.tick}`);
-      points.length > 10 && logger.info(`  ... and ${points.length - 10} more`);
     }
   }
   destroy() {
@@ -2579,7 +2578,7 @@ var OutboxWriter = class {
         ids.push(this._genId(`-${i}`));
         return;
       }
-      logger.info(`[outbox-writer] reply \u2192 ${entityId} bubble[${i}] "${bubble.slice(0, 80)}"`);
+      logger.info(`[outbox-writer] reply \u2192 ${entityId} bubble[${i}] "${bubble}"`);
       ids.push(this.enqueue({
         targetEntityId: entityId,
         targetEntityName: entityName,
@@ -3191,7 +3190,7 @@ var LLMDirector = class {
     }
     if (!res.ok) {
       clearTimeout(timer);
-      throw new Error(`Anthropic stream ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      throw new Error(`Anthropic stream ${res.status}: ${await res.text()}`);
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -3322,7 +3321,7 @@ var LLMDirector = class {
       body: JSON.stringify(body)
     });
     if (!res.ok)
-      throw new Error(`${ep.provider} API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      throw new Error(`${ep.provider} API ${res.status}: ${await res.text()}`);
     const data = await res.json(), text = data.content.find((b) => b.type === "text")?.text ?? "";
     return {
       text,
@@ -3352,7 +3351,7 @@ var LLMDirector = class {
       body: JSON.stringify(body)
     });
     if (!res.ok)
-      throw new Error(`OpenAI API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      throw new Error(`OpenAI API ${res.status}: ${await res.text()}`);
     const data = await res.json(), text = data.choices[0]?.message?.content ?? "";
     return {
       text,
@@ -3382,7 +3381,7 @@ var LLMDirector = class {
       }
     );
     if (!res.ok)
-      throw new Error(`Google API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      throw new Error(`Google API ${res.status}: ${await res.text()}`);
     const data = await res.json();
     const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
     return {
@@ -4731,7 +4730,7 @@ var ProactiveCommunicator = class {
     const isAck = request.parameters?.isAck ?? false;
     const outboxMessageIds = [];
     bubbles.forEach((bubble, i) => {
-      logger.info(`[communication] pushing to outbox: ${effectorName2} \u2192 ${targetEntityId} "${bubble.slice(0, 80)}"`);
+      logger.info(`[communication] pushing to outbox: ${effectorName2} \u2192 ${targetEntityId} "${bubble}"`);
       outboxMessageIds.push(this._writer.enqueue({
         targetEntityId,
         targetEntityName,
@@ -11888,7 +11887,7 @@ var SpacedRepetition = class {
       type: "belief.spaced_repetition",
       tick,
       beliefId: belief.id,
-      statement: belief.statement.slice(0, 100),
+      statement: belief.statement,
       oldConfidence: prevConfidence,
       newConfidence: belief.confidence,
       cause
@@ -15947,17 +15946,19 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         completionTokens: result.outputTok,
         cacheReadTokens: result.cacheReadTok ?? 0,
         cacheWriteTokens: result.cacheWriteTok ?? 0,
-        responseExcerpt: result.text.slice(0, 600)
+        // Whole. A facet writes no response file (the master does), so this line
+        // was the only record of what it said — and it kept 600 characters.
+        response: result.text
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error(`[executive.facet] ${this.facetId} LLM call failed: ${msg.slice(0, 200)}`);
+      logger.error(`[executive.facet] ${this.facetId} LLM call failed: ${msg}`);
       this._sessionLogger?.write({
         type: "executive.facet.response",
         tick: currentState.tick,
         facetId: this.facetId,
         latencyMs: wallClock() - llmStart,
-        error: msg.slice(0, 300)
+        error: msg
       });
       output = buildFallbackOutput(currentState);
     }
@@ -15966,7 +15967,7 @@ ${this._facetReasoningHistory.join("\n")}` : "";
       tick: currentState.tick,
       facetId: this.facetId,
       confidence: output.confidence,
-      reasoning: output.reasoning.slice(0, 500),
+      reasoning: output.reasoning,
       actions: output.actions,
       newBeliefs: output.newBeliefs ?? [],
       plansCount: output.plans?.length ?? 0,
@@ -17139,6 +17140,7 @@ var ExecutiveEngine = class extends AsyncEngine {
         responseChars: result.text.length,
         promptTokens: result.inputTok,
         completionTokens: result.outputTok,
+        // A preview beside the whole: `responsePath` is written on every call.
         responseExcerpt: result.text.slice(0, 600),
         responsePath
       });
@@ -17147,12 +17149,12 @@ var ExecutiveEngine = class extends AsyncEngine {
         executiveOutput.consideredAlternatives = ideationCandidates.map((c) => c.approach || c.description);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error(`[executive] LLM call failed: ${msg.slice(0, 200)}`);
+      logger.error(`[executive] LLM call failed: ${msg}`);
       this._sessionLogger?.write({
         type: "executive.response",
         tick: state.tick,
         latencyMs: wallClock() - llmStart,
-        error: msg.slice(0, 300)
+        error: msg
       });
       executiveOutput = buildFallbackOutput(state, this._recentActionTypes);
     }
@@ -17160,7 +17162,9 @@ var ExecutiveEngine = class extends AsyncEngine {
       type: "executive.output",
       tick: state.tick,
       confidence: executiveOutput.confidence,
-      reasoning: executiveOutput.reasoning.slice(0, 1e3),
+      // Whole — the trace an operator judges her by is built from this line, and at
+      // 1,000 characters our analysis of her rested on the same cuts she once did.
+      reasoning: executiveOutput.reasoning,
       actions: executiveOutput.actions,
       newBeliefs: executiveOutput.newBeliefs ?? [],
       plansCount: executiveOutput.plans?.length ?? 0,
@@ -18405,7 +18409,7 @@ var PlanningEngine = class {
           );
           if (isReassertion) {
             logger.info(
-              `[planning] draft for goal ${planData.goalId} skipped \u2014 matches active plan "${expected.slice(0, 40)}"`
+              `[planning] draft for goal ${planData.goalId} skipped \u2014 matches active plan "${expected}"`
             );
             break;
           }
@@ -22743,7 +22747,7 @@ var AuditionEngine = class extends BaseSenseEngine {
         const output = raw;
         const silent = output.noMessage !== void 0;
         if (silent)
-          logger.info(`[audition-engine] chose silence toward ${speakerName ?? percept.speakerEntityId}: ${output.noMessage.slice(0, 120)}`);
+          logger.info(`[audition-engine] chose silence toward ${speakerName ?? percept.speakerEntityId}: ${output.noMessage}`);
         const rawReply = silent ? "" : output.replyText?.trim() ?? "";
         const bubbles = rawReply.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
         const outwardIntents = partitionOutwardIntents(
@@ -22819,7 +22823,7 @@ var AuditionEngine = class extends BaseSenseEngine {
       extractDecision: (raw) => {
         const output = raw;
         if (output.noMessage !== void 0) {
-          logger.info(`[audition-engine] chose not to reach out to ${entityName}: ${output.noMessage.slice(0, 120)}`);
+          logger.info(`[audition-engine] chose not to reach out to ${entityName}: ${output.noMessage}`);
           return { reply: "", replyBubbles: [], withheld: true, targetEntityId: entityId, requiresMasterAttention: false };
         }
         const rawReply = output.replyText?.trim() ?? "";
@@ -23018,7 +23022,7 @@ var AuditionEngine = class extends BaseSenseEngine {
             `[audition-engine] Delivered ${ids.length} bubble(s) to ${entityId} via outbox (messageIds=${ids.join(",")})`
           );
         } else logger.info(
-          `[audition-engine] Facet reply for ${entityId} (no outbox writer \u2014 not delivered): "${d.reply.slice(0, 80)}${d.reply.length > 80 ? "\u2026" : ""}"`
+          `[audition-engine] Facet reply for ${entityId} (no outbox writer \u2014 not delivered): "${d.reply}"`
         );
       }
       const handoff = (body) => {
@@ -31035,7 +31039,7 @@ async function preflightLLM(anatomy) {
       signal: AbortSignal.timeout(2e4)
     });
     if (res.ok) return;
-    const detail = (await res.text().catch(() => "")).slice(0, 300);
+    const detail = await res.text().catch(() => "");
     const fatal = res.status === 400 || res.status === 401 || res.status === 403;
     if (!fatal) {
       console.error(`[will] the executive's LLM answered ${res.status} on a test call \u2014 raising the mind anyway (it retries): ${detail}`);

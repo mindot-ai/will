@@ -93,10 +93,10 @@ export class DefaultMetricCollector implements MetricCollector {
 
     else {
       logger.info(`[Metrics] Flushed ${points.length} points`)
-      for( const point of points.slice( 0, 10 ) )
+      // Every point: with no flush callback this is their only record — they are
+      // spliced out above — and it printed ten of them.
+      for( const point of points )
         logger.info(`  ${point.type}: ${point.name}=${point.value} @ tick ${point.tick}`)
-
-      points.length > 10 && logger.info(`  ... and ${points.length - 10} more`)
     }
   }
 

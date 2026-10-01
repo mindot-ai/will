@@ -1112,6 +1112,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         responseChars: result.text.length,
         promptTokens: result.inputTok,
         completionTokens: result.outputTok,
+        // A preview beside the whole: `responsePath` is written on every call.
         responseExcerpt: result.text.slice( 0, 600 ),
         responsePath,
       } )
@@ -1127,13 +1128,13 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     }
     catch( err: unknown ){
       const msg = err instanceof Error ? err.message : String( err )
-      logger.error(`[executive] LLM call failed: ${msg.slice( 0, 200 )}`)
+      logger.error(`[executive] LLM call failed: ${msg}`)
 
       this._sessionLogger?.write( {
         type: 'executive.response',
         tick: state.tick,
         latencyMs: wallClock() - llmStart,
-        error: msg.slice( 0, 300 )
+        error: msg
       } )
 
       // Use fallback
@@ -1145,7 +1146,9 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       type: 'executive.output',
       tick: state.tick,
       confidence: executiveOutput.confidence,
-      reasoning: executiveOutput.reasoning.slice( 0, 1000 ),
+      // Whole — the trace an operator judges her by is built from this line, and at
+      // 1,000 characters our analysis of her rested on the same cuts she once did.
+      reasoning: executiveOutput.reasoning,
       actions: executiveOutput.actions,
       newBeliefs: executiveOutput.newBeliefs ?? [],
       plansCount: executiveOutput.plans?.length ?? 0,

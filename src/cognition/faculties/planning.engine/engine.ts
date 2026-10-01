@@ -422,7 +422,7 @@ export class PlanningEngine implements SimulationEngine, CognitiveEngine {
           if( isReassertion ){
             logger.info(
               `[planning] draft for goal ${planData.goalId} skipped — ` +
-              `matches active plan "${expected.slice( 0, 40 )}"`
+              `matches active plan "${expected}"`
             )
             break
           }

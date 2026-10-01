@@ -161,7 +161,7 @@ async function preflightLLM( anatomy: string ): Promise<void> {
     } )
     if( res.ok ) return
 
-    const detail = ( await res.text().catch( () => '') ).slice( 0, 300 )
+    const detail = await res.text().catch( () => '')
     const fatal  = res.status === 400 || res.status === 401 || res.status === 403
     if( !fatal ){
       console.error(`[will] the executive's LLM answered ${ res.status } on a test call — raising the mind anyway (it retries): ${ detail }`)

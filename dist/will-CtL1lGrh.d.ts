@@ -6216,8 +6216,12 @@ declare class PersonaConsolidator implements SimulationEngine, CognitiveEngine {
  */
 
 interface TheoryOfMindConfig {
-    /** How quickly belief confidence decays without observation */
-    beliefDecayRate?: number;
+    /**
+     * Confidence a quiet model loses per second of running time. A read of someone
+     * is a belief about them, so it fades at a belief's rate: a fresh read (0.3) is
+     * let go in ~4 days of silence, a firm one (0.9) in ~2 weeks.
+     */
+    fadePerSecond?: number;
     /** Minimum confidence to consider a belief reliable */
     confidenceThreshold?: number;
     bus?: CognitiveBus;
@@ -6255,7 +6259,7 @@ interface AgentMentalModel {
 }
 declare class TheoryOfMind implements SimulationEngine, CognitiveEngine {
     readonly name = "theory-of-mind";
-    private _beliefDecayRate;
+    private _fadePerSecond;
     private _confidenceThreshold;
     private _models;
     private _restored;
@@ -6268,7 +6272,7 @@ declare class TheoryOfMind implements SimulationEngine, CognitiveEngine {
     publishes(): CognitiveEventSchema[];
     onCognitiveEvent(e: CognitiveEvent): StateCommands | void;
     snapshot(): Record<string, unknown>;
-    react(_delta: Duration, tick: Tick, state: ReadonlySimulationState, _context: SimulationContext): Promise<EngineResult>;
+    react(delta: Duration, tick: Tick, state: ReadonlySimulationState, _context: SimulationContext): Promise<EngineResult>;
     /**
      * Query what another agent is likely to know/believe/intend.
      */
@@ -6288,8 +6292,24 @@ declare class TheoryOfMind implements SimulationEngine, CognitiveEngine {
     private _restoreFromState;
     private _getOrCreateModel;
     private _inferIntention;
-    private _decayBeliefs;
-    private _pruneModels;
+    /**
+     * The read of someone fades once they have been quiet a while, by a fixed step
+     * per second of running time.
+     *
+     * It took `rate × ticks since update` EVERY tick — a step that grew with the
+     * silence, so a colleague's model hit its floor two ticks after 100 quiet ticks
+     * (and every woken model, dated to tick 0, on its first tick). Empathy reads
+     * the model's emotion only above 0.3, so it read nobody it had not heard from
+     * in the last minute and a half.
+     */
+    private _fade;
+    /**
+     * Models faded out, removed here and returned for deletion from state. The fade
+     * floored at 0.05 and this let go below 0.05, so no model was ever let go.
+     * There is no count cap (it kept the 10 most confident models, dropping the
+     * rest from memory and not from state — restored next boot).
+     */
+    private _letGo;
 }
 
 /**

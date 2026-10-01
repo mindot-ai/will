@@ -19913,9 +19913,11 @@ var PersonaConsolidator = class {
 };
 
 // src/cognition/faculties/theory.of.mind.ts
+var QUIET_TICKS = 100;
+var LET_GO_AT = 0.05;
 var TheoryOfMind = class {
   name = "theory-of-mind";
-  _beliefDecayRate;
+  _fadePerSecond;
   _confidenceThreshold;
   _models = /* @__PURE__ */ new Map();
   _restored = false;
@@ -19924,7 +19926,7 @@ var TheoryOfMind = class {
   _model = new GenerativeModel();
   constructor(config = {}) {
     this._bus = config.bus ?? null;
-    this._beliefDecayRate = config.beliefDecayRate ?? 2e-3;
+    this._fadePerSecond = config.fadePerSecond ?? DEFAULT_BELIEF_DECAY_PER_SECOND;
     this._confidenceThreshold = config.confidenceThreshold ?? 0.3;
   }
   attachBus(bus) {
@@ -19956,7 +19958,7 @@ var TheoryOfMind = class {
   snapshot() {
     return {};
   }
-  async react(_delta, tick, state, _context) {
+  async react(delta, tick, state, _context) {
     const events = [], commands = { set: [], delete: [], metrics: [] };
     if (!this._restored) {
       this._restoreFromState(state);
@@ -19979,8 +19981,8 @@ var TheoryOfMind = class {
       };
       model.lastUpdated = tick;
     }
-    this._decayBeliefs(tick);
-    this._pruneModels();
+    this._fade(tick, delta / 1e3);
+    commands.delete.push(...this._letGo());
     for (const [keid, model] of this._models) {
       commands.set.push({
         id: `tom-${keid}`,
@@ -19993,7 +19995,11 @@ var TheoryOfMind = class {
           intentionCount: model.intentions.filter((i) => i.confidence > this._confidenceThreshold).length,
           modelConfidence: model.modelConfidence,
           dominantIntention: model.intentions.sort((a, b) => b.confidence - a.confidence)[0]?.goal ?? null,
-          estimatedEmotion: model.emotionalState.dominantEmotion
+          estimatedEmotion: model.emotionalState.dominantEmotion,
+          // When the mind last heard from them. `createdAt` above keeps its first
+          // value (and is sim-time ms), so a woken model was dated to tick 0 and
+          // faded out on its first tick.
+          lastUpdated: model.lastUpdated
         }
       });
     }
@@ -20044,13 +20050,14 @@ var TheoryOfMind = class {
       const dominantIntention = m["dominantIntention"] ?? null;
       const modelConfidence = m["modelConfidence"] ?? 0.3;
       const estimatedEmotion = m["estimatedEmotion"] ?? "neutral";
+      const lastUpdated = m["lastUpdated"] ?? state.tick;
       this._models.set(keid, {
         keid,
         knownObservations: [],
         beliefs: [],
-        intentions: dominantIntention ? [{ goal: dominantIntention, confidence: modelConfidence, lastUpdated: 0 }] : [],
+        intentions: dominantIntention ? [{ goal: dominantIntention, confidence: modelConfidence, lastUpdated }] : [],
         emotionalState: { valence: 0, arousal: 0, dominantEmotion: estimatedEmotion },
-        lastUpdated: 0,
+        lastUpdated,
         modelConfidence
       });
     }
@@ -20082,26 +20089,41 @@ var TheoryOfMind = class {
     });
     model.modelConfidence = Math.min(1, model.modelConfidence + 0.02);
   }
-  _decayBeliefs(currentTick) {
+  /**
+   * The read of someone fades once they have been quiet a while, by a fixed step
+   * per second of running time.
+   *
+   * It took `rate × ticks since update` EVERY tick — a step that grew with the
+   * silence, so a colleague's model hit its floor two ticks after 100 quiet ticks
+   * (and every woken model, dated to tick 0, on its first tick). Empathy reads
+   * the model's emotion only above 0.3, so it read nobody it had not heard from
+   * in the last minute and a half.
+   */
+  _fade(currentTick, seconds) {
+    const step = this._fadePerSecond * seconds;
     for (const model of this._models.values()) {
-      const ticksSinceUpdate = currentTick - model.lastUpdated;
-      if (ticksSinceUpdate > 100) {
-        model.modelConfidence = Math.max(0.05, model.modelConfidence - this._beliefDecayRate * ticksSinceUpdate);
-        for (const belief of model.beliefs)
-          belief.confidence = Math.max(0.05, belief.confidence - this._beliefDecayRate * 2);
-        for (const intention of model.intentions)
-          intention.confidence = Math.max(0.05, intention.confidence - this._beliefDecayRate * 2);
-      }
+      if (currentTick - model.lastUpdated <= QUIET_TICKS) continue;
+      model.modelConfidence = Math.max(0, model.modelConfidence - step);
+      for (const belief of model.beliefs)
+        belief.confidence = Math.max(0, belief.confidence - step);
+      for (const intention of model.intentions)
+        intention.confidence = Math.max(0, intention.confidence - step);
     }
   }
-  _pruneModels() {
-    const toPrune = [];
-    for (const [id, model] of this._models) {
-      if (model.modelConfidence < 0.05)
-        toPrune.push(id);
-    }
-    for (const id of toPrune)
-      this._models.delete(id);
+  /**
+   * Models faded out, removed here and returned for deletion from state. The fade
+   * floored at 0.05 and this let go below 0.05, so no model was ever let go.
+   * There is no count cap (it kept the 10 most confident models, dropping the
+   * rest from memory and not from state — restored next boot).
+   */
+  _letGo() {
+    const gone = [];
+    for (const [keid, model] of this._models)
+      if (model.modelConfidence <= LET_GO_AT) {
+        this._models.delete(keid);
+        gone.push(`tom-${keid}`);
+      }
+    return gone;
   }
 };
 
@@ -26999,7 +27021,8 @@ function buildEngineConfigEntities(config, executiveInterval) {
       id: "engine-config-theory-of-mind",
       engine: "theory-of-mind",
       params: {
-        beliefDecayRate: 2e-3,
+        // A read of someone fades at a belief's rate (per second, once quiet).
+        fadePerSecond: DEFAULT_BELIEF_DECAY_PER_SECOND,
         confidenceThreshold: 0.3
       }
     },

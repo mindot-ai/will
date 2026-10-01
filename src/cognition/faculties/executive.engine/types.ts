@@ -4,6 +4,7 @@
 
 import type { CognitiveBus } from '#cognition/bus'
 import type { PlanStep } from '#cognition/faculties/planning.engine/engine'
+import type { IdentityUpdates } from '#cognition/identity.entity'
 
 // ── Full executive output ────────────────────────────────────
 
@@ -43,10 +44,7 @@ export interface ExecutiveOutputFull {
   narrative?: string
   narrativeThemes?: string[]
   currentSelfView?: string
-  identityUpdates?: {
-    traits: Array<{ key: string; value: number }>
-    values: string[]
-  }
+  identityUpdates?: IdentityUpdates
   /**
    * What the Will consciously learned about the *others* it is dealing with (the analogue
    * of identityUpdates, but about someone/something else). `keid` is the referent from the

@@ -143,11 +143,17 @@ Reclassified while doing it, both measured:
   read had `lessons` where it read `lessonsLearned`, and no recommendations — the
   mind was shown its biases and never what it had decided to do about them. Taken
   once now, carried whole, read under either name.
-- **Open — a facet's mind-wide output goes nowhere.** A facet on the standard
-  output format (plan supervision) is asked for BELIEFS, INTROSPECTION, NARRATIVE
-  and SELF_OBS like the master, and its decision callback carries none of them
-  on; only the master's output becomes state. Either carry them to the master or
-  stop asking a facet for them — a decision, not a cut.
+- ~~**Open — a facet's mind-wide output goes nowhere.**~~ Carried (its own PR,
+  after P4). Every facet shares the master's system prompt, so every facet was
+  asked for all of it, and only the master's output became state — on Lora's
+  archived runs 18 of 364 facet decisions held an introspection and 27 a
+  narrative, all dropped. A facet's account of itself (introspection, narrative,
+  self-observations, identity, skills) now rides `executive.facet.sync` and the
+  master writes it on its next tick, under the facet's name (`selfRecords`, shared
+  with the master's own); its reflection and skills are published as the
+  master's are. `goalsToReprioritize` rides `executive.facet.progress` to the
+  GoalManager, and what a facet learned about people no longer depends on its
+  creator's extractor keeping it (plan supervision's kept none).
 
 ### P2 — what she takes in is whole, and kept ✅
 
@@ -309,10 +315,17 @@ Found doing P3a and **not** changed — each is the model of a mind, and the own
 
 Found doing P3b and **not** changed:
 
-- **The executive's `identityUpdates.values` and `.style` are never applied.** The
-  output schema asks for them and the identity nudge prompts for them every 30
-  ticks; only `traits` are read (the narrator). Values change only through the
-  self-model's own heuristic. Asked for and dropped — the self-observation shape.
+- ~~**The executive's `identityUpdates.values` and `.style` are never applied.**~~
+  Applied (same PR as the facet's account), once each, by the executive engine on
+  the next tick's state (`identityUpdateCommand`): traits by their delta, values
+  ADDED (the prompt said "replaces existing" — an operator's values are not the
+  mind's to drop), a style taken only while the style is still generic. The nudge
+  had asked for an `[IDENTITY_UPDATE]` block the parser never reads and a `style`
+  the output had no field for. Traits had been applied by the narrator, only when
+  its 50-tick pass found the master's output fresh — missed, or (the output stays
+  fresh 60 ticks) applied twice; the narrator's story took the same output twice
+  the same way, and now takes each once. Open: a style the mind set for itself
+  cannot be revised by it (no record of whose a style is).
 - **The transport re-emits what the mind already knows failed.** Un-acked
   envelopes are kept for reconnect after their outbox entry has expired, so a
   reconnect delivers messages the mind recorded as undelivered.

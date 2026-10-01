@@ -14,6 +14,7 @@ import { readEffectiveParams, summarizePersonaPrior } from '#cognition/persona.p
 import { readIdentityName } from '#cognition/identity.entity'
 import { readSpokenTurns } from '#agency/conversation.aim'
 import { nameOf as referentName } from '#cognition/social.identity'
+import { SCHEMA_ENTITY_TYPE } from '#agency/schemas/repertoire'
 
 /** How many of the mind's own recent utterances it is shown. Enough to notice a
  *  repetition, few enough not to crowd out what is happening now. */
@@ -365,34 +366,77 @@ export async function buildExecutiveContext(
     behavioralDisposition,
     selfTuning,
     knownEntities: extractKnownEntities( state ),
+    actionReports: extractActionReports( state ),
     currentFocus: extractCurrentFocus( state, goals )
   }
 }
 
 /**
- * Host-declared abilities afforded to the Will right now — read from the current
- * `affordance` field (source 'external', available). Gives System 2 knowledge of
- * what it can do + what each is for; the innate stances are already in the
- * preamble, so only host effectors surface here. Capped so a wide catalog can't
- * bloat the prompt.
+ * Why something I reached for came to nothing, in my own words.
+ *
+ * These were written for the mind to find out — "silence here is what let a Will
+ * spend eleven consecutive actions on an invented `query`" — and reached it only as
+ * world percepts. The sense boundary (#118) rightly stopped the mind perceiving its
+ * own records, and nothing read them after: every report since went unread.
  */
-const MAX_SURFACED_ABILITIES = 8
+const ACTION_REPORT_TYPES = new Set([ 'action.unresolved', 'action.unaddressed', 'action.untargeted' ])
+export function extractActionReports( state: ReadonlySimulationState ): string[] | undefined {
+  const out: string[] = []
+  for( const e of state.entities.values() )
+    if( ACTION_REPORT_TYPES.has( e.type ) && typeof e.metadata?.['summary'] === 'string')
+      out.push( e.metadata['summary'] as string )
+  return out.length > 0 ? out.sort() : undefined
+}
+
+/**
+ * Every host ability the Will holds, whole, and who the field offers each toward
+ * right now. The innate stances are already in the preamble, so only host
+ * effectors surface here.
+ *
+ * It read the field alone and kept the first 8 by iteration order. The field is
+ * attention-capped and an ability bound to someone enters it only when its target
+ * wins a place, so what the mind could see it could do changed tick to tick — a
+ * COO escalated an unban, then said she did not have the unban action. What it
+ * holds is what it can will (`buildIdeomotorIntents`); the field only says what is
+ * on offer, and toward whom, this moment.
+ */
 export function extractAbilities( state: ReadonlySimulationState ): ExecutiveContext['abilities'] {
-  const out: NonNullable<ExecutiveContext['abilities']> = []
+  const held = new Map<string, NonNullable<ExecutiveContext['abilities']>[number] & { offered: boolean }>()
+  const entry = ( name: string, description?: string ) => {
+    let a = held.get( name )
+    if( !a ){ a = { name, offered: false }; held.set( name, a ) }
+    if( description && !a.description ) a.description = description
+    return a
+  }
+
+  for( const e of state.entities.values() ){
+    const m = e.metadata as Record<string, unknown> | undefined
+    if( e.type === SCHEMA_ENTITY_TYPE && m?.['source'] === 'external' && typeof m['id'] === 'string'){
+      const a = entry( m['id'] as string, typeof m['description'] === 'string' ? m['description'] as string : undefined )
+      if( m['binds'] === 'entity' || m['binds'] === 'object') a.towardReferent = true
+    }
+  }
+
   for( const e of state.entities.values() ){
     if( e.type !== 'affordance') continue
     const m = e.metadata as Record<string, unknown> | undefined
-    if( m?.['source'] !== 'external' || m?.['available'] === false ) continue
-    const name = typeof m?.['schema'] === 'string' ? m['schema'] as string : undefined
+    if( m?.['source'] !== 'external') continue
+    const name = typeof m['schema'] === 'string' ? m['schema'] as string : undefined
     if( !name ) continue
-    const description = typeof m['description'] === 'string' ? m['description'] as string : undefined
+    const a = entry( name, typeof m['description'] === 'string' ? m['description'] as string : undefined )
+    if( m['available'] === false ){ if( !a.offered ) a.unavailable = true; continue }
+    a.offered = true
+    delete a.unavailable
     const params = m['parameters'] as Record<string, unknown> | undefined
     const target = m['targetEntityId']
       ? ( typeof params?.['targetEntityName'] === 'string' ? params['targetEntityName'] as string : String( m['targetEntityId'] ) )
       : undefined
-    out.push( { name, ...( description ? { description } : {} ), ...( target ? { target } : {} ) } )
-    if( out.length >= MAX_SURFACED_ABILITIES ) break
+    if( target && !( a.targets ??= [] ).includes( target ) ) a.targets.push( target )
   }
+
+  const out = [ ...held.values() ]
+    .sort( ( x, y ) => x.name < y.name ? -1 : x.name > y.name ? 1 : 0 )
+    .map( ( { offered: _o, ...a } ) => a )
   return out.length > 0 ? out : undefined
 }
 

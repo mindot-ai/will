@@ -804,7 +804,7 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       : ''
 
     const recentOutcomesBlock = has('recentActions')
-      ? this._buildRecentOutcomesSection( context.recentActions, state.tick ).trim()
+      ? this._buildRecentOutcomesSection( context.recentActions, state.tick, context.actionReports ).trim()
       : ''
 
     // Scoped with recentActions: both answer "what have I already done about
@@ -818,12 +818,15 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       ? `## Percepts (What I Notice)\n${context.percepts.slice( 0, 10 ).map( perceptLine ).join('\n') || 'Nothing notable'}`
       : ''
 
-    // Host abilities afforded right now + what each is for. Framed as
+    // Every host ability I hold + what each is for, whole. Framed as
     // self-knowledge (things I *can* do), NOT a tool-call menu: the Will still
     // expresses intent in natural language and the agency field enacts the fit.
+    // Who the field offers one toward right now is a fact about this moment; that
+    // I hold it is not, and it no longer comes and goes with the field.
     const abilitiesBlock = ( context.abilities && context.abilities.length > 0 )
-      ? `## Abilities Available Now\nThings I can do in this situation — name one as an action's "type" (with "args" for any specifics it needs) and my body enacts it:\n${context.abilities.map( a =>
-          `- **${a.name}**${a.target ? ` (toward ${a.target})` : ''}${a.description ? ` — ${a.description}` : ''}`
+      ? `## Abilities Available Now\nThings I can do — name one as an action's "type" (with "args" for any specifics it needs, and "target" for whom) and my body enacts it:\n${context.abilities.map( a =>
+          `- **${a.name}**${a.targets?.length ? ` (toward ${a.targets.join(', ')})`
+            : a.towardReferent ? ' (toward someone or something I know — this moment offers it toward no one)' : ''}${a.unavailable ? ' (not available to me right now)' : ''}${a.description ? ` — ${a.description}` : ''}`
         ).join('\n')}`
       : ''
 
@@ -1245,8 +1248,9 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
   private static _buildRecentOutcomesSection(
     recentActions: ExecutiveContext['recentActions'],
     currentTick: number,
+    reports: string[] = [],
   ): string {
-    if( recentActions.length === 0 ) return ''
+    if( recentActions.length === 0 && reports.length === 0 ) return ''
 
     const STATUS_BADGE: Record<string, string> = {
       completed:    '✓',
@@ -1278,7 +1282,13 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
     // differently-worded version of it depending on how its week went.
     const note = `${ didNotLand }\nThis is what I HAVE done, not what I meant to do. If something I intended is not on this list, it did not happen.`
 
-    return `## What Became Of What I Did\n${lines.join('\n')}${note}\n\n`
+    // What I reached for that came to nothing before it was ever an act — not on
+    // the list above because it never became one, and I should know why.
+    const reached = reports.length > 0
+      ? `${ lines.length > 0 ? '\n' : '' }What I reached for and could not do:\n${ reports.map( r => `- ${ r }`).join('\n') }`
+      : ''
+
+    return `## What Became Of What I Did\n${lines.join('\n')}${reached}${note}\n\n`
   }
 
   /**

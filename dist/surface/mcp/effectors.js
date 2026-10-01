@@ -3,15 +3,13 @@ import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotoc
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 // src/surface/mcp/effectors.ts
-var MEANING_CAP = 300;
 function describeMcpTool(tool) {
   const props = tool.inputSchema?.properties ?? {};
   const required = new Set(tool.inputSchema?.required ?? []);
   const argHints = Object.entries(props).map(([key, p]) => `${key}${required.has(key) ? "" : "?"}${p.description ? `: ${p.description}` : ""}`);
   const base = (tool.description ?? `The ${tool.name} tool.`).trim().replace(/\s+/g, " ");
   const hint = argHints.length > 0 ? ` (args \u2014 ${argHints.join("; ")})` : "";
-  const full = `${base}${hint}`;
-  return full.length > MEANING_CAP ? `${full.slice(0, MEANING_CAP - 1)}\u2026` : full;
+  return `${base}${hint}`;
 }
 function buildMcpHandler(client, tool) {
   return async (args) => {

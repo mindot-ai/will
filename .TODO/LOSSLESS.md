@@ -417,14 +417,34 @@ Attachments land here, moved from P2: the bridge delivers a file whole
 (`surface/channels/types.ts` 24,000 chars / 4 files, `discord.ts` 256 KB fetch
 today), the mind keeps it whole, and a call sees it through part 3.
 
-Single-item text cuts in VIEW are removed here: `effectors.ts:57,73`
-`MEANING_CAP` (it hides every GitHub tool's required args today),
+**Done ahead of P5 (owner's call, 2026-10-01): a Will sees every ability it holds,
+whole.** `MAX_SURFACED_ABILITIES` (the first 8 of the affordance field by iteration
+order) and `MEANING_CAP` (300, which cut the required args that come last) are gone.
+Deeper than the cap: the prompt AND the executive's willing read only the field,
+which attention caps — an ability bound to someone was there only when its target
+won a place, and willing it otherwise was answered "not a thing I can do". Held
+abilities are now mirrored to state (`agency.schema`, source `external`, like learned
+composites; a restore never turns one into a learned composite), all of them render
+with their whole meaning and who the field offers each toward, and the executive can
+will any it holds. **Still found in the situation, not looked up in a catalog**
+(AGENCY_PIPELINE's north star): an ability that binds a referent is willed toward
+someone or something the mind knows, as `reach-out` is — without one nothing is
+willed and she is told (`action.untargeted`) — and a willed act only ENTERS the
+competition, where the synthesizer checks body and policy and the selector decides.
+One that binds nothing sits on the floor, offered every tick. Doing this found the
+reports of what she reached for and could not (`action.unresolved` /
+`.unaddressed`) dark since #118: written to be found out, they reached her only as
+world percepts, and the sense boundary rightly stopped that with nothing reading
+them after. They render under `## What Became Of What I Did` now.
+
+Single-item text cuts in VIEW are removed here: ~~`effectors.ts:57,73`
+`MEANING_CAP`~~ (done, above),
 `prompt.factory.ts:699-702` `MEMORY_CONTINUITY_CAP` — which labels a truncation
 `[...summarized]` — `:1169` `RECALL_CHAR_BUDGET`, `context.ts:594,628-638`
 `extractSummary` (120/200), `prompt.factory.ts:1302` expected outcome (80).
 
-Count caps that become ranked + counted + recallable: `MAX_SURFACED_ABILITIES` 8
-(`context.ts:379`, today first-8 by iteration order), `BELIEF_PROMPT_LIMIT` 30 /
+Count caps that become ranked + counted + recallable: ~~`MAX_SURFACED_ABILITIES` 8~~
+(removed — abilities are not a ranked view, every one is shown), `BELIEF_PROMPT_LIMIT` 30 /
 `PER_CATEGORY_CAP` 8, known entities 6 (`context.ts:502`), percepts 10
 (`context.ts:663`, `prompt.factory.ts:816`), recalled memories 8 (`context.ts:122,139`),
 `SPOKEN_TURNS_SHOWN`, `ACTION_RECORD_KEEP` 6, `TRAIT_SURFACE_CAP` 6, thread

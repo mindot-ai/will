@@ -267,10 +267,26 @@ export class SchemaRepertoire {
     for( const e of entities.values() ){
       if( e.type !== SCHEMA_ENTITY_TYPE ) continue
       const s = readSchema( e.metadata as Record<string, unknown> | undefined )
-      if( !s || this._templates.has( s.id ) ) continue
+      // A held ability is the host's to grant on each boot, not a learned thing to restore.
+      if( !s || s.kind !== 'composite' || this._templates.has( s.id ) ) continue
       this._templates.set( s.id, s )
       this._learned.add( s.id )
     }
+  }
+
+  /**
+   * The host abilities this Will holds, as `agency.schema` state entities, so
+   * what it can do is readable from state like everything else it knows. The
+   * prompt and the executive's willing read the field — the affordances this
+   * tick's attention admitted — and an ability bound to someone appeared only
+   * when its target won a place there: in view one moment and gone the next,
+   * and named, "not a thing I can do". Re-written each tick, like composites.
+   */
+  abilityEntities(): EntityInput[] {
+    const out: EntityInput[] = []
+    for( const s of this._templates.values() )
+      if( s.source === 'external') out.push( schemaEntity( s ) )
+    return out
   }
 
   /** Availability ledger encoded as `agency.availability` state entities (P2).

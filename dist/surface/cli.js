@@ -5139,10 +5139,24 @@ var SchemaRepertoire = class {
     for (const e of entities.values()) {
       if (e.type !== SCHEMA_ENTITY_TYPE) continue;
       const s = readSchema(e.metadata);
-      if (!s || this._templates.has(s.id)) continue;
+      if (!s || s.kind !== "composite" || this._templates.has(s.id)) continue;
       this._templates.set(s.id, s);
       this._learned.add(s.id);
     }
+  }
+  /**
+   * The host abilities this Will holds, as `agency.schema` state entities, so
+   * what it can do is readable from state like everything else it knows. The
+   * prompt and the executive's willing read the field — the affordances this
+   * tick's attention admitted — and an ability bound to someone appeared only
+   * when its target won a place there: in view one moment and gone the next,
+   * and named, "not a thing I can do". Re-written each tick, like composites.
+   */
+  abilityEntities() {
+    const out = [];
+    for (const s of this._templates.values())
+      if (s.source === "external") out.push(schemaEntity(s));
+    return out;
   }
   /** Availability ledger encoded as `agency.availability` state entities (P2).
    *  Empty until a refusal lands, so the quiet path writes nothing. */
@@ -7126,6 +7140,7 @@ var MIND_OWN_ENTITY_TYPES = /* @__PURE__ */ new Set([
   AVAILABILITY_ENTITY_TYPE,
   "action.unresolved",
   "action.unaddressed",
+  "action.untargeted",
   CONSEQUENCE_TYPE,
   // forward-model records  (EXAFFERENCE P1/P2)
   REVOCATION_TYPE,
@@ -10928,13 +10943,16 @@ function buildIdeomotorIntents(output, state, footprint) {
   const unaddressed = /* @__PURE__ */ new Set();
   const priority = clamp012(output.confidence ?? 0.8);
   const externalBySchema = /* @__PURE__ */ new Map();
+  const bindsReferent = /* @__PURE__ */ new Set();
   for (const e of state.entities.values()) {
-    if (e.type !== "affordance") continue;
     const m = e.metadata;
-    if (m?.["source"] !== "external") continue;
-    const schema = typeof m["schema"] === "string" ? m["schema"] : void 0;
-    if (schema) externalBySchema.set(schema.toLowerCase(), schema);
+    const schema = e.type === "affordance" && m?.["source"] === "external" ? m["schema"] : e.type === SCHEMA_ENTITY_TYPE && m?.["source"] === "external" ? m["id"] : void 0;
+    if (typeof schema !== "string") continue;
+    externalBySchema.set(schema.toLowerCase(), schema);
+    if (e.type === SCHEMA_ENTITY_TYPE ? m?.["binds"] === "entity" || m?.["binds"] === "object" : !!m?.["targetEntityId"])
+      bindsReferent.add(schema);
   }
+  const untargeted = /* @__PURE__ */ new Map();
   for (const action of output.actions) {
     const t = action.type.toLowerCase();
     if (COMMUNICATE_ACTION_TYPES.has(t)) {
@@ -10983,6 +11001,10 @@ function buildIdeomotorIntents(output, state, footprint) {
     if (seen.has(`ability:${schema}`)) continue;
     seen.add(`ability:${schema}`);
     const keid = action.target ? resolveKnownEntity(action.target, state) : void 0;
+    if (!keid && bindsReferent.has(schema)) {
+      untargeted.set(schema, action.target);
+      continue;
+    }
     set.push({
       id: `ideomotor-${schema}${keid ? `-${keid}` : ""}`,
       type: "ideomotor.intent",
@@ -11020,6 +11042,18 @@ function buildIdeomotorIntents(output, state, footprint) {
         tick: footprint.tickObserved
       }
     });
+  if (untargeted.size > 0)
+    set.push({
+      id: "action.untargeted",
+      type: "action.untargeted",
+      metadata: {
+        names: [...untargeted.keys()],
+        summary: [...untargeted].map(([ability, named]) => named ? `I reached for '${ability}' toward '${named}', but that is no one and nothing I know here.` : `I reached for '${ability}' without saying toward whom.`).join(" ") + " An act like that is toward someone or something in my world, so nothing happened.",
+        salience: 0.75,
+        origin: "executive",
+        tick: footprint.tickObserved
+      }
+    });
   const currentIds = new Set(set.map((s) => s.id));
   const del = [];
   for (const [id, e] of state.entities)
@@ -11029,6 +11063,8 @@ function buildIdeomotorIntents(output, state, footprint) {
     del.push("action.unresolved");
   if (unaddressed.size === 0 && state.entities.has("action.unaddressed"))
     del.push("action.unaddressed");
+  if (untargeted.size === 0 && state.entities.has("action.untargeted"))
+    del.push("action.untargeted");
   return { set, delete: del };
 }
 function selfRecords(out, source, tick) {
@@ -14122,24 +14158,54 @@ async function buildExecutiveContext(state, deps, recallQuery) {
     behavioralDisposition,
     selfTuning,
     knownEntities: extractKnownEntities(state),
+    actionReports: extractActionReports(state),
     currentFocus: extractCurrentFocus(state, goals)
   };
 }
-var MAX_SURFACED_ABILITIES = 8;
-function extractAbilities(state) {
+var ACTION_REPORT_TYPES = /* @__PURE__ */ new Set(["action.unresolved", "action.unaddressed", "action.untargeted"]);
+function extractActionReports(state) {
   const out = [];
+  for (const e of state.entities.values())
+    if (ACTION_REPORT_TYPES.has(e.type) && typeof e.metadata?.["summary"] === "string")
+      out.push(e.metadata["summary"]);
+  return out.length > 0 ? out.sort() : void 0;
+}
+function extractAbilities(state) {
+  const held = /* @__PURE__ */ new Map();
+  const entry = (name, description) => {
+    let a = held.get(name);
+    if (!a) {
+      a = { name, offered: false };
+      held.set(name, a);
+    }
+    if (description && !a.description) a.description = description;
+    return a;
+  };
+  for (const e of state.entities.values()) {
+    const m = e.metadata;
+    if (e.type === SCHEMA_ENTITY_TYPE && m?.["source"] === "external" && typeof m["id"] === "string") {
+      const a = entry(m["id"], typeof m["description"] === "string" ? m["description"] : void 0);
+      if (m["binds"] === "entity" || m["binds"] === "object") a.towardReferent = true;
+    }
+  }
   for (const e of state.entities.values()) {
     if (e.type !== "affordance") continue;
     const m = e.metadata;
-    if (m?.["source"] !== "external" || m?.["available"] === false) continue;
-    const name = typeof m?.["schema"] === "string" ? m["schema"] : void 0;
+    if (m?.["source"] !== "external") continue;
+    const name = typeof m["schema"] === "string" ? m["schema"] : void 0;
     if (!name) continue;
-    const description = typeof m["description"] === "string" ? m["description"] : void 0;
+    const a = entry(name, typeof m["description"] === "string" ? m["description"] : void 0);
+    if (m["available"] === false) {
+      if (!a.offered) a.unavailable = true;
+      continue;
+    }
+    a.offered = true;
+    delete a.unavailable;
     const params = m["parameters"];
     const target = m["targetEntityId"] ? typeof params?.["targetEntityName"] === "string" ? params["targetEntityName"] : String(m["targetEntityId"]) : void 0;
-    out.push({ name, ...description ? { description } : {}, ...target ? { target } : {} });
-    if (out.length >= MAX_SURFACED_ABILITIES) break;
+    if (target && !(a.targets ??= []).includes(target)) a.targets.push(target);
   }
+  const out = [...held.values()].sort((x, y) => x.name < y.name ? -1 : x.name > y.name ? 1 : 0).map(({ offered: _o, ...a }) => a);
   return out.length > 0 ? out : void 0;
 }
 function extractCurrentFocus(state, goals) {
@@ -14653,14 +14719,14 @@ ${context.goals.map((g) => {
     }).join("\n") || "No active goals"}` : "";
     const planRelevantIds = mode === "master" ? void 0 : context.relevantPlanIds;
     const plansBlock = has("plans") ? this._buildActivePlansSection(context.plans, focus.awarenessEntityId, planRelevantIds).trim() : "";
-    const recentOutcomesBlock = has("recentActions") ? this._buildRecentOutcomesSection(context.recentActions, state.tick).trim() : "";
+    const recentOutcomesBlock = has("recentActions") ? this._buildRecentOutcomesSection(context.recentActions, state.tick, context.actionReports).trim() : "";
     const spokenBlock = has("recentActions") ? this._buildSpokenTurnsSection(context.spokenTurns).trim() : "";
     const perceptsBlock = has("percepts") ? `## Percepts (What I Notice)
 ${context.percepts.slice(0, 10).map(perceptLine).join("\n") || "Nothing notable"}` : "";
     const abilitiesBlock = context.abilities && context.abilities.length > 0 ? `## Abilities Available Now
-Things I can do in this situation \u2014 name one as an action's "type" (with "args" for any specifics it needs) and my body enacts it:
+Things I can do \u2014 name one as an action's "type" (with "args" for any specifics it needs, and "target" for whom) and my body enacts it:
 ${context.abilities.map(
-      (a) => `- **${a.name}**${a.target ? ` (toward ${a.target})` : ""}${a.description ? ` \u2014 ${a.description}` : ""}`
+      (a) => `- **${a.name}**${a.targets?.length ? ` (toward ${a.targets.join(", ")})` : a.towardReferent ? " (toward someone or something I know \u2014 this moment offers it toward no one)" : ""}${a.unavailable ? " (not available to me right now)" : ""}${a.description ? ` \u2014 ${a.description}` : ""}`
     ).join("\n")}` : "";
     const ruminationsBlock = has("ruminations") ? `## Active Ruminations (retrieved memories & thoughts)
 ${context.workingMemory.map(ruminationLine).join("\n") || "Nothing actively held in mind"}` : "";
@@ -14969,8 +15035,8 @@ ${lines.join("\n")}${note}
 
 `;
   }
-  static _buildRecentOutcomesSection(recentActions, currentTick) {
-    if (recentActions.length === 0) return "";
+  static _buildRecentOutcomesSection(recentActions, currentTick, reports = []) {
+    if (recentActions.length === 0 && reports.length === 0) return "";
     const STATUS_BADGE = {
       completed: "\u2713",
       failed: "\u2717",
@@ -14992,8 +15058,10 @@ ${lines.join("\n")}${note}
 \u26A0\uFE0F **${failed} of these did not land** \u2014 my body attempted them and they did not complete.` : "";
     const note = `${didNotLand}
 This is what I HAVE done, not what I meant to do. If something I intended is not on this list, it did not happen.`;
+    const reached = reports.length > 0 ? `${lines.length > 0 ? "\n" : ""}What I reached for and could not do:
+${reports.map((r) => `- ${r}`).join("\n")}` : "";
     return `## What Became Of What I Did
-${lines.join("\n")}${note}
+${lines.join("\n")}${reached}${note}
 
 `;
   }
@@ -25560,6 +25628,7 @@ var ReafferenceEngine = class {
     for (const id of dropped.availability)
       del.push(availabilityEntityId(id));
     for (const e of this._repertoire.compositeEntities()) set.push(e);
+    for (const e of this._repertoire.abilityEntities()) set.push(e);
     for (const e of this._repertoire.availabilityEntities()) set.push(e);
     const replied = this._resolveReplies(tick, state, set);
     const skills = this._repertoire.skills();
@@ -31082,15 +31151,13 @@ var COMMUNICATION = ["listen", "talk", "text"];
 function slug(s) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "will";
 }
-var MEANING_CAP = 300;
 function describeMcpTool(tool) {
   const props = tool.inputSchema?.properties ?? {};
   const required = new Set(tool.inputSchema?.required ?? []);
   const argHints = Object.entries(props).map(([key, p]) => `${key}${required.has(key) ? "" : "?"}${p.description ? `: ${p.description}` : ""}`);
   const base = (tool.description ?? `The ${tool.name} tool.`).trim().replace(/\s+/g, " ");
   const hint = argHints.length > 0 ? ` (args \u2014 ${argHints.join("; ")})` : "";
-  const full = `${base}${hint}`;
-  return full.length > MEANING_CAP ? `${full.slice(0, MEANING_CAP - 1)}\u2026` : full;
+  return `${base}${hint}`;
 }
 function buildMcpHandler(client, tool) {
   return async (args) => {

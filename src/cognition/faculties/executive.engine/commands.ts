@@ -10,6 +10,7 @@ import type { GoalManager } from '#faculties/goal.manager'
 import type { GenerativeModel } from '#cognition/generative.model'
 import type { SemanticIntegrator } from '#faculties/semantic.engine/integrator'
 import { INNATE_SCHEMA_BY_ID } from '#agency/schemas/innate'
+import { SCHEMA_ENTITY_TYPE } from '#agency/schemas/repertoire'
 import { logger } from '#core/logger'
 import { resolveKeid } from '#cognition/social.identity'
 
@@ -478,15 +479,20 @@ function buildIdeomotorIntents(
   const unaddressed = new Set<string>()
   const priority = clamp01( output.confidence ?? 0.8 )
 
-  // The host abilities currently afforded (source 'external' in the live field) —
-  // the executive can only pre-activate what the situation actually offers.
+  // The host abilities the mind HOLDS (mirrored `agency.schema`, source 'external'),
+  // and any the live field affords. It read the field alone, which attention caps:
+  // an ability bound to someone was there only when its target won a place, so
+  // willing it at any other moment was reported as "not a thing I can do". A willed
+  // act still only ENTERS the competition — the synthesizer admits it at the
+  // ideomotor salience and the selector decides — so this widens what she can
+  // reach for, not what bypasses the field.
   const externalBySchema = new Map<string, string>()
   for( const e of state.entities.values() ){
-    if( e.type !== 'affordance') continue
     const m = e.metadata as Record<string, unknown> | undefined
-    if( m?.['source'] !== 'external') continue
-    const schema = typeof m['schema'] === 'string' ? m['schema'] as string : undefined
-    if( schema ) externalBySchema.set( schema.toLowerCase(), schema )
+    const schema = e.type === 'affordance' && m?.['source'] === 'external' ? m['schema']
+                 : e.type === SCHEMA_ENTITY_TYPE && m?.['source'] === 'external' ? m['id']
+                 : undefined
+    if( typeof schema === 'string') externalBySchema.set( schema.toLowerCase(), schema )
   }
 
   for( const action of output.actions ){

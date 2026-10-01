@@ -816,12 +816,14 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       ? `## Percepts (What I Notice)\n${context.percepts.slice( 0, 10 ).map( perceptLine ).join('\n') || 'Nothing notable'}`
       : ''
 
-    // Host abilities afforded right now + what each is for. Framed as
+    // Every host ability I hold + what each is for, whole. Framed as
     // self-knowledge (things I *can* do), NOT a tool-call menu: the Will still
     // expresses intent in natural language and the agency field enacts the fit.
+    // Who the field offers one toward right now is a fact about this moment; that
+    // I hold it is not, and it no longer comes and goes with the field.
     const abilitiesBlock = ( context.abilities && context.abilities.length > 0 )
-      ? `## Abilities Available Now\nThings I can do in this situation — name one as an action's "type" (with "args" for any specifics it needs) and my body enacts it:\n${context.abilities.map( a =>
-          `- **${a.name}**${a.target ? ` (toward ${a.target})` : ''}${a.description ? ` — ${a.description}` : ''}`
+      ? `## Abilities Available Now\nThings I can do — name one as an action's "type" (with "args" for any specifics it needs, and "target" for whom) and my body enacts it:\n${context.abilities.map( a =>
+          `- **${a.name}**${a.targets?.length ? ` (toward ${a.targets.join(', ')})` : ''}${a.unavailable ? ' (not available to me right now)' : ''}${a.description ? ` — ${a.description}` : ''}`
         ).join('\n')}`
       : ''
 

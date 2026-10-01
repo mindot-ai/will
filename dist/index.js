@@ -4997,10 +4997,24 @@ var SchemaRepertoire = class {
     for (const e of entities.values()) {
       if (e.type !== SCHEMA_ENTITY_TYPE) continue;
       const s = readSchema(e.metadata);
-      if (!s || this._templates.has(s.id)) continue;
+      if (!s || s.kind !== "composite" || this._templates.has(s.id)) continue;
       this._templates.set(s.id, s);
       this._learned.add(s.id);
     }
+  }
+  /**
+   * The host abilities this Will holds, as `agency.schema` state entities, so
+   * what it can do is readable from state like everything else it knows. The
+   * prompt and the executive's willing read the field — the affordances this
+   * tick's attention admitted — and an ability bound to someone appeared only
+   * when its target won a place there: in view one moment and gone the next,
+   * and named, "not a thing I can do". Re-written each tick, like composites.
+   */
+  abilityEntities() {
+    const out = [];
+    for (const s of this._templates.values())
+      if (s.source === "external") out.push(schemaEntity(s));
+    return out;
   }
   /** Availability ledger encoded as `agency.availability` state entities (P2).
    *  Empty until a refusal lands, so the quiet path writes nothing. */
@@ -9163,11 +9177,9 @@ function buildIdeomotorIntents(output, state, footprint) {
   const priority = clamp012(output.confidence ?? 0.8);
   const externalBySchema = /* @__PURE__ */ new Map();
   for (const e of state.entities.values()) {
-    if (e.type !== "affordance") continue;
     const m = e.metadata;
-    if (m?.["source"] !== "external") continue;
-    const schema = typeof m["schema"] === "string" ? m["schema"] : void 0;
-    if (schema) externalBySchema.set(schema.toLowerCase(), schema);
+    const schema = e.type === "affordance" && m?.["source"] === "external" ? m["schema"] : e.type === SCHEMA_ENTITY_TYPE && m?.["source"] === "external" ? m["id"] : void 0;
+    if (typeof schema === "string") externalBySchema.set(schema.toLowerCase(), schema);
   }
   for (const action of output.actions) {
     const t = action.type.toLowerCase();
@@ -12020,21 +12032,40 @@ async function buildExecutiveContext(state, deps, recallQuery) {
     currentFocus: extractCurrentFocus(state, goals)
   };
 }
-var MAX_SURFACED_ABILITIES = 8;
 function extractAbilities(state) {
-  const out = [];
+  const held = /* @__PURE__ */ new Map();
+  const entry = (name, description) => {
+    let a = held.get(name);
+    if (!a) {
+      a = { name, offered: false };
+      held.set(name, a);
+    }
+    if (description && !a.description) a.description = description;
+    return a;
+  };
+  for (const e of state.entities.values()) {
+    const m = e.metadata;
+    if (e.type === SCHEMA_ENTITY_TYPE && m?.["source"] === "external" && typeof m["id"] === "string")
+      entry(m["id"], typeof m["description"] === "string" ? m["description"] : void 0);
+  }
   for (const e of state.entities.values()) {
     if (e.type !== "affordance") continue;
     const m = e.metadata;
-    if (m?.["source"] !== "external" || m?.["available"] === false) continue;
-    const name = typeof m?.["schema"] === "string" ? m["schema"] : void 0;
+    if (m?.["source"] !== "external") continue;
+    const name = typeof m["schema"] === "string" ? m["schema"] : void 0;
     if (!name) continue;
-    const description = typeof m["description"] === "string" ? m["description"] : void 0;
+    const a = entry(name, typeof m["description"] === "string" ? m["description"] : void 0);
+    if (m["available"] === false) {
+      if (!a.offered) a.unavailable = true;
+      continue;
+    }
+    a.offered = true;
+    delete a.unavailable;
     const params = m["parameters"];
     const target = m["targetEntityId"] ? typeof params?.["targetEntityName"] === "string" ? params["targetEntityName"] : String(m["targetEntityId"]) : void 0;
-    out.push({ name, ...description ? { description } : {}, ...target ? { target } : {} });
-    if (out.length >= MAX_SURFACED_ABILITIES) break;
+    if (target && !(a.targets ??= []).includes(target)) a.targets.push(target);
   }
+  const out = [...held.values()].sort((x, y) => x.name < y.name ? -1 : x.name > y.name ? 1 : 0).map(({ offered: _o, ...a }) => a);
   return out.length > 0 ? out : void 0;
 }
 function extractCurrentFocus(state, goals) {
@@ -12552,9 +12583,9 @@ ${context.goals.map((g) => {
     const perceptsBlock = has("percepts") ? `## Percepts (What I Notice)
 ${context.percepts.slice(0, 10).map(perceptLine).join("\n") || "Nothing notable"}` : "";
     const abilitiesBlock = context.abilities && context.abilities.length > 0 ? `## Abilities Available Now
-Things I can do in this situation \u2014 name one as an action's "type" (with "args" for any specifics it needs) and my body enacts it:
+Things I can do \u2014 name one as an action's "type" (with "args" for any specifics it needs, and "target" for whom) and my body enacts it:
 ${context.abilities.map(
-      (a) => `- **${a.name}**${a.target ? ` (toward ${a.target})` : ""}${a.description ? ` \u2014 ${a.description}` : ""}`
+      (a) => `- **${a.name}**${a.targets?.length ? ` (toward ${a.targets.join(", ")})` : ""}${a.unavailable ? " (not available to me right now)" : ""}${a.description ? ` \u2014 ${a.description}` : ""}`
     ).join("\n")}` : "";
     const ruminationsBlock = has("ruminations") ? `## Active Ruminations (retrieved memories & thoughts)
 ${context.workingMemory.map(ruminationLine).join("\n") || "Nothing actively held in mind"}` : "";
@@ -24265,6 +24296,7 @@ var ReafferenceEngine = class {
     for (const id of dropped.availability)
       del.push(availabilityEntityId(id));
     for (const e of this._repertoire.compositeEntities()) set.push(e);
+    for (const e of this._repertoire.abilityEntities()) set.push(e);
     for (const e of this._repertoire.availabilityEntities()) set.push(e);
     const replied = this._resolveReplies(tick, state, set);
     const skills = this._repertoire.skills();

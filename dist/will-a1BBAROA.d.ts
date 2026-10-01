@@ -6948,6 +6948,15 @@ declare class SchemaRepertoire {
      * Mirrors GoalManager._syncFromStateGoals.
      */
     restoreComposites(entities: ReadonlySimulationState['entities']): void;
+    /**
+     * The host abilities this Will holds, as `agency.schema` state entities, so
+     * what it can do is readable from state like everything else it knows. The
+     * prompt and the executive's willing read the field — the affordances this
+     * tick's attention admitted — and an ability bound to someone appeared only
+     * when its target won a place there: in view one moment and gone the next,
+     * and named, "not a thing I can do". Re-written each tick, like composites.
+     */
+    abilityEntities(): EntityInput[];
     /** Availability ledger encoded as `agency.availability` state entities (P2).
      *  Empty until a refusal lands, so the quiet path writes nothing. */
     availabilityEntities(): EntityInput[];

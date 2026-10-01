@@ -252,17 +252,18 @@ export interface ExecutiveContext {
     data?: unknown
   }>
   /**
-   * Host-declared abilities afforded to the Will *right now* — what it can do in
-   * this situation and what each is for. Surfaced so System 2 reasons with
-   * knowledge of its options; the Will still expresses intent (it does not fill a
-   * tool form) and the agency field competes + binds. Only *available* external
-   * affordances appear; absent when there are none.
+   * Every host ability the Will holds, and what each is for — whole. Surfaced so
+   * System 2 reasons with knowledge of its options; the Will still expresses
+   * intent (it does not fill a tool form) and the agency field competes + binds.
+   * Absent when it holds none.
    */
   abilities?: Array<{
     name: string
     description?: string
-    /** Bound target's display name, when the ability is directed at someone. */
-    target?: string
+    /** Who or what the field offers it toward this moment, by display name. */
+    targets?: string[]
+    /** The field offers it, but not available now (a precondition, or a refusal). */
+    unavailable?: boolean
   }>
   workingMemory: Array<{
     type: string

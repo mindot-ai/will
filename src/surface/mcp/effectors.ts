@@ -53,9 +53,6 @@ export interface McpToolInfo {
   }
 }
 
-/** Keep ability meanings bounded — they render into the executive prompt. */
-const MEANING_CAP = 300
-
 /**
  * The ability's *meaning*: the tool's description plus a compact hint of the
  * arguments it takes — so the executive knows what to supply in an action's
@@ -69,8 +66,10 @@ export function describeMcpTool( tool: McpToolInfo ): string {
 
   const base = ( tool.description ?? `The ${ tool.name } tool.`).trim().replace( /\s+/g, ' ')
   const hint = argHints.length > 0 ? ` (args — ${ argHints.join('; ') })` : ''
-  const full = `${ base }${ hint }`
-  return full.length > MEANING_CAP ? `${ full.slice( 0, MEANING_CAP - 1 ) }…` : full
+  // Whole. It was cut at 300, and the args hint comes last — so the cut took the
+  // required args of every tool with a real description, and the mind enacted
+  // them without what they needed and was told it had failed.
+  return `${ base }${ hint }`
 }
 
 /**

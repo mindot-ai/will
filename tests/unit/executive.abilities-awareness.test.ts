@@ -2,13 +2,13 @@
 // tests/unit/executive.abilities-awareness.test.ts
 // ─────────────────────────────────────────────────────────────
 /**
- * Deliberation-surfacing (Phase 2). The host abilities afforded to the Will
- * *right now* — read from the current `affordance` field (source 'external',
- * available) — are joined into ExecutiveContext.abilities and rendered as
- * "## Abilities Available Now", so System 2 reasons with knowledge of what it
- * can do + what each is for. Framed as self-knowledge, not a tool-call menu:
- * the Will still expresses intent and the agency field enacts the fit. Innate
- * stances (already in the preamble) and unavailable abilities never surface.
+ * Deliberation-surfacing (Phase 2). The host abilities the Will holds — and who
+ * the current `affordance` field offers each toward — are joined into
+ * ExecutiveContext.abilities and rendered as "## Abilities Available Now", so
+ * System 2 reasons with knowledge of what it can do + what each is for. Framed as
+ * self-knowledge, not a tool-call menu: the Will still expresses intent and the
+ * agency field enacts the fit. Innate stances (already in the preamble) never
+ * surface; an ability offered but not available now is shown, and says so.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -25,23 +25,23 @@ const affordanceState = () => {
     schema: 'forage', source: 'external', available: true, description: 'Search the area for food' } } )
   // innate stance — already in the preamble, must NOT surface here
   entities.set('aff-rest', { id: 'aff-rest', type: 'affordance', metadata: { schema: 'rest', source: 'innate', available: true } } )
-  // unavailable external — filtered out
+  // unavailable external — shown, marked
   entities.set('aff-sprint', { id: 'aff-sprint', type: 'affordance', metadata: { schema: 'sprint', source: 'external', available: false, description: 'x' } } )
   return { tick: 1, entities, metrics: new Map() } as any
 }
 
 describe('extractAbilities — afforded host abilities from the field', () => {
-  it('surfaces available external abilities with meaning + bound target; skips innate + unavailable', () => {
+  it('surfaces external abilities with meaning + bound targets; skips innate; marks unavailable', () => {
     const abilities = extractAbilities( affordanceState() )!
     const names = abilities.map( a => a.name )
     expect( names ).toContain('give')
     expect( names ).toContain('forage')
     expect( names ).not.toContain('rest')      // innate — omitted
-    expect( names ).not.toContain('sprint')    // unavailable — omitted
+    expect( abilities.find( a => a.name === 'sprint')!.unavailable ).toBe( true )
 
     const give = abilities.find( a => a.name === 'give')!
     expect( give.description ).toBe('Offer an item to someone present')
-    expect( give.target ).toBe('Ada')          // resolved from parameters.targetEntityName
+    expect( give.targets ).toEqual( [ 'Ada' ] ) // resolved from parameters.targetEntityName
   } )
 
   it('returns undefined when no external abilities are afforded', () => {
@@ -69,7 +69,7 @@ describe('buildUserMessage — renders the abilities block', () => {
 
   it('renders available abilities with target + meaning', () => {
     const msg = render( [
-      { name: 'give', description: 'Offer an item', target: 'Ada' },
+      { name: 'give', description: 'Offer an item', targets: [ 'Ada' ] },
       { name: 'forage', description: 'Search for food' },
     ] )
     expect( msg ).toContain('## Abilities Available Now')

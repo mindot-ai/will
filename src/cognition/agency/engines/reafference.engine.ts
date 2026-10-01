@@ -312,6 +312,8 @@ export class ReafferenceEngine implements CognitiveEngine {
     // gone and the executor can't expand it. Idempotent re-write each tick, like
     // GoalManager._persistGoals. Empty until a composite is actually learned.
     for( const e of this._repertoire.compositeEntities() )   set.push( e )
+    // And the host abilities it holds — every one, whether this tick's field offers it or not.
+    for( const e of this._repertoire.abilityEntities() )     set.push( e )
     // Availability entries (P2) mirror the same way — empty until a refusal lands.
     for( const e of this._repertoire.availabilityEntities() ) set.push( e )
 

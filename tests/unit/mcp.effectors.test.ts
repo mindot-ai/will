@@ -60,9 +60,14 @@ describe('describeMcpTool — the ability\'s meaning', () => {
     expect( meaning ).toContain('limit?')
   } )
 
-  it('stays bounded for prompt rendering', () => {
-    const meaning = describeMcpTool( { name: 'x', description: 'y'.repeat( 1000 ) } )
-    expect( meaning.length ).toBeLessThanOrEqual( 300 )
+  it('is whole — a long description keeps the required args that follow it', () => {
+    // Cut at 300, the hint (which comes last) was what went: every tool with a
+    // real description lost its required args.
+    const meaning = describeMcpTool( { name: 'get_file_contents', description: 'Get a file. '.repeat( 60 ),
+      inputSchema: { type: 'object', properties: { owner: { type: 'string' }, repo: { type: 'string' }, path: { type: 'string' } },
+        required: [ 'owner', 'repo', 'path' ] } } )
+    expect( meaning ).toContain('Get a file. '.repeat( 60 ).trim() )
+    expect( meaning ).toMatch( /owner; repo; path\)$/ )
   } )
 } )
 

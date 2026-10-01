@@ -241,8 +241,10 @@ export function compactText( data: unknown ): string {
  * An item's data as a prompt shows it: whole, on its line, when it fits one page;
  * otherwise its size, its handle and — in 'page' mode — its first page, with the
  * way to the rest. Without a view (a caller that has no window) it is whole.
+ * `matched` is the page a semantic recall found the item by (LOSSLESS P5e): the
+ * way to it is the way offered.
  */
-export function renderItemData( data: unknown, handle: string | undefined, view: CallView | undefined ): string {
+export function renderItemData( data: unknown, handle: string | undefined, view: CallView | undefined, matched?: number ): string {
   const compact = compactText( data )
   if( compact === '') return ''
   if( !view || !handle || estimateTokens( compact ) <= view.inlineTokens ) return `\n    ${ compact }`
@@ -250,6 +252,8 @@ export function renderItemData( data: unknown, handle: string | undefined, view:
   const text  = itemText( data )
   const pages = paginate( text, PAGE_TOKENS )
   const size  = `${ humanSize( text ) } ≈ ${ estimateTokens( text ).toLocaleString('en-US') } tokens, ${ pages.length } pages · doc:${ handle }`
+  if( matched !== undefined && matched <= pages.length && ( view.mode === 'reference' || pages.length === 1 ) )
+    return `\n    [${ size } — whole in memory, not shown here; page ${ matched } is the part that brought it to mind: ${ recallHint( handle, matched ) }]`
   if( view.mode === 'reference')
     return `\n    [${ size } — whole in memory, not shown here; ${ recallHint( handle, 1 ) } to read it]`
   if( pages.length === 1 )   // larger than this call shows inline, but a single page

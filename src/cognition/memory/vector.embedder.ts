@@ -21,6 +21,12 @@ export type EmbedFunction = Extract<LLMCallFunction, 'recall' | 'index'>
 export interface EmbeddingProvider {
   readonly modelName: string
   readonly dimensions: number
+  /**
+   * The most tokens one input may carry. What the mind read is embedded a page at
+   * a time (LOSSLESS P5e), and a page longer than this is split before embedding —
+   * never cut. Undefined: a conservative 2,048.
+   */
+  readonly maxInputTokens?: number
 
   /** Generate embedding for a single piece of content. `fn` tags the call for
    *  cost attribution: 'recall' (query) vs 'index' (write). */
@@ -36,9 +42,21 @@ export interface EmbeddingProvider {
 /**
  * OpenAI-compatible embedder (works with OpenAI, Azure, LocalAI, Ollama)
  */
+/**
+ * Input limits of the models a host is likely to name, in tokens. A host may state
+ * its own (`maxInputTokens`); an unknown model gets the interface's 2,048.
+ */
+const KNOWN_INPUT_TOKENS: Array<[ RegExp, number ]> = [
+  [ /^jina-embeddings-v[34]/i,     8_192 ],
+  [ /^text-embedding-3-/i,         8_191 ],
+  [ /^text-embedding-ada-002$/i,   8_191 ],
+  [ /gemini-embedding|text-embedding-00[45]/i, 2_048 ],
+]
+
 export class OpenAICompatibleEmbedder implements EmbeddingProvider {
   readonly modelName: string
   readonly dimensions: number
+  readonly maxInputTokens?: number
 
   private _apiUrl: string
   private _apiKey: string | null
@@ -69,6 +87,8 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
     maxConcurrency?: number
     /** Per-request timeout in ms before the connection is aborted. Default 30s. */
     timeoutMs?: number
+    /** The model's input limit in tokens, when the host knows it better than the table above. */
+    maxInputTokens?: number
     /**
      * Per-Will token tracker. When provided, each embedding call records its
      * input-token usage under the 'embedding' category so memory-vector spend is
@@ -78,6 +98,8 @@ export class OpenAICompatibleEmbedder implements EmbeddingProvider {
   } ){
     this.modelName = config.modelName
     this.dimensions = config.dimensions
+    const known = config.maxInputTokens ?? KNOWN_INPUT_TOKENS.find( ( [ re ] ) => re.test( config.modelName ) )?.[1]
+    if( known !== undefined ) this.maxInputTokens = known
     this._apiUrl = config.apiUrl
     this._apiKey = config.apiKey ?? null
     this._maxConcurrency = Math.max( 1, config.maxConcurrency ?? 4 )

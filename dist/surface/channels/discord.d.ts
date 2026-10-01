@@ -1,5 +1,5 @@
-import { cY as Will } from '../../will-eDdJkyin.js';
-import { C as ChannelBridge } from '../../types-DSMHZBiX.js';
+import { cY as Will } from '../../will-B9JFZAdv.js';
+import { C as ChannelBridge } from '../../types-Bw1WHAAn.js';
 
 interface DiscordLikeChannel {
     send(content: string): Promise<unknown>;

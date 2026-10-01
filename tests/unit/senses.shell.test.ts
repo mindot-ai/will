@@ -214,7 +214,8 @@ describe('ThreadDigestManager', () => {
     expect( digest ).not.toContain('msg-2')
     expect( digest ).toContain('msg-3')
     expect( digest ).toContain('msg-7')
-    expect( digest ).toContain('[Thread — last 5 turns]')
+    // …and says how many it is not showing, and where they are (LOSSLESS P5e).
+    expect( digest ).toContain('[Thread — last 5 turns; 2 earlier turns are in my memories')
   } )
 
   it('keeps each turn whole — it was cut to 200 characters (LOSSLESS P0)', () => {

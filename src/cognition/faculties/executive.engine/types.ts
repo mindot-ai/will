@@ -296,6 +296,8 @@ export interface ExecutiveContext {
     handle?: string
     /** The episode's id — so a page of memories can leave out the ones in view. */
     id?: string
+    /** The page of what it held that recall matched (LOSSLESS P5e). */
+    matchedPage?: number
   }>
   /** How many memories I hold that recall could reach — those in view are the most relevant now. */
   memoriesHeld?: number

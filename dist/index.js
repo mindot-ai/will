@@ -8679,7 +8679,7 @@ var EpisodicConsolidator = class {
     const resolved = [];
     for (const r of results) {
       const episode = this._storeMap.get(r.episodeId);
-      if (episode) resolved.push({ episode, similarity: r.similarity });
+      if (episode) resolved.push({ episode, similarity: r.similarity, ...r.page ? { page: r.page } : {} });
       else void this._vectorMemory.delete(r.episodeId).catch(() => {
       });
     }
@@ -8689,7 +8689,7 @@ var EpisodicConsolidator = class {
       const score = (s) => (1 - w) * s.similarity + w * (1 - Math.abs(s.episode.affectiveContext.valence - target) / 2);
       resolved.sort((a, b) => score(b) - score(a) || (a.episode.id < b.episode.id ? -1 : 1));
     }
-    return resolved.slice(0, limit).map((s) => s.episode);
+    return resolved.slice(0, limit).map((s) => s.page ? { ...s.episode, matchedPage: s.page } : s.episode);
   }
   /**
    * Mark an episode as retrieved (boosts its strength slightly).
@@ -8819,6 +8819,7 @@ var EpisodicConsolidator = class {
       // is a deterministic sentinel (0), never wall-clock, so replay is stable (R2).
       createdAt: e.createdAt ?? 0
     }));
+    this._storeMap = new Map(this._store.map((e) => [e.id, e]));
   }
   // ── Internal helpers ─────────────────────────────────────
   /**
@@ -12063,7 +12064,7 @@ function compactText(data) {
     return "";
   }
 }
-function renderItemData(data, handle, view) {
+function renderItemData(data, handle, view, matched) {
   const compact2 = compactText(data);
   if (compact2 === "") return "";
   if (!view || !handle || estimateTokens(compact2) <= view.inlineTokens) return `
@@ -12071,6 +12072,9 @@ function renderItemData(data, handle, view) {
   const text = itemText(data);
   const pages = paginate(text, PAGE_TOKENS);
   const size = `${humanSize(text)} \u2248 ${estimateTokens(text).toLocaleString("en-US")} tokens, ${pages.length} pages \xB7 doc:${handle}`;
+  if (matched !== void 0 && matched <= pages.length && (view.mode === "reference" || pages.length === 1))
+    return `
+    [${size} \u2014 whole in memory, not shown here; page ${matched} is the part that brought it to mind: ${recallHint(handle, matched)}]`;
   if (view.mode === "reference")
     return `
     [${size} \u2014 whole in memory, not shown here; ${recallHint(handle, 1)} to read it]`;
@@ -12545,7 +12549,7 @@ function mapEpisodeToMemory(ep) {
     emotionalContext: dominantEmotion,
     tick: typeof ep.timestamp === "number" ? ep.timestamp : void 0,
     ...ep.id ? { id: ep.id } : {},
-    ...data !== void 0 ? { data, ...itemHandle(held) } : {}
+    ...data !== void 0 ? { data, ...itemHandle(held), ...ep.matchedPage ? { matchedPage: ep.matchedPage } : {} } : {}
   };
 }
 function itemHandle(content) {
@@ -12704,7 +12708,7 @@ function beliefLine(b) {
 function memoryLine(m, currentTick, view) {
   const asMemory = view ? { ...view, mode: "reference" } : void 0;
   const age = m.tick != null ? `, ~${currentTick - m.tick} ticks ago` : "";
-  return `- ${m.content} (relevance: ${m.relevance.toFixed(2)}, emotional: ${m.emotionalContext}${age})${renderItemData(m.data, m.handle, asMemory)}`;
+  return `- ${m.content} (relevance: ${m.relevance.toFixed(2)}, emotional: ${m.emotionalContext}${age})${renderItemData(m.data, m.handle, asMemory, m.matchedPage)}`;
 }
 function spokenTurnLine(t) {
   const words2 = t.text.trim();
@@ -21890,7 +21894,10 @@ For simple, single-exchange requests (questions, opinions, short tasks) \u2014 d
 var ThreadDigestManager = class _ThreadDigestManager {
   static MAX_TURNS = 5;
   _threads = /* @__PURE__ */ new Map();
+  /** Every turn appended to a thread, so the digest can say how many it is not showing. */
+  _turns = /* @__PURE__ */ new Map();
   append(threadId, role, content) {
+    this._turns.set(threadId, (this._turns.get(threadId) ?? 0) + 1);
     const lines = this._threads.get(threadId) ?? [];
     lines.push(`${role}: ${content}`);
     if (lines.length > _ThreadDigestManager.MAX_TURNS)
@@ -21911,11 +21918,14 @@ var ThreadDigestManager = class _ThreadDigestManager {
   getDigest(threadId) {
     const lines = this._threads.get(threadId);
     if (!lines || lines.length === 0) return "";
-    return `[Thread \u2014 last ${lines.length} turn${lines.length === 1 ? "" : "s"}]
+    const earlier = (this._turns.get(threadId) ?? 0) - lines.length;
+    const more = earlier > 0 ? `; ${earlier} earlier turn${earlier === 1 ? " is" : "s are"} in my memories \u2014 {"recall": [{"section": "memories", "query": "\u2026"}]}` : "";
+    return `[Thread \u2014 last ${lines.length} turn${lines.length === 1 ? "" : "s"}${more}]
 ${lines.join("\n")}`;
   }
   clear(threadId) {
     this._threads.delete(threadId);
+    this._turns.delete(threadId);
   }
 };
 var AuditionEngine = class extends BaseSenseEngine {
@@ -26581,6 +26591,18 @@ var HNSWIndex = class {
 };
 
 // src/cognition/memory/vector.adapter.ts
+function heldData(content) {
+  if (!content || typeof content !== "object") return void 0;
+  const c = content;
+  const inner = c["content"];
+  if (inner && typeof inner === "object" && inner["data"] !== void 0)
+    return inner["data"];
+  return c["data"];
+}
+function chunkOf(id) {
+  const m = /^(.*)#(\d+)(?:\.\d+)?$/.exec(id);
+  return m ? { episodeId: m[1], page: Number(m[2]) } : { episodeId: id };
+}
 var DefaultVectorMemoryAdapter = class {
   _index;
   _embedder;
@@ -26606,6 +26628,8 @@ var DefaultVectorMemoryAdapter = class {
    */
   _inFlight = /* @__PURE__ */ new Set();
   _cancelled = /* @__PURE__ */ new Set();
+  /** Each episode's page vectors — what it held, embedded a page at a time (LOSSLESS P5e). */
+  _pageIds = /* @__PURE__ */ new Map();
   constructor(embedder, config = {}, storage = new BunStorageAdapter(), indexImpl = new HNSWIndex(config)) {
     this._embedder = embedder;
     this._storage = storage;
@@ -26624,55 +26648,58 @@ var DefaultVectorMemoryAdapter = class {
     return this._index.size;
   }
   async index(episode, content) {
-    if (this._indexedIds.has(episode.id)) return;
-    if (this._index.size >= this._maxIndexedEpisodes)
-      await this._evictColdest();
-    const embedding = await this._embedInFlight([episode.id], () => this._embedder.embed(episodeContentToText(content), "index"));
-    if (this._cancelled.delete(episode.id)) return;
-    const record = {
-      id: episode.id,
-      vector: embedding,
-      embeddingModel: this._embedder.modelName,
-      createdAt: wallClock(),
-      // determinism-ok: secondary index telemetry, rebuilt from _store, never in replay state
-      metadata: {
-        tick: episode.timestamp,
-        sourceType: episode.sourceType,
-        emotionalValence: episode.affectiveContext.valence,
-        tags: episode.tags
-      }
-    };
-    await this._index.insert(record);
-    this._indexedIds.add(episode.id);
-    this._touch(episode.id);
-    this._dirty = true;
-    this._schedulePersist();
+    await this.indexBatch([{ episode, content }]);
+  }
+  /**
+   * What one episode is embedded as: its label, and — for an observation — every
+   * page of what it held (LOSSLESS P5e). An observation was embedded by its label
+   * alone, at most a hundred characters, so recall could find that she had read a
+   * listing and never the part of it that answered. A page longer than the
+   * embedder takes is split into pieces, never cut.
+   */
+  _texts(episode, content) {
+    const out = [{ id: episode.id, text: episodeContentToText(content) }];
+    const data = heldData(content);
+    if (data === void 0) return out;
+    const piece = Math.max(64, Math.floor((this._embedder.maxInputTokens ?? 2048) * 0.75));
+    paginate(itemText(data), PAGE_TOKENS).forEach((page, i) => {
+      if (!page.trim()) return;
+      const pieces = estimateTokens(page) <= piece ? [page] : paginate(page, piece);
+      pieces.forEach((text, k) => out.push({ id: pieces.length === 1 ? `${episode.id}#${i + 1}` : `${episode.id}#${i + 1}.${k + 1}`, text }));
+    });
+    return out;
   }
   async indexBatch(episodes) {
     const newEpisodes = episodes.filter((e) => !this._indexedIds.has(e.episode.id));
     if (newEpisodes.length === 0) return;
-    while (this._index.size > 0 && this._index.size + newEpisodes.length > this._maxIndexedEpisodes)
+    while (this._indexedIds.size > 0 && this._indexedIds.size + newEpisodes.length > this._maxIndexedEpisodes)
       await this._evictColdest();
-    const contents = newEpisodes.map((e) => episodeContentToText(e.content));
-    const embeddings = await this._embedInFlight(newEpisodes.map((e) => e.episode.id), () => this._embedder.embedBatch(contents, "index"));
+    const texts = newEpisodes.map((e) => this._texts(e.episode, e.content));
+    const flat = texts.flat();
+    const embeddings = await this._embedInFlight(newEpisodes.map((e) => e.episode.id), () => this._embedder.embedBatch(flat.map((t) => t.text), "index"));
+    let at = 0;
     for (let i = 0; i < newEpisodes.length; i++) {
       const { episode } = newEpisodes[i];
-      const embedding = embeddings[i];
+      const mine = texts[i];
+      const vectors = embeddings.slice(at, at + mine.length);
+      at += mine.length;
       if (this._cancelled.delete(episode.id)) continue;
-      const record = {
-        id: episode.id,
-        vector: embedding,
-        embeddingModel: this._embedder.modelName,
-        createdAt: wallClock(),
-        // determinism-ok: secondary index telemetry, rebuilt from _store, never in replay state
-        metadata: {
-          tick: episode.timestamp,
-          sourceType: episode.sourceType,
-          emotionalValence: episode.affectiveContext.valence,
-          tags: episode.tags
-        }
-      };
-      await this._index.insert(record);
+      for (let j = 0; j < mine.length; j++)
+        await this._index.insert({
+          id: mine[j].id,
+          vector: vectors[j],
+          embeddingModel: this._embedder.modelName,
+          createdAt: wallClock(),
+          // determinism-ok: secondary index telemetry, rebuilt from _store, never in replay state
+          metadata: {
+            tick: episode.timestamp,
+            sourceType: episode.sourceType,
+            emotionalValence: episode.affectiveContext.valence,
+            tags: episode.tags,
+            ...j > 0 ? { page: chunkOf(mine[j].id).page } : {}
+          }
+        });
+      if (mine.length > 1) this._pageIds.set(episode.id, mine.slice(1).map((t) => t.id));
       this._indexedIds.add(episode.id);
       this._touch(episode.id);
     }
@@ -26696,24 +26723,40 @@ var DefaultVectorMemoryAdapter = class {
     return this.searchWithVector(embedding, filter);
   }
   async searchWithVector(embedding, filter) {
-    const results = await this._index.search(embedding, filter?.maxResults ?? 10, {
+    const k = filter?.maxResults ?? 10;
+    const hits = await this._index.search(embedding, this._pageIds.size > 0 ? k * 4 : k, {
       minSimilarity: filter?.minSimilarity ?? this._minSimilarity
     });
+    const best = /* @__PURE__ */ new Map();
+    for (const h of hits) {
+      const { episodeId, page } = chunkOf(h.episodeId);
+      const was = best.get(episodeId);
+      if (!was || h.similarity > was.similarity) best.set(episodeId, { episodeId, similarity: h.similarity, ...page ? { page } : {} });
+    }
+    const results = [...best.values()].sort((a, b) => b.similarity - a.similarity || (a.episodeId < b.episodeId ? -1 : 1)).slice(0, k);
     for (const r of results) this._touch(r.episodeId);
     return results;
   }
   async delete(episodeId) {
     if (this._inFlight.has(episodeId)) this._cancelled.add(episodeId);
-    if (await this._index.delete(episodeId)) {
-      this._indexedIds.delete(episodeId);
-      this._accessTick.delete(episodeId);
+    if (await this._deleteVectors(episodeId)) {
       this._dirty = true;
       this._schedulePersist();
     }
   }
+  /** An episode's vector and every page's. True when there was any. */
+  async _deleteVectors(episodeId) {
+    let any = await this._index.delete(episodeId);
+    for (const id of this._pageIds.get(episodeId) ?? []) any = await this._index.delete(id) || any;
+    this._pageIds.delete(episodeId);
+    this._indexedIds.delete(episodeId);
+    this._accessTick.delete(episodeId);
+    return any;
+  }
   async rebuildFromStore(store) {
     await this._index.clear();
     this._indexedIds.clear();
+    this._pageIds.clear();
     this._accessTick.clear();
     this._accessClock = 0;
     const episodesWithContent = store.map((episode) => ({
@@ -26756,10 +26799,16 @@ var DefaultVectorMemoryAdapter = class {
       if (this._index.deserialize) {
         await this._index.deserialize(bytes);
         this._indexedIds.clear();
+        this._pageIds.clear();
         this._accessTick.clear();
         this._accessClock = 0;
         if (this._index.keys)
           for (const id of this._index.keys()) {
+            const { episodeId, page } = chunkOf(id);
+            if (page !== void 0) {
+              this._pageIds.set(episodeId, [...this._pageIds.get(episodeId) ?? [], id]);
+              continue;
+            }
             this._indexedIds.add(id);
             this._touch(id);
           }
@@ -26771,11 +26820,7 @@ var DefaultVectorMemoryAdapter = class {
   async _evictColdest() {
     const target = Math.max(1, Math.floor(this._maxIndexedEpisodes * 0.1));
     const victims = Array.from(this._indexedIds).sort((a, b) => (this._accessTick.get(a) ?? 0) - (this._accessTick.get(b) ?? 0)).slice(0, target);
-    for (const id of victims) {
-      await this._index.delete(id);
-      this._indexedIds.delete(id);
-      this._accessTick.delete(id);
-    }
+    for (const id of victims) await this._deleteVectors(id);
     if (victims.length > 0) this._dirty = true;
   }
   /**
@@ -26800,9 +26845,16 @@ var DefaultVectorMemoryAdapter = class {
 };
 
 // src/cognition/memory/vector.embedder.ts
+var KNOWN_INPUT_TOKENS = [
+  [/^jina-embeddings-v[34]/i, 8192],
+  [/^text-embedding-3-/i, 8191],
+  [/^text-embedding-ada-002$/i, 8191],
+  [/gemini-embedding|text-embedding-00[45]/i, 2048]
+];
 var OpenAICompatibleEmbedder = class {
   modelName;
   dimensions;
+  maxInputTokens;
   _apiUrl;
   _apiKey;
   _maxConcurrency;
@@ -26818,6 +26870,8 @@ var OpenAICompatibleEmbedder = class {
   constructor(config) {
     this.modelName = config.modelName;
     this.dimensions = config.dimensions;
+    const known = config.maxInputTokens ?? KNOWN_INPUT_TOKENS.find(([re]) => re.test(config.modelName))?.[1];
+    if (known !== void 0) this.maxInputTokens = known;
     this._apiUrl = config.apiUrl;
     this._apiKey = config.apiKey ?? null;
     this._maxConcurrency = Math.max(1, config.maxConcurrency ?? 4);

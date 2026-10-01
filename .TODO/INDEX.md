@@ -4,12 +4,12 @@
 > document in this folder and the release headers in `CHANGELOG.md`.
 > Do not edit by hand — edit the document, then re-emit.
 
-Day zero is **2026-05-28**. 46 documents, 8 releases.
+Day zero is **2026-05-28**. 47 documents, 8 releases.
 What each level means, and what it may be cited for, is [STANDING.md](STANDING.md).
 
 - **SHIPPED** · 30 — in the engine, gated by CI, carried by a release
 - **OBSERVED** · 8 — true of the real system at a moment, established by looking
-- **DESIGNED** · 7 — reasoned to a plan of record — intent, not capability
+- **DESIGNED** · 8 — reasoned to a plan of record — intent, not capability
 - **SPECULATIVE** · 1 — a hypothesis the project is holding
 
 > Dates before 2026-07-02 predate this repository — `will` was split out and
@@ -231,4 +231,10 @@ four runs of one COO Will on Discord, the earliest recorded on or before 2026-08
 **2026-09-30 · DESIGNED** · [LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut](LOSSLESS.md)
 
 scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P4 of 6 landed, unreleased
+
+## October 2026
+
+**2026-10-01 · DESIGNED** · [LOSSLESS P5 — every call fits its window, and nothing leaves a call silently](LOSSLESS_P5.md)
+
+traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; 6 decisions open for the owner
 

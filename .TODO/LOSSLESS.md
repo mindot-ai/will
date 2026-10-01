@@ -256,11 +256,19 @@ in-session, restored on the next boot. The cut was a lie twice.
 
 Found doing P3a and **not** changed — each is the model of a mind, and the owner's:
 
-- **Belief decay runs every tick.** Unreinforced for 300 ticks, a belief loses
-  0.001 a tick and is let go ~680 ticks later: at ~1 tick/s, a fact nobody
-  repeats is gone in about 16 minutes. The forgetting-curve question again —
-  minutes where days were meant — against spaced repetition that reinforces
-  beliefs toward 1.0 on its own schedule.
+- ~~**Belief decay runs every tick.**~~ Recalibrated to days of running time
+  (its own PR, after P3): `DEFAULT_BELIEF_DECAY_PER_SECOND` — a weak belief
+  (0.3) reaches the prune in ~3 days, a firm one (0.9) in ~13. Two relations had
+  to move with it, both measured on the real engines. Spaced repetition's
+  automatic review "assumed successful recall" (+0.05, fresh last-update, no
+  evidence); per-tick decay lost that race, days-scale decay would have lost to
+  it — every belief at 1.00 in 12 hours, forever. A review nothing recalled now
+  moves only the schedule. And its record was persisted under the BELIEF's id:
+  the later write won each tick, the belief entity became a review record, and a
+  woken mind restored none of its beliefs — the unexplained "beliefs lost on
+  restart" of the first review. Records have their own id (`sr-<belief>`), old
+  ones still restore, orphans go with their belief. The parameter is renamed
+  (`beliefDecayPerSecond`): a woken mind's saved per-tick 0.001 is ignored.
 - **Theory of mind's fade cannot fire, and should not as written.** Model
   confidence is floored at 0.05 and pruned below 0.05; its decay grows with every
   tick since the last update, so a live fade would drop a colleague's model

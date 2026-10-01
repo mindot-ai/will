@@ -27,7 +27,7 @@ import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import { EVIDENCE_TO_COUNT } from '#faculties/executive.engine/commands'
 import { GenerativeModel } from '#cognition/generative.model'
 import { readEffectiveParams } from '#cognition/persona.prior'
-import { _STOP_WORDS, type Belief, type BeliefHistoryEntry, type SemanticIntegratorConfig } from '#faculties/semantic.engine/types'
+import { _STOP_WORDS, DEFAULT_BELIEF_DECAY_PER_SECOND, type Belief, type BeliefHistoryEntry, type SemanticIntegratorConfig } from '#faculties/semantic.engine/types'
 import { SemanticClustering } from '#faculties/semantic.engine/clustering'
 import { episodeContentToText } from '#memory/vector.content'
 
@@ -41,7 +41,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
   private _minIntervalTicks: number
   private _minNewEpisodes: number
   private _beliefStalenessThreshold: number
-  private _beliefDecayRate: number
+  private _beliefDecayPerSecond: number
   private _semanticSimilarityThreshold: number
   private _semanticQueryLimit: number
 
@@ -71,7 +71,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
     this._minIntervalTicks        = config.minIntervalTicks        ?? 30
     this._minNewEpisodes          = config.minNewEpisodes          ?? 10
     this._beliefStalenessThreshold = config.beliefStalenessThreshold ?? 300
-    this._beliefDecayRate          = config.beliefDecayRate          ?? 0.001
+    this._beliefDecayPerSecond     = config.beliefDecayPerSecond     ?? DEFAULT_BELIEF_DECAY_PER_SECOND
     this._semanticSimilarityThreshold = config.semanticSimilarityThreshold ?? 0.65
     this._semanticQueryLimit          = config.semanticQueryLimit          ?? 20
   }
@@ -227,7 +227,10 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
     if( p.minIntervalTicks         != null ) this._minIntervalTicks         = p.minIntervalTicks
     if( p.minNewEpisodes           != null ) this._minNewEpisodes           = p.minNewEpisodes
     if( p.beliefStalenessThreshold != null ) this._beliefStalenessThreshold = p.beliefStalenessThreshold
-    if( p.beliefDecayRate          != null ) this._beliefDecayRate          = p.beliefDecayRate
+    // `beliefDecayPerSecond`, not the old per-TICK `beliefDecayRate` — a woken mind
+    // carries 0.001 under that name, and read in the new unit it would forget in 13
+    // minutes: the persisted-default trap the forgetting curve fell into.
+    if( p.beliefDecayPerSecond     != null ) this._beliefDecayPerSecond     = p.beliefDecayPerSecond
   }
 
   async react(
@@ -279,7 +282,7 @@ export class SemanticIntegrator implements SimulationEngine, CognitiveEngine {
       const hadOpportunity  = this._lastIntegrationTick > belief.lastUpdatedAt
       if( staleness > this._beliefStalenessThreshold && hadOpportunity ){
         const prev = belief.confidence
-        belief.confidence = Math.max( 0.10, belief.confidence - this._beliefDecayRate )
+        belief.confidence = Math.max( 0.10, belief.confidence - this._beliefDecayPerSecond * ( _delta / 1000 ) )
         if( belief.confidence !== prev )
           SemanticIntegrator._recordHistory( belief, tick, prev, 'decayed')
       }

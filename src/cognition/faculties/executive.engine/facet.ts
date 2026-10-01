@@ -37,6 +37,7 @@ import { parseResponse, buildFallbackOutput } from '#faculties/executive.engine/
 import { selectProcess, ideationTemperature, DELIBERATE_THRESHOLD } from '#faculties/executive.engine/effort.gate'
 import { proposeCandidates } from '#faculties/executive.engine/deliberate.reasoning'
 import { readEffectiveParams } from '#cognition/persona.prior'
+import type { SelfAccount } from '#faculties/executive.engine/commands'
 
 // ── Facet event types ─────────────────────────────────────────
 
@@ -44,6 +45,21 @@ import { readEffectiveParams } from '#cognition/persona.prior'
  * Generic report interface — the facet doesn't interpret this.
  * The creator engine defines the structure and interprets responses.
  */
+/** The parts of a facet's output about the mind itself, or undefined when it said none. */
+function selfAccountOf( out: ExecutiveOutputFull ): SelfAccount | undefined {
+  const self: SelfAccount = {}
+  if( out.introspection )            self.introspection    = out.introspection
+  if( out.narrative ){
+    self.narrative = out.narrative
+    if( out.narrativeThemes )        self.narrativeThemes  = out.narrativeThemes
+    if( out.currentSelfView )        self.currentSelfView  = out.currentSelfView
+  }
+  if( out.selfObservations?.length ) self.selfObservations = out.selfObservations
+  if( out.identityUpdates )          self.identityUpdates  = out.identityUpdates
+  if( out.newSkills?.length )        self.newSkills        = out.newSkills
+  return Object.keys( self ).length > 0 ? self : undefined
+}
+
 export interface FacetReport {
   /** The reason for this report (creator-defined) */
   type: string
@@ -620,6 +636,11 @@ export class ExecutiveFacet {
       ? decision.decision as Record<string, unknown>
       : {}
 
+    // What it learned about the people involved belongs to the mind, whatever the
+    // creator's extractor kept — plan supervision's keeps none of it.
+    const knownEntityUpdates = ( dec[ 'knownEntityUpdates' ] ?? output.knownEntityUpdates ) as
+      ExecutiveOutputFull['knownEntityUpdates'] | undefined
+
     this._bus.publish({
       type: 'executive.facet.progress',
       version: 1,
@@ -634,10 +655,12 @@ export class ExecutiveFacet {
         goalProgress:     dec[ 'goalProgress' ]   as number | undefined,
         newGoals:         dec[ 'newGoals' ],
         goalsToAbandon:   dec[ 'goalsToAbandon' ],
+        // Asked for in every facet's prompt and kept by no extractor.
+        goalsToReprioritize: output.goalsToReprioritize,
         // promoted for SemanticIntegrator
         newBeliefs:       dec[ 'newBeliefs' ],
         // promoted for SemanticIntegrator (learned facts about others → keid-tagged beliefs)
-        knownEntityUpdates: dec[ 'knownEntityUpdates' ],
+        knownEntityUpdates,
         contextId:        report.contextId,
         tick:             currentState.tick
       }
@@ -646,9 +669,8 @@ export class ExecutiveFacet {
     // Conscious learning about others — route name/feeling to known.entity.tracker (the
     // dossier owner) the same way the master does, so routine (un-escalated) conversation
     // also records who/what it's dealing with. Facts ride the promoted field above.
-    const keUpdates = dec[ 'knownEntityUpdates' ] as ExecutiveOutputFull['knownEntityUpdates'] | undefined
-    if( keUpdates )
-      for( const u of keUpdates )
+    if( knownEntityUpdates )
+      for( const u of knownEntityUpdates )
         if( u.keid && u.keid !== 'agent-self' && ( u.name || u.feeling != null || u.sameAs ) )
           this._bus.publish({
             type: 'known.entity.learned',
@@ -659,6 +681,7 @@ export class ExecutiveFacet {
           })
 
     // Sync back to master
+    const self = selfAccountOf( output )
     this._bus.publish({
       type: 'executive.facet.sync',
       version: 1,
@@ -673,6 +696,8 @@ export class ExecutiveFacet {
         // the singular seat, so it needs the person, not just the facet number.
         ...( focus.subjectEntityId ? { subjectEntityId: focus.subjectEntityId } : {} ),
         ...( focus.subjectName     ? { subjectName:     focus.subjectName     } : {} ),
+        // What it concluded about the mind itself — the master writes it (_onFacetSync).
+        ...( self ? { self } : {} ),
         tick: currentState.tick
       }
     })

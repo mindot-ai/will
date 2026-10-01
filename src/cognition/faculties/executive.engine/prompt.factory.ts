@@ -50,6 +50,7 @@ import type { ExecutiveSummarizer } from '#llm/summarizer'
 import type { ExecutiveContext, IdeationCandidate } from '#faculties/executive.engine/types'
 import { buildExecutiveContext, type ContextDependencies } from '#faculties/executive.engine/context'
 import { INNATE_SCHEMAS } from '#agency/schemas/innate'
+import { isGenericStyle } from '#cognition/identity.entity'
 
 /**
  * The stances a mind always has, named so it need not guess at them.
@@ -524,7 +525,8 @@ ${roleDescription}${architectureBlock}
 - **newGoals/goalsToAbandon/goalsToReprioritize**: Manage my goal hierarchy.
 - **selfObservations**: Notice patterns in my own thinking, feeling, or behavior. What I noticed before is under "## Recent Self-Reflection" — add what is new, or what has changed, rather than noticing the same thing again.
 - **identityUpdates.traits**: Array of {key, value} where value is a DELTA to apply to my trait (e.g., +0.05 to increase a trait by 5%).
-- **identityUpdates.values**: Full list of values to set (replaces existing).
+- **identityUpdates.values**: Values I hold that are not yet listed — each is added to mine; none is removed.
+- **identityUpdates.style**: How I speak, as a short phrase — taken while my style is still generic.
 - **knownEntityUpdates**: What I've learned about someone/something I'm dealing with. Array of {keid, name?, learned?, feeling?, sameAs?}. Use the keid from "## People I Know". Set name only when I actually learn their name; learned is an array of facts about them (stored as memories); feeling is how I feel toward them (-1..1). **sameAs** is another keid I have concluded is this same someone met under a different handle — it fuses my two records into one, so I use it only when I actually know, not when I merely suspect. Record only what I genuinely learned this turn.
 
 ## Required Output
@@ -606,7 +608,7 @@ specifying it explicitly.
 [/NARRATIVE]
 
 [IDENTITY]
-{"identityUpdates": {"traits": [{"key": "openness", "value": 0.02}], "values": ["curiosity", "honesty"]}}
+{"identityUpdates": {"traits": [{"key": "openness", "value": 0.02}], "values": ["candour"], "style": "..."}}
 [/IDENTITY]
 
 [KNOWN_ENTITIES]
@@ -1344,7 +1346,8 @@ ${lines.join('\n')}
         const text = ( entity.metadata?.[ 'observation' ] as string | undefined )?.trim()
         if( text ) observations.push({
           tick:  ( entity.metadata?.[ 'tick' ] as number | undefined ) ?? 0,
-          // `self-obs-<tick>-<idx>` — and a woken mind's `self-obs-slot-<n>`.
+          // `self-obs-<source>-<tick>-<idx>` (`self-obs-<tick>-<idx>` before facets'
+          // were kept) — and a woken mind's `self-obs-slot-<n>`.
           order: Number( entity.id.split('-').at( -1 ) ) || 0,
           text,
         })
@@ -1398,15 +1401,16 @@ ${lines.join('\n')}
     const NUDGE_INTERVAL = 30
     if( tick % NUDGE_INTERVAL !== 0 ) return ''
 
-    const GENERIC_STYLES = new Set([ 'natural and authentic', 'natural', 'authentic', '' ])
     const valuesEmpty    = identity.values.length === 0
-    const styleGeneric   = GENERIC_STYLES.has( ( identity.style ?? '').toLowerCase() )
+    const styleGeneric   = isGenericStyle( identity.style )
 
     if( !valuesEmpty && !styleGeneric ) return ''
 
     const hints: string[] = []
-    if( valuesEmpty )   hints.push('My values list is empty — reflecting on what matters to me will help ground my decisions. Consider adding a `[IDENTITY_UPDATE]` block with `"values"` this cycle.')
-    if( styleGeneric )  hints.push('My communication style is still generic — what truly characterises how I speak? A note in `[IDENTITY_UPDATE]` with `"style"` will make my voice more distinctly mine.')
+    // It named `[IDENTITY_UPDATE]`, a block the parser has never read, and a
+    // `style` the output had no field for: both asks went nowhere.
+    if( valuesEmpty )   hints.push('My values list is empty — reflecting on what matters to me will help ground my decisions. Consider an `[IDENTITY]` block with `identityUpdates.values` this cycle.')
+    if( styleGeneric )  hints.push('My communication style is still generic — what truly characterises how I speak? `identityUpdates.style` in an `[IDENTITY]` block will make my voice more distinctly mine.')
 
     return `\n\n## 💡 Identity Reflection (every ${NUDGE_INTERVAL} ticks)\n${hints.join('\n')}`
   }

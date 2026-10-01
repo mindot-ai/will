@@ -23,7 +23,6 @@ import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import { GenerativeModel } from '#cognition/generative.model'
 import { readEffectiveParams } from '#cognition/persona.prior'
 import { ExecutiveEngine } from '#faculties/executive.engine'
-import { identityCommand } from '#cognition/identity.entity'
 
 export interface AutobiographicalNarratorConfig {
   minIntervalTicks?: number
@@ -56,6 +55,13 @@ export class AutobiographicalNarrator implements SimulationEngine, CognitiveEngi
   }
 
   private _lastUpdateTick: number = 0
+  /**
+   * The executive output last taken into the story. It stays fresh for the
+   * executive's interval (60 ticks by default) and this passes every 50, so one
+   * output could be appended twice — the introspection engine's 14 copies of
+   * one reflection, at a lower rate.
+   */
+  private _takenOutput: unknown = null
   private _restored = false
   private _episodicConsolidator: EpisodicConsolidator | null = null
   private _semanticIntegrator: SemanticIntegrator | null = null
@@ -149,7 +155,8 @@ export class AutobiographicalNarrator implements SimulationEngine, CognitiveEngi
     // generative model gates on, replacing the monotonic version counter.
     let narrativeSignificance = 0
 
-    if( executiveOutput?.narrative && this._executiveEngine?.isFresh( tick ) ){
+    if( executiveOutput?.narrative && this._executiveEngine?.isFresh( tick ) && executiveOutput !== this._takenOutput ){
+      this._takenOutput = executiveOutput
       // Executive narrative is fresh — use it
       this._narrative.version++
       this._narrative.lastUpdatedAt = tick
@@ -163,26 +170,15 @@ export class AutobiographicalNarrator implements SimulationEngine, CognitiveEngi
         ].slice( -10 )
       }
 
-      if( executiveOutput.identityUpdates?.traits ){
-        // Apply trait deltas
-        const existingIdentity = state.entities.get('identity-self')
-        if( existingIdentity ){
-          const currentTraits = ( existingIdentity.metadata?.traits as Record<string, number> ) ?? {}
-          const updatedTraits = { ...currentTraits }
-          for( const { key: trait, value: delta } of executiveOutput.identityUpdates.traits )
-            updatedTraits[ trait ] = Math.max( 0, Math.min( 1, ( updatedTraits[ trait ] ?? 0.5 ) + delta ) )
-
-          commands.set!.push( identityCommand( state, {
-            traits: updatedTraits,
-            version: ( ( existingIdentity.metadata?.version as number ) ?? 1 ) + 1,
-          } ) )
-        }
-      }
+      // Identity (traits, values, style) is applied by the executive engine, once
+      // per output — applied here, a trait delta landed only when this 50-tick
+      // pass found the output fresh: missed, or applied twice.
 
       narrativeSignificance = executiveOutput.narrativeThemes?.length ?? 1
       commands.metrics!.push([ 'narrative.source', 1 ])
     }
-    else {
+    // Already told, and still fresh: nothing new to add (not a heuristic chapter).
+    else if( executiveOutput !== this._takenOutput || !this._executiveEngine?.isFresh( tick ) ){
       // Heuristic narrative extension
       const episodes = this._episodicConsolidator?.query({ limit: 20 }) ?? []
       const significant = episodes.filter(

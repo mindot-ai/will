@@ -762,6 +762,8 @@ interface StorageAdapter {
     exists(path: string): Promise<boolean>;
     delete?(path: string): Promise<void>;
     ensureDir?(path: string): Promise<void>;
+    /** Add to the end of a file, creating it (and its directory) if absent. */
+    append?(path: string, content: string): Promise<void>;
 }
 /**
  * Bun-native storage adapter, with a node:fs fallback when the Bun global is
@@ -772,6 +774,7 @@ declare class BunStorageAdapter implements StorageAdapter {
     private get _isBun();
     write(path: string, content: string | Uint8Array): Promise<void>;
     read(path: string): Promise<string>;
+    append(path: string, content: string): Promise<void>;
     readBytes(path: string): Promise<Uint8Array>;
     exists(path: string): Promise<boolean>;
     delete(path: string): Promise<void>;
@@ -4699,6 +4702,16 @@ declare class ExecutiveSummarizer {
     private _run;
 }
 
+/** What the mind concluded about who it is, in one cycle's `[IDENTITY]` block. */
+interface IdentityUpdates {
+    traits?: Array<{
+        key: string;
+        value: number;
+    }>;
+    values?: string[];
+    style?: string;
+}
+
 interface ExecutiveOutputFull {
     actions: Array<{
         type: string;
@@ -4738,13 +4751,7 @@ interface ExecutiveOutputFull {
     narrative?: string;
     narrativeThemes?: string[];
     currentSelfView?: string;
-    identityUpdates?: {
-        traits: Array<{
-            key: string;
-            value: number;
-        }>;
-        values: string[];
-    };
+    identityUpdates?: IdentityUpdates;
     /**
      * What the Will consciously learned about the *others* it is dealing with (the analogue
      * of identityUpdates, but about someone/something else). `keid` is the referent from the
@@ -4971,10 +4978,6 @@ interface FocusSection {
     extractDecision?: (output: unknown) => unknown;
 }
 
-/**
- * Generic report interface — the facet doesn't interpret this.
- * The creator engine defines the structure and interprets responses.
- */
 interface FacetReport {
     /** The reason for this report (creator-defined) */
     type: string;
@@ -5158,6 +5161,23 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * next cycle by construction.
      */
     private _facetSubjects;
+    /**
+     * What a facet concluded about the mind itself — its reflection, a chapter of
+     * its story, what it noticed about itself, a skill it named — carried back on
+     * `executive.facet.sync` and written on the next tick's state.
+     *
+     * A facet is the same mind (two-thirds of its decisions are made in one), its
+     * prompt asks for every one of these, and none of them went anywhere: only the
+     * master's output became state. Measured on Lora's archived runs: 18 of 364
+     * facet decisions carried an introspection and 27 a narrative, all dropped.
+     */
+    private _selfAccounts;
+    /**
+     * What any cycle — the master's or a facet's — concluded about who the mind is,
+     * applied on the next tick's state so a merge never rests on a snapshot the
+     * reasoning started from (see identityUpdateCommand).
+     */
+    private _identityUpdates;
     private readonly _model;
     private readonly _generativeModel;
     private _summarizerRestored;
@@ -5398,6 +5418,8 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * ordinary competition like any other.
      */
     private _onFacetSync;
+    /** The queued self-accounts and identity updates, as records on `state` (see the fields). */
+    private _drainSelfAccounts;
     /**
      * A focused part of me surfaced something the singular seat owns — work to plan
      * (`escalation`) or an intention toward a third party (`undertaking`).
@@ -6028,6 +6050,13 @@ declare class AutobiographicalNarrator implements SimulationEngine, CognitiveEng
     private _maxNarrativeLength;
     private _narrative;
     private _lastUpdateTick;
+    /**
+     * The executive output last taken into the story. It stays fresh for the
+     * executive's interval (60 ticks by default) and this passes every 50, so one
+     * output could be appended twice — the introspection engine's 14 copies of
+     * one reflection, at a lower rate.
+     */
+    private _takenOutput;
     private _restored;
     private _episodicConsolidator;
     private _semanticIntegrator;

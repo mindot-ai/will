@@ -143,11 +143,17 @@ Reclassified while doing it, both measured:
   read had `lessons` where it read `lessonsLearned`, and no recommendations — the
   mind was shown its biases and never what it had decided to do about them. Taken
   once now, carried whole, read under either name.
-- **Open — a facet's mind-wide output goes nowhere.** A facet on the standard
-  output format (plan supervision) is asked for BELIEFS, INTROSPECTION, NARRATIVE
-  and SELF_OBS like the master, and its decision callback carries none of them
-  on; only the master's output becomes state. Either carry them to the master or
-  stop asking a facet for them — a decision, not a cut.
+- ~~**Open — a facet's mind-wide output goes nowhere.**~~ Carried (its own PR,
+  after P4). Every facet shares the master's system prompt, so every facet was
+  asked for all of it, and only the master's output became state — on Lora's
+  archived runs 18 of 364 facet decisions held an introspection and 27 a
+  narrative, all dropped. A facet's account of itself (introspection, narrative,
+  self-observations, identity, skills) now rides `executive.facet.sync` and the
+  master writes it on its next tick, under the facet's name (`selfRecords`, shared
+  with the master's own); its reflection and skills are published as the
+  master's are. `goalsToReprioritize` rides `executive.facet.progress` to the
+  GoalManager, and what a facet learned about people no longer depends on its
+  creator's extractor keeping it (plan supervision's kept none).
 
 ### P2 — what she takes in is whole, and kept ✅
 
@@ -317,23 +323,46 @@ Found doing P3a and **not** changed — each is the model of a mind, and the own
       mind's own identity, reloaded from its artifact, is kept whole — the
       self-model grows its values, and rejecting them there would refuse to wake it
 - [x] `surface/host/utterances.ts` holds every word until a host takes it (was 50)
-- [x] Reclassified **NONE**: the transport's 1,000 un-acked envelopes (anything it
-      could drop has already expired in the outbox — 100 ticks); the event log's
+- [x] Reclassified **NONE**: ~~the transport's 1,000 un-acked envelopes (anything it
+      could drop has already expired in the outbox — 100 ticks)~~ — wrong: a
+      message the transport carries leaves the outbox the tick it is written, so
+      the outbox's TTL never sees it (closed below); the event log's
       in-memory ring (no live mind wires an event log: `createProductionBus()`
       takes none); the artifact's top-3 actions and 5-session emotional baseline
       (statistics over records kept whole on disk)
 
 Found doing P3b and **not** changed:
 
-- **The executive's `identityUpdates.values` and `.style` are never applied.** The
-  output schema asks for them and the identity nudge prompts for them every 30
-  ticks; only `traits` are read (the narrator). Values change only through the
-  self-model's own heuristic. Asked for and dropped — the self-observation shape.
-- **The transport re-emits what the mind already knows failed.** Un-acked
-  envelopes are kept for reconnect after their outbox entry has expired, so a
-  reconnect delivers messages the mind recorded as undelivered.
-- **The event log, if ever wired, rewrites the whole file on every flush** (read
-  all, append 100, write all).
+- ~~**The executive's `identityUpdates.values` and `.style` are never applied.**~~
+  Applied (same PR as the facet's account), once each, by the executive engine on
+  the next tick's state (`identityUpdateCommand`): traits by their delta, values
+  ADDED (the prompt said "replaces existing" — an operator's values are not the
+  mind's to drop), a style taken only while the style is still generic. The nudge
+  had asked for an `[IDENTITY_UPDATE]` block the parser never reads and a `style`
+  the output had no field for. Traits had been applied by the narrator, only when
+  its 50-tick pass found the master's output fresh — missed, or (the output stays
+  fresh 60 ticks) applied twice; the narrator's story took the same output twice
+  the same way, and now takes each once. Open: a style the mind set for itself
+  cannot be revised by it (no record of whose a style is).
+- ~~**The transport re-emits what the mind already knows failed.**~~ Closed (its
+  own PR, after P4), and worse than recorded. A message the transport carried
+  left the outbox the tick it was written, so the outbox's TTL never saw it:
+  un-acked, it was held for as long as the Will lived and delivered on the next
+  reconnect however late. And an invocation was re-emitted after the executor
+  had timed it out (failure recorded) or a change in its target had confirmed
+  it — the host performed an act the mind had already settled. The tick loop now
+  lets go of both, beside the outbox's own expiry: a message at the outbox's TTL,
+  an invocation once its `agency.intent` is gone. The 1,000 cap (a silent FIFO
+  drop) is gone — the buffer holds what the mind awaits. And the mind is told: an
+  expired message, the outbox's or the transport's, is received as a failed
+  delivery (`confirmDelivery(…, false)` — the sent record and a reafferent
+  percept). `communication.outbound.undelivered` has no subscriber, so to the
+  mind an expired message had been a message never answered.
+- ~~**The event log, if ever wired, rewrites the whole file on every flush**~~
+  Closed (same PR). `StorageAdapter.append` (the file store implements it); a
+  store without it falls back. `flush()` drains — it returned the write in
+  flight, so what arrived meanwhile stayed unwritten — and a failed write puts
+  its batch back.
 
 ### P4 — the operator's record is whole ✅
 

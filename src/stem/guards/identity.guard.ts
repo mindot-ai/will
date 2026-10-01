@@ -23,6 +23,7 @@
 import type { WillIdentity } from '#stem/mind'
 import { EXPLICIT_EFFECTORS }  from '#agency/access.grants'
 import { INNATE_SCHEMA_BY_ID } from '#agency/schemas/innate'
+import { isGenericStyle }      from '#cognition/identity.entity'
 
 export interface IdentityGuardInput {
   identity:        WillIdentity
@@ -75,10 +76,6 @@ const RESERVED_SECTIONS = new Set( [
   'who you are', 'your role', 'your environment',
 ] )
 
-const GENERIC_STYLES = new Set( [
-  '', 'natural', 'authentic', 'natural and authentic',
-  'helpful', 'friendly', 'professional', 'assistant', 'neutral',
-] )
 
 /** Five-factor + self-model trait vocabularies. Unknown keys warn (may be ignored). */
 const KNOWN_TRAITS = new Set( [
@@ -182,7 +179,7 @@ export function validateWillIdentity( input: IdentityGuardInput ): IdentityGuard
   const style = ( id.style ?? '').trim()
   if( operator && style.length > MAX_STYLE_CHARS )
     errors.push(`identity.style is ${style.length} chars (max ${MAX_STYLE_CHARS}) — it reads better as a short phrase.`)
-  if( GENERIC_STYLES.has( style.toLowerCase() ) )
+  if( isGenericStyle( style ) )
     warnings.push('identity.style is generic — a distinct voice prevents collapse into a generic chatbot tone.')
 
   // ── effectors: collisions ─────────────────────────────────────
@@ -224,7 +221,7 @@ export function validateWillIdentity( input: IdentityGuardInput ): IdentityGuard
   const identityStrength = Math.round( (
     0.40 * promptFactor
     + 0.25 * ( valuesEmpty ? 0 : 1 )
-    + 0.20 * ( GENERIC_STYLES.has( style.toLowerCase() ) ? 0 : 1 )
+    + 0.20 * ( isGenericStyle( style ) ? 0 : 1 )
     + 0.15 * ( Object.keys( traits ).length > 0 ? 1 : 0 )
   ) * 100 ) / 100
   if( identityStrength < 0.4 )

@@ -17,6 +17,8 @@ export interface StorageAdapter {
   exists( path: string ): Promise<boolean>
   delete?( path: string ): Promise<void>
   ensureDir?( path: string ): Promise<void>
+  /** Add to the end of a file, creating it (and its directory) if absent. */
+  append?( path: string, content: string ): Promise<void>
 }
 
 /**
@@ -48,6 +50,14 @@ export class BunStorageAdapter implements StorageAdapter {
 
     const { readFile } = await import('node:fs/promises')
     return readFile( path, 'utf8')
+  }
+
+  async append( path: string, content: string ): Promise<void> {
+    // node:fs under Bun too — Bun.write replaces a file, it has no append.
+    const { appendFile, mkdir } = await import('node:fs/promises')
+    const { dirname }           = await import('node:path')
+    await mkdir( dirname( path ), { recursive: true } )
+    await appendFile( path, content )
   }
 
   async readBytes( path: string ): Promise<Uint8Array> {

@@ -157,28 +157,40 @@ export class OutboxController {
       }
     }
 
-    for( const msg of expiredMessages ){
-      instance.sessionLogger?.write({
-        type:           'outbox.expire',
-        tick:           instance.tickCount,
-        messageId:      msg.id,
-        targetEntityId: msg.targetEntityId,
-        effectorName:    msg.effectorName,
-        ageAtExpiry:    instance.tickCount - msg.createdAtTick,
-      })
+    for( const msg of expiredMessages ) this.expire( instance, msg )
+  }
 
-      try {
-        instance.simulation.eventBus.publish(
-          {
-            type:    'communication.outbound.undelivered',
-            source:  'will-manager',
-            payload: { messageId: msg.id, targetEntityId: msg.targetEntityId, effectorName: msg.effectorName },
-          },
-          instance.simulation.context,
-          instance.tickCount as any,
-        )
-      }
-      catch { /* event bus may not be flushing — non-critical */ }
+  /**
+   * A message nobody confirmed within the TTL. Logged and published as before,
+   * and received by the mind as a failed delivery — the one part it can act on.
+   * `communication.outbound.undelivered` has no subscriber, so an expired
+   * message was, to the mind, a message never answered. Called for the outbox's
+   * own rows and for what the transport carried (TransportController.expireStale).
+   * A late receipt still lands, and corrects the record.
+   */
+  expire( instance: WillInstance, msg: OutboxMessage ): void {
+    instance.sessionLogger?.write({
+      type:           'outbox.expire',
+      tick:           instance.tickCount,
+      messageId:      msg.id,
+      targetEntityId: msg.targetEntityId,
+      effectorName:    msg.effectorName,
+      ageAtExpiry:    instance.tickCount - msg.createdAtTick,
+    })
+
+    try {
+      instance.simulation.eventBus.publish(
+        {
+          type:    'communication.outbound.undelivered',
+          source:  'will-manager',
+          payload: { messageId: msg.id, targetEntityId: msg.targetEntityId, effectorName: msg.effectorName },
+        },
+        instance.simulation.context,
+        instance.tickCount as any,
+      )
     }
+    catch { /* event bus may not be flushing — non-critical */ }
+
+    this.confirmDelivery( instance, msg.id, false )
   }
 }

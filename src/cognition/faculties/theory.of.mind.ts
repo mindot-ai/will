@@ -31,10 +31,20 @@ import type { SimulationEngine, EngineResult, CognitiveEngine } from '#cognition
 import type { CognitiveEventSchema } from '#cognition/schema.registry'
 import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import { GenerativeModel } from '#cognition/generative.model'
+import { DEFAULT_BELIEF_DECAY_PER_SECOND } from '#faculties/semantic.engine/types'
+
+/** Ticks a person may be quiet before the mind's read of them starts to fade. */
+const QUIET_TICKS = 100
+/** A model faded to here is let go — and its entity with it, or a restart restores it. */
+const LET_GO_AT = 0.05
 
 export interface TheoryOfMindConfig {
-  /** How quickly belief confidence decays without observation */
-  beliefDecayRate?: number
+  /**
+   * Confidence a quiet model loses per second of running time. A read of someone
+   * is a belief about them, so it fades at a belief's rate: a fresh read (0.3) is
+   * let go in ~4 days of silence, a firm one (0.9) in ~2 weeks.
+   */
+  fadePerSecond?: number
   /** Minimum confidence to consider a belief reliable */
   confidenceThreshold?: number
   bus?: CognitiveBus
@@ -59,7 +69,7 @@ export interface AgentMentalModel {
 export class TheoryOfMind implements SimulationEngine, CognitiveEngine {
   readonly name     = 'theory-of-mind'
   
-  private _beliefDecayRate: number
+  private _fadePerSecond: number
   private _confidenceThreshold: number
 
   private _models = new Map<string, AgentMentalModel>()
@@ -76,7 +86,7 @@ export class TheoryOfMind implements SimulationEngine, CognitiveEngine {
 
   constructor( config: TheoryOfMindConfig = {} ){
     this._bus = config.bus ?? null
-    this._beliefDecayRate    = config.beliefDecayRate    ?? 0.002
+    this._fadePerSecond      = config.fadePerSecond      ?? DEFAULT_BELIEF_DECAY_PER_SECOND
     this._confidenceThreshold = config.confidenceThreshold ?? 0.3
   }
   attachBus( bus: CognitiveBus ): void { this._bus = bus }
@@ -112,7 +122,7 @@ export class TheoryOfMind implements SimulationEngine, CognitiveEngine {
   snapshot(): Record<string, unknown> { return {} }
 
   async react(
-    _delta: Duration,
+    delta: Duration,
     tick: Tick,
     state: ReadonlySimulationState,
     _context: SimulationContext
@@ -154,11 +164,11 @@ export class TheoryOfMind implements SimulationEngine, CognitiveEngine {
       model.lastUpdated = tick
     }
 
-    // 3. Decay old beliefs
-    this._decayBeliefs( tick )
+    // 3. Fade the read of anyone who has gone quiet
+    this._fade( tick, delta / 1000 )
 
-    // 4. Prune models with low confidence
-    this._pruneModels()
+    // 4. Let go of a read that has faded out — in state too
+    commands.delete!.push( ...this._letGo() )
 
     // 5. Persist models
     for( const [ keid, model ] of this._models ){
@@ -175,6 +185,10 @@ export class TheoryOfMind implements SimulationEngine, CognitiveEngine {
           dominantIntention: model.intentions
             .sort( ( a, b ) => b.confidence - a.confidence )[0]?.goal ?? null,
           estimatedEmotion: model.emotionalState.dominantEmotion,
+          // When the mind last heard from them. `createdAt` above keeps its first
+          // value (and is sim-time ms), so a woken model was dated to tick 0 and
+          // faded out on its first tick.
+          lastUpdated: model.lastUpdated,
         },
       })
     }
@@ -236,16 +250,18 @@ export class TheoryOfMind implements SimulationEngine, CognitiveEngine {
       const dominantIntention = ( m['dominantIntention'] as string | null ) ?? null
       const modelConfidence   = ( m['modelConfidence']   as number ) ?? 0.3
       const estimatedEmotion  = ( m['estimatedEmotion']  as string ) ?? 'neutral'
+      // A model saved before `lastUpdated` was kept starts its quiet at the wake.
+      const lastUpdated       = ( m['lastUpdated']       as Tick | undefined ) ?? state.tick
 
       this._models.set( keid, {
         keid,
         knownObservations: [],
         beliefs:           [],
         intentions: dominantIntention
-          ? [ { goal: dominantIntention, confidence: modelConfidence, lastUpdated: 0 as unknown as Tick } ]
+          ? [ { goal: dominantIntention, confidence: modelConfidence, lastUpdated } ]
           : [],
         emotionalState: { valence: 0, arousal: 0, dominantEmotion: estimatedEmotion },
-        lastUpdated:     0 as unknown as Tick,
+        lastUpdated,
         modelConfidence,
       })
     }
@@ -290,37 +306,42 @@ export class TheoryOfMind implements SimulationEngine, CognitiveEngine {
     model.modelConfidence = Math.min( 1, model.modelConfidence + 0.02 )
   }
 
-  private _decayBeliefs( currentTick: Tick ): void {
+  /**
+   * The read of someone fades once they have been quiet a while, by a fixed step
+   * per second of running time.
+   *
+   * It took `rate × ticks since update` EVERY tick — a step that grew with the
+   * silence, so a colleague's model hit its floor two ticks after 100 quiet ticks
+   * (and every woken model, dated to tick 0, on its first tick). Empathy reads
+   * the model's emotion only above 0.3, so it read nobody it had not heard from
+   * in the last minute and a half.
+   */
+  private _fade( currentTick: Tick, seconds: number ): void {
+    const step = this._fadePerSecond * seconds
     for( const model of this._models.values() ){
-      const ticksSinceUpdate = currentTick - model.lastUpdated
+      if( currentTick - model.lastUpdated <= QUIET_TICKS ) continue
 
-      if( ticksSinceUpdate > 100 ){
-        model.modelConfidence = Math.max( 0.05, model.modelConfidence - this._beliefDecayRate * ticksSinceUpdate )
-
-        for( const belief of model.beliefs )
-          belief.confidence = Math.max( 0.05, belief.confidence - this._beliefDecayRate * 2 )
-
-        for( const intention of model.intentions )
-          intention.confidence = Math.max( 0.05, intention.confidence - this._beliefDecayRate * 2 )
-      }
+      model.modelConfidence = Math.max( 0, model.modelConfidence - step )
+      for( const belief of model.beliefs )
+        belief.confidence = Math.max( 0, belief.confidence - step )
+      for( const intention of model.intentions )
+        intention.confidence = Math.max( 0, intention.confidence - step )
     }
   }
 
-  private _pruneModels(): void {
-    const toPrune: string[] = []
-
-    for( const [ id, model ] of this._models ){
-      if( model.modelConfidence < 0.05 )
-        toPrune.push( id )
-    }
-
-    for( const id of toPrune )
-      this._models.delete( id )
-
-    // No count cap (it kept the 10 most confident models, dropping the rest from
-    // memory and not from state — restored next boot). Note the fade above cannot
-    // fire: modelConfidence is floored at 0.05, so nothing is ever < 0.05. Left
-    // as is — its decay grows with every tick since the last update, so a live
-    // fade would drop a colleague's model minutes after they went quiet.
+  /**
+   * Models faded out, removed here and returned for deletion from state. The fade
+   * floored at 0.05 and this let go below 0.05, so no model was ever let go.
+   * There is no count cap (it kept the 10 most confident models, dropping the
+   * rest from memory and not from state — restored next boot).
+   */
+  private _letGo(): string[] {
+    const gone: string[] = []
+    for( const [ keid, model ] of this._models )
+      if( model.modelConfidence <= LET_GO_AT ){
+        this._models.delete( keid )
+        gone.push( `tom-${keid}` )
+      }
+    return gone
   }
 }

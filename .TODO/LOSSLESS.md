@@ -269,10 +269,17 @@ Found doing P3a and **not** changed — each is the model of a mind, and the own
   restart" of the first review. Records have their own id (`sr-<belief>`), old
   ones still restore, orphans go with their belief. The parameter is renamed
   (`beliefDecayPerSecond`): a woken mind's saved per-tick 0.001 is ignored.
-- **Theory of mind's fade cannot fire, and should not as written.** Model
-  confidence is floored at 0.05 and pruned below 0.05; its decay grows with every
-  tick since the last update, so a live fade would drop a colleague's model
-  minutes after they went quiet.
+- ~~**Theory of mind's fade cannot fire, and should not as written.**~~ Fades
+  in days now (its own PR, after P4). The decay took `rate × ticks since update`
+  every tick — a step that grew with the silence — so the read of a colleague hit
+  its 0.05 floor two ticks after 100 quiet ticks, and empathy (which uses a model's
+  emotion only above 0.3) read nobody it had not heard from in the last minute and
+  a half. A woken model was dated to tick 0 — `createdAt` keeps its first value
+  and is sim-time ms, so it never held the last update — and faded on its first
+  tick. And the floor sat on the prune line, so no model was ever let go. Now a
+  fixed step per second at a belief's rate (a fresh read is let go in ~4 days of
+  silence, a firm one in ~2 weeks), `lastUpdated` persisted and restored, and a
+  model let go is deleted from state.
 
 **P3b — the artifact, and waking ✅**
 

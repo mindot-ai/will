@@ -47,6 +47,9 @@ import { EscalationLifecycle } from './effector/escalation.lifecycle'
 import type { EffectorAck } from './effector/types'
 import type { PlanLink } from '#agency/types'
 
+/** How long a dispatched act is remembered for a late answer to find it, in ticks. */
+const LATE_ANSWER_TICKS = 600
+
 export class effectorController {
   // The two collaborators are wired with arrow closures rather than a shared
   // `this` reference, which is what lets the cycle exist without either class
@@ -117,9 +120,25 @@ export class effectorController {
     this._policy.applyRefusals( instance )           // then the plain denials
   }
 
+  /**
+   * What each act sent to a host was, by its correlation handle — so an answer
+   * that arrives after the act was given up on can still say what it answers.
+   * Held until the answer comes, or for `LATE_ANSWER_TICKS`.
+   */
+  private readonly _dispatched = new WeakMap<WillInstance, Map<string, { schema: string; tick: number }>>()
+  private _sentBy( instance: WillInstance ): Map<string, { schema: string; tick: number }> {
+    let m = this._dispatched.get( instance )
+    if( !m ){ m = new Map(); this._dispatched.set( instance, m ) }
+    return m
+  }
+
   /** Queue an approved invocation for the delivery layer. */
   private _buffer( instance: WillInstance, payload: Record<string, unknown> ): void {
     const intentId = ( payload.intentId as string ) ?? ''
+    const sent = ( payload.tick as number ) ?? 0
+    const dispatched = this._sentBy( instance )
+    for( const [ k, v ] of dispatched ) if( sent - v.tick > LATE_ANSWER_TICKS ) dispatched.delete( k )
+    dispatched.set( intentId, { schema: ( payload.schema as string ) ?? '', tick: sent } )
     instance.pendingEffectorInvocations.push({
       id:               intentId,
       intentId: intentId,   // correlation handle — the awaiting agency.intent id
@@ -166,11 +185,28 @@ export class effectorController {
   ): void {
     const tick = instance.tickCount
 
+    const sent   = this._sentBy( instance ).get( invocationId )
+    this._sentBy( instance ).delete( invocationId )
     const intent = instance.simulation.stateManager.snapshot().entities.get( invocationId )
     if( !intent || intent.type !== 'agency.intent'){
-      // No awaiting intent for this id. Expected when the executor's 15-tick await
-      // timeout already abandoned it (writing a failed outcome + advancing any plan)
-      // before the host's late ack arrived, or the id is unknown. Drop the straggler.
+      // No awaiting intent for this id. Expected when the executor's await timeout
+      // already abandoned it (writing a failed outcome + advancing any plan) before
+      // the host's late ack arrived, or the id is unknown. The FATE is settled —
+      // nothing to reconcile.
+      //
+      // The FACTS are not. What a late answer says about the world is still the
+      // answer to her act, and dropping it with the fate is how a 220 KB listing
+      // she asked for vanished: the read took longer than the await, and the
+      // mind was told "the world never answered" while the world had (found
+      // running her pipeline live). It comes in as any answer does — reafferent,
+      // tied to the act.
+      if( sent && result.observation !== undefined && result.observation !== null ){
+        logger.info(`[effector] a late answer to "${ sent.schema }" (${ invocationId }) — taken in as what the act found`)
+        void instance.cognition.somatosensationEngine.sense({
+          kind: 'system', signal: sent.schema, provenance: 'reafferent', sourceIntentId: invocationId, data: result.observation,
+        })
+        return
+      }
       logger.warn(`[effector] confirmExecution: no awaiting agency.intent "${invocationId}" (timed out / already reconciled?) — ignored`)
       return
     }
@@ -188,8 +224,12 @@ export class effectorController {
     //
     // This is the FATE half, and it is unchanged: what the mind learns about its
     // own competence at this act.
+    // Toward whom, when the act was — so what she did is remembered as done TO
+    // someone (the action record, and the memory of it).
+    const reconciled = reconcileInvocation( invocationId, schema, result, tick, predicted, planLink )
+    const toward     = typeof m['targetEntityId'] === 'string' ? m['targetEntityId'] : undefined
     instance.simulation.stateManager.setEntity(
-      reconcileInvocation( invocationId, schema, result, tick, predicted, planLink )
+      toward ? { ...reconciled, metadata: { ...reconciled.metadata, targetEntityId: toward } } : reconciled
     )
 
     // ── The FACTS half (SIGNAL_BOUNDARY P2) ────────────────────

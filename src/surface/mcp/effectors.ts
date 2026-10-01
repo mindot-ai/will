@@ -162,6 +162,9 @@ export async function connectMcpEffectors(
       description: describeMcpTool( tool ),
       cost:        opts.cost ?? 0.2,
       tags:        [ 'mcp' ],
+      // What it cannot run without. The handler refuses a call missing any of them;
+      // declared, the field never offers it without them in the first place.
+      ...( tool.inputSchema?.required?.length ? { requires: tool.inputSchema.required } : {} ),
       handler:     buildMcpHandler( client, tool ),
     } )
     names.push( name )

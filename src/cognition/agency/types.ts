@@ -59,6 +59,8 @@ export interface MotorSchema {
   /** What the schema is *for* — its meaning, carried to the host on enaction. */
   description?:  string
   tags?:         string[]
+  /** Specifics it cannot be done without — see `EffectorDeclaration.requires`. Never on the floor. */
+  requires?:     string[]
 }
 
 /**
@@ -95,6 +97,14 @@ export type EffectorDeclaration =
        * homeostatic drive lift this ability in the competition when pressing.
        */
       tags?:          string[]
+      /**
+       * Specifics the ability cannot be done without — an MCP tool's `required`
+       * args. Such an ability is not offered on the floor: a situation that
+       * supplies none of them does not afford it, and an affordance must never
+       * arrive at execution with empty arguments. It is reached by will, with
+       * them (`args`), and still competes.
+       */
+      requires?:      string[]
     }
 
 /** The effector name of a declaration, whichever form it takes. */

@@ -5089,7 +5089,8 @@ function schemaEntity(s) {
       composedOf: s.composedOf,
       baseValence: s.baseValence,
       description: s.description,
-      tags: s.tags
+      tags: s.tags,
+      ...s.requires?.length ? { requires: s.requires } : {}
     }
   };
 }
@@ -5108,7 +5109,8 @@ function readSchema(m) {
     composedOf: Array.isArray(meta3["composedOf"]) ? meta3["composedOf"] : void 0,
     baseValence: typeof meta3["baseValence"] === "number" ? meta3["baseValence"] : void 0,
     description: typeof meta3["description"] === "string" ? meta3["description"] : void 0,
-    tags: Array.isArray(meta3["tags"]) ? meta3["tags"] : void 0
+    tags: Array.isArray(meta3["tags"]) ? meta3["tags"] : void 0,
+    ...Array.isArray(meta3["requires"]) && meta3["requires"].length ? { requires: meta3["requires"] } : {}
   };
 }
 
@@ -5374,6 +5376,10 @@ var MIND_OWN_ENTITY_TYPES = /* @__PURE__ */ new Set([
   "engine.config",
   "will.identity",
   "effector.created",
+  // How the mind has tuned its own faculties. Perceived as the world, it arrived
+  // every consolidation as "New persona.prior: persona-prior" — 367 of the lines
+  // a live run's working memory held, crowding out every answer it had sought.
+  PERSONA_PRIOR_TYPE,
   "dream.activity"
 ]);
 function endogenousTypes(engines) {
@@ -8450,8 +8456,18 @@ var EpisodicConsolidator = class {
    * react() (a rate-limit retry chain would stall the whole tick loop), so this is
    * the handle for the two callers that genuinely must wait for it: shutdown,
    * before persisting the index, and tests asserting on it.
+   *
+   * EVERY batch still in flight, not the latest. A single promise was overwritten
+   * by each new batch, so a draining shutdown waited for the last few episodes and
+   * not for a 220 KB listing's pages still embedding before them — or a whole-store
+   * rebuild — and wrote an index without them (found running her pipeline live).
    */
-  _indexing = Promise.resolve();
+  _indexing = /* @__PURE__ */ new Set();
+  /** Hold a background indexing run until it settles. It must already be caught. */
+  _track(run) {
+    this._indexing.add(run);
+    void run.finally(() => this._indexing.delete(run));
+  }
   _embedder = null;
   _autoIndex;
   _model = new GenerativeModel();
@@ -8562,11 +8578,11 @@ var EpisodicConsolidator = class {
         episode: ep,
         content: ep.content
       }));
-      this._indexing = this._vectorMemory.indexBatch(episodesWithContent).catch((err) => {
+      this._track(this._vectorMemory.indexBatch(episodesWithContent).catch((err) => {
         logger.warn(
           `[EpisodicConsolidator] indexing deferred for ${newEpisodes.length} episode(s) \u2014 ${err instanceof Error ? err.message : String(err)}`
         );
-      });
+      }));
     }
     this._ticksSinceSync++;
     if (this._ticksSinceSync >= this._syncInterval && this._store.length > 0) {
@@ -8646,7 +8662,7 @@ var EpisodicConsolidator = class {
    */
   /** Await any background indexing still in flight. Shutdown and tests only. */
   async flushIndexing() {
-    await this._indexing;
+    while (this._indexing.size > 0) await Promise.all(this._indexing);
   }
   async semanticQuery(query, filters) {
     if (!this._vectorMemory) {
@@ -8877,11 +8893,11 @@ var EpisodicConsolidator = class {
     if (this._vectorMemory) {
       await this._vectorMemory.load();
       if (this._vectorMemory.size === 0 && this._store.length > 0) {
-        this._indexing = this._vectorMemory.rebuildFromStore(this._store).then(() => {
+        this._track(this._vectorMemory.rebuildFromStore(this._store).then(() => {
           logger.info(`[episodic] vector index rebuilt with ${this._store.length} episodes`);
         }).catch((err) => {
           logger.warn(`[episodic] vector index rebuild deferred \u2014 ${err instanceof Error ? err.message : String(err)}`);
-        });
+        }));
       } else if (this._vectorMemory.size > 0) {
         logger.info(`[episodic] vector index loaded from disk (${this._vectorMemory.size} entries)`);
       }
@@ -23067,7 +23083,7 @@ var AffordanceSynthesizer = class {
     const del = [];
     for (const [id, e] of state.entities)
       if (e.type === "affordance") del.push(id);
-    const floor = schemas.filter((s) => s.binds === "none");
+    const floor = schemas.filter((s) => s.binds === "none" && !s.requires?.length);
     for (const schema of floor)
       set.push(this._toEntity(this._build(schema, tick, state, valence, energyLow, skills, {})));
     const candidates = [];
@@ -23380,6 +23396,17 @@ var ActionSelector = class {
   // ACP §2b: sense-channel percepts buffered off the bus for the next react's
   // rupture computation (they never become entities). Cross-tick ⇒ FN9.
   _senseBuffer = [];
+  // Sent acts the Will stopped waiting on. Preempting an await frees the body,
+  // and for words not yet authored that is the whole act — the intent is
+  // deleted, nothing was said. But an act already SENT (a host running it, words
+  // handed over) cannot be unsent: deleting its intent made its answer a
+  // straggler, so its fate never reconciled — no record that she did it, nothing
+  // learned from it (found running her GitHub reads live: a message arrived
+  // while one was in flight). Released instead: still 'awaiting' for everyone
+  // who reconciles or times it out, no longer the incumbent here. Held in the
+  // engine, not written to the intent — a write here could resurrect an intent
+  // reafference or the executor deletes the same tick. Cross-tick ⇒ FN9.
+  _released = /* @__PURE__ */ new Set();
   attachBus(bus) {
     this._bus = bus;
   }
@@ -23428,7 +23455,8 @@ var ActionSelector = class {
       lastEntropy: this._lastEntropy,
       lastDeliberate: this._lastDeliberate,
       lastRevoked: this._lastRevoked,
-      senseBuffer: this._senseBuffer
+      senseBuffer: this._senseBuffer,
+      released: [...this._released]
     };
   }
   /** FN9: `_lastRevoked` has behavioral effect (the Channel-B `revokedBy` stamp),
@@ -23441,16 +23469,23 @@ var ActionSelector = class {
     this._lastRevoked = lr && typeof lr === "object" && typeof lr.schema === "string" && typeof lr.tick === "number" ? { schema: lr.schema, tick: lr.tick } : null;
     const sb = s["senseBuffer"];
     this._senseBuffer = Array.isArray(sb) ? sb.filter((it) => it && typeof it.salience === "number").map((it) => ({ salience: it.salience, ...typeof it.text === "string" ? { text: it.text } : {} })) : [];
+    const rl = s["released"];
+    this._released = new Set(Array.isArray(rl) ? rl.filter((x) => typeof x === "string") : []);
   }
   async react(_delta, tick, state, _context) {
     const eligible = [];
     const intents = [];
     const expandingParents = /* @__PURE__ */ new Set();
+    const stillOut = /* @__PURE__ */ new Set();
     for (const [id, e] of state.entities) {
       if (e.type === "agency.intent") {
         const m = e.metadata ?? {};
         const st = str4(m["status"]) ?? "";
         if (st === "expanding") expandingParents.add(id);
+        if (st === "awaiting" && this._released.has(id)) {
+          stillOut.add(id);
+          continue;
+        }
         intents.push({
           id,
           st,
@@ -23458,7 +23493,8 @@ var ActionSelector = class {
           activation: num3(m["activation"], 0),
           schema: str4(m["schema"]) ?? "",
           target: str4(m["targetEntityId"]) ?? "",
-          dispatchedAt: num3(m["dispatchedAt"], tick)
+          dispatchedAt: num3(m["dispatchedAt"], tick),
+          sent: m["sent"] === true
         });
         continue;
       }
@@ -23466,6 +23502,7 @@ var ActionSelector = class {
       const a = readAffordance(id, e.metadata);
       if (a.available) eligible.push(a);
     }
+    for (const id of this._released) if (!stillOut.has(id)) this._released.delete(id);
     let blocking = false;
     let awaiting = null;
     let composite = null;
@@ -23475,7 +23512,7 @@ var ActionSelector = class {
         blocking = true;
         deliberating = { id: it.id, schema: it.schema };
       } else if (it.st === "expanding") composite = { id: it.id, activation: it.activation, schema: it.schema };
-      else if (it.st === "awaiting") awaiting = { id: it.id, activation: it.activation, schema: it.schema, target: it.target, dispatchedAt: it.dispatchedAt };
+      else if (it.st === "awaiting") awaiting = { id: it.id, activation: it.activation, schema: it.schema, target: it.target, dispatchedAt: it.dispatchedAt, sent: it.sent };
       else if (it.st === "selected") {
         const activeMacroSub = it.parentIntentId !== void 0 && expandingParents.has(it.parentIntentId);
         if (!activeMacroSub) blocking = true;
@@ -23610,7 +23647,8 @@ var ActionSelector = class {
           );
         return busy(eligible.length);
       }
-      preemptDelete = awaiting.id;
+      if (awaiting.sent) this._released.add(awaiting.id);
+      else preemptDelete = awaiting.id;
       preemptedFrom = awaiting.schema;
     }
     const entropy = competitionEntropy(scored.map((s) => s.activation));
@@ -24364,15 +24402,14 @@ var MotorSchemaExecutor = class {
       set.push(outcomeEntity(tick, intent, timedOut, predicted));
       del.push(id);
       this._emitEnacted(intent, timedOut, predicted, tick);
-      if (intent.planId && intent.planStepId)
-        this._emitActionOutcome(
-          intent,
-          false,
-          0,
-          1,
-          tick,
-          `No answer came back \u2014 I gave up waiting after ${tick - dispatchedAt} ticks.`
-        );
+      this._emitActionOutcome(
+        intent,
+        false,
+        0,
+        1,
+        tick,
+        `No answer came back \u2014 I gave up waiting after ${tick - dispatchedAt} ticks.`
+      );
       logger.info(`[motor] \u23F1 "${intent.schema}" timed out after ${tick - dispatchedAt} ticks`);
     }
     const selected = [...state.entities.entries()].filter(([, e]) => e.type === "agency.intent" && str7(e.metadata?.["status"]) === "selected").sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
@@ -24419,6 +24456,7 @@ var MotorSchemaExecutor = class {
         if (delivered) {
           enactedCount++;
         } else {
+          const awaitingText = enaction.mode === "communicate" ? str7(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]) : void 0;
           set.push({
             id,
             type: "agency.intent",
@@ -24427,10 +24465,14 @@ var MotorSchemaExecutor = class {
               status: "awaiting",
               dispatchedAt: tick,
               predictedReward: predicted.expectedReward,
-              predictedValence: predicted.expectedValence
+              predictedValence: predicted.expectedValence,
+              // Out in the world: a host is doing it now, or holds the words to
+              // deliver. A communicate still waiting for its words is not — it has
+              // not happened yet. The selector may stop waiting on a sent act; it
+              // cannot unsend it (see ActionSelector `_released`).
+              ...enaction.mode !== "communicate" || awaitingText ? { sent: true } : {}
             }
           });
-          const awaitingText = enaction.mode === "communicate" ? str7(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]) : void 0;
           set.push(consequenceEntity({
             intentId: id,
             schema: intent.schema,
@@ -25024,7 +25066,7 @@ var ReafferenceEngine = class {
         const heldIntent = str8(m["intentId"]);
         if (heldIntent) del.push(heldIntent);
         const heldPlan = str8(m["planId"]);
-        if (heldPlan) this._emitPlanOutcome(heldPlan, str8(m["stepId"]), schema, false, 0, 0, tick);
+        if (heldPlan) this._emitHostOutcome(heldPlan, str8(m["stepId"]), schema, false, 0, 0, tick);
         withheld++;
         continue;
       }
@@ -25036,7 +25078,7 @@ var ReafferenceEngine = class {
         const refusedIntent = str8(m["intentId"]);
         if (refusedIntent) del.push(refusedIntent);
         const refusedPlan = str8(m["planId"]);
-        if (refusedPlan) this._emitPlanOutcome(refusedPlan, str8(m["stepId"]), schema, false, 0, 0, tick);
+        if (refusedPlan) this._emitHostOutcome(refusedPlan, str8(m["stepId"]), schema, false, 0, 0, tick);
         refused++;
         continue;
       }
@@ -25053,9 +25095,8 @@ var ReafferenceEngine = class {
       const intentId = str8(m["intentId"]);
       if (intentId) del.push(intentId);
       updates++;
-      const planId = str8(m["planId"]);
-      if (planId)
-        this._emitPlanOutcome(planId, str8(m["stepId"]), schema, m["success"] === true, num5(m["outcomeQuality"], 0), num5(m["surprise"], 0), tick, str8(m["description"]));
+      if (m["reconciled"] === true || str8(m["planId"]))
+        this._emitHostOutcome(str8(m["planId"]), str8(m["stepId"]), schema, m["success"] === true, num5(m["outcomeQuality"], 0), num5(m["surprise"], 0), tick, str8(m["description"]), str8(m["targetEntityId"]));
       if (skill.enactments === 1) {
         discovered++;
         this._emitDiscovered(schema, tick);
@@ -25179,11 +25220,11 @@ var ReafferenceEngine = class {
     }
   }
   /**
-   * Emit the `action.outcome{planId,stepId}` for an async (host-acked) plan-step
-   * enaction. Mirrors the executor's `_emitActionOutcome` payload so the
-   * PlanningEngine's consumer can't tell which path produced it.
+   * Emit the `action.outcome` for an async (host-acked) enaction — a plan step's
+   * carrying `{planId, stepId}`. Mirrors the executor's `_emitActionOutcome`
+   * payload so no consumer can tell which path produced it.
    */
-  _emitPlanOutcome(planId, stepId, schema, success, outcomeQuality, surprise, tick, description) {
+  _emitHostOutcome(planId, stepId, schema, success, outcomeQuality, surprise, tick, description, targetEntityId) {
     if (!this._bus) return;
     try {
       this._bus.publish({
@@ -25205,13 +25246,14 @@ var ReafferenceEngine = class {
           // real description the whole time (`reconcile.learning.ts:89`); it was
           // read here as `m['description']` and dropped on the floor.
           description: description ?? (success ? "The world confirmed the action." : "The world rejected the action."),
-          planId,
+          ...planId ? { planId } : {},
           ...stepId ? { stepId } : {},
+          ...targetEntityId ? { targetEntityId } : {},
           tick
         }
       });
     } catch (err) {
-      logger.warn(`[reafference] plan outcome publish failed: ${err instanceof Error ? err.message : String(err)}`);
+      logger.warn(`[reafference] outcome publish failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   _emitDiscovered(schema, tick) {
@@ -27422,6 +27464,7 @@ function externalSchemas(effectors) {
       baseValence: typeof meta3?.valence === "number" ? clamp(meta3.valence, -1, 1) : 0,
       ...meta3?.preconditions ? { preconditions: meta3.preconditions } : {},
       ...meta3?.description ? { description: meta3.description } : {},
+      ...meta3?.requires?.length ? { requires: [...meta3.requires] } : {},
       tags
     });
   }
@@ -30649,6 +30692,7 @@ function errMsg2(err) {
 }
 
 // src/stem/tracts/effector.controller.ts
+var LATE_ANSWER_TICKS = 600;
 var effectorController = class {
   // The two collaborators are wired with arrow closures rather than a shared
   // `this` reference, which is what lets the cycle exist without either class
@@ -30712,9 +30756,27 @@ var effectorController = class {
     this._escalations.applyNew(instance, tick);
     this._policy.applyRefusals(instance);
   }
+  /**
+   * What each act sent to a host was, by its correlation handle — so an answer
+   * that arrives after the act was given up on can still say what it answers.
+   * Held until the answer comes, or for `LATE_ANSWER_TICKS`.
+   */
+  _dispatched = /* @__PURE__ */ new WeakMap();
+  _sentBy(instance) {
+    let m = this._dispatched.get(instance);
+    if (!m) {
+      m = /* @__PURE__ */ new Map();
+      this._dispatched.set(instance, m);
+    }
+    return m;
+  }
   /** Queue an approved invocation for the delivery layer. */
   _buffer(instance, payload) {
     const intentId = payload.intentId ?? "";
+    const sent = payload.tick ?? 0;
+    const dispatched = this._sentBy(instance);
+    for (const [k, v] of dispatched) if (sent - v.tick > LATE_ANSWER_TICKS) dispatched.delete(k);
+    dispatched.set(intentId, { schema: payload.schema ?? "", tick: sent });
     instance.pendingEffectorInvocations.push({
       id: intentId,
       intentId,
@@ -30754,8 +30816,21 @@ var effectorController = class {
    */
   confirmExecution(instance, invocationId, result) {
     const tick = instance.tickCount;
+    const sent = this._sentBy(instance).get(invocationId);
+    this._sentBy(instance).delete(invocationId);
     const intent = instance.simulation.stateManager.snapshot().entities.get(invocationId);
     if (!intent || intent.type !== "agency.intent") {
+      if (sent && result.observation !== void 0 && result.observation !== null) {
+        logger.info(`[effector] a late answer to "${sent.schema}" (${invocationId}) \u2014 taken in as what the act found`);
+        void instance.cognition.somatosensationEngine.sense({
+          kind: "system",
+          signal: sent.schema,
+          provenance: "reafferent",
+          sourceIntentId: invocationId,
+          data: result.observation
+        });
+        return;
+      }
       logger.warn(`[effector] confirmExecution: no awaiting agency.intent "${invocationId}" (timed out / already reconciled?) \u2014 ignored`);
       return;
     }
@@ -30766,8 +30841,10 @@ var effectorController = class {
       valence: num6(m["predictedValence"], num6(m["expectedValence"], 0))
     };
     const planLink = { planId: m["planId"], stepId: m["stepId"] };
+    const reconciled = reconcileInvocation(invocationId, schema, result, tick, predicted, planLink);
+    const toward = typeof m["targetEntityId"] === "string" ? m["targetEntityId"] : void 0;
     instance.simulation.stateManager.setEntity(
-      reconcileInvocation(invocationId, schema, result, tick, predicted, planLink)
+      toward ? { ...reconciled, metadata: { ...reconciled.metadata, targetEntityId: toward } } : reconciled
     );
     if (result.observation !== void 0 && result.observation !== null)
       void instance.cognition.somatosensationEngine.sense({
@@ -32304,7 +32381,7 @@ var Will = class _Will {
       return;
     }
     this._effectors.set(name, entry.handler);
-    const hasMeta = entry.description !== void 0 || entry.cost !== void 0 || entry.valence !== void 0 || entry.preconditions !== void 0 || entry.binds !== void 0 || entry.tags !== void 0;
+    const hasMeta = entry.description !== void 0 || entry.cost !== void 0 || entry.valence !== void 0 || entry.preconditions !== void 0 || entry.binds !== void 0 || entry.tags !== void 0 || !!entry.requires?.length;
     this._effectorDecls.set(name, hasMeta ? {
       name,
       ...entry.description !== void 0 ? { description: entry.description } : {},
@@ -32312,7 +32389,8 @@ var Will = class _Will {
       ...entry.valence !== void 0 ? { valence: entry.valence } : {},
       ...entry.preconditions !== void 0 ? { preconditions: entry.preconditions } : {},
       ...entry.binds !== void 0 ? { binds: entry.binds } : {},
-      ...entry.tags !== void 0 ? { tags: entry.tags } : {}
+      ...entry.tags !== void 0 ? { tags: entry.tags } : {},
+      ...entry.requires?.length ? { requires: entry.requires } : {}
     } : name);
   }
   // ── Introspection ──────────────────────────────────────────

@@ -615,6 +615,16 @@ Count caps that become ranked + counted + recallable: ~~`MAX_SURFACED_ABILITIES`
 window stays; every act that matters is now an episode), ~~thread digest 5 turns~~ (P5e, counted),
 facet master-sync 5 / reasoning history 10 (MIND — P5e).
 
+**Run against the world** (#202, [[FIELD_NOTES]] 2026-10-01). Her real GitHub tools
+and real Jina embeddings were used, with only the brain scripted. The 220 KB listing
+came back as a ten-page document, and `[RECALL]` brought back page 2 and sections. A
+shared file was laid down whole, and recall by meaning landed on page 10. Two cuts
+were found that no fixture reached, both of the LOSS kind. An answer that arrived
+after its act was given up on was dropped with the fate. It is taken in now. And
+the drain before the vector index is written waited for the latest batch only, so
+a listing's pages still embedding were left out of the index. Every batch is
+drained now.
+
 ---
 
 ## MIND — limits that stay

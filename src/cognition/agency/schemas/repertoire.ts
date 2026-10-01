@@ -374,6 +374,7 @@ function schemaEntity( s: MotorSchema ): EntityInput {
       baseValence:   s.baseValence,
       description:   s.description,
       tags:          s.tags,
+      ...( s.requires?.length ? { requires: s.requires } : {} ),
     },
   }
 }
@@ -395,5 +396,6 @@ function readSchema( m: Record<string, unknown> | undefined ): MotorSchema | und
     baseValence:   typeof meta['baseValence'] === 'number' ? meta['baseValence'] as number : undefined,
     description:   typeof meta['description'] === 'string' ? meta['description'] as string : undefined,
     tags:          Array.isArray( meta['tags'] ) ? meta['tags'] as string[] : undefined,
+    ...( Array.isArray( meta['requires'] ) && meta['requires'].length ? { requires: meta['requires'] as string[] } : {} ),
   }
 }

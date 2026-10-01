@@ -391,7 +391,13 @@ host tails it), so every cut here was a cut in our analysis of her.
 
 ### P5 — each call lossless, not unbounded
 
-**P5a — every call fits its window ✅** (designed in [[LOSSLESS_P5]])
+**Designed in [[LOSSLESS_P5]]** (2026-10-01): the window, paging an oversize item,
+honest counts with a `[RECALL]` request, the text cuts, attachments as items, and
+recall by meaning of what she read — five PRs; the owner's six decisions are taken
+(D1–D6). It found the overflow P2 opened: a tool's whole output renders in every
+prompt (twice while its percept lives), and one 30-PR listing is ~135k tokens.
+
+**P5a — every call fits its window ✅**
 
 - [x] **A window the engine knows.** Host-declared per model beside prices
       (`providers.<p>.contextWindows`, `llm.contextWindow`), matched like prices
@@ -425,7 +431,7 @@ host tails it), so every cut here was a cut in our analysis of her.
       Recorded on the call's own record (`executive.call` / `executive.facet.call`
       `view`: window, budget, mode, inline, tightened, overBudget).
 
-The design work. Three parts, in order:
+The sketch it started from — the design work, in three parts:
 
 1. **A context window the engine knows.** Host-declared per model, beside prices
    (`llmConfig.providers.<p>.models.<m>.contextWindow`) — prices taught us these

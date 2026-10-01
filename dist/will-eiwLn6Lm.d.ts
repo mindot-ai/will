@@ -4733,6 +4733,22 @@ interface IdentityUpdates {
     style?: string;
 }
 
+/**
+ * The sections a mind can reach past. Each shows its ranked first page; the rest
+ * is counted, and brought back a page or a search at a time by `[RECALL]`.
+ */
+declare const RECALL_SECTIONS: readonly ["beliefs", "people", "percepts", "memories", "self-observations", "said", "traits"];
+type RecallSection = typeof RECALL_SECTIONS[number];
+/** One thing she asks to have brought back: a page of a document, or of a section, or a search of one. */
+type RecallRequest = {
+    doc: string;
+    page: number;
+} | {
+    section: RecallSection;
+    page: number;
+    query?: string;
+};
+
 interface ExecutiveOutputFull {
     actions: Array<{
         type: string;
@@ -4817,13 +4833,11 @@ interface ExecutiveOutputFull {
     selfObservations?: string[];
     /**
      * What the mind asks to have brought back on its next call — a document's page,
-     * by the handle the prompt showed (LOSSLESS P5a). Attention, not an act: it
-     * reads the mind's own memory, consults no world, and never enters the field.
+     * by the handle the prompt showed (LOSSLESS P5a), or a page or a search of a
+     * section that shows N of more (P5c). Attention, not an act: it reads the mind's
+     * own memory, consults no world, and never enters the field.
      */
-    recall?: Array<{
-        doc: string;
-        page: number;
-    }>;
+    recall?: RecallRequest[];
     /** Compound actions the mind is naming as single skills (see ProposedSkill). */
     newSkills?: ProposedSkill[];
     /**

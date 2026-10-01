@@ -74,8 +74,8 @@ describe('a held or remembered item without words of its own is shown whole', ()
 
   it('a remembered episode of a shape recall does not know is itself, whole — not 200 characters of it', async () => {
     const content = { kind: 'handover', from: 'ada', notes: 'Ledger writer moves behind schema review; '.repeat( 8 ) }
-    const consolidator = { semanticQuery: async () => [ { id: 'episodic-3-0', timestamp: 3, activationStrength: 0.6,
-      sourceType: 'note', emotionalTags: {}, content } ], query: () => [], markRetrieved(){} }
+    const episode = { id: 'episodic-3-0', timestamp: 3, activationStrength: 0.6, sourceType: 'note', emotionalTags: {}, content }
+    const consolidator = { semanticQuery: async () => [ episode ], query: () => [], getAllEpisodes: () => [ episode ], markRetrieved(){} }
     const context = await buildExecutiveContext( { tick: 9, metrics: new Map(), entities: new Map() } as never,
       { ...NONE, episodicConsolidator: consolidator as never } )
     expect( render( context ) ).toContain(`- ${ JSON.stringify( content ) } (relevance: 0.60`)

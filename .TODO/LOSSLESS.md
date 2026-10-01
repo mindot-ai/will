@@ -1,6 +1,6 @@
 # LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut
 
-> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P4, P5a and P5b landed, unreleased
+> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P4 and P5a–P5c landed, unreleased
 
 > **The rule:** *lossless, not unbounded.* Every cut that loses data — at intake, in
 > transit between the mind's own parts, in what it keeps, in its artifact, in its
@@ -470,6 +470,46 @@ the identity guard's limits (it refuses, it does not cut); Discord's message
 splitting. The conversation-memory cut seen in her August prompts (100 a side)
 was P0's (#180).
 
+**P5c — every count is honest, and she can reach past it ✅** — the default counts
+stay (attention, D5); what changed is that nothing past them is silent or out of
+reach:
+
+- [x] **Each section that shows N of more says exactly how many more**, and how to
+      reach them: people (6), percepts (10), beliefs (30, ≤8 a category — the
+      "[+N omitted]" now counts the near-duplicates too, and names the way),
+      memories (8 of all she holds), what she said (6), self-observations (6), and
+      distinctive traits (6, in the system prompt — a stable count, cache-safe).
+      Lora's last state held 179 things she had said, six in view and the rest
+      unmentioned; 7 people, six in view.
+- [x] **`[RECALL]` reaches a section** — `{"section": "people", "page": 2}`, or a
+      search, `{"section": "beliefs", "query": "payments"}` — honoured on the same
+      seat's next call under `## Brought Back`, ranked as the view ranks it and in
+      the view's own lines (one line function per section, shared by both). Page 1
+      is the view; a search covers in view and out, best match first (plain word
+      arithmetic, stems included — R2-safe). Memories are searched by meaning when
+      the index answers, by shared words when it cannot, and a page leaves out the
+      ones already in view; reading one is a retrieval, as recall always was. A
+      facet sees only the sections its focus is aware of; asked anyway, it is told.
+- [x] **The context keeps what it ranked** (`outOfView`), so a count and a page
+      are the same ranking; `extractKnownEntities` and `extractPercepts` keep
+      their signatures.
+
+**Found doing P5c — `ACTION_RECORD_KEEP` is a LOSS, not MIND.** Asked by the design
+before calling it MIND: is every act's outcome remembered some other way? An act
+that brings something back is — its answer is a percept, then working memory, then
+an episode (P2). An act whose result is only its FATE ("unban ran.", failed,
+withheld) is not: `action.outcome` feeds calibration, goals, planning, the self-model
+and reliability as signals, and nothing keeps it; past the six newest records, the
+mind has no memory that it did it. Remembered the way speech is (a
+`working_memory.item` that consolidates into an episode) is the fix — its own PR,
+since it changes what she remembers.
+
+**Not in P5c:** a facet's master-sync (5) and reasoning history (10), and audition's
+thread digest (5). The first two are a seat's train of thought — working windows
+over reasoning the master keeps whole in its own records — and the digest's older
+turns are conversation episodes, already reachable by a memories search. Whether
+each says so is the next look.
+
 The sketch it started from — the design work, in three parts:
 
 1. **A context window the engine knows.** Host-declared per model, beside prices
@@ -515,11 +555,10 @@ Single-item text cuts in VIEW are removed here: ~~`effectors.ts:57,73`
 (80)~~, ~~a host's `summary` at `PERCEPT_SUMMARY_CAP`~~ (P5b).
 
 Count caps that become ranked + counted + recallable: ~~`MAX_SURFACED_ABILITIES` 8~~
-(removed — abilities are not a ranked view, every one is shown), `BELIEF_PROMPT_LIMIT` 30 /
-`PER_CATEGORY_CAP` 8, known entities 6 (`context.ts:502`), percepts 10
-(`context.ts:663`, `prompt.factory.ts:816`), recalled memories 8 (`context.ts:122,139`),
-`SPOKEN_TURNS_SHOWN`, `ACTION_RECORD_KEEP` 6, `TRAIT_SURFACE_CAP` 6, thread
-digest 5 turns, facet master-sync 5 / reasoning history 10.
+(removed — abilities are not a ranked view, every one is shown), ~~`BELIEF_PROMPT_LIMIT` 30 /
+`PER_CATEGORY_CAP` 8, known entities 6, percepts 10, recalled memories 8,
+`SPOKEN_TURNS_SHOWN`, `TRAIT_SURFACE_CAP` 6~~ (P5c), `ACTION_RECORD_KEEP` 6 (a LOSS —
+next), thread digest 5 turns, facet master-sync 5 / reasoning history 10.
 
 ---
 

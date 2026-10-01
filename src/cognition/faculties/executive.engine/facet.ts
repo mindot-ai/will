@@ -39,7 +39,8 @@ import { proposeCandidates } from '#faculties/executive.engine/deliberate.reason
 import { readEffectiveParams } from '#cognition/persona.prior'
 import type { SelfAccount } from '#faculties/executive.engine/commands'
 import { callView, fitToBudget, estimateTokens, type CallView } from '#faculties/executive.engine/view'
-import { resolveBroughtBack } from '#faculties/executive.engine/context'
+import { resolveRecall } from '#faculties/executive.engine/context'
+import type { RecallRequest } from '#faculties/executive.engine/view'
 
 // ── Facet event types ─────────────────────────────────────────
 
@@ -191,7 +192,7 @@ export class ExecutiveFacet {
   private _lastConfidence = 0.5
 
   /** What this facet asked, on its last completed call, to have brought back (LOSSLESS P5a). */
-  private _pendingRecall: Array<{ doc: string; page: number }> = []
+  private _pendingRecall: RecallRequest[] = []
 
   /** What one call may spend: the window and output ceiling of the model it will be routed to. */
   private _callView( meta: LLMCallMeta, systemPrompt: string ): CallView {
@@ -475,7 +476,7 @@ export class ExecutiveFacet {
     }, deliberateThreshold )
 
     // What this facet asked, on its last call, to have brought back.
-    const broughtBack = resolveBroughtBack( this._pendingRecall, currentState, this._contextDeps )
+    const broughtBack = await resolveRecall( this._pendingRecall, currentState, this._contextDeps, execContext )
 
     let ideationCandidates: IdeationCandidate[] | undefined
     if( processSelection.process === 'deliberate'){

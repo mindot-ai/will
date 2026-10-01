@@ -87,7 +87,8 @@ import {
 } from '#faculties/executive.engine/commands'
 import { identityUpdateCommand, type IdentityUpdates } from '#cognition/identity.entity'
 import { callView, fitToBudget, estimateTokens, DEFAULT_CONTEXT_WINDOW, type CallView } from '#faculties/executive.engine/view'
-import { resolveBroughtBack } from '#faculties/executive.engine/context'
+import { resolveRecall } from '#faculties/executive.engine/context'
+import type { RecallRequest } from '#faculties/executive.engine/view'
 import { DeferredEffectQueue } from '#faculties/executive.engine/deferred.effects'
 import { EscalationBuffer, type HandoffBody } from '#faculties/executive.engine/escalation.buffer'
 import { FacetSupervisor } from '#faculties/executive.engine/facet.supervisor'
@@ -266,7 +267,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
    * rendered on its next call (LOSSLESS P5a). Replaced by each completed cycle,
    * so a failed call does not lose the request.
    */
-  private _pendingRecall: Array<{ doc: string; page: number }> = []
+  private _pendingRecall: RecallRequest[] = []
 
   // ── Cognitive models ───────────────────────────────────────
   private readonly _model = new GenerativeModel()
@@ -1031,8 +1032,8 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     } )
 
     // What I asked, last cycle, to have brought back — from my own memory.
-    const broughtBack = resolveBroughtBack( this._pendingRecall, state,
-      { workingMemory: this._workingMemory, episodicConsolidator: this._episodicConsolidator } )
+    const broughtBack = await resolveRecall( this._pendingRecall, state,
+      { workingMemory: this._workingMemory, episodicConsolidator: this._episodicConsolidator }, execContext )
 
     // System 2 (deliberate) — propose pass. When the effort gate engaged deliberation,
     // first generate a divergent candidate set at elevated temperature. This call is

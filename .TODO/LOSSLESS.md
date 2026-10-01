@@ -207,16 +207,25 @@ Found doing P2 and **not** changed — each is a decision:
   attended ticks) never ran. Measured on one salient change: held 8 ticks
   ignored, 45 attended — and still let go, because a focus nothing reinforces
   decays. 100K-tick soak green.
-- **A percept is remembered by a margin of 0.018.** It enters at 0.75, decays one
-  tick (0.08/s) before the consolidator's first look: 0.67 × 0.4 = 0.268 against
-  a 0.25 threshold. At ~1 tick/s (Lora) it holds; at a slower tick it silently
-  stops. A goal (0.65 → 0.57 → 0.228) is never remembered on activation alone.
-- **A world entity re-set every tick becomes an episode every tick.**
-  Exteroception perceives a change of `updatedAt`, not of content. Lora has no
-  host world entities (her percepts come from her senses), but a host with a
-  heartbeat entity would accrete ~86k episodes a day, forgotten over ~3.
-- Host-supplied social signal types that persist in state (`message`, `action`,
-  …) are re-perceived every tick; only `conversation.received` is swept.
+- ~~**A percept is remembered by a margin of 0.018.**~~ Closed (its own PR,
+  after P4). It entered at 0.75 and decayed in the same pass that admitted it, so
+  the consolidator weighed 0.67 × 0.4 = 0.268 against 0.25 at ~1 tick/s, and
+  0.236 — never — at 2 s. Working memory now records the activation an item was
+  **encoded** with, and consolidation weighs that (or the current activation, if
+  rehearsal has lifted it since). A goal held in mind (0.65 → 0.26) is now
+  remembered, once — its WM id is the goal's, so a re-admission is not a second
+  episode.
+- ~~**A world entity re-set every tick becomes an episode every tick.**~~ Closed
+  (same PR). Exteroception compares what an entity says (everything but its
+  timestamps), read only when it was written since. An act's effect on its target
+  is confirmed by a change in the target — a write that changes nothing confirms
+  nothing, as an act that changed nothing is not a success (Mindbase #146).
+- ~~Host-supplied social signal types that persist in state (`message`, `action`,
+  …) are re-perceived every tick~~ Closed (same PR). Each signal is perceived
+  once per write. `communication` waited for a `processedByExecutive` flag nothing
+  sets before it could be swept — never swept; now swept like the rest. (Not a
+  double count with exteroception: that is the only path a host message's CONTENT
+  takes into memory; social perception carries the social signal.)
 - An observation episode is embedded by its ≤100-character sense label, not its
   data — recall by meaning of what she read is P5.
 

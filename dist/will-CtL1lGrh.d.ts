@@ -2666,6 +2666,14 @@ declare class SocialPerception implements SimulationEngine, CognitiveEngine {
     private _agentTypes;
     private _signalTypes;
     private _previousActions;
+    /**
+     * Signal id → the write already perceived. A signal is an act, perceived once
+     * per write: a host's signal entity stays in state until swept, and only one
+     * that carries a tick is ever swept, so this re-perceived it — and published
+     * another `interaction.occurred` to reputation, trust, theory of mind and
+     * attachment — on every tick it stayed. Re-set, it is a new act.
+     */
+    private _perceived;
     private _bus;
     private readonly _model;
     constructor(config?: SocialPerceptionConfig);
@@ -3374,6 +3382,8 @@ interface WMItem {
     tags: string[];
     /** A percept's salience when it arrived — breaks ties between equally active items. */
     salience?: number;
+    /** The activation it was encoded with — what consolidation weighs (see _persistItems). */
+    encoding?: number;
 }
 declare class WorkingMemory implements SimulationEngine, CognitiveEngine {
     readonly name = "working-memory";

@@ -60,6 +60,15 @@ export class SocialPerception implements SimulationEngine, CognitiveEngine {
   // Track previously observed actions for change detection
   private _previousActions = new Map<string, string>()  // keid → last action
 
+  /**
+   * Signal id → the write already perceived. A signal is an act, perceived once
+   * per write: a host's signal entity stays in state until swept, and only one
+   * that carries a tick is ever swept, so this re-perceived it — and published
+   * another `interaction.occurred` to reputation, trust, theory of mind and
+   * attachment — on every tick it stayed. Re-set, it is a new act.
+   */
+  private _perceived = new Map<string, number>()
+
   private _bus: CognitiveBus | null = null
 
   private readonly _model    = new GenerativeModel()
@@ -225,10 +234,14 @@ export class SocialPerception implements SimulationEngine, CognitiveEngine {
     // theory-of-mind, empathy and the moral evaluator all key off whatever this
     // hands them, and patching five of them is five chances to miss one.
     const aliases = readAliases( state.entities as never )
+    const present = new Set<string>()
 
     for( const [ id, entity ] of state.entities ){
       // Only process signal-type entities
       if( !this._signalTypes.has( entity.type ) ) continue
+      present.add( id )
+      if( this._perceived.get( id ) === entity.updatedAt ) continue
+      this._perceived.set( id, entity.updatedAt )
 
       const
       sourceKeid = canonicalOf( aliases, ( entity.metadata?.sourceKeid as string )
@@ -273,6 +286,9 @@ export class SocialPerception implements SimulationEngine, CognitiveEngine {
       // Track for change detection
       this._previousActions.set( sourceKeid, action )
     }
+
+    for( const id of this._perceived.keys() )
+      if( !present.has( id ) ) this._perceived.delete( id )
 
     // Sort by salience
     percepts.sort( ( a, b ) => b.salience - a.salience )
@@ -356,13 +372,11 @@ export class SocialPerception implements SimulationEngine, CognitiveEngine {
         if( currentTick - entity.metadata.tick > 2 )
           stale.push( id )
       }
-      // Expire injected signal entities (communication, message, etc.) after 2 ticks,
-      // BUT only once the executive engine has processed them.
-      // communication entities must survive until the executive fires (5-tick cooldown),
-      // so we must not delete them before processedByExecutive is set — otherwise
-      // messages arriving within 2 ticks of an executive fire are silently lost.
+      // Expire injected signal entities (communication, message, etc.) once
+      // perceived. `communication` used to wait for a `processedByExecutive` flag
+      // that nothing sets and nothing reads its entity for, so it was never swept
+      // — and, until each signal was perceived once, re-perceived every tick.
       if( this._signalTypes.has( entity.type ) && entity.type !== 'percept.social'){
-        if( entity.type === 'communication' && !entity.metadata?.processedByExecutive ) continue
         const createdAtTick = entity.metadata?.tick as number | undefined
                            ?? entity.metadata?.injectedAtTick as number | undefined
         if( typeof createdAtTick === 'number' && currentTick - createdAtTick > 1 )

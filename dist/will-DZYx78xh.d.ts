@@ -762,6 +762,8 @@ interface StorageAdapter {
     exists(path: string): Promise<boolean>;
     delete?(path: string): Promise<void>;
     ensureDir?(path: string): Promise<void>;
+    /** Add to the end of a file, creating it (and its directory) if absent. */
+    append?(path: string, content: string): Promise<void>;
 }
 /**
  * Bun-native storage adapter, with a node:fs fallback when the Bun global is
@@ -772,6 +774,7 @@ declare class BunStorageAdapter implements StorageAdapter {
     private get _isBun();
     write(path: string, content: string | Uint8Array): Promise<void>;
     read(path: string): Promise<string>;
+    append(path: string, content: string): Promise<void>;
     readBytes(path: string): Promise<Uint8Array>;
     exists(path: string): Promise<boolean>;
     delete(path: string): Promise<void>;

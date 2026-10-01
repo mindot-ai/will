@@ -5228,6 +5228,8 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * so a failed call does not lose the request.
      */
     private _pendingRecall;
+    /** Action records already offered to memory — see `_actsToRemember`. */
+    private _actsOffered;
     private readonly _model;
     private readonly _generativeModel;
     private _summarizerRestored;
@@ -5400,6 +5402,14 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * its `executive.last_tick` metric reflects whether our prior commands landed.
      */
     react(delta: Duration, tick: Tick, state: ReadonlySimulationState, context: SimulationContext): Promise<EngineResult>;
+    /**
+     * The memory item for each act recorded since last tick, named for whom it was
+     * toward as she knows them now. Each act is offered once: the consolidator reads
+     * the item the tick it lands and working memory sweeps it after, as with a
+     * conversation turn. A woken mind offers its last few again; the consolidator
+     * knows an act it already remembers by the item's id.
+     */
+    private _actsToRemember;
     /**
      * What the mind is attending to because a facet is reasoning about it, as
      * `attention.demand` entities the AttentionAllocator allocates real capacity

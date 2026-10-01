@@ -160,7 +160,7 @@ export function beliefLine( b: ExecutiveContext['beliefs'][number] ): string {
 export function memoryLine( m: ExecutiveContext['memories'][number], currentTick: number, view?: CallView ): string {
   const asMemory = view ? { ...view, mode: 'reference' as const } : undefined
   const age = m.tick != null ? `, ~${currentTick - m.tick} ticks ago` : ''
-  return `- ${m.content} (relevance: ${m.relevance.toFixed( 2 )}, emotional: ${m.emotionalContext}${age})${ renderItemData( m.data, m.handle, asMemory ) }`
+  return `- ${m.content} (relevance: ${m.relevance.toFixed( 2 )}, emotional: ${m.emotionalContext}${age})${ renderItemData( m.data, m.handle, asMemory, m.matchedPage ) }`
 }
 
 /** One thing I said, and what came back, as `## What I've Said Lately` shows it. */

@@ -23,6 +23,26 @@ import type { VectorIndex } from '#memory/vector.index'
 import { BunStorageAdapter } from '#core/abstracts'
 import { HNSWIndex } from '#memory/vector.index'
 import { episodeContentToText } from '#memory/vector.content'
+import { paginate, itemText, estimateTokens, PAGE_TOKENS } from '#faculties/executive.engine/view'
+
+/**
+ * What an observation held — the data a remembered percept keeps under `content`.
+ * Undefined for anything else.
+ */
+function heldData( content: unknown ): unknown {
+  if( !content || typeof content !== 'object') return undefined
+  const c = content as Record<string, unknown>
+  const inner = c['content']
+  if( inner && typeof inner === 'object' && ( inner as Record<string, unknown> )['data'] !== undefined )
+    return ( inner as Record<string, unknown> )['data']
+  return c['data']
+}
+
+/** `episodic-12-0#3` (page 3) or `episodic-12-0#3.2` (its second piece) → the episode and the page. */
+export function chunkOf( id: string ): { episodeId: string; page?: number } {
+  const m = /^(.*)#(\d+)(?:\.\d+)?$/.exec( id )
+  return m ? { episodeId: m[1]!, page: Number( m[2] ) } : { episodeId: id }
+}
 
 export interface VectorMemoryAdapter {
   /** Index an episodic memory (called during consolidation) */
@@ -78,6 +98,8 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
    */
   private _inFlight  = new Set<string>()
   private _cancelled = new Set<string>()
+  /** Each episode's page vectors — what it held, embedded a page at a time (LOSSLESS P5e). */
+  private _pageIds = new Map<string, string[]>()
 
   constructor(
     embedder: EmbeddingProvider,
@@ -113,33 +135,28 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
   }
 
   async index( episode: EpisodicMemory, content: unknown ): Promise<void> {
-    if( this._indexedIds.has( episode.id ) ) return
+    await this.indexBatch( [ { episode, content } ] )
+  }
 
-    if( this._index.size >= this._maxIndexedEpisodes )
-      await this._evictColdest()
-
-    const embedding = await this._embedInFlight( [ episode.id ], () => this._embedder.embed( episodeContentToText( content ), 'index') )
-    // Forgotten while its vector was on the way: nothing to index.
-    if( this._cancelled.delete( episode.id ) ) return
-
-    const record: VectorRecord = {
-      id: episode.id,
-      vector: embedding,
-      embeddingModel: this._embedder.modelName,
-      createdAt: wallClock(),  // determinism-ok: secondary index telemetry, rebuilt from _store, never in replay state
-      metadata: {
-        tick: episode.timestamp,
-        sourceType: episode.sourceType,
-        emotionalValence: episode.affectiveContext.valence,
-        tags: episode.tags
-      }
-    }
-
-    await this._index.insert( record )
-    this._indexedIds.add( episode.id )
-    this._touch( episode.id )
-    this._dirty = true
-    this._schedulePersist()
+  /**
+   * What one episode is embedded as: its label, and — for an observation — every
+   * page of what it held (LOSSLESS P5e). An observation was embedded by its label
+   * alone, at most a hundred characters, so recall could find that she had read a
+   * listing and never the part of it that answered. A page longer than the
+   * embedder takes is split into pieces, never cut.
+   */
+  private _texts( episode: EpisodicMemory, content: unknown ): Array<{ id: string; text: string }> {
+    const out = [ { id: episode.id, text: episodeContentToText( content ) } ]
+    const data = heldData( content )
+    if( data === undefined ) return out
+    // The estimate runs high (3 bytes a token), and a quarter more is held back.
+    const piece = Math.max( 64, Math.floor( ( this._embedder.maxInputTokens ?? 2_048 ) * 0.75 ) )
+    paginate( itemText( data ), PAGE_TOKENS ).forEach( ( page, i ) => {
+      if( !page.trim() ) return
+      const pieces = estimateTokens( page ) <= piece ? [ page ] : paginate( page, piece )
+      pieces.forEach( ( text, k ) => out.push( { id: pieces.length === 1 ? `${ episode.id }#${ i + 1 }` : `${ episode.id }#${ i + 1 }.${ k + 1 }`, text } ) )
+    } )
+    return out
   }
 
   async indexBatch(
@@ -150,31 +167,38 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
 
     // `size > 0` guards against an infinite loop when the batch alone exceeds
     // the cap — once the index is drained there is nothing left to evict.
-    while( this._index.size > 0 && this._index.size + newEpisodes.length > this._maxIndexedEpisodes )
+    while( this._indexedIds.size > 0 && this._indexedIds.size + newEpisodes.length > this._maxIndexedEpisodes )
       await this._evictColdest()
 
-    const contents = newEpisodes.map( e => episodeContentToText( e.content ) )
-    const embeddings = await this._embedInFlight( newEpisodes.map( e => e.episode.id ), () => this._embedder.embedBatch( contents, 'index') )
+    // One embedding call for every episode's label and pages: one in-flight set, so
+    // an episode forgotten meanwhile cancels its pages with it (P3a).
+    const texts = newEpisodes.map( e => this._texts( e.episode, e.content ) )
+    const flat  = texts.flat()
+    const embeddings = await this._embedInFlight( newEpisodes.map( e => e.episode.id ), () => this._embedder.embedBatch( flat.map( t => t.text ), 'index') )
 
+    let at = 0
     for( let i = 0; i < newEpisodes.length; i++ ){
       const { episode } = newEpisodes[i]!
-      const embedding = embeddings[i]!
+      const mine = texts[i]!
+      const vectors = embeddings.slice( at, at + mine.length )
+      at += mine.length
       if( this._cancelled.delete( episode.id ) ) continue
 
-      const record: VectorRecord = {
-        id: episode.id,
-        vector: embedding,
-        embeddingModel: this._embedder.modelName,
-        createdAt: wallClock(),  // determinism-ok: secondary index telemetry, rebuilt from _store, never in replay state
-        metadata: {
-          tick: episode.timestamp,
-          sourceType: episode.sourceType,
-          emotionalValence: episode.affectiveContext.valence,
-          tags: episode.tags
-        }
-      }
-
-      await this._index.insert( record )
+      for( let j = 0; j < mine.length; j++ )
+        await this._index.insert( {
+          id: mine[j]!.id,
+          vector: vectors[j]!,
+          embeddingModel: this._embedder.modelName,
+          createdAt: wallClock(),  // determinism-ok: secondary index telemetry, rebuilt from _store, never in replay state
+          metadata: {
+            tick: episode.timestamp,
+            sourceType: episode.sourceType,
+            emotionalValence: episode.affectiveContext.valence,
+            tags: episode.tags,
+            ...( j > 0 ? { page: chunkOf( mine[j]!.id ).page } : {} ),
+          }
+        } satisfies VectorRecord )
+      if( mine.length > 1 ) this._pageIds.set( episode.id, mine.slice( 1 ).map( t => t.id ) )
       this._indexedIds.add( episode.id )
       this._touch( episode.id )
     }
@@ -203,9 +227,22 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
   async searchWithVector( embedding: number[], filter?: VectorQueryFilter ): Promise<VectorQueryResult[]> {
     // HNSW search is similarity-only (see VectorQueryFilter). Metadata-based
     // narrowing, if any, is the caller's job post-search.
-    const results = await this._index.search( embedding, filter?.maxResults ?? 10, {
+    const k = filter?.maxResults ?? 10
+    // A page is a vector of its own, so an episode can take several slots: ask for
+    // more, and keep each episode once — by its best match, and the page that
+    // made it (LOSSLESS P5e).
+    const hits = await this._index.search( embedding, this._pageIds.size > 0 ? k * 4 : k, {
       minSimilarity: filter?.minSimilarity ?? this._minSimilarity,
     } )
+    const best = new Map<string, VectorQueryResult>()
+    for( const h of hits ){
+      const { episodeId, page } = chunkOf( h.episodeId )
+      const was = best.get( episodeId )
+      if( !was || h.similarity > was.similarity ) best.set( episodeId, { episodeId, similarity: h.similarity, ...( page ? { page } : {} ) } )
+    }
+    const results = [ ...best.values() ]
+      .sort( ( a, b ) => b.similarity - a.similarity || ( a.episodeId < b.episodeId ? -1 : 1 ) )
+      .slice( 0, k )
     // Recall warms the cache: bump access recency so frequently-recalled memories
     // survive eviction (LRU) — the index keeps what the Will actually uses.
     for( const r of results ) this._touch( r.episodeId )
@@ -214,17 +251,26 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
 
   async delete( episodeId: string ): Promise<void> {
     if( this._inFlight.has( episodeId ) ) this._cancelled.add( episodeId )
-    if( await this._index.delete( episodeId ) ){
-      this._indexedIds.delete( episodeId )
-      this._accessTick.delete( episodeId )
+    if( await this._deleteVectors( episodeId ) ){
       this._dirty = true
       this._schedulePersist()
     }
   }
 
+  /** An episode's vector and every page's. True when there was any. */
+  private async _deleteVectors( episodeId: string ): Promise<boolean> {
+    let any = await this._index.delete( episodeId )
+    for( const id of this._pageIds.get( episodeId ) ?? [] ) any = ( await this._index.delete( id ) ) || any
+    this._pageIds.delete( episodeId )
+    this._indexedIds.delete( episodeId )
+    this._accessTick.delete( episodeId )
+    return any
+  }
+
   async rebuildFromStore( store: EpisodicMemory[] ): Promise<void> {
     await this._index.clear()
     this._indexedIds.clear()
+    this._pageIds.clear()
     this._accessTick.clear()
     this._accessClock = 0
 
@@ -293,10 +339,14 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
         // _evictOldest (which iterates _indexedIds) becomes a no-op and the
         // indexBatch eviction loop spins forever once the index is at its cap.
         this._indexedIds.clear()
+        this._pageIds.clear()
         this._accessTick.clear()
         this._accessClock = 0
         if( this._index.keys )
           for( const id of this._index.keys() ){
+            // A page's vector belongs to its episode, and goes when it goes.
+            const { episodeId, page } = chunkOf( id )
+            if( page !== undefined ){ this._pageIds.set( episodeId, [ ...( this._pageIds.get( episodeId ) ?? [] ), id ] ); continue }
             this._indexedIds.add( id )
             // Seed access recency in insertion order so a freshly-loaded index
             // evicts oldest-first until real recalls warm specific entries.
@@ -323,11 +373,7 @@ export class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
       .sort( ( a, b ) => ( this._accessTick.get( a ) ?? 0 ) - ( this._accessTick.get( b ) ?? 0 ) )
       .slice( 0, target )
 
-    for( const id of victims ){
-      await this._index.delete( id )
-      this._indexedIds.delete( id )
-      this._accessTick.delete( id )
-    }
+    for( const id of victims ) await this._deleteVectors( id )
 
     if( victims.length > 0 ) this._dirty = true
   }

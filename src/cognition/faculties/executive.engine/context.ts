@@ -678,6 +678,7 @@ function _extractEpisodeContent( raw: unknown ): string {
 
 export function mapEpisodeToMemory( ep: {
   id?: string
+  matchedPage?: number
   content: unknown
   emotionalTags?: Record<string, number>
   activationStrength: number
@@ -688,6 +689,7 @@ export function mapEpisodeToMemory( ep: {
   emotionalContext: string
   tick?: number
   id?: string
+  matchedPage?: number
 } {
   const dominantEmotion = Object.entries( ep.emotionalTags ?? {} )
                                 .sort( ( [, a], [, b] ) => b - a )[0]?.[0] ?? 'neutral'
@@ -703,7 +705,7 @@ export function mapEpisodeToMemory( ep: {
     emotionalContext: dominantEmotion,
     tick:             typeof ep.timestamp === 'number' ? ep.timestamp : undefined,
     ...( ep.id ? { id: ep.id } : {} ),
-    ...( data !== undefined ? { data, ...itemHandle( held ) } : {} ),
+    ...( data !== undefined ? { data, ...itemHandle( held ), ...( ep.matchedPage ? { matchedPage: ep.matchedPage } : {} ) } : {} ),
   }
 }
 

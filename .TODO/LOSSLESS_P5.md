@@ -1,6 +1,6 @@
 # LOSSLESS P5 — every call fits its window, and nothing leaves a call silently
 
-> **Standing:** DESIGNED · 2026-10-01 · traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; the owner took all six recommendations (D1–D6) the same day; P5a–P5d landed
+> **Standing:** DESIGNED · 2026-10-01 · traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; the owner took all six recommendations (D1–D6) the same day; P5a–P5e landed — the phase is done
 
 > The last phase of [[LOSSLESS]]. P0–P4 made what the mind takes in, thinks, says and
 > keeps whole. This phase is about what a **single LLM call** is shown. That view
@@ -190,7 +190,7 @@ Each of these becomes whole, and Part 2 handles anything that turns out to be ov
   now bounds only labels the engine composes, and a percept's id no longer hashes
   a bounded label (two answers that began alike were one percept).
 
-### Part 5 — what she read is recallable by meaning
+### Part 5 — what she read is recallable by meaning ✅
 
 An observation episode is embedded by its label of at most 100 characters
 (`vector.content.ts`). Its data is now embedded in page-sized chunks
@@ -231,7 +231,7 @@ window, that is a configuration error, raised loudly at assembly.
 | **P5b** ✅ | Part 4: text cuts removed, `MEANING_CAP` first | Her GitHub tools' required args |
 | **P5c** ✅ | Part 3: honest counts, ranked abilities, `[RECALL]` for sections, queries and memories | The silent drops |
 | **P5d** ✅ | Attachments as items | Depends on P5a's paging |
-| **P5e** | Part 5: chunked embedding of what she read | Depends on P5a's pages |
+| **P5e** ✅ | Part 5: chunked embedding of what she read | Depends on P5a's pages |
 
 The tests follow the epoch's rule: each test asserts on the **rendered prompt or
 stored state**, and every assertion is checked by reintroducing the bug it guards

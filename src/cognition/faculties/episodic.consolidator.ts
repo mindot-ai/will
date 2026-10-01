@@ -82,6 +82,12 @@ export interface EpisodicMemory {
    * on episodes written before it existed, which simply never block anything.
    */
   sourceId?: string
+  /**
+   * Set on what a semantic query returns, never stored: the page of what this
+   * episode held that matched the query (LOSSLESS P5e) — so recall can say which
+   * part of a long read brought it to mind.
+   */
+  matchedPage?: number
 }
 
 /**
@@ -505,10 +511,10 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
       return []
     }
 
-    const resolved: Array<{ episode: EpisodicMemory; similarity: number }> = []
+    const resolved: Array<{ episode: EpisodicMemory; similarity: number; page?: number }> = []
     for( const r of results ){
       const episode = this._storeMap.get( r.episodeId )
-      if( episode ) resolved.push( { episode, similarity: r.similarity } )
+      if( episode ) resolved.push( { episode, similarity: r.similarity, ...( r.page ? { page: r.page } : {} ) } )
       // A vector for a memory that is gone took a slot a living one should have
       // had, and would take it again on every query near it. Let it go now.
       // (An index saved before the race was closed can hold thousands.)
@@ -527,7 +533,7 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
       resolved.sort( ( a, b ) => ( score( b ) - score( a ) ) || ( a.episode.id < b.episode.id ? -1 : 1 ) )
     }
 
-    return resolved.slice( 0, limit ).map( s => s.episode )
+    return resolved.slice( 0, limit ).map( s => s.page ? { ...s.episode, matchedPage: s.page } : s.episode )
   }
 
   /**
@@ -671,6 +677,9 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
       // is a deterministic sentinel (0), never wall-clock, so replay is stable (R2).
       createdAt: e.createdAt ?? 0,
     } ) )
+    // The id map recall resolves through. Left empty, every hit read as a memory
+    // that is gone — returned nothing, and deleted the vector it found.
+    this._storeMap = new Map( this._store.map( e => [ e.id, e ] ) )
   }
 
   // ── Internal helpers ─────────────────────────────────────

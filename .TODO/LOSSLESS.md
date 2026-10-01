@@ -207,16 +207,25 @@ Found doing P2 and **not** changed — each is a decision:
   attended ticks) never ran. Measured on one salient change: held 8 ticks
   ignored, 45 attended — and still let go, because a focus nothing reinforces
   decays. 100K-tick soak green.
-- **A percept is remembered by a margin of 0.018.** It enters at 0.75, decays one
-  tick (0.08/s) before the consolidator's first look: 0.67 × 0.4 = 0.268 against
-  a 0.25 threshold. At ~1 tick/s (Lora) it holds; at a slower tick it silently
-  stops. A goal (0.65 → 0.57 → 0.228) is never remembered on activation alone.
-- **A world entity re-set every tick becomes an episode every tick.**
-  Exteroception perceives a change of `updatedAt`, not of content. Lora has no
-  host world entities (her percepts come from her senses), but a host with a
-  heartbeat entity would accrete ~86k episodes a day, forgotten over ~3.
-- Host-supplied social signal types that persist in state (`message`, `action`,
-  …) are re-perceived every tick; only `conversation.received` is swept.
+- ~~**A percept is remembered by a margin of 0.018.**~~ Closed (its own PR,
+  after P4). It entered at 0.75 and decayed in the same pass that admitted it, so
+  the consolidator weighed 0.67 × 0.4 = 0.268 against 0.25 at ~1 tick/s, and
+  0.236 — never — at 2 s. Working memory now records the activation an item was
+  **encoded** with, and consolidation weighs that (or the current activation, if
+  rehearsal has lifted it since). A goal held in mind (0.65 → 0.26) is now
+  remembered, once — its WM id is the goal's, so a re-admission is not a second
+  episode.
+- ~~**A world entity re-set every tick becomes an episode every tick.**~~ Closed
+  (same PR). Exteroception compares what an entity says (everything but its
+  timestamps), read only when it was written since. An act's effect on its target
+  is confirmed by a change in the target — a write that changes nothing confirms
+  nothing, as an act that changed nothing is not a success (Mindbase #146).
+- ~~Host-supplied social signal types that persist in state (`message`, `action`,
+  …) are re-perceived every tick~~ Closed (same PR). Each signal is perceived
+  once per write. `communication` waited for a `processedByExecutive` flag nothing
+  sets before it could be swept — never swept; now swept like the rest. (Not a
+  double count with exteroception: that is the only path a host message's CONTENT
+  takes into memory; social perception carries the social signal.)
 - An observation episode is embedded by its ≤100-character sense label, not its
   data — recall by meaning of what she read is P5.
 
@@ -269,10 +278,17 @@ Found doing P3a and **not** changed — each is the model of a mind, and the own
   restart" of the first review. Records have their own id (`sr-<belief>`), old
   ones still restore, orphans go with their belief. The parameter is renamed
   (`beliefDecayPerSecond`): a woken mind's saved per-tick 0.001 is ignored.
-- **Theory of mind's fade cannot fire, and should not as written.** Model
-  confidence is floored at 0.05 and pruned below 0.05; its decay grows with every
-  tick since the last update, so a live fade would drop a colleague's model
-  minutes after they went quiet.
+- ~~**Theory of mind's fade cannot fire, and should not as written.**~~ Fades
+  in days now (its own PR, after P4). The decay took `rate × ticks since update`
+  every tick — a step that grew with the silence — so the read of a colleague hit
+  its 0.05 floor two ticks after 100 quiet ticks, and empathy (which uses a model's
+  emotion only above 0.3) read nobody it had not heard from in the last minute and
+  a half. A woken model was dated to tick 0 — `createdAt` keeps its first value
+  and is sim-time ms, so it never held the last update — and faded on its first
+  tick. And the floor sat on the prune line, so no model was ever let go. Now a
+  fixed step per second at a belief's rate (a fresh read is let go in ~4 days of
+  silence, a firm one in ~2 weeks), `lastUpdated` persisted and restored, and a
+  model let go is deleted from state.
 
 **P3b — the artifact, and waking ✅**
 

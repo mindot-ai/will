@@ -457,7 +457,8 @@ export function buildEngineConfigEntities( config: WillConfig, executiveInterval
       id: 'engine-config-theory-of-mind',
       engine: 'theory-of-mind',
       params: {
-        beliefDecayRate:       0.002,
+        // A read of someone fades at a belief's rate (per second, once quiet).
+        fadePerSecond:         DEFAULT_BELIEF_DECAY_PER_SECOND,
         confidenceThreshold:   0.3,
       },
     },

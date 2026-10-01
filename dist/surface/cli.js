@@ -7040,6 +7040,10 @@ function endogenousTypes(engines) {
 }
 
 // src/cognition/faculties/exteroception.ts
+function perceptibleContent(entity) {
+  const { createdAt: _c, updatedAt: _u, updatedAtTick: _t, ...said } = entity;
+  return JSON.stringify(said);
+}
 var Exteroception = class {
   name = "exteroception";
   _defaultSalience;
@@ -7165,8 +7169,9 @@ var Exteroception = class {
         this._previousEntityVersions.set(id, { at: entity.updatedAt, type: entity.type });
         continue;
       }
-      const previousVersion = this._previousEntityVersions.get(id)?.at;
-      if (previousVersion === void 0) {
+      const previous = this._previousEntityVersions.get(id);
+      const content = previous === void 0 || entity.updatedAt > previous.at ? perceptibleContent(entity) : previous.content;
+      if (previous === void 0) {
         percepts.push({
           entityId: id,
           changeType: "appeared",
@@ -7176,7 +7181,7 @@ var Exteroception = class {
           matchText: this._matchText(entity),
           ...this._valenceOf(id, state)
         });
-      } else if (entity.updatedAt > previousVersion) {
+      } else if (content !== previous.content) {
         percepts.push({
           entityId: id,
           changeType: "modified",
@@ -7187,7 +7192,7 @@ var Exteroception = class {
           ...this._valenceOf(id, state)
         });
       }
-      this._previousEntityVersions.set(id, { at: entity.updatedAt, type: entity.type });
+      this._previousEntityVersions.set(id, { at: entity.updatedAt, type: entity.type, content });
     }
     for (const [id, seen] of this._previousEntityVersions) {
       if (currentIds.has(id)) continue;
@@ -7652,6 +7657,14 @@ var SocialPerception = class {
   // Track previously observed actions for change detection
   _previousActions = /* @__PURE__ */ new Map();
   // keid → last action
+  /**
+   * Signal id → the write already perceived. A signal is an act, perceived once
+   * per write: a host's signal entity stays in state until swept, and only one
+   * that carries a tick is ever swept, so this re-perceived it — and published
+   * another `interaction.occurred` to reputation, trust, theory of mind and
+   * attachment — on every tick it stayed. Re-set, it is a new act.
+   */
+  _perceived = /* @__PURE__ */ new Map();
   _bus = null;
   _model = new GenerativeModel();
   constructor(config = {}) {
@@ -7763,8 +7776,12 @@ var SocialPerception = class {
     const percepts = [];
     const selfId = "agent-self";
     const aliases = readAliases(state.entities);
+    const present = /* @__PURE__ */ new Set();
     for (const [id, entity] of state.entities) {
       if (!this._signalTypes.has(entity.type)) continue;
+      present.add(id);
+      if (this._perceived.get(id) === entity.updatedAt) continue;
+      this._perceived.set(id, entity.updatedAt);
       const sourceKeid = canonicalOf(aliases, entity.metadata?.sourceKeid ?? entity.metadata?.from ?? "unknown"), action = entity.metadata?.action ?? entity.metadata?.type ?? entity.type, directedAtSelf = entity.metadata?.recipientId === selfId || entity.metadata?.to === selfId || entity.metadata?.targetKeid === selfId || entity.metadata?.directedAtSelf === true, isNew = this._previousActions.get(sourceKeid) !== action;
       const valence = typeof entity.metadata?.valence === "number" ? entity.metadata.valence : this._defaultValence(action);
       const intensity = typeof entity.metadata?.intensity === "number" ? entity.metadata.intensity : typeof entity.metadata?.salience === "number" ? entity.metadata.salience : 0.5;
@@ -7780,6 +7797,8 @@ var SocialPerception = class {
       });
       this._previousActions.set(sourceKeid, action);
     }
+    for (const id of this._perceived.keys())
+      if (!present.has(id)) this._perceived.delete(id);
     percepts.sort((a, b) => b.salience - a.salience);
     return percepts;
   }
@@ -7834,7 +7853,6 @@ var SocialPerception = class {
           stale.push(id);
       }
       if (this._signalTypes.has(entity.type) && entity.type !== "percept.social") {
-        if (entity.type === "communication" && !entity.metadata?.processedByExecutive) continue;
         const createdAtTick = entity.metadata?.tick ?? entity.metadata?.injectedAtTick;
         if (typeof createdAtTick === "number" && currentTick - createdAtTick > 1)
           stale.push(id);
@@ -9816,7 +9834,7 @@ var WorkingMemory = class {
     const id = `wm-${(this._idSeq++).toString(36)}`;
     const createdAt = item.createdAt ?? 0;
     this._evictIfNeeded();
-    this._items.push({ ...item, id, createdAt });
+    this._items.push({ encoding: item.activation, ...item, id, createdAt });
   }
   /**
    * Effective config = base engine-config-working-memory ⊕ persona-prior (single-source).
@@ -9936,6 +9954,7 @@ var WorkingMemory = class {
           ...entity.metadata?.data !== void 0 ? { data: entity.metadata.data } : {}
         },
         activation: PERCEPT_ACTIVATION,
+        encoding: PERCEPT_ACTIVATION,
         attendedAt: [],
         createdAt: tick,
         sourceEntityId: entity.id,
@@ -9962,6 +9981,7 @@ var WorkingMemory = class {
           priority: entity.metadata?.priority ?? 0.5
         },
         activation: 0.65,
+        encoding: 0.65,
         attendedAt: [],
         createdAt: tick,
         sourceEntityId: entity.id,
@@ -10020,6 +10040,12 @@ var WorkingMemory = class {
           wmType: item.type,
           content: item.content,
           activation: item.activation,
+          // The strength it went in with. An item is decayed in the same pass that
+          // admits it, so the first activation anyone reads is already a tick's
+          // decay down — how much depends on the tick's length — and consolidation
+          // weighed THAT: a percept was remembered by 0.018 at 1 tick/s and never
+          // at 2 s (EpisodicConsolidator._findCandidates).
+          encoding: item.encoding ?? item.activation,
           attendedCount: item.attendedAt.length,
           tags: item.tags,
           tick
@@ -10527,7 +10553,13 @@ var EpisodicConsolidator = class {
         id: identity,
         type: entity.metadata?.wmType ?? "unknown",
         content: entity.metadata,
-        activation: entity.metadata?.activation ?? 0,
+        // How strongly it was encoded, or how active it is now if rehearsal has
+        // lifted it since — never the remainder of a tick's decay, which made
+        // remembering a function of the tick's length.
+        activation: Math.max(
+          entity.metadata?.encoding ?? 0,
+          entity.metadata?.activation ?? 0
+        ),
         attendedCount: entity.metadata?.attendedCount ?? 0,
         tags: entity.metadata?.tags ?? []
       });
@@ -21114,9 +21146,11 @@ var PersonaConsolidator = class {
 };
 
 // src/cognition/faculties/theory.of.mind.ts
+var QUIET_TICKS = 100;
+var LET_GO_AT = 0.05;
 var TheoryOfMind = class {
   name = "theory-of-mind";
-  _beliefDecayRate;
+  _fadePerSecond;
   _confidenceThreshold;
   _models = /* @__PURE__ */ new Map();
   _restored = false;
@@ -21125,7 +21159,7 @@ var TheoryOfMind = class {
   _model = new GenerativeModel();
   constructor(config = {}) {
     this._bus = config.bus ?? null;
-    this._beliefDecayRate = config.beliefDecayRate ?? 2e-3;
+    this._fadePerSecond = config.fadePerSecond ?? DEFAULT_BELIEF_DECAY_PER_SECOND;
     this._confidenceThreshold = config.confidenceThreshold ?? 0.3;
   }
   attachBus(bus) {
@@ -21157,7 +21191,7 @@ var TheoryOfMind = class {
   snapshot() {
     return {};
   }
-  async react(_delta, tick, state, _context) {
+  async react(delta, tick, state, _context) {
     const events = [], commands = { set: [], delete: [], metrics: [] };
     if (!this._restored) {
       this._restoreFromState(state);
@@ -21180,8 +21214,8 @@ var TheoryOfMind = class {
       };
       model.lastUpdated = tick;
     }
-    this._decayBeliefs(tick);
-    this._pruneModels();
+    this._fade(tick, delta / 1e3);
+    commands.delete.push(...this._letGo());
     for (const [keid, model] of this._models) {
       commands.set.push({
         id: `tom-${keid}`,
@@ -21194,7 +21228,11 @@ var TheoryOfMind = class {
           intentionCount: model.intentions.filter((i) => i.confidence > this._confidenceThreshold).length,
           modelConfidence: model.modelConfidence,
           dominantIntention: model.intentions.sort((a, b) => b.confidence - a.confidence)[0]?.goal ?? null,
-          estimatedEmotion: model.emotionalState.dominantEmotion
+          estimatedEmotion: model.emotionalState.dominantEmotion,
+          // When the mind last heard from them. `createdAt` above keeps its first
+          // value (and is sim-time ms), so a woken model was dated to tick 0 and
+          // faded out on its first tick.
+          lastUpdated: model.lastUpdated
         }
       });
     }
@@ -21245,13 +21283,14 @@ var TheoryOfMind = class {
       const dominantIntention = m["dominantIntention"] ?? null;
       const modelConfidence = m["modelConfidence"] ?? 0.3;
       const estimatedEmotion = m["estimatedEmotion"] ?? "neutral";
+      const lastUpdated = m["lastUpdated"] ?? state.tick;
       this._models.set(keid, {
         keid,
         knownObservations: [],
         beliefs: [],
-        intentions: dominantIntention ? [{ goal: dominantIntention, confidence: modelConfidence, lastUpdated: 0 }] : [],
+        intentions: dominantIntention ? [{ goal: dominantIntention, confidence: modelConfidence, lastUpdated }] : [],
         emotionalState: { valence: 0, arousal: 0, dominantEmotion: estimatedEmotion },
-        lastUpdated: 0,
+        lastUpdated,
         modelConfidence
       });
     }
@@ -21283,26 +21322,41 @@ var TheoryOfMind = class {
     });
     model.modelConfidence = Math.min(1, model.modelConfidence + 0.02);
   }
-  _decayBeliefs(currentTick) {
+  /**
+   * The read of someone fades once they have been quiet a while, by a fixed step
+   * per second of running time.
+   *
+   * It took `rate × ticks since update` EVERY tick — a step that grew with the
+   * silence, so a colleague's model hit its floor two ticks after 100 quiet ticks
+   * (and every woken model, dated to tick 0, on its first tick). Empathy reads
+   * the model's emotion only above 0.3, so it read nobody it had not heard from
+   * in the last minute and a half.
+   */
+  _fade(currentTick, seconds) {
+    const step = this._fadePerSecond * seconds;
     for (const model of this._models.values()) {
-      const ticksSinceUpdate = currentTick - model.lastUpdated;
-      if (ticksSinceUpdate > 100) {
-        model.modelConfidence = Math.max(0.05, model.modelConfidence - this._beliefDecayRate * ticksSinceUpdate);
-        for (const belief of model.beliefs)
-          belief.confidence = Math.max(0.05, belief.confidence - this._beliefDecayRate * 2);
-        for (const intention of model.intentions)
-          intention.confidence = Math.max(0.05, intention.confidence - this._beliefDecayRate * 2);
-      }
+      if (currentTick - model.lastUpdated <= QUIET_TICKS) continue;
+      model.modelConfidence = Math.max(0, model.modelConfidence - step);
+      for (const belief of model.beliefs)
+        belief.confidence = Math.max(0, belief.confidence - step);
+      for (const intention of model.intentions)
+        intention.confidence = Math.max(0, intention.confidence - step);
     }
   }
-  _pruneModels() {
-    const toPrune = [];
-    for (const [id, model] of this._models) {
-      if (model.modelConfidence < 0.05)
-        toPrune.push(id);
-    }
-    for (const id of toPrune)
-      this._models.delete(id);
+  /**
+   * Models faded out, removed here and returned for deletion from state. The fade
+   * floored at 0.05 and this let go below 0.05, so no model was ever let go.
+   * There is no count cap (it kept the 10 most confident models, dropping the
+   * rest from memory and not from state — restored next boot).
+   */
+  _letGo() {
+    const gone = [];
+    for (const [keid, model] of this._models)
+      if (model.modelConfidence <= LET_GO_AT) {
+        this._models.delete(keid);
+        gone.push(`tom-${keid}`);
+      }
+    return gone;
   }
 };
 
@@ -26019,7 +26073,8 @@ function buildEngineConfigEntities(config, executiveInterval) {
       id: "engine-config-theory-of-mind",
       engine: "theory-of-mind",
       params: {
-        beliefDecayRate: 2e-3,
+        // A read of someone fades at a belief's rate (per second, once quiet).
+        fadePerSecond: DEFAULT_BELIEF_DECAY_PER_SECOND,
         confidenceThreshold: 0.3
       }
     },

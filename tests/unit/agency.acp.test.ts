@@ -64,7 +64,8 @@ describe('matchConsequenceEntity — narrow by design', () => {
 
 // ── Exteroception applies it ─────────────────────────────────────────────────
 
-/** Two ticks: register the entity (appeared), then bump updatedAt (modified). */
+/** Two ticks: register the entity (appeared), then change it (modified). A write that
+ *  changes nothing is not a change (exteroception compares what it says). */
 async function perceiveModified( withDescriptor: boolean, expiresAt = 30 ) {
   const s = freshState()
   const eng = new Exteroception()
@@ -72,7 +73,8 @@ async function perceiveModified( withDescriptor: boolean, expiresAt = 30 ) {
     metadata: { salience: 0.8 } } as SimulationEntity )
   if( withDescriptor ) seedDescriptor( s, extDesc('intent-wave', 'bob', expiresAt ) )
   apply( s, ( await eng.react( 0, 1, frozen( s ), CTX ) ).commands )       // appeared
-  s.entities.get('bob')!.updatedAt = 5
+  s.entities.set('bob', { ...s.entities.get('bob')!, updatedAt: 5,
+    metadata: { salience: 0.8, waving: true } } as SimulationEntity )
   const r = await eng.react( 0, 2, frozen( s ), CTX )                        // modified
   return ( r.commands?.set ?? [] ).find( e =>
     e.type === 'percept' && ( e.metadata as Record<string, unknown> )['entityId'] === 'bob'
@@ -110,7 +112,8 @@ describe('P5 sensory confirmation now covers external effectors', () => {
 
     const extero = new Exteroception()
     apply( s, ( await extero.react( 0, 2, frozen( s ), CTX ) ).commands )   // appeared
-    s.entities.get('bob')!.updatedAt = 5
+    s.entities.set('bob', { ...s.entities.get('bob')!, updatedAt: 5,
+      metadata: { salience: 0.8, waving: true } } as SimulationEntity )
     apply( s, ( await extero.react( 0, 3, frozen( s ), CTX ) ).commands )   // modified → reafferent
 
     const rep = new SchemaRepertoire()

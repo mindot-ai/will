@@ -89,7 +89,10 @@ There are two quieter forms of the same gap:
 One rule applies to any single item rendered in any section: an observation's data, an
 attachment, a message, a memory's content, a belief.
 
-- **At or under a page, it renders whole.** A page is min(8k tokens, budget / 8) (D3).
+- **At or under a page, it renders whole.** A page is a fixed 8k tokens (D3, refined
+  in P5a: a page sized by each call's budget would make "page 2" name different text
+  in different calls, and she would skip or re-read; the budget decides only what
+  shows inline).
 - **Over a page, it renders as a header and its first page:**
   ```
   - [observation] list_pull_requests (salience: 0.80) — 412 KB ≈ 135k tokens, 17 pages · doc:ep-2210-0
@@ -201,8 +204,10 @@ After the view is built, if the user message's estimate still exceeds the budget
 1. ranked sections shrink from the lowest priority, with counts kept honest;
 2. oversize items drop to their header only (handle and size).
 
-The call never fails for size. Each trim writes a `view.trimmed` record with what
-moved out, so the operator's record shows it. If even the fixed parts exceed the
+The call never fails for size. Each call's own record (`executive.call` /
+`executive.facet.call`) carries its `view` — window, budget, mode, what showed
+inline, how many times it tightened, whether it still ran over — so the operator's
+record shows every trim. If even the fixed parts exceed the
 window, that is a configuration error, raised loudly at assembly.
 
 ---

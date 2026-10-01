@@ -7034,6 +7034,10 @@ function endogenousTypes(engines) {
 }
 
 // src/cognition/faculties/exteroception.ts
+function perceptibleContent(entity) {
+  const { createdAt: _c, updatedAt: _u, updatedAtTick: _t, ...said } = entity;
+  return JSON.stringify(said);
+}
 var Exteroception = class {
   name = "exteroception";
   _defaultSalience;
@@ -7159,8 +7163,9 @@ var Exteroception = class {
         this._previousEntityVersions.set(id, { at: entity.updatedAt, type: entity.type });
         continue;
       }
-      const previousVersion = this._previousEntityVersions.get(id)?.at;
-      if (previousVersion === void 0) {
+      const previous = this._previousEntityVersions.get(id);
+      const content = previous === void 0 || entity.updatedAt > previous.at ? perceptibleContent(entity) : previous.content;
+      if (previous === void 0) {
         percepts.push({
           entityId: id,
           changeType: "appeared",
@@ -7170,7 +7175,7 @@ var Exteroception = class {
           matchText: this._matchText(entity),
           ...this._valenceOf(id, state)
         });
-      } else if (entity.updatedAt > previousVersion) {
+      } else if (content !== previous.content) {
         percepts.push({
           entityId: id,
           changeType: "modified",
@@ -7181,7 +7186,7 @@ var Exteroception = class {
           ...this._valenceOf(id, state)
         });
       }
-      this._previousEntityVersions.set(id, { at: entity.updatedAt, type: entity.type });
+      this._previousEntityVersions.set(id, { at: entity.updatedAt, type: entity.type, content });
     }
     for (const [id, seen] of this._previousEntityVersions) {
       if (currentIds.has(id)) continue;
@@ -7646,6 +7651,14 @@ var SocialPerception = class {
   // Track previously observed actions for change detection
   _previousActions = /* @__PURE__ */ new Map();
   // keid → last action
+  /**
+   * Signal id → the write already perceived. A signal is an act, perceived once
+   * per write: a host's signal entity stays in state until swept, and only one
+   * that carries a tick is ever swept, so this re-perceived it — and published
+   * another `interaction.occurred` to reputation, trust, theory of mind and
+   * attachment — on every tick it stayed. Re-set, it is a new act.
+   */
+  _perceived = /* @__PURE__ */ new Map();
   _bus = null;
   _model = new GenerativeModel();
   constructor(config = {}) {
@@ -7757,8 +7770,12 @@ var SocialPerception = class {
     const percepts = [];
     const selfId = "agent-self";
     const aliases = readAliases(state.entities);
+    const present = /* @__PURE__ */ new Set();
     for (const [id, entity] of state.entities) {
       if (!this._signalTypes.has(entity.type)) continue;
+      present.add(id);
+      if (this._perceived.get(id) === entity.updatedAt) continue;
+      this._perceived.set(id, entity.updatedAt);
       const sourceKeid = canonicalOf(aliases, entity.metadata?.sourceKeid ?? entity.metadata?.from ?? "unknown"), action = entity.metadata?.action ?? entity.metadata?.type ?? entity.type, directedAtSelf = entity.metadata?.recipientId === selfId || entity.metadata?.to === selfId || entity.metadata?.targetKeid === selfId || entity.metadata?.directedAtSelf === true, isNew = this._previousActions.get(sourceKeid) !== action;
       const valence = typeof entity.metadata?.valence === "number" ? entity.metadata.valence : this._defaultValence(action);
       const intensity = typeof entity.metadata?.intensity === "number" ? entity.metadata.intensity : typeof entity.metadata?.salience === "number" ? entity.metadata.salience : 0.5;
@@ -7774,6 +7791,8 @@ var SocialPerception = class {
       });
       this._previousActions.set(sourceKeid, action);
     }
+    for (const id of this._perceived.keys())
+      if (!present.has(id)) this._perceived.delete(id);
     percepts.sort((a, b) => b.salience - a.salience);
     return percepts;
   }
@@ -7828,7 +7847,6 @@ var SocialPerception = class {
           stale.push(id);
       }
       if (this._signalTypes.has(entity.type) && entity.type !== "percept.social") {
-        if (entity.type === "communication" && !entity.metadata?.processedByExecutive) continue;
         const createdAtTick = entity.metadata?.tick ?? entity.metadata?.injectedAtTick;
         if (typeof createdAtTick === "number" && currentTick - createdAtTick > 1)
           stale.push(id);
@@ -9810,7 +9828,7 @@ var WorkingMemory = class {
     const id = `wm-${(this._idSeq++).toString(36)}`;
     const createdAt = item.createdAt ?? 0;
     this._evictIfNeeded();
-    this._items.push({ ...item, id, createdAt });
+    this._items.push({ encoding: item.activation, ...item, id, createdAt });
   }
   /**
    * Effective config = base engine-config-working-memory ⊕ persona-prior (single-source).
@@ -9930,6 +9948,7 @@ var WorkingMemory = class {
           ...entity.metadata?.data !== void 0 ? { data: entity.metadata.data } : {}
         },
         activation: PERCEPT_ACTIVATION,
+        encoding: PERCEPT_ACTIVATION,
         attendedAt: [],
         createdAt: tick,
         sourceEntityId: entity.id,
@@ -9956,6 +9975,7 @@ var WorkingMemory = class {
           priority: entity.metadata?.priority ?? 0.5
         },
         activation: 0.65,
+        encoding: 0.65,
         attendedAt: [],
         createdAt: tick,
         sourceEntityId: entity.id,
@@ -10014,6 +10034,12 @@ var WorkingMemory = class {
           wmType: item.type,
           content: item.content,
           activation: item.activation,
+          // The strength it went in with. An item is decayed in the same pass that
+          // admits it, so the first activation anyone reads is already a tick's
+          // decay down — how much depends on the tick's length — and consolidation
+          // weighed THAT: a percept was remembered by 0.018 at 1 tick/s and never
+          // at 2 s (EpisodicConsolidator._findCandidates).
+          encoding: item.encoding ?? item.activation,
           attendedCount: item.attendedAt.length,
           tags: item.tags,
           tick
@@ -10521,7 +10547,13 @@ var EpisodicConsolidator = class {
         id: identity,
         type: entity.metadata?.wmType ?? "unknown",
         content: entity.metadata,
-        activation: entity.metadata?.activation ?? 0,
+        // How strongly it was encoded, or how active it is now if rehearsal has
+        // lifted it since — never the remainder of a tick's decay, which made
+        // remembering a function of the tick's length.
+        activation: Math.max(
+          entity.metadata?.encoding ?? 0,
+          entity.metadata?.activation ?? 0
+        ),
         attendedCount: entity.metadata?.attendedCount ?? 0,
         tags: entity.metadata?.tags ?? []
       });

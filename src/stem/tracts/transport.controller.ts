@@ -29,17 +29,9 @@ import type { effectorInvocation, OutboxMessage } from '#types'
 import type { WillInstance } from '#stem/index'
 import type { InboundEnvelope, OutboundEnvelope } from './transport/types'
 import type { effectorController } from './effector.controller'
-import type { OutboxController } from './outbox.controller'
+import { OUTBOX_TTL_TICKS, type OutboxController } from './outbox.controller'
 import type { SensoryController } from './sensory.controller'
 import { AckReconciler } from './ack.reconciler'
-
-/**
- * Cap on un-acked outbound envelopes buffered per Will for reconnect re-emit.
- * A peer that never acks would otherwise grow `_pending` without bound; past the
- * cap the oldest un-acked envelope is dropped (FIFO), matching the outbox TTL's
- * "stale outbound eventually gives up" stance.
- */
-const MAX_PENDING_PER_WILL = 1_000
 
 /** Collaborators applyInbound() needs to route each inbound channel. */
 export interface InboundApplyDeps {
@@ -94,16 +86,10 @@ export class TransportController {
     if( !transport ) return
 
     // Buffer state-affecting outbound until acked, so a reconnect can re-emit it.
-    if( reconcileAs !== 'none'){
-      const pending = this._pendingFor( instance.config.id )
-      pending.set( env.correlationId, env )
-      // Bound the buffer — drop the oldest un-acked envelope past the cap (FIFO).
-      while( pending.size > MAX_PENDING_PER_WILL ){
-        const oldest = pending.keys().next().value
-        if( oldest === undefined ) break
-        pending.delete( oldest )
-      }
-    }
+    // Bounded by what the mind still awaits (expireStale), not by a count: a cap
+    // of 1,000 dropped the oldest silently, and the mind was never told.
+    if( reconcileAs !== 'none')
+      this._pendingFor( instance.config.id ).set( env.correlationId, env )
 
     const pending = transport.emit( env )
     if( reconcileAs === 'none'){ void pending; return }
@@ -228,6 +214,37 @@ export class TransportController {
     this._statusUnsub.set( instance.config.id, statusUnsub )
 
     logger.info(`[transport] attached inbound + outbound streams for ${instance.config.id}`)
+  }
+
+  /**
+   * Let go of what the mind no longer awaits, so a reconnect re-emits only what
+   * is still pending. Called by the tick loop each tick, beside the outbox's own
+   * expiry.
+   *
+   * A message the transport carried left the outbox the tick it was written, so
+   * the outbox's TTL never saw it: un-acked, it was held for as long as the Will
+   * lived and delivered on the next reconnect, however late, while the mind was
+   * never told it had not landed. It expires at the outbox's TTL now, and is
+   * reported the way an outbox row is.
+   *
+   * An invocation is awaited while its `agency.intent` is. Once the executor has
+   * timed it out (and recorded the failure), or a change in its target has
+   * confirmed it, a re-emit had the host perform an act the mind had already
+   * settled — perhaps after it had tried again.
+   */
+  expireStale( instance: WillInstance, outbox: OutboxController ): void {
+    const pending = this._pending.get( instance.config.id )
+    if( !pending ) return
+
+    for( const [ id, env ] of pending ){
+      if( env.channel === 'effector_invocation'){
+        if( instance.simulation.stateManager.getEntity( id )?.type !== 'agency.intent') pending.delete( id )
+      }
+      else if( env.channel === 'message' && instance.tickCount - env.message.createdAtTick > OUTBOX_TTL_TICKS ){
+        pending.delete( id )
+        outbox.expire( instance, env.message )
+      }
+    }
   }
 
   /** Re-emit un-acked outbound envelopes after the transport reconnects. */

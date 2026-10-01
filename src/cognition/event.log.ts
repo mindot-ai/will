@@ -50,13 +50,17 @@ export class DefaultEventLog implements EventLog {
     this._memory.push( event )
 
     if( this._buffer.length >= AUTO_FLUSH_SIZE )
-      void this._triggerFlush()
+      this._triggerFlush().catch( () => {} )   // kept in the buffer; flush() reports it
   }
 
+  /**
+   * Write everything appended so far. It returned the flush already in flight,
+   * so what arrived during that write was left in the buffer — at shutdown, the
+   * last events of a run.
+   */
   async flush(): Promise<void> {
-    if( this._pendingFlush )
-      return this._pendingFlush
-    return this._triggerFlush()
+    while( this._pendingFlush || this._buffer.length > 0 )
+      await ( this._pendingFlush ?? this._triggerFlush() )
   }
 
   recent( n = 100 ): CognitiveEvent[] {
@@ -75,7 +79,10 @@ export class DefaultEventLog implements EventLog {
     this._flushing = true
     const batch = this._buffer.splice( 0 )
 
-    this._pendingFlush = this._writeBatch( batch ).finally( () => {
+    this._pendingFlush = this._writeBatch( batch ).catch( err => {
+      this._buffer.unshift( ...batch )   // a failed write loses nothing; the next one retries
+      throw err
+    } ).finally( () => {
       this._flushing    = false
       this._pendingFlush = null
     })
@@ -83,8 +90,15 @@ export class DefaultEventLog implements EventLog {
     return this._pendingFlush
   }
 
+  /**
+   * Appended where the store can. It read the whole log and wrote it back with
+   * a hundred more lines each time — a cost that grows with everything the mind
+   * has ever done, paid every hundred events.
+   */
   private async _writeBatch( batch: CognitiveEvent[] ): Promise<void> {
     const lines  = batch.map( e => JSON.stringify( e ) ).join('\n') + '\n'
+    if( this._storage.append ) return this._storage.append( this._path, lines )
+
     let existing = ''
 
     try {

@@ -804,7 +804,11 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
         id:   identity,
         type: ( entity.metadata?.wmType as string ) ?? 'unknown',
         content: entity.metadata,
-        activation: ( entity.metadata?.activation as number ) ?? 0,
+        // How strongly it was encoded, or how active it is now if rehearsal has
+        // lifted it since — never the remainder of a tick's decay, which made
+        // remembering a function of the tick's length.
+        activation: Math.max( ( entity.metadata?.encoding as number | undefined ) ?? 0,
+                              ( entity.metadata?.activation as number | undefined ) ?? 0 ),
         attendedCount: ( entity.metadata?.attendedCount as number ) ?? 0,
         tags: ( entity.metadata?.tags as string[] ) ?? [],
       } )

@@ -56,6 +56,12 @@ export interface ExteroceptionConfig {
   bus?: CognitiveBus
 }
 
+/** What an entity says, apart from when it was written. */
+function perceptibleContent( entity: SimulationEntity ): string {
+  const { createdAt: _c, updatedAt: _u, updatedAtTick: _t, ...said } = entity
+  return JSON.stringify( said )
+}
+
 interface RawPercept {
   entityId: string
   changeType: 'appeared' | 'modified' | 'removed'
@@ -81,7 +87,7 @@ export class Exteroception implements SimulationEngine, CognitiveEngine {
    * does — "was this mine?" — and by then the entity is gone. It used to be
    * answered by a second, separately-drifting list of id prefixes.
    */
-  private _previousEntityVersions = new Map<string, { at: Timestamp; type: string }>()
+  private _previousEntityVersions = new Map<string, { at: Timestamp; type: string; content?: string }>()
 
   private _bus: CognitiveBus | null = null
 
@@ -257,9 +263,14 @@ private _scanWorld( state: ReadonlySimulationState ): RawPercept[] {
         continue
       }
 
-      const previousVersion = this._previousEntityVersions.get( id )?.at
+      const previous = this._previousEntityVersions.get( id )
+      // Read only when the entity was written since: a re-set is not a change
+      // unless what it says changed. Perceiving every write made a host's
+      // heartbeat entity a percept — and an episode — every tick.
+      const content  = previous === undefined || entity.updatedAt > previous.at
+        ? perceptibleContent( entity ) : previous.content
 
-      if( previousVersion === undefined ){
+      if( previous === undefined ){
         percepts.push({
           entityId: id,
           changeType: 'appeared',
@@ -270,7 +281,7 @@ private _scanWorld( state: ReadonlySimulationState ): RawPercept[] {
           ...this._valenceOf( id, state ),
         })
       }
-      else if( entity.updatedAt > previousVersion ){
+      else if( content !== previous.content ){
         percepts.push({
           entityId: id,
           changeType: 'modified',
@@ -282,7 +293,7 @@ private _scanWorld( state: ReadonlySimulationState ): RawPercept[] {
         })
       }
 
-      this._previousEntityVersions.set( id, { at: entity.updatedAt, type: entity.type } )
+      this._previousEntityVersions.set( id, { at: entity.updatedAt, type: entity.type, content } )
     }
 
     // Something that was there is gone. The same question as an appearance —

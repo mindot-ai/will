@@ -213,16 +213,25 @@ Found doing P2 and **not** changed — each is a decision:
   attended ticks) never ran. Measured on one salient change: held 8 ticks
   ignored, 45 attended — and still let go, because a focus nothing reinforces
   decays. 100K-tick soak green.
-- **A percept is remembered by a margin of 0.018.** It enters at 0.75, decays one
-  tick (0.08/s) before the consolidator's first look: 0.67 × 0.4 = 0.268 against
-  a 0.25 threshold. At ~1 tick/s (Lora) it holds; at a slower tick it silently
-  stops. A goal (0.65 → 0.57 → 0.228) is never remembered on activation alone.
-- **A world entity re-set every tick becomes an episode every tick.**
-  Exteroception perceives a change of `updatedAt`, not of content. Lora has no
-  host world entities (her percepts come from her senses), but a host with a
-  heartbeat entity would accrete ~86k episodes a day, forgotten over ~3.
-- Host-supplied social signal types that persist in state (`message`, `action`,
-  …) are re-perceived every tick; only `conversation.received` is swept.
+- ~~**A percept is remembered by a margin of 0.018.**~~ Closed (its own PR,
+  after P4). It entered at 0.75 and decayed in the same pass that admitted it, so
+  the consolidator weighed 0.67 × 0.4 = 0.268 against 0.25 at ~1 tick/s, and
+  0.236 — never — at 2 s. Working memory now records the activation an item was
+  **encoded** with, and consolidation weighs that (or the current activation, if
+  rehearsal has lifted it since). A goal held in mind (0.65 → 0.26) is now
+  remembered, once — its WM id is the goal's, so a re-admission is not a second
+  episode.
+- ~~**A world entity re-set every tick becomes an episode every tick.**~~ Closed
+  (same PR). Exteroception compares what an entity says (everything but its
+  timestamps), read only when it was written since. An act's effect on its target
+  is confirmed by a change in the target — a write that changes nothing confirms
+  nothing, as an act that changed nothing is not a success (Mindbase #146).
+- ~~Host-supplied social signal types that persist in state (`message`, `action`,
+  …) are re-perceived every tick~~ Closed (same PR). Each signal is perceived
+  once per write. `communication` waited for a `processedByExecutive` flag nothing
+  sets before it could be swept — never swept; now swept like the rest. (Not a
+  double count with exteroception: that is the only path a host message's CONTENT
+  takes into memory; social perception carries the social signal.)
 - An observation episode is embedded by its ≤100-character sense label, not its
   data — recall by meaning of what she read is P5.
 
@@ -275,10 +284,17 @@ Found doing P3a and **not** changed — each is the model of a mind, and the own
   restart" of the first review. Records have their own id (`sr-<belief>`), old
   ones still restore, orphans go with their belief. The parameter is renamed
   (`beliefDecayPerSecond`): a woken mind's saved per-tick 0.001 is ignored.
-- **Theory of mind's fade cannot fire, and should not as written.** Model
-  confidence is floored at 0.05 and pruned below 0.05; its decay grows with every
-  tick since the last update, so a live fade would drop a colleague's model
-  minutes after they went quiet.
+- ~~**Theory of mind's fade cannot fire, and should not as written.**~~ Fades
+  in days now (its own PR, after P4). The decay took `rate × ticks since update`
+  every tick — a step that grew with the silence — so the read of a colleague hit
+  its 0.05 floor two ticks after 100 quiet ticks, and empathy (which uses a model's
+  emotion only above 0.3) read nobody it had not heard from in the last minute and
+  a half. A woken model was dated to tick 0 — `createdAt` keeps its first value
+  and is sim-time ms, so it never held the last update — and faded on its first
+  tick. And the floor sat on the prune line, so no model was ever let go. Now a
+  fixed step per second at a belief's rate (a fresh read is let go in ~4 days of
+  silence, a firm one in ~2 weeks), `lastUpdated` persisted and restored, and a
+  model let go is deleted from state.
 
 **P3b — the artifact, and waking ✅**
 
@@ -307,8 +323,10 @@ Found doing P3a and **not** changed — each is the model of a mind, and the own
       mind's own identity, reloaded from its artifact, is kept whole — the
       self-model grows its values, and rejecting them there would refuse to wake it
 - [x] `surface/host/utterances.ts` holds every word until a host takes it (was 50)
-- [x] Reclassified **NONE**: the transport's 1,000 un-acked envelopes (anything it
-      could drop has already expired in the outbox — 100 ticks); the event log's
+- [x] Reclassified **NONE**: ~~the transport's 1,000 un-acked envelopes (anything it
+      could drop has already expired in the outbox — 100 ticks)~~ — wrong: a
+      message the transport carries leaves the outbox the tick it is written, so
+      the outbox's TTL never sees it (closed below); the event log's
       in-memory ring (no live mind wires an event log: `createProductionBus()`
       takes none); the artifact's top-3 actions and 5-session emotional baseline
       (statistics over records kept whole on disk)
@@ -326,11 +344,25 @@ Found doing P3b and **not** changed:
   fresh 60 ticks) applied twice; the narrator's story took the same output twice
   the same way, and now takes each once. Open: a style the mind set for itself
   cannot be revised by it (no record of whose a style is).
-- **The transport re-emits what the mind already knows failed.** Un-acked
-  envelopes are kept for reconnect after their outbox entry has expired, so a
-  reconnect delivers messages the mind recorded as undelivered.
-- **The event log, if ever wired, rewrites the whole file on every flush** (read
-  all, append 100, write all).
+- ~~**The transport re-emits what the mind already knows failed.**~~ Closed (its
+  own PR, after P4), and worse than recorded. A message the transport carried
+  left the outbox the tick it was written, so the outbox's TTL never saw it:
+  un-acked, it was held for as long as the Will lived and delivered on the next
+  reconnect however late. And an invocation was re-emitted after the executor
+  had timed it out (failure recorded) or a change in its target had confirmed
+  it — the host performed an act the mind had already settled. The tick loop now
+  lets go of both, beside the outbox's own expiry: a message at the outbox's TTL,
+  an invocation once its `agency.intent` is gone. The 1,000 cap (a silent FIFO
+  drop) is gone — the buffer holds what the mind awaits. And the mind is told: an
+  expired message, the outbox's or the transport's, is received as a failed
+  delivery (`confirmDelivery(…, false)` — the sent record and a reafferent
+  percept). `communication.outbound.undelivered` has no subscriber, so to the
+  mind an expired message had been a message never answered.
+- ~~**The event log, if ever wired, rewrites the whole file on every flush**~~
+  Closed (same PR). `StorageAdapter.append` (the file store implements it); a
+  store without it falls back. `flush()` drains — it returned the write in
+  flight, so what arrived meanwhile stayed unwritten — and a failed write puts
+  its batch back.
 
 ### P4 — the operator's record is whole ✅
 

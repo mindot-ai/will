@@ -1270,8 +1270,10 @@ export class WillStem {
           sb.impulsiveActionCount += actCount
       }
 
-      // Expire stale outbox messages (TTL cleanup; OutboxController owns the policy).
+      // Expire stale outbox messages (TTL cleanup; OutboxController owns the policy),
+      // and what the transport still holds for a reconnect that the mind no longer awaits.
       this._outbox.expireStale( instance )
+      this._transport.expireStale( instance, this._outbox )
 
       // Pause when the per-session tick budget is exhausted.
       // maxTicks is a run-length limit, not a TTL — the Will stays alive

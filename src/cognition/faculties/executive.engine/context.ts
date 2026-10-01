@@ -15,11 +15,21 @@ import { readIdentityName } from '#cognition/identity.entity'
 import { readSpokenTurns } from '#agency/conversation.aim'
 import { nameOf as referentName } from '#cognition/social.identity'
 import { SCHEMA_ENTITY_TYPE } from '#agency/schemas/repertoire'
-import { compactText, type BroughtBack } from '#faculties/executive.engine/view'
+import { compactText, queryMatch, type BroughtBack, type RecallRequest, type RecallSection } from '#faculties/executive.engine/view'
 
 /** How many of the mind's own recent utterances it is shown. Enough to notice a
  *  repetition, few enough not to crowd out what is happening now. */
 const SPOKEN_TURNS_SHOWN = 6
+
+/**
+ * How many of each a call shows — attention, not the window (LOSSLESS_P5 D5).
+ * The rest is counted and reachable by `[RECALL]`, a page of this size at a time.
+ */
+export const PEOPLE_SHOWN   = 6
+export const PERCEPTS_SHOWN = 10
+export const MEMORIES_SHOWN = 8
+export const SECTION_PAGE_SIZE = { beliefs: 30, people: PEOPLE_SHOWN, percepts: PERCEPTS_SHOWN, memories: MEMORIES_SHOWN,
+  'self-observations': 6, said: SPOKEN_TURNS_SHOWN, traits: 6 } as const
 
 export interface ContextDependencies {
   workingMemory: WorkingMemory | null
@@ -79,6 +89,7 @@ export async function buildExecutiveContext(
   // Plan ids surfaced by THIS recall (descriptors carry planId) — feeds the
   // relevance filter on the Active Plans awareness section (recall-scoped awareness).
   let relevantPlanIds: string[] = []
+  let memoryQuery: string | undefined
 
   if( deps.episodicConsolidator ){
     // Focus-supplied query (e.g. the live conversation message) takes precedence;
@@ -86,6 +97,7 @@ export async function buildExecutiveContext(
     const semanticQuery = recallQuery && recallQuery.trim().length > 0
       ? recallQuery
       : buildSemanticQuery( state, deps.goalManager )
+    memoryQuery = semanticQuery
     
     try {
       // Try semantic search first (if vector memory configured).
@@ -121,7 +133,7 @@ export async function buildExecutiveContext(
       }
       
       // Filter goal-type episodes — they duplicate the Active Goals section
-      const recalled = combined.filter( ep => ep.sourceType !== 'goal').slice( 0, 8 )
+      const recalled = combined.filter( ep => ep.sourceType !== 'goal').slice( 0, MEMORIES_SHOWN )
       relevantPlanIds = collectPlanIds( recalled )
       memories = recalled.map( mapEpisodeToMemory )
       // Recall reinforces retention: marking each surfaced episode as retrieved
@@ -138,7 +150,7 @@ export async function buildExecutiveContext(
         .filter( ep => ep.sourceType !== 'goal')
         .slice()
         .sort( ( a, b ) => ( ( b.createdAt as unknown as number ) ?? 0 ) - ( ( a.createdAt as unknown as number ) ?? 0 ) )
-        .slice( 0, 8 )
+        .slice( 0, MEMORIES_SHOWN )
       relevantPlanIds = collectPlanIds( recalled )
       memories = recalled.map( mapEpisodeToMemory )
       for( const ep of recalled ) deps.episodicConsolidator?.markRetrieved( ep.id, state.tick )
@@ -234,14 +246,24 @@ export async function buildExecutiveContext(
     if( cappedBeliefs.length >= BELIEF_PROMPT_LIMIT ) break
   }
 
-  const beliefs = cappedBeliefs
-    .map( ( { b } ) => ({ statement: b.statement, category: b.category, confidence: b.confidence }))
+  const asBelief = ( b: (typeof allBeliefs)[number] ) => ({ statement: b.statement, category: b.category, confidence: b.confidence })
+  const beliefs = cappedBeliefs.map( ( { b } ) => asBelief( b ) )
 
-  const beliefsOmitted = Math.max( 0, allBeliefs.length - beliefs.length )
+  // Every belief not shown, ranked as the view ranks: the ones the caps passed
+  // over, then the near-duplicates of ones shown — each still a belief she holds,
+  // reachable by `[RECALL]` (LOSSLESS P5c).
+  const shownBeliefs = new Set( cappedBeliefs.map( ( { b } ) => b ) )
+  const accepted     = new Set( acceptedBeliefs )
+  const beliefsBeyond = [
+    ...scoredBeliefs.filter( ( { b } ) => !shownBeliefs.has( b ) ).map( ( { b } ) => asBelief( b ) ),
+    ...sortedForDedup.filter( b => !accepted.has( b ) ).map( asBelief ),
+  ]
+  const beliefsOmitted = beliefsBeyond.length
   void beliefsOmittedByDedup  // surfaced via beliefsOmitted total
 
   // Percepts — extract from state entities, sort by salience, take top 10.
-  const percepts = extractPercepts( state )
+  const perceptsRanked = rankPercepts( state )
+  const percepts = perceptsRanked.slice( 0, PERCEPTS_SHOWN )
 
   // Affect — read from state entities and computed metrics.
   // dominantEmotion and blends are strings/arrays stored on affect-related entities,
@@ -275,25 +297,23 @@ export async function buildExecutiveContext(
   // never what it had done. See `action.record.ts` for what that cost.
   const recentActionsCapped = recentActionRecords( state.entities as never )
 
-  // Current best name for a person, from the known-entity roster.
-  const nameOf = ( keid: string ): string | undefined => {
-    for( const e of state.entities.values() ){
-      if( e.type !== 'known-entity') continue
-      const m = e.metadata ?? {}
-      if( m['keid'] !== keid ) continue
-      const n = m['name']
-      return typeof n === 'string' && n.trim() ? n : undefined
-    }
-    return undefined
+  // Current best name for a person, from the known-entity roster — read once:
+  // every spoken turn is named now, not six.
+  const names = new Map<string, string>()
+  for( const e of state.entities.values() ){
+    if( e.type !== 'known-entity') continue
+    const m = e.metadata ?? {}
+    const n = m['name']
+    if( typeof m['keid'] === 'string' && !names.has( m['keid'] ) && typeof n === 'string' && n.trim() ) names.set( m['keid'], n )
   }
+  const nameOf = ( keid: string ): string | undefined => names.get( keid )
 
   // What the mind has said to people lately, and who answered. Newest first,
   // capped — this is a reminder, not a transcript; the conversation itself lives
   // in memory and in "## In Conversation Now".
-  const spokenTurns: ExecutiveContext['spokenTurns'] = readSpokenTurns( state.entities )
+  const spokenRanked: ExecutiveContext['spokenTurns'] = readSpokenTurns( state.entities )
     .filter( t => !t.isAck )
     .reverse()
-    .slice( 0, SPOKEN_TURNS_SHOWN )
     .map( t => ({
       // Roster first, the record's stored name second. A name is learned over
       // time, so records written before the mind knew it keep the raw id — and
@@ -305,6 +325,11 @@ export async function buildExecutiveContext(
       answered: t.answeredAt !== undefined,
       ...( t.answeredWith ? { answeredWith: t.answeredWith } : {} ),
     }) )
+  const spokenTurns = spokenRanked.slice( 0, SPOKEN_TURNS_SHOWN )
+
+  const people = rankKnownEntities( state )
+  // How many memories recall could reach (goal episodes are shown as goals).
+  const memoriesHeld = deps.episodicConsolidator?.getAllEpisodes().filter( ep => ep.sourceType !== 'goal').length
 
   // Active/known plans — read persisted `plan` entities so the executive has
   // execution awareness: which plans exist per goal, their status + step
@@ -360,13 +385,21 @@ export async function buildExecutiveContext(
     abilities: extractAbilities( state ),
     workingMemory,
     memories,
+    ...( memoriesHeld !== undefined ? { memoriesHeld } : {} ),
+    ...( memoryQuery !== undefined ? { memoryQuery } : {} ),
     beliefs,
     beliefsOmitted,
     recentActions: recentActionsCapped,
     spokenTurns,
     behavioralDisposition,
     selfTuning,
-    knownEntities: extractKnownEntities( state ),
+    knownEntities: people.length > 0 ? people.slice( 0, PEOPLE_SHOWN ) : undefined,
+    outOfView: {
+      beliefs:     beliefsBeyond,
+      people:      people.slice( PEOPLE_SHOWN ),
+      percepts:    perceptsRanked.slice( PERCEPTS_SHOWN ),
+      spokenTurns: spokenRanked.slice( SPOKEN_TURNS_SHOWN ),
+    },
     actionReports: extractActionReports( state ),
     currentFocus: extractCurrentFocus( state, goals )
   }
@@ -468,7 +501,7 @@ export function extractCurrentFocus(
  * interaction recency and capped, so the executive can reason about *whom it is dealing
  * with* without flooding the prompt. Undefined when the Will knows no one.
  */
-export function extractKnownEntities( state: ReadonlySimulationState ): ExecutiveContext['knownEntities'] {
+export function rankKnownEntities( state: ReadonlySimulationState ): NonNullable<ExecutiveContext['knownEntities']> {
   type Acc = NonNullable<ExecutiveContext['knownEntities']>[number] & { _recency: number }
   const byKeid = new Map<string, Acc>()
 
@@ -542,12 +575,15 @@ export function extractKnownEntities( state: ReadonlySimulationState ): Executiv
     }
   }
 
-  const entities = [ ...byKeid.values() ]
+  return [ ...byKeid.values() ]
     .sort( ( a, b ) => b._recency - a._recency || ( b.closeness ?? 0 ) - ( a.closeness ?? 0 ) )
-    .slice( 0, 6 )
     .map( ( { _recency, ...rest } ) => rest )
+}
 
-  return entities.length > 0 ? entities : undefined
+/** The people I know as the view shows them: the most recent few, or undefined when none. */
+export function extractKnownEntities( state: ReadonlySimulationState ): ExecutiveContext['knownEntities'] {
+  const people = rankKnownEntities( state )
+  return people.length > 0 ? people.slice( 0, PEOPLE_SHOWN ) : undefined
 }
 
 /**
@@ -640,7 +676,8 @@ function _extractEpisodeContent( raw: unknown ): string {
   return compactText( raw )
 }
 
-function mapEpisodeToMemory( ep: {
+export function mapEpisodeToMemory( ep: {
+  id?: string
   content: unknown
   emotionalTags?: Record<string, number>
   activationStrength: number
@@ -650,6 +687,7 @@ function mapEpisodeToMemory( ep: {
   relevance: number
   emotionalContext: string
   tick?: number
+  id?: string
 } {
   const dominantEmotion = Object.entries( ep.emotionalTags ?? {} )
                                 .sort( ( [, a], [, b] ) => b - a )[0]?.[0] ?? 'neutral'
@@ -664,6 +702,7 @@ function mapEpisodeToMemory( ep: {
     relevance:        ep.activationStrength,
     emotionalContext: dominantEmotion,
     tick:             typeof ep.timestamp === 'number' ? ep.timestamp : undefined,
+    ...( ep.id ? { id: ep.id } : {} ),
     ...( data !== undefined ? { data, ...itemHandle( held ) } : {} ),
   }
 }
@@ -698,6 +737,11 @@ function extractSummary( content: unknown ): string {
 }
 
 function extractPercepts( state: ReadonlySimulationState ): ExecutiveContext['percepts'] {
+  return rankPercepts( state ).slice( 0, PERCEPTS_SHOWN )
+}
+
+/** Every percept in state, most salient first. */
+function rankPercepts( state: ReadonlySimulationState ): ExecutiveContext['percepts'] {
   const percepts: ExecutiveContext['percepts'] = []
 
   for( const entity of state.entities.values() ){
@@ -719,7 +763,7 @@ function extractPercepts( state: ReadonlySimulationState ): ExecutiveContext['pe
     })
   }
 
-  return percepts.sort( ( a, b ) => b.salience - a.salience ).slice( 0, 10 )
+  return percepts.sort( ( a, b ) => b.salience - a.salience )
 }
 
 /**
@@ -762,8 +806,20 @@ export function resolveBroughtBack(
   asked: ReadonlyArray<{ doc: string; page: number }>,
   state: ReadonlySimulationState,
   deps:  Pick<ContextDependencies, 'workingMemory' | 'episodicConsolidator'>,
-): BroughtBack[] {
-  return asked.map( ( { doc: handle, page } ) => {
+): BroughtBack[]
+export function resolveBroughtBack(
+  asked: ReadonlyArray<RecallRequest>,
+  state: ReadonlySimulationState,
+  deps:  Pick<ContextDependencies, 'workingMemory' | 'episodicConsolidator'>,
+): Array<BroughtBack | SectionRecall>
+export function resolveBroughtBack(
+  asked: ReadonlyArray<RecallRequest>,
+  state: ReadonlySimulationState,
+  deps:  Pick<ContextDependencies, 'workingMemory' | 'episodicConsolidator'>,
+): Array<BroughtBack | SectionRecall> {
+  return asked.map( r => {
+    if( 'section' in r ) return { kind: 'section' as const, section: r.section, page: r.page, ...( r.query ? { query: r.query } : {} ) }
+    const { doc: handle, page } = r
     const percept = state.entities.get( handle )
     if( percept?.type === 'percept' && percept.metadata?.['data'] !== undefined ){
       const m = percept.metadata
@@ -793,4 +849,73 @@ export function resolveBroughtBack(
 
     return { handle, page }
   } )
+}
+
+/**
+ * A page or a search of a section she asked for (LOSSLESS P5c). Rendered on the
+ * next call from that call's own context, in the section's own lines, so a page
+ * is ranked exactly as the view ranks. Memories alone are fetched here: a search
+ * of them is a semantic query, and that is async.
+ */
+export interface SectionRecall {
+  kind:     'section'
+  section:  RecallSection
+  page:     number
+  query?:   string
+  memories?: { items: ExecutiveContext['memories']; pages: number; found: number }
+}
+
+/**
+ * Everything she asked to have brought back, resolved: documents by handle, a
+ * memories page or search fetched from the episodic store (a retrieval — it
+ * strengthens what it reaches, as recall always has), other sections passed on
+ * to be rendered from the call's own context.
+ */
+export async function resolveRecall(
+  asked:   ReadonlyArray<RecallRequest>,
+  state:   ReadonlySimulationState,
+  deps:    Pick<ContextDependencies, 'workingMemory' | 'episodicConsolidator'>,
+  context: Pick<ExecutiveContext, 'memories' | 'memoriesHeld' | 'memoryQuery'>,
+): Promise<Array<BroughtBack | SectionRecall>> {
+  const resolved = resolveBroughtBack( asked, state, deps )
+  for( const r of resolved )
+    if( 'kind' in r && r.kind === 'section' && r.section === 'memories')
+      r.memories = await recallMemories( r, state, deps, context )
+  return resolved
+}
+
+async function recallMemories(
+  r:       SectionRecall,
+  state:   ReadonlySimulationState,
+  deps:    Pick<ContextDependencies, 'episodicConsolidator'>,
+  context: Pick<ExecutiveContext, 'memories' | 'memoriesHeld' | 'memoryQuery'>,
+): Promise<NonNullable<SectionRecall['memories']>> {
+  const store = deps.episodicConsolidator
+  if( !store ) return { items: [], pages: 1, found: 0 }
+
+  const inView = new Set( context.memories.map( m => m.id ).filter( Boolean ) )
+  const held   = store.getAllEpisodes().filter( ep => ep.sourceType !== 'goal')
+  const size   = MEMORIES_SHOWN
+  const query  = r.query ?? context.memoryQuery ?? ''
+
+  // Ranked by meaning when the index answers; by the words they share when it
+  // cannot (no index, or nothing above its similarity floor); a page with no
+  // query and no index, newest first — the view's own fallback order.
+  const want = r.query ? r.page * size : ( r.page - 1 ) * size + inView.size
+  let ranked = query ? await store.semanticQuery( query, { limit: want } ) : []
+  ranked = ranked.filter( ep => ep.sourceType !== 'goal')
+  if( ranked.length === 0 )
+    ranked = r.query
+      ? held.map( ( ep, i ) => ( { ep, i, score: queryMatch( r.query!, _extractEpisodeContent( ep.content ) ) } ) )
+          .filter( m => m.score > 0 ).sort( ( a, b ) => b.score - a.score || a.i - b.i ).map( m => m.ep )
+      : [ ...held ].sort( ( a, b ) => ( b.createdAt as unknown as number ?? 0 ) - ( a.createdAt as unknown as number ?? 0 ) )
+
+  // A search's page n is its nth best `size`; a plain page n is the (n−1)th
+  // `size` of those not already in view (page 1 is the view itself).
+  const from  = r.query ? ranked : r.page === 1 ? ranked.filter( ep => inView.has( ep.id ) ) : ranked.filter( ep => !inView.has( ep.id ) )
+  const nth   = r.query || r.page === 1 ? r.page : r.page - 1
+  const items = from.slice( ( nth - 1 ) * size, nth * size )
+  for( const ep of items ) store.markRetrieved( ep.id, state.tick )
+  const pages = r.query ? Math.max( 1, Math.ceil( ranked.length / size ) ) : 1 + Math.ceil( Math.max( 0, held.length - inView.size ) / size )
+  return { items: items.map( mapEpisodeToMemory ), pages, found: r.query ? ranked.length : held.length }
 }

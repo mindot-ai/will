@@ -6,6 +6,7 @@ import { logger } from '#core/logger'
 import { REPLY_TEXT_TAG, NO_MESSAGE_TAG, NO_MESSAGE_OPEN, stripProtocolMarkers } from '#llm/wire.contracts'
 import type { ReadonlySimulationState } from '#core/types'
 import type { ExecutiveOutputFull, ExecutiveOutputMinimal, IdeationCandidate, IdeationOutput } from '#faculties/executive.engine/types'
+import { RECALL_SECTIONS, type RecallRequest } from '#faculties/executive.engine/view'
 
 /**
  * Parse the LLM's text response into an ExecutiveOutputFull.
@@ -365,15 +366,24 @@ function parseTaggedBlocks(
   }
   catch { /* ignore */ }
 
-  // What the mind asks to have brought back next call (LOSSLESS P5a). Only
-  // well-formed requests survive: a handle, and a page that is a whole number.
+  // What the mind asks to have brought back next call (LOSSLESS P5a, P5c). Only
+  // well-formed requests survive: a handle or a section it can see, and a page
+  // that is a whole number. A section asked for without a page or a query means
+  // "more" — page 2, the first not in view.
   try {
     const recallData = parseJsonBlock('RECALL') as { recall?: unknown } | null
     const asked = Array.isArray( recallData?.recall ) ? recallData!.recall as Array<Record<string, unknown>> : []
-    const recall = asked
-      .filter( r => r && typeof r['doc'] === 'string' && ( r['doc'] as string ).trim() )
-      .map( r => ( { doc: ( r['doc'] as string ).trim(),
-        page: Number.isInteger( r['page'] ) && ( r['page'] as number ) > 0 ? r['page'] as number : 1 } ) )
+    const pageOf = ( r: Record<string, unknown>, fallback: number ) =>
+      Number.isInteger( r['page'] ) && ( r['page'] as number ) > 0 ? r['page'] as number : fallback
+    const recall: RecallRequest[] = []
+    for( const r of asked ){
+      if( !r || typeof r !== 'object') continue
+      if( typeof r['doc'] === 'string' && r['doc'].trim() ){ recall.push( { doc: r['doc'].trim(), page: pageOf( r, 1 ) } ); continue }
+      const section = RECALL_SECTIONS.find( s => s === r['section'] )
+      if( !section ) continue
+      const query = typeof r['query'] === 'string' && r['query'].trim() ? r['query'].trim() : undefined
+      recall.push( { section, page: pageOf( r, query ? 1 : 2 ), ...( query ? { query } : {} ) } )
+    }
     if( recall.length > 0 ) full.recall = recall
   }
   catch { /* ignore */ }

@@ -92,7 +92,7 @@ describe('she sees what she noticed about herself', () => {
     expect( s ).toContain('at 20 I noticed c')
     expect( s ).not.toContain('at 10 I noticed')
     expect( s.indexOf('at 30 I noticed c') ).toBeLessThan( s.indexOf('at 20 I noticed a') )
-    expect( s ).toContain('3 earlier observations are not in view.')
+    expect( s ).toContain('3 more earlier observations are not in view — {"recall": [{"section": "self-observations", "page": 2}]}')
   } )
 
   it('reads a woken mind\'s observations, written into the old ring', () => {

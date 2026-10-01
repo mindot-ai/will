@@ -48,10 +48,10 @@ import type { ReadonlySimulationState } from '#core/types'
 import type { LLMCallFunction } from '#cognition/utilities/token.tracker'
 import type { ExecutiveSummarizer } from '#llm/summarizer'
 import type { ExecutiveContext, IdeationCandidate } from '#faculties/executive.engine/types'
-import { buildExecutiveContext, type ContextDependencies } from '#faculties/executive.engine/context'
+import { buildExecutiveContext, SECTION_PAGE_SIZE, type ContextDependencies, type SectionRecall } from '#faculties/executive.engine/context'
 import { INNATE_SCHEMAS } from '#agency/schemas/innate'
 import { isGenericStyle } from '#cognition/identity.entity'
-import { renderItemData, renderBroughtBack, type CallView, type BroughtBack } from '#faculties/executive.engine/view'
+import { renderItemData, renderBroughtBack, moreLine, sectionPage, compactText, type CallView, type BroughtBack, type BroughtBackList, type RecallSection } from '#faculties/executive.engine/view'
 
 /**
  * The stances a mind always has, named so it need not guess at them.
@@ -149,6 +149,193 @@ export function ruminationLine(
   view?: CallView,
 ): string {
   return `- [${ w.type }] ${ w.summary } (activation: ${ w.activation.toFixed( 2 ) })${ renderItemData( w.data, w.handle, view ) }`
+}
+
+/** One belief, as `## My Beliefs` shows it. */
+export function beliefLine( b: ExecutiveContext['beliefs'][number] ): string {
+  return `- [${b.category}] ${b.statement} (confidence: ${( b.confidence * 100 ).toFixed( 0 )}%)`
+}
+
+/** One memory, as `## Relevant Memories` shows it. A memory never inlines a page: it is a pointer to follow, not a re-reading. */
+export function memoryLine( m: ExecutiveContext['memories'][number], currentTick: number, view?: CallView ): string {
+  const asMemory = view ? { ...view, mode: 'reference' as const } : undefined
+  const age = m.tick != null ? `, ~${currentTick - m.tick} ticks ago` : ''
+  return `- ${m.content} (relevance: ${m.relevance.toFixed( 2 )}, emotional: ${m.emotionalContext}${age})${ renderItemData( m.data, m.handle, asMemory ) }`
+}
+
+/** One thing I said, and what came back, as `## What I've Said Lately` shows it. */
+export function spokenTurnLine( t: ExecutiveContext['spokenTurns'][number] ): string {
+  const words = t.text.trim()
+  const said  = words ? ` — "${ words }"` : ''
+  // Their words, not merely that they spoke. "they answered" on its own reads
+  // as "I have the answer" — a live Will asked "same time, 3pm?", saw that
+  // flag, never saw the correction to 2pm, and relayed 3pm to a third party as
+  // confirmed. A reply I cannot see is not one I can act on.
+  const back  = t.answered
+    ? ( t.answeredWith?.trim()
+        ? ` — they answered: "${ t.answeredWith.trim() }"`
+        : ' — they answered (I do not have their words here)' )
+    : ' — no answer yet'
+  return `- **${ t.target }** · ${ t.age } ticks ago${ said }${ back }`
+}
+
+/** What I have noticed about myself, newest first — every one held in state. */
+export function readSelfObservations( state: ReadonlySimulationState ): Array<{ tick: number; order: number; text: string }> {
+  const observations: Array<{ tick: number; order: number; text: string }> = []
+  for( const entity of state.entities.values() ){
+    if( entity.type !== 'self_observation') continue
+    const text = ( entity.metadata?.[ 'observation' ] as string | undefined )?.trim()
+    if( text ) observations.push({
+      tick:  ( entity.metadata?.[ 'tick' ] as number | undefined ) ?? 0,
+      // `self-obs-<source>-<tick>-<idx>` (`self-obs-<tick>-<idx>` before facets'
+      // were kept) — and a woken mind's `self-obs-slot-<n>`.
+      order: Number( entity.id.split('-').at( -1 ) ) || 0,
+      text,
+    })
+  }
+  return observations.sort( ( a, b ) => b.tick - a.tick || a.order - b.order )
+}
+
+const SELF_OBSERVATIONS_SHOWN = 6
+
+export function selfObservationLine( o: { tick: number; text: string }, now: number ): string {
+  return `- ${ Math.max( 0, now - o.tick ) } ticks ago — "${ o.text }"`
+}
+
+type NotableTrait = { k: string; v: number; emphasis: TraitEmphasis }
+
+/** My distinctive traits, most distinctive first — a stable, coarse order (cache-safe). */
+export function notableTraits( identity: ExecutiveContext['identity'] ): NotableTrait[] {
+  return Object.entries( identity.traits )
+    .map( ( [ k, v ] ) => ( { k, v, emphasis: traitEmphasis( v ) } ) )
+    .filter( ( t ): t is NotableTrait => t.emphasis !== null )
+    .sort( ( a, b ) => a.emphasis.rank - b.emphasis.rank || a.k.localeCompare( b.k ) )
+}
+
+/** One trait, by degree, against my own norm, and how it is moving. */
+export function surfaceTrait( t: NotableTrait, identity: ExecutiveContext['identity'] ): string {
+  const quals = [ `${t.emphasis.adverb} ${t.emphasis.direction}` ]   // A — absolute degree
+  const stat  = identity.traitStats?.[ t.k ]
+  if( stat ){
+    const norm = normEmphasis( t.v, stat.mean )                      // B — vs my own norm
+    if( norm ) quals.push(`${norm} my norm`)
+    if( stat.shiftDir > 0 ) quals.push('rising lately')            // C — recent shift
+    else if( stat.shiftDir < 0 ) quals.push('easing lately')
+  }
+  return `${t.k} (${quals.join(', ')})`
+}
+
+/**
+ * A page of a section, or a search of one, as she asked for it last call — ranked
+ * as the view ranks it, in the view's own lines (LOSSLESS P5c). A section this
+ * seat is not aware of is said so, not shown: scoping is the creating engine's.
+ */
+function recalledSection(
+  r:       SectionRecall,
+  context: ExecutiveContext,
+  state:   ReadonlySimulationState,
+  has:     ( s: AwarenessScope ) => boolean,
+  view?:   CallView,
+): BroughtBackList {
+  const out    = context.outOfView
+  const now    = state.tick as unknown as number
+  const scope: Partial<Record<RecallSection, AwarenessScope>> = { beliefs: 'beliefs', percepts: 'percepts', memories: 'memories', said: 'recentActions' }
+  const label: Record<RecallSection, string> = { beliefs: 'Beliefs I hold', people: 'People I know', percepts: 'Things I notice now',
+    memories: 'Memories', 'self-observations': 'What I have noticed about myself', said: 'What I said', traits: 'My distinctive traits' }
+  const name = label[ r.section ]
+  if( scope[ r.section ] && !has( scope[ r.section ]! ) )
+    return { kind: 'list', heading: `${ name } — not in this focus's view`, lines: [] }
+
+  const size = SECTION_PAGE_SIZE[ r.section ]
+  const asRef = view ? { ...view, mode: 'reference' as const } : undefined
+  const pick = <T>( all: readonly T[], shown: number, line: ( t: T ) => string, text: ( t: T ) => string ) => {
+    const p = sectionPage( all, shown, size, r.page, r.query, text )
+    return { lines: p.items.map( line ), pages: p.pages, found: p.found }
+  }
+
+  let got: { lines: string[]; pages: number; found: number }
+  switch( r.section ){
+    case 'beliefs':
+      got = pick( [ ...context.beliefs, ...( out?.beliefs ?? [] ) ], context.beliefs.length, beliefLine, b => `${ b.category } ${ b.statement }`)
+      break
+    case 'people': {
+      const shown = context.knownEntities ?? []
+      got = pick( [ ...shown, ...( out?.people ?? [] ) ], shown.length, personLine,
+        p => [ p.name, p.intention, ...( p.handles ?? [] ).map( h => h.keid ) ].filter( Boolean ).join(' '))
+      break
+    }
+    case 'percepts':
+      got = pick( [ ...context.percepts, ...( out?.percepts ?? [] ) ], context.percepts.length,
+        p => perceptLine( p, asRef ), p => `${ p.summary } ${ compactText( p.data ) }`)
+      break
+    case 'said':
+      got = pick( [ ...context.spokenTurns, ...( out?.spokenTurns ?? [] ) ], context.spokenTurns.length, spokenTurnLine,
+        t => `${ t.target } ${ t.text } ${ t.answeredWith ?? '' }`)
+      break
+    case 'self-observations': {
+      const all = readSelfObservations( state )
+      got = pick( all, Math.min( all.length, SELF_OBSERVATIONS_SHOWN ), o => selfObservationLine( o, now ), o => o.text )
+      break
+    }
+    case 'traits': {
+      const all = notableTraits( context.identity )
+      got = pick( all, Math.min( all.length, TRAIT_SURFACE_CAP ), t => `- ${ surfaceTrait( t, context.identity ) }`, t => t.k )
+      break
+    }
+    case 'memories': {
+      const m = r.memories ?? { items: [], pages: 1, found: 0 }
+      got = { lines: m.items.map( x => memoryLine( x, now, view ) ), pages: m.pages, found: m.found }
+      break
+    }
+  }
+
+  if( r.query !== undefined )
+    return got.found === 0
+      ? { kind: 'list', heading: `${ name } about "${ r.query }" — none`, lines: [] }
+      : { kind: 'list', heading: `${ name } about "${ r.query }" — ${ got.found } found${ got.pages > 1 ? `, page ${ r.page } of ${ got.pages }` : '' }`,
+          lines: got.lines }
+  if( got.lines.length === 0 )
+    return { kind: 'list', heading: `${ name } — ${ got.pages } page${ got.pages === 1 ? '' : 's' }; there is no page ${ r.page }`, lines: [] }
+  return { kind: 'list', heading: `${ name }, page ${ r.page } of ${ got.pages }`, lines: got.lines }
+}
+
+/** A section's closing count, on its own line — '' when nothing is out of view (LOSSLESS P5c). */
+function moreTail( count: number, noun: string, section: RecallSection ): string {
+  const line = moreLine( count, noun, section )
+  return line ? `\n${ line }` : ''
+}
+
+/** One person I know, as `## People I Know` shows them — and as a page of them brought back. */
+export function personLine( s: NonNullable<ExecutiveContext['knownEntities']>[number] ): string {
+  const bits: string[] = []
+  if( s.intention ) bits.push(`seems to want: ${s.intention}`)
+  if( s.emotion )   bits.push(`seems to feel: ${s.emotion}`)
+  if( s.trust != null ) bits.push(`trust: ${( s.trust * 100 ).toFixed( 0 )}%`)
+  if( s.reliability != null && s.reliability !== 0.5 ) bits.push(`reliability: ${( s.reliability * 100 ).toFixed( 0 )}%`)
+  if( s.closeness != null && s.closeness > 0.1 ) bits.push(`closeness: ${( s.closeness * 100 ).toFixed( 0 )}%`)
+  // The Will can know *someone* without their name yet — never leak the raw keid.
+  const who = s.name ?? ( s.kind === 'thing' ? 'something' : 'someone')
+
+  // Where I can reach them, and how each place has gone. Stated as fact:
+  // which room to speak in is my decision, and I could not make it while
+  // the only thing anyone tracked was where they were last seen.
+  const where = ( s.handles ?? [] ).map( h => {
+    const kind = h.kind === 'dm' ? 'privately' : h.kind === 'room' ? 'in a shared room' : 'somewhere'
+    const ans  = h.answeredAgo !== undefined
+      ? `answered ${ h.answeredAgo } ticks ago`
+      : 'never answered me there'
+    return `${ kind } (${ h.keid }) — ${ ans }`
+  } )
+  const reach = where.length ? `\n  reachable: ${ where.join('; ') }` : ''
+
+  // An identity I have not settled. Deliberately a question and not a
+  // merge: two people really can share a name, so nothing fuses them on my
+  // behalf — but I am told, so I can find out, usually by asking.
+  const doubt = s.mayBeSameAs?.length
+    ? `\n  I hold a separate record for ${ s.mayBeSameAs.join(' and ') } — this may be the same someone under another handle. I do not know. If I find out they are, I say so with **sameAs**.`
+    : ''
+
+  return `- ${who}${bits.length ? ' — ' + bits.join(', ') : ''}${ reach }${ doubt }`
 }
 
 /**
@@ -310,7 +497,7 @@ export interface PromptBuildOptions {
    */
   view?: CallView
   /** What the mind asked, last cycle, to have brought back — resolved, rendered whole. */
-  broughtBack?: BroughtBack[]
+  broughtBack?: Array<BroughtBack | SectionRecall>
   /** Optional: Recent action types for diversity tracking */
   recentActionTypes?: string[]
   /**
@@ -400,26 +587,10 @@ export class PromptFactory {
     // cap at the top-K most distinctive so a many-trait Will can't bloat the prompt. Every
     // qualifier is a pure function of identity-self (B reads the frozen mean, C the frozen
     // shift), so the line is byte-identical between self-model evaluations.
-    const notableTraits = Object.entries( identity.traits )
-      .map( ( [ k, v ] ) => ( { k, v, emphasis: traitEmphasis( v ) } ) )
-      .filter( ( t ): t is { k: string; v: number; emphasis: TraitEmphasis } => t.emphasis !== null )
-      .sort( ( a, b ) => a.emphasis.rank - b.emphasis.rank || a.k.localeCompare( b.k ) )
-      .slice( 0, TRAIT_SURFACE_CAP )
-
-    const surfaceTrait = ( t: { k: string; v: number; emphasis: TraitEmphasis } ): string => {
-      const quals = [ `${t.emphasis.adverb} ${t.emphasis.direction}` ]   // A — absolute degree
-      const stat  = identity.traitStats?.[ t.k ]
-      if( stat ){
-        const norm = normEmphasis( t.v, stat.mean )                      // B — vs my own norm
-        if( norm ) quals.push(`${norm} my norm`)
-        if( stat.shiftDir > 0 ) quals.push('rising lately')            // C — recent shift
-        else if( stat.shiftDir < 0 ) quals.push('easing lately')
-      }
-      return `${t.k} (${quals.join(', ')})`
-    }
-
-    const traitsLine = notableTraits.length > 0
-      ? `**Traits:** ${notableTraits.map( surfaceTrait ).join(', ')}`
+    const notable       = notableTraits( identity )
+    const notableShown  = notable.slice( 0, TRAIT_SURFACE_CAP )
+    const traitsLine = notableShown.length > 0
+      ? `**Traits:** ${notableShown.map( t => surfaceTrait( t, identity ) ).join(', ')}${ moreTail( notable.length - notableShown.length, 'distinctive traits of mine are', 'traits') }`
       : ''
 
     const bd = context.behavioralDisposition
@@ -510,7 +681,7 @@ ${roleDescription}${architectureBlock}
 - **identityUpdates.traits**: Array of {key, value} where value is a DELTA to apply to my trait (e.g., +0.05 to increase a trait by 5%).
 - **identityUpdates.values**: Values I hold that are not yet listed — each is added to mine; none is removed.
 - **identityUpdates.style**: How I speak, as a short phrase — taken while my style is still generic.
-- **recall**: Something I hold that is larger than one page shows as a document — its size and a handle (\`doc:…\`) — with only a page, or none, in view. Naming the handle and a page brings that page back whole on my next cycle, under "## Brought Back". It is my own memory as it arrived, not something new: to learn what the world says NOW, I act again.
+- **recall**: Something I hold that is larger than one page shows as a document — its size and a handle (\`doc:…\`) — with only a page, or none, in view. Naming the handle and a page brings that page back whole on my next cycle, under "## Brought Back". A section that shows only some of what I hold — beliefs, people, percepts, memories, self-observations, what I said, traits — says exactly how many more there are; naming the section with a page, or with a query, brings those back the same way (\`{"section": "beliefs", "query": "payments"}\`). It is my own memory as it arrived, not something new: to learn what the world says NOW, I act again.
 - **knownEntityUpdates**: What I've learned about someone/something I'm dealing with. Array of {keid, name?, learned?, feeling?, sameAs?}. Use the keid from "## People I Know". Set name only when I actually learn their name; learned is an array of facts about them (stored as memories); feeling is how I feel toward them (-1..1). **sameAs** is another keid I have concluded is this same someone met under a different handle — it fuses my two records into one, so I use it only when I actually know, not when I merely suspect. Record only what I genuinely learned this turn.
 
 ## Required Output
@@ -624,7 +795,7 @@ completionType guide:
 [/SKILLS]
 
 [RECALL]
-{"recall": [{"doc": "percept-…", "page": 2}]}
+{"recall": [{"doc": "percept-…", "page": 2}, {"section": "people", "page": 2}, {"section": "memories", "query": "the payments migration"}]}
 [/RECALL]`
   }
 
@@ -801,7 +972,7 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
     // this?", and a facet composing a message needs it at least as much as the
     // master does — the facet is the one about to write the words again.
     const spokenBlock = has('recentActions')
-      ? this._buildSpokenTurnsSection( context.spokenTurns ).trim()
+      ? this._buildSpokenTurnsSection( context.spokenTurns, context.outOfView?.spokenTurns.length ).trim()
       : ''
 
     // One item, one render. A percept working memory also holds shows its data
@@ -811,7 +982,8 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
     const perceptsBlock = has('percepts')
       ? `## Percepts (What I Notice)\n${context.percepts.slice( 0, 10 ).map( p => p.handle && heldInMind.has( p.handle )
           ? `${ perceptLine( { ...p, data: undefined } ) } (held in mind — its data is under Active Ruminations)`
-          : perceptLine( p, view ) ).join('\n') || 'Nothing notable'}`
+          : perceptLine( p, view ) ).join('\n') || 'Nothing notable'}${
+          moreTail( context.outOfView?.percepts.length ?? 0, 'things I notice are', 'percepts') }`
       : ''
 
     // Every host ability I hold + what each is for, whole. Framed as
@@ -831,48 +1003,20 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       : ''
 
     const memoriesBlock = has('memories')
-      ? this._buildMemoriesSection( context.memories, state.tick, view )
+      ? this._buildMemoriesSection( context.memories, state.tick, view, context.memoriesHeld )
       : ''
 
     const beliefsBlock = has('beliefs')
-      ? `## My Beliefs\n${context.beliefs.map( b => `- [${b.category}] ${b.statement} (confidence: ${( b.confidence * 100 ).toFixed( 0 )}%)`).join('\n') || 'No strong beliefs yet'}${context.beliefsOmitted > 0 ? `\n[+${context.beliefsOmitted} omitted — deduped or lower-ranked; full store intact]` : ''}`
+      ? `## My Beliefs\n${context.beliefs.map( beliefLine ).join('\n') || 'No strong beliefs yet'}${
+          moreTail( context.beliefsOmitted, 'beliefs I hold are', 'beliefs') }`
       : ''
 
     // The Will's social models — its read on the people it knows (theory-of-mind, trust,
     // closeness). Surfaces the social-cognition stack so the Will reasons about *whom* it
     // is dealing with. Empty/absent ⇒ no block.
     const socialBlock = ( context.knownEntities && context.knownEntities.length > 0 )
-      ? `## People I Know\n${context.knownEntities.map( s => {
-          const bits: string[] = []
-          if( s.intention ) bits.push(`seems to want: ${s.intention}`)
-          if( s.emotion )   bits.push(`seems to feel: ${s.emotion}`)
-          if( s.trust != null ) bits.push(`trust: ${( s.trust * 100 ).toFixed( 0 )}%`)
-          if( s.reliability != null && s.reliability !== 0.5 ) bits.push(`reliability: ${( s.reliability * 100 ).toFixed( 0 )}%`)
-          if( s.closeness != null && s.closeness > 0.1 ) bits.push(`closeness: ${( s.closeness * 100 ).toFixed( 0 )}%`)
-          // The Will can know *someone* without their name yet — never leak the raw keid.
-          const who = s.name ?? ( s.kind === 'thing' ? 'something' : 'someone')
-
-          // Where I can reach them, and how each place has gone. Stated as fact:
-          // which room to speak in is my decision, and I could not make it while
-          // the only thing anyone tracked was where they were last seen.
-          const where = ( s.handles ?? [] ).map( h => {
-            const kind = h.kind === 'dm' ? 'privately' : h.kind === 'room' ? 'in a shared room' : 'somewhere'
-            const ans  = h.answeredAgo !== undefined
-              ? `answered ${ h.answeredAgo } ticks ago`
-              : 'never answered me there'
-            return `${ kind } (${ h.keid }) — ${ ans }`
-          } )
-          const reach = where.length ? `\n  reachable: ${ where.join('; ') }` : ''
-
-          // An identity I have not settled. Deliberately a question and not a
-          // merge: two people really can share a name, so nothing fuses them on my
-          // behalf — but I am told, so I can find out, usually by asking.
-          const doubt = s.mayBeSameAs?.length
-            ? `\n  I hold a separate record for ${ s.mayBeSameAs.join(' and ') } — this may be the same someone under another handle. I do not know. If I find out they are, I say so with **sameAs**.`
-            : ''
-
-          return `- ${who}${bits.length ? ' — ' + bits.join(', ') : ''}${ reach }${ doubt }`
-        } ).join('\n')}`
+      ? `## People I Know\n${context.knownEntities.map( personLine ).join('\n')}${
+          moreTail( context.outOfView?.people.length ?? 0, 'people I know are', 'people') }`
       : ''
 
     // Who the mind is mid-conversation with. Facets run those threads; this is the
@@ -922,7 +1066,8 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
 
     // Pages the mind asked for last cycle — up to half the call; the rest is said so.
     const broughtBackBlock = broughtBack?.length
-      ? renderBroughtBack( broughtBack, view ? Math.floor( view.budget / 2 ) : Infinity )
+      ? renderBroughtBack( broughtBack.map( b => 'kind' in b && b.kind === 'section'
+          ? recalledSection( b, context, state, has, view ) : b as BroughtBack ), view ? Math.floor( view.budget / 2 ) : Infinity )
       : ''
 
     // Assemble in canonical order; empties drop out so spacing stays clean.
@@ -1178,16 +1323,12 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
     memories: ExecutiveContext['memories'],
     currentTick: number,
     view?: CallView,
+    held?: number,
   ): string {
     if( memories.length === 0 ) return '## Relevant Memories\nNo relevant memories'
 
-    // A memory never inlines a page: it is a pointer to follow, not a re-reading.
-    const asMemory = view ? { ...view, mode: 'reference' as const } : undefined
-    const lines = memories.map( m => {
-      const age = m.tick != null ? `, ~${currentTick - m.tick} ticks ago` : ''
-      return `- ${m.content} (relevance: ${m.relevance.toFixed( 2 )}, emotional: ${m.emotionalContext}${age})${ renderItemData( m.data, m.handle, asMemory ) }`
-    } )
-    return `## Relevant Memories\n${lines.join('\n')}`
+    const lines = memories.map( m => memoryLine( m, currentTick, view ) )
+    return `## Relevant Memories\n${lines.join('\n')}${ moreTail( Math.max( 0, ( held ?? 0 ) - memories.length ), 'memories I hold are', 'memories') }`
   }
 
   /**
@@ -1208,6 +1349,7 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
    */
   private static _buildSpokenTurnsSection(
     spokenTurns: ExecutiveContext['spokenTurns'],
+    earlier = 0,
   ): string {
     // Defensive on absence, not just on empty: a host (and several tests) build a
     // context by hand, and a missing block must render as nothing rather than
@@ -1217,27 +1359,14 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
     // Whole, both sides. These were clipped to 80 and 100 characters on top of
     // records already cut to 100 and 140 — and the correction that mattered in
     // the story below sat past the cut as often as not (LOSSLESS P0).
-    const lines = spokenTurns.map( t => {
-      const words = t.text.trim()
-      const said  = words ? ` — "${ words }"` : ''
-      // Their words, not merely that they spoke. "they answered" on its own reads
-      // as "I have the answer" — a live Will asked "same time, 3pm?", saw that
-      // flag, never saw the correction to 2pm, and relayed 3pm to a third party as
-      // confirmed. A reply I cannot see is not one I can act on.
-      const back  = t.answered
-        ? ( t.answeredWith?.trim()
-            ? ` — they answered: "${ t.answeredWith.trim() }"`
-            : ' — they answered (I do not have their words here)' )
-        : ' — no answer yet'
-      return `- **${ t.target }** · ${ t.age } ticks ago${ said }${ back }`
-    } )
+    const lines = spokenTurns.map( spokenTurnLine )
 
     const open = spokenTurns.filter( t => !t.answered ).length
     const note = open > 0
       ? `\n\nThese are my own words, newest first. "No answer yet" means exactly that — the words went out and nothing has come back. It does not tell me why, and I should not assume.`
       : ''
 
-    return `## What I've Said Lately\n${ lines.join('\n') }${ note }\n\n`
+    return `## What I've Said Lately\n${ lines.join('\n') }${ moreTail( earlier, 'things I said earlier are', 'said') }${ note }\n\n`
   }
 
   private static _buildRecentOutcomesSection(
@@ -1330,26 +1459,12 @@ ${lines.join('\n')}
    * P5 adds the act that pulls one back).
    */
   private static _buildRecentIntrospectionSection( state: ReadonlySimulationState ): string {
-    const SELF_OBSERVATIONS_SHOWN = 6
 
     let latest: { updatedAt: number; meta: Record<string, unknown> } | null = null
-    const observations: Array<{ tick: number; order: number; text: string }> = []
-
-    for( const entity of state.entities.values() ){
+    for( const entity of state.entities.values() )
       if( entity.type === 'introspection' && ( !latest || entity.updatedAt > latest.updatedAt ) )
         latest = { updatedAt: entity.updatedAt, meta: entity.metadata ?? {} }
-
-      if( entity.type === 'self_observation'){
-        const text = ( entity.metadata?.[ 'observation' ] as string | undefined )?.trim()
-        if( text ) observations.push({
-          tick:  ( entity.metadata?.[ 'tick' ] as number | undefined ) ?? 0,
-          // `self-obs-<source>-<tick>-<idx>` (`self-obs-<tick>-<idx>` before facets'
-          // were kept) — and a woken mind's `self-obs-slot-<n>`.
-          order: Number( entity.id.split('-').at( -1 ) ) || 0,
-          text,
-        })
-      }
-    }
+    const observations = readSelfObservations( state )
 
     const parts: string[] = []
 
@@ -1371,14 +1486,11 @@ ${lines.join('\n')}
     }
 
     if( observations.length > 0 ){
-      observations.sort( ( a, b ) => b.tick - a.tick || a.order - b.order )
       const now   = state.tick as unknown as number
-      const shown = observations.slice( 0, SELF_OBSERVATIONS_SHOWN )
-        .map( o => `- ${ Math.max( 0, now - o.tick ) } ticks ago — "${ o.text }"` )
-      const more  = observations.length - shown.length
+      const shown = observations.slice( 0, SELF_OBSERVATIONS_SHOWN ).map( o => selfObservationLine( o, now ) )
       parts.push(
         `What I have noticed about myself, newest first:\n${ shown.join('\n') }` +
-        ( more > 0 ? `\n${ more } earlier observation${ more === 1 ? ' is' : 's are' } not in view.` : '' )
+        moreTail( observations.length - shown.length, 'earlier observations are', 'self-observations')
       )
     }
 

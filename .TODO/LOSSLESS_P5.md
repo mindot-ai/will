@@ -1,6 +1,6 @@
 # LOSSLESS P5 — every call fits its window, and nothing leaves a call silently
 
-> **Standing:** DESIGNED · 2026-10-01 · traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; the owner took all six recommendations (D1–D6) the same day; P5a and P5b landed
+> **Standing:** DESIGNED · 2026-10-01 · traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; the owner took all six recommendations (D1–D6) the same day; P5a, P5b and P5c landed
 
 > The last phase of [[LOSSLESS]]. P0–P4 made what the mind takes in, thinks, says and
 > keeps whole. This phase is about what a **single LLM call** is shown. That view
@@ -114,7 +114,14 @@ attachment, a message, a memory's content, a belief.
   conclusion, which SIGNAL_BOUNDARY P2 rules out. Paging hands it the evidence, a
   page at a time.
 
-### Part 3 — every count is honest, and she can reach past it
+### Part 3 — every count is honest, and she can reach past it ✅
+
+> **Landed (P5c):** counts and `[RECALL]` for beliefs, people, percepts, memories,
+> self-observations, what she said and traits; `section` + `page` / `query` as
+> designed. `{"memory": id}` was not built — no memory's id is in view, so nothing
+> could name one; a memories search reaches them. `ACTION_RECORD_KEEP` was checked
+> and found a LOSS (an act known only by its fate is remembered nowhere past six) —
+> its own PR. The facet histories and the thread digest are not in P5c.
 
 Each section that shows N of more renders its ranked top N, **states exactly how many
 are left**, and names the rest compactly where that is cheap, so that every item is
@@ -222,7 +229,7 @@ window, that is a configuration error, raised loudly at assembly.
 |---|---|---|
 | **P5a** ✅ | Window, estimate, budget, Part 2 paging, one render per item, `[RECALL]` for `doc` pages, the safety net | Closes the overflow P2 opened, before Lora's first GitHub boot |
 | **P5b** ✅ | Part 4: text cuts removed, `MEANING_CAP` first | Her GitHub tools' required args |
-| **P5c** | Part 3: honest counts, ranked abilities, `[RECALL]` for sections, queries and memories | The silent drops |
+| **P5c** ✅ | Part 3: honest counts, ranked abilities, `[RECALL]` for sections, queries and memories | The silent drops |
 | **P5d** | Attachments as items | Depends on P5a's paging |
 | **P5e** | Part 5: chunked embedding of what she read | Depends on P5a's pages |
 

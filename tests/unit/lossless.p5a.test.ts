@@ -198,7 +198,7 @@ describe('every page is reachable, wherever she holds it', () => {
     const read: string[] = []
     for( let page = 1; page <= n; page++ ){
       const asked = parseResponse( JSON.stringify( { actions: [], confidence: 0.5,
-        reasoning: `r\n[RECALL]\n{"recall": [{"doc": "percept-77", "page": ${ page }}]}\n[/RECALL]` } ), state, [] ).recall!
+        reasoning: `r\n[RECALL]\n{"recall": [{"doc": "percept-77", "page": ${ page }}]}\n[/RECALL]` } ), state, [] ).recall! as Array<{ doc: string; page: number }>
       const shown = renderBroughtBack( resolveBroughtBack( asked, state, { workingMemory: null, episodicConsolidator: null } ), 1e9 )
       read.push( shown.split(`page ${ page } of ${ n }:\n`)[1]!.split('\n→ ')[0]! )
     }
@@ -240,7 +240,7 @@ describe('every page is reachable, wherever she holds it', () => {
   it('the context the executive is built from carries a remembered observation\'s data and handle', async () => {
     const episode = { id: 'episodic-3-0', timestamp: 3, activationStrength: 0.6, sourceType: 'percept', emotionalTags: {},
       content: { content: { summary: 'read list_pull_requests', entityId: 'percept-77', data: { open: 2 } } } }
-    const consolidator = { semanticQuery: async () => [ episode ], query: () => [], markRetrieved(){} }
+    const consolidator = { semanticQuery: async () => [ episode ], query: () => [], getAllEpisodes: () => [ episode ], markRetrieved(){} }
     const c = await buildExecutiveContext( { tick: 9, entities: new Map(), metrics: new Map() } as never,
       { workingMemory: null, goalManager: null, episodicConsolidator: consolidator as never, semanticIntegrator: null } )
     expect( c.memories[0] ).toMatchObject( { data: { open: 2 }, handle: 'percept-77' } )
@@ -271,7 +271,7 @@ describe('a call that would not fit tightens — it does not fail, and it cuts n
     const shown = renderBroughtBack( items, estimateTokens( p1! ) + estimateTokens( p2! ) )
     expect( shown ).toContain('page 2 of')
     expect( shown ).not.toContain('page 3 of')
-    expect( shown ).toContain('2 more pages I asked for did not fit this call — I can ask for them again.')
+    expect( shown ).toContain('2 more of what I asked for did not fit this call — I can ask for them again.')
   } )
 } )
 

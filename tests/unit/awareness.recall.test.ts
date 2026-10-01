@@ -55,7 +55,7 @@ describe('buildExecutiveContext — collects relevant planIds from recall (Stage
       { tick: 5, metrics: new Map(), entities: new Map() } as any,
       {
         workingMemory: null, goalManager: null, semanticIntegrator: null,
-        episodicConsolidator: { semanticQuery: async () => [ episode ], query: () => [], markRetrieved: () => {} } as any,
+        episodicConsolidator: { semanticQuery: async () => [ episode ], query: () => [], getAllEpisodes: () => [ episode ], markRetrieved: () => {} } as any,
       },
     )
     expect( ctx.relevantPlanIds ).toContain('plan-7')

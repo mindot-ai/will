@@ -5,6 +5,7 @@
 import type { CognitiveBus } from '#cognition/bus'
 import type { PlanStep } from '#cognition/faculties/planning.engine/engine'
 import type { IdentityUpdates } from '#cognition/identity.entity'
+import type { RecallRequest } from '#faculties/executive.engine/view'
 
 // ── Full executive output ────────────────────────────────────
 
@@ -82,10 +83,11 @@ export interface ExecutiveOutputFull {
   selfObservations?: string[]
   /**
    * What the mind asks to have brought back on its next call — a document's page,
-   * by the handle the prompt showed (LOSSLESS P5a). Attention, not an act: it
-   * reads the mind's own memory, consults no world, and never enters the field.
+   * by the handle the prompt showed (LOSSLESS P5a), or a page or a search of a
+   * section that shows N of more (P5c). Attention, not an act: it reads the mind's
+   * own memory, consults no world, and never enters the field.
    */
-  recall?: Array<{ doc: string; page: number }>
+  recall?: RecallRequest[]
   /** Compound actions the mind is naming as single skills (see ProposedSkill). */
   newSkills?: ProposedSkill[]
   /**
@@ -292,7 +294,13 @@ export interface ExecutiveContext {
     /** What it held when it was an observation — whole in the episode — and its handle. */
     data?: unknown
     handle?: string
+    /** The episode's id — so a page of memories can leave out the ones in view. */
+    id?: string
   }>
+  /** How many memories I hold that recall could reach — those in view are the most relevant now. */
+  memoriesHeld?: number
+  /** What the memories in view were recalled by — the situation, or the focus's own query. */
+  memoryQuery?: string
   beliefs: Array<{
     statement: string
     category: string
@@ -300,6 +308,17 @@ export interface ExecutiveContext {
   }>
   /** How many beliefs exist but were not included due to the relevance cap. */
   beliefsOmitted: number
+  /**
+   * What each counted section ranked and did not show, in rank order — kept so its
+   * count is honest and any of it can be brought back by `[RECALL]` (LOSSLESS P5c).
+   * Absent on a hand-built context: nothing is out of view.
+   */
+  outOfView?: {
+    beliefs:     ExecutiveContext['beliefs']
+    people:      NonNullable<ExecutiveContext['knownEntities']>
+    percepts:    ExecutiveContext['percepts']
+    spokenTurns: ExecutiveContext['spokenTurns']
+  }
   /**
    * What became of what it did — the Act→Confirm→Perceive loop, surfaced.
    *

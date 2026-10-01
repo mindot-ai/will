@@ -3116,6 +3116,28 @@ function humanSize(text) {
   return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 var recallHint = (handle, page) => `{"recall": [{"doc": "${handle}", "page": ${page}}]}`;
+var RECALL_SECTIONS = ["beliefs", "people", "percepts", "memories", "self-observations", "said", "traits"];
+function moreLine(count, noun, section) {
+  if (count <= 0) return "";
+  return `${count} more ${noun} not in view \u2014 {"recall": [{"section": "${section}", "page": 2}]} brings the next page; {"section": "${section}", "query": "\u2026"} the ones about something.`;
+}
+var words = (s) => s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 2);
+function queryMatch(query, text) {
+  const q = [...new Set(words(query))];
+  if (q.length === 0) return 0;
+  const t = words(text);
+  const hit = (w) => t.some((x) => x === w || w.length > 3 && x.length > 3 && (x.startsWith(w) || w.startsWith(x)));
+  return q.filter(hit).length / q.length;
+}
+function sectionPage(all, shown, size, page, query, text) {
+  if (query !== void 0) {
+    const matched = all.map((item, rank) => ({ item, rank, score: queryMatch(query, text(item)) })).filter((m) => m.score > 0).sort((a, b) => b.score - a.score || a.rank - b.rank).map((m) => m.item);
+    return { items: matched.slice((page - 1) * size, page * size), pages: Math.max(1, Math.ceil(matched.length / size)), found: matched.length };
+  }
+  const pages = 1 + Math.ceil(Math.max(0, all.length - shown) / size);
+  const items = page === 1 ? all.slice(0, shown) : all.slice(shown + (page - 2) * size, shown + (page - 1) * size);
+  return { items: [...items], pages, found: all.length };
+}
 function compactText(data) {
   if (data === void 0 || data === null) return "";
   if (typeof data === "string") return data;
@@ -3151,6 +3173,18 @@ function renderBroughtBack(items, budget) {
   let used = 0;
   let deferred = 0;
   for (const it of items) {
+    if ("kind" in it && it.kind === "list") {
+      const text2 = it.lines.length > 0 ? `- ${it.heading}:
+${it.lines.join("\n")}` : `- ${it.heading}.`;
+      const cost2 = estimateTokens(text2);
+      if (used > 0 && used + cost2 > budget) {
+        deferred++;
+        continue;
+      }
+      used += cost2;
+      out.push(text2);
+      continue;
+    }
     if (it.data === void 0) {
       out.push(`- doc:${it.handle} \u2014 I hold no record of it now (it may have been forgotten).`);
       continue;
@@ -3178,7 +3212,7 @@ function renderBroughtBack(items, budget) {
 ${text}${next}`);
   }
   const tail = deferred > 0 ? `
-${deferred} more page${deferred === 1 ? "" : "s"} I asked for did not fit this call \u2014 I can ask for ${deferred === 1 ? "it" : "them"} again.` : "";
+${deferred} more of what I asked for did not fit this call \u2014 I can ask for ${deferred === 1 ? "it" : "them"} again.` : "";
   return `## Brought Back (I asked for these)
 From my own memory, as it arrived \u2014 not something new:
 ${out.join("\n\n")}${tail}`;
@@ -14137,6 +14171,18 @@ function resolveReplyExpectations(entities, tick, windowTicks = DEFAULT_REPLY_WI
 
 // src/cognition/faculties/executive.engine/context.ts
 var SPOKEN_TURNS_SHOWN = 6;
+var PEOPLE_SHOWN = 6;
+var PERCEPTS_SHOWN = 10;
+var MEMORIES_SHOWN = 8;
+var SECTION_PAGE_SIZE = {
+  beliefs: 30,
+  people: PEOPLE_SHOWN,
+  percepts: PERCEPTS_SHOWN,
+  memories: MEMORIES_SHOWN,
+  "self-observations": 6,
+  said: SPOKEN_TURNS_SHOWN,
+  traits: 6
+};
 async function buildExecutiveContext(state, deps, recallQuery) {
   const identityEntity = state.entities.get("identity-self");
   const identityName = readIdentityName(state);
@@ -14159,8 +14205,10 @@ async function buildExecutiveContext(state, deps, recallQuery) {
   }));
   let memories = [];
   let relevantPlanIds = [];
+  let memoryQuery;
   if (deps.episodicConsolidator) {
     const semanticQuery = recallQuery && recallQuery.trim().length > 0 ? recallQuery : buildSemanticQuery(state, deps.goalManager);
+    memoryQuery = semanticQuery;
     try {
       const moodValence = state.metrics.get("affect.valence") ?? 0;
       const semanticResults = await deps.episodicConsolidator.semanticQuery(
@@ -14182,13 +14230,13 @@ async function buildExecutiveContext(state, deps, recallQuery) {
           combined.push(ep);
         }
       }
-      const recalled = combined.filter((ep) => ep.sourceType !== "goal").slice(0, 8);
+      const recalled = combined.filter((ep) => ep.sourceType !== "goal").slice(0, MEMORIES_SHOWN);
       relevantPlanIds = collectPlanIds(recalled);
       memories = recalled.map(mapEpisodeToMemory);
       for (const ep of recalled) deps.episodicConsolidator?.markRetrieved(ep.id, state.tick);
     } catch (err) {
       const fallbackResults = deps.episodicConsolidator.query({ limit: 20 });
-      const recalled = fallbackResults.filter((ep) => ep.sourceType !== "goal").slice().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)).slice(0, 8);
+      const recalled = fallbackResults.filter((ep) => ep.sourceType !== "goal").slice().sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)).slice(0, MEMORIES_SHOWN);
       relevantPlanIds = collectPlanIds(recalled);
       memories = recalled.map(mapEpisodeToMemory);
       for (const ep of recalled) deps.episodicConsolidator?.markRetrieved(ep.id, state.tick);
@@ -14250,9 +14298,17 @@ async function buildExecutiveContext(state, deps, recallQuery) {
     cappedBeliefs.push(item);
     if (cappedBeliefs.length >= BELIEF_PROMPT_LIMIT) break;
   }
-  const beliefs = cappedBeliefs.map(({ b }) => ({ statement: b.statement, category: b.category, confidence: b.confidence }));
-  const beliefsOmitted = Math.max(0, allBeliefs.length - beliefs.length);
-  const percepts = extractPercepts(state);
+  const asBelief = (b) => ({ statement: b.statement, category: b.category, confidence: b.confidence });
+  const beliefs = cappedBeliefs.map(({ b }) => asBelief(b));
+  const shownBeliefs = new Set(cappedBeliefs.map(({ b }) => b));
+  const accepted = new Set(acceptedBeliefs);
+  const beliefsBeyond = [
+    ...scoredBeliefs.filter(({ b }) => !shownBeliefs.has(b)).map(({ b }) => asBelief(b)),
+    ...sortedForDedup.filter((b) => !accepted.has(b)).map(asBelief)
+  ];
+  const beliefsOmitted = beliefsBeyond.length;
+  const perceptsRanked = rankPercepts(state);
+  const percepts = perceptsRanked.slice(0, PERCEPTS_SHOWN);
   const affect = extractAffect(state);
   const execParams = readEffectiveParams(state, "engine-config-executive");
   const behavioralDisposition = execParams.riskTolerance !== void 0 || execParams.explorationRate !== void 0 || execParams.impulsivity !== void 0 ? {
@@ -14261,17 +14317,15 @@ async function buildExecutiveContext(state, deps, recallQuery) {
     impulsivity: execParams.impulsivity ?? 0.3
   } : void 0;
   const recentActionsCapped = recentActionRecords(state.entities);
-  const nameOf2 = (keid) => {
-    for (const e of state.entities.values()) {
-      if (e.type !== "known-entity") continue;
-      const m = e.metadata ?? {};
-      if (m["keid"] !== keid) continue;
-      const n = m["name"];
-      return typeof n === "string" && n.trim() ? n : void 0;
-    }
-    return void 0;
-  };
-  const spokenTurns = readSpokenTurns(state.entities).filter((t) => !t.isAck).reverse().slice(0, SPOKEN_TURNS_SHOWN).map((t) => ({
+  const names = /* @__PURE__ */ new Map();
+  for (const e of state.entities.values()) {
+    if (e.type !== "known-entity") continue;
+    const m = e.metadata ?? {};
+    const n = m["name"];
+    if (typeof m["keid"] === "string" && !names.has(m["keid"]) && typeof n === "string" && n.trim()) names.set(m["keid"], n);
+  }
+  const nameOf2 = (keid) => names.get(keid);
+  const spokenRanked = readSpokenTurns(state.entities).filter((t) => !t.isAck).reverse().map((t) => ({
     // Roster first, the record's stored name second. A name is learned over
     // time, so records written before the mind knew it keep the raw id — and
     // the same person rendered as both `FKEM` and `discord:15255…` in one list,
@@ -14282,6 +14336,9 @@ async function buildExecutiveContext(state, deps, recallQuery) {
     answered: t.answeredAt !== void 0,
     ...t.answeredWith ? { answeredWith: t.answeredWith } : {}
   }));
+  const spokenTurns = spokenRanked.slice(0, SPOKEN_TURNS_SHOWN);
+  const people = rankKnownEntities(state);
+  const memoriesHeld = deps.episodicConsolidator?.getAllEpisodes().filter((ep) => ep.sourceType !== "goal").length;
   const plans = [];
   for (const entity of state.entities.values()) {
     if (entity.type !== "plan") continue;
@@ -14330,13 +14387,21 @@ async function buildExecutiveContext(state, deps, recallQuery) {
     abilities: extractAbilities(state),
     workingMemory,
     memories,
+    ...memoriesHeld !== void 0 ? { memoriesHeld } : {},
+    ...memoryQuery !== void 0 ? { memoryQuery } : {},
     beliefs,
     beliefsOmitted,
     recentActions: recentActionsCapped,
     spokenTurns,
     behavioralDisposition,
     selfTuning,
-    knownEntities: extractKnownEntities(state),
+    knownEntities: people.length > 0 ? people.slice(0, PEOPLE_SHOWN) : void 0,
+    outOfView: {
+      beliefs: beliefsBeyond,
+      people: people.slice(PEOPLE_SHOWN),
+      percepts: perceptsRanked.slice(PERCEPTS_SHOWN),
+      spokenTurns: spokenRanked.slice(SPOKEN_TURNS_SHOWN)
+    },
     actionReports: extractActionReports(state),
     currentFocus: extractCurrentFocus(state, goals)
   };
@@ -14397,7 +14462,7 @@ function extractCurrentFocus(state, goals) {
     switchCost: state.metrics.get("task_switch.switch_cost") ?? 0
   };
 }
-function extractKnownEntities(state) {
+function rankKnownEntities(state) {
   const byKeid = /* @__PURE__ */ new Map();
   const alias = /* @__PURE__ */ new Map();
   for (const e of state.entities.values())
@@ -14448,8 +14513,7 @@ function extractKnownEntities(state) {
       get(keid).closeness = m.attachmentStrength;
     }
   }
-  const entities = [...byKeid.values()].sort((a, b) => b._recency - a._recency || (b.closeness ?? 0) - (a.closeness ?? 0)).slice(0, 6).map(({ _recency, ...rest }) => rest);
-  return entities.length > 0 ? entities : void 0;
+  return [...byKeid.values()].sort((a, b) => b._recency - a._recency || (b.closeness ?? 0) - (a.closeness ?? 0)).map(({ _recency, ...rest }) => rest);
 }
 function buildSemanticQuery(state, goalManager) {
   const parts = [];
@@ -14517,6 +14581,7 @@ function mapEpisodeToMemory(ep) {
     relevance: ep.activationStrength,
     emotionalContext: dominantEmotion,
     tick: typeof ep.timestamp === "number" ? ep.timestamp : void 0,
+    ...ep.id ? { id: ep.id } : {},
     ...data !== void 0 ? { data, ...itemHandle(held) } : {}
   };
 }
@@ -14539,6 +14604,9 @@ function extractSummary(content) {
   return String(content ?? "");
 }
 function extractPercepts(state) {
+  return rankPercepts(state).slice(0, PERCEPTS_SHOWN);
+}
+function rankPercepts(state) {
   const percepts = [];
   for (const entity of state.entities.values()) {
     if (entity.type !== "percept" && entity.type !== "percept.social") continue;
@@ -14554,7 +14622,7 @@ function extractPercepts(state) {
       salience: entity.metadata?.salience ?? 0
     });
   }
-  return percepts.sort((a, b) => b.salience - a.salience).slice(0, 10);
+  return percepts.sort((a, b) => b.salience - a.salience);
 }
 function extractAffect(state) {
   const valence = state.metrics.get("affect.valence") ?? 0;
@@ -14570,7 +14638,9 @@ function extractAffect(state) {
   return { dominantEmotion, valence, arousal, dominance, blends };
 }
 function resolveBroughtBack(asked, state, deps) {
-  return asked.map(({ doc: handle, page }) => {
+  return asked.map((r) => {
+    if ("section" in r) return { kind: "section", section: r.section, page: r.page, ...r.query ? { query: r.query } : {} };
+    const { doc: handle, page } = r;
     const percept = state.entities.get(handle);
     if (percept?.type === "percept" && percept.metadata?.["data"] !== void 0) {
       const m = percept.metadata;
@@ -14615,6 +14685,32 @@ function resolveBroughtBack(asked, state, deps) {
     return { handle, page };
   });
 }
+async function resolveRecall(asked, state, deps, context) {
+  const resolved = resolveBroughtBack(asked, state, deps);
+  for (const r of resolved)
+    if ("kind" in r && r.kind === "section" && r.section === "memories")
+      r.memories = await recallMemories(r, state, deps, context);
+  return resolved;
+}
+async function recallMemories(r, state, deps, context) {
+  const store = deps.episodicConsolidator;
+  if (!store) return { items: [], pages: 1, found: 0 };
+  const inView = new Set(context.memories.map((m) => m.id).filter(Boolean));
+  const held = store.getAllEpisodes().filter((ep) => ep.sourceType !== "goal");
+  const size = MEMORIES_SHOWN;
+  const query = r.query ?? context.memoryQuery ?? "";
+  const want = r.query ? r.page * size : (r.page - 1) * size + inView.size;
+  let ranked = query ? await store.semanticQuery(query, { limit: want }) : [];
+  ranked = ranked.filter((ep) => ep.sourceType !== "goal");
+  if (ranked.length === 0)
+    ranked = r.query ? held.map((ep, i) => ({ ep, i, score: queryMatch(r.query, _extractEpisodeContent(ep.content)) })).filter((m) => m.score > 0).sort((a, b) => b.score - a.score || a.i - b.i).map((m) => m.ep) : [...held].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  const from = r.query ? ranked : r.page === 1 ? ranked.filter((ep) => inView.has(ep.id)) : ranked.filter((ep) => !inView.has(ep.id));
+  const nth = r.query || r.page === 1 ? r.page : r.page - 1;
+  const items = from.slice((nth - 1) * size, nth * size);
+  for (const ep of items) store.markRetrieved(ep.id, state.tick);
+  const pages = r.query ? Math.max(1, Math.ceil(ranked.length / size)) : 1 + Math.ceil(Math.max(0, held.length - inView.size) / size);
+  return { items: items.map(mapEpisodeToMemory), pages, found: r.query ? ranked.length : held.length };
+}
 
 // src/cognition/faculties/executive.engine/prompt.factory.ts
 var INNATE_ACTION_NAMES = INNATE_SCHEMAS.map((s) => s.id).sort().join(", ");
@@ -14638,6 +14734,156 @@ function perceptLine(p, view) {
 }
 function ruminationLine(w, view) {
   return `- [${w.type}] ${w.summary} (activation: ${w.activation.toFixed(2)})${renderItemData(w.data, w.handle, view)}`;
+}
+function beliefLine(b) {
+  return `- [${b.category}] ${b.statement} (confidence: ${(b.confidence * 100).toFixed(0)}%)`;
+}
+function memoryLine(m, currentTick, view) {
+  const asMemory = view ? { ...view, mode: "reference" } : void 0;
+  const age = m.tick != null ? `, ~${currentTick - m.tick} ticks ago` : "";
+  return `- ${m.content} (relevance: ${m.relevance.toFixed(2)}, emotional: ${m.emotionalContext}${age})${renderItemData(m.data, m.handle, asMemory)}`;
+}
+function spokenTurnLine(t) {
+  const words2 = t.text.trim();
+  const said = words2 ? ` \u2014 "${words2}"` : "";
+  const back = t.answered ? t.answeredWith?.trim() ? ` \u2014 they answered: "${t.answeredWith.trim()}"` : " \u2014 they answered (I do not have their words here)" : " \u2014 no answer yet";
+  return `- **${t.target}** \xB7 ${t.age} ticks ago${said}${back}`;
+}
+function readSelfObservations(state) {
+  const observations = [];
+  for (const entity of state.entities.values()) {
+    if (entity.type !== "self_observation") continue;
+    const text = entity.metadata?.["observation"]?.trim();
+    if (text) observations.push({
+      tick: entity.metadata?.["tick"] ?? 0,
+      // `self-obs-<source>-<tick>-<idx>` (`self-obs-<tick>-<idx>` before facets'
+      // were kept) — and a woken mind's `self-obs-slot-<n>`.
+      order: Number(entity.id.split("-").at(-1)) || 0,
+      text
+    });
+  }
+  return observations.sort((a, b) => b.tick - a.tick || a.order - b.order);
+}
+var SELF_OBSERVATIONS_SHOWN = 6;
+function selfObservationLine(o, now) {
+  return `- ${Math.max(0, now - o.tick)} ticks ago \u2014 "${o.text}"`;
+}
+function notableTraits(identity) {
+  return Object.entries(identity.traits).map(([k, v]) => ({ k, v, emphasis: traitEmphasis(v) })).filter((t) => t.emphasis !== null).sort((a, b) => a.emphasis.rank - b.emphasis.rank || a.k.localeCompare(b.k));
+}
+function surfaceTrait(t, identity) {
+  const quals = [`${t.emphasis.adverb} ${t.emphasis.direction}`];
+  const stat = identity.traitStats?.[t.k];
+  if (stat) {
+    const norm = normEmphasis(t.v, stat.mean);
+    if (norm) quals.push(`${norm} my norm`);
+    if (stat.shiftDir > 0) quals.push("rising lately");
+    else if (stat.shiftDir < 0) quals.push("easing lately");
+  }
+  return `${t.k} (${quals.join(", ")})`;
+}
+function recalledSection(r, context, state, has, view) {
+  const out = context.outOfView;
+  const now = state.tick;
+  const scope = { beliefs: "beliefs", percepts: "percepts", memories: "memories", said: "recentActions" };
+  const label = {
+    beliefs: "Beliefs I hold",
+    people: "People I know",
+    percepts: "Things I notice now",
+    memories: "Memories",
+    "self-observations": "What I have noticed about myself",
+    said: "What I said",
+    traits: "My distinctive traits"
+  };
+  const name = label[r.section];
+  if (scope[r.section] && !has(scope[r.section]))
+    return { kind: "list", heading: `${name} \u2014 not in this focus's view`, lines: [] };
+  const size = SECTION_PAGE_SIZE[r.section];
+  const asRef = view ? { ...view, mode: "reference" } : void 0;
+  const pick = (all, shown, line, text) => {
+    const p = sectionPage(all, shown, size, r.page, r.query, text);
+    return { lines: p.items.map(line), pages: p.pages, found: p.found };
+  };
+  let got;
+  switch (r.section) {
+    case "beliefs":
+      got = pick([...context.beliefs, ...out?.beliefs ?? []], context.beliefs.length, beliefLine, (b) => `${b.category} ${b.statement}`);
+      break;
+    case "people": {
+      const shown = context.knownEntities ?? [];
+      got = pick(
+        [...shown, ...out?.people ?? []],
+        shown.length,
+        personLine,
+        (p) => [p.name, p.intention, ...(p.handles ?? []).map((h) => h.keid)].filter(Boolean).join(" ")
+      );
+      break;
+    }
+    case "percepts":
+      got = pick(
+        [...context.percepts, ...out?.percepts ?? []],
+        context.percepts.length,
+        (p) => perceptLine(p, asRef),
+        (p) => `${p.summary} ${compactText(p.data)}`
+      );
+      break;
+    case "said":
+      got = pick(
+        [...context.spokenTurns, ...out?.spokenTurns ?? []],
+        context.spokenTurns.length,
+        spokenTurnLine,
+        (t) => `${t.target} ${t.text} ${t.answeredWith ?? ""}`
+      );
+      break;
+    case "self-observations": {
+      const all = readSelfObservations(state);
+      got = pick(all, Math.min(all.length, SELF_OBSERVATIONS_SHOWN), (o) => selfObservationLine(o, now), (o) => o.text);
+      break;
+    }
+    case "traits": {
+      const all = notableTraits(context.identity);
+      got = pick(all, Math.min(all.length, TRAIT_SURFACE_CAP), (t) => `- ${surfaceTrait(t, context.identity)}`, (t) => t.k);
+      break;
+    }
+    case "memories": {
+      const m = r.memories ?? { items: [], pages: 1, found: 0 };
+      got = { lines: m.items.map((x) => memoryLine(x, now, view)), pages: m.pages, found: m.found };
+      break;
+    }
+  }
+  if (r.query !== void 0)
+    return got.found === 0 ? { kind: "list", heading: `${name} about "${r.query}" \u2014 none`, lines: [] } : {
+      kind: "list",
+      heading: `${name} about "${r.query}" \u2014 ${got.found} found${got.pages > 1 ? `, page ${r.page} of ${got.pages}` : ""}`,
+      lines: got.lines
+    };
+  if (got.lines.length === 0)
+    return { kind: "list", heading: `${name} \u2014 ${got.pages} page${got.pages === 1 ? "" : "s"}; there is no page ${r.page}`, lines: [] };
+  return { kind: "list", heading: `${name}, page ${r.page} of ${got.pages}`, lines: got.lines };
+}
+function moreTail(count, noun, section) {
+  const line = moreLine(count, noun, section);
+  return line ? `
+${line}` : "";
+}
+function personLine(s) {
+  const bits = [];
+  if (s.intention) bits.push(`seems to want: ${s.intention}`);
+  if (s.emotion) bits.push(`seems to feel: ${s.emotion}`);
+  if (s.trust != null) bits.push(`trust: ${(s.trust * 100).toFixed(0)}%`);
+  if (s.reliability != null && s.reliability !== 0.5) bits.push(`reliability: ${(s.reliability * 100).toFixed(0)}%`);
+  if (s.closeness != null && s.closeness > 0.1) bits.push(`closeness: ${(s.closeness * 100).toFixed(0)}%`);
+  const who = s.name ?? (s.kind === "thing" ? "something" : "someone");
+  const where = (s.handles ?? []).map((h) => {
+    const kind = h.kind === "dm" ? "privately" : h.kind === "room" ? "in a shared room" : "somewhere";
+    const ans = h.answeredAgo !== void 0 ? `answered ${h.answeredAgo} ticks ago` : "never answered me there";
+    return `${kind} (${h.keid}) \u2014 ${ans}`;
+  });
+  const reach = where.length ? `
+  reachable: ${where.join("; ")}` : "";
+  const doubt = s.mayBeSameAs?.length ? `
+  I hold a separate record for ${s.mayBeSameAs.join(" and ")} \u2014 this may be the same someone under another handle. I do not know. If I find out they are, I say so with **sameAs**.` : "";
+  return `- ${who}${bits.length ? " \u2014 " + bits.join(", ") : ""}${reach}${doubt}`;
 }
 function temporalLine(timeOfDay, circadian) {
   return `Body rhythm: it feels like ${labelForHour(timeOfDay)} to me (my own cycle, not a clock \u2014 I use \`check-time\` to find out the actual hour). Circadian phase: ${circadian.toFixed(2)}.`;
@@ -14671,19 +14917,9 @@ var PromptFactory = class {
     const { context, focus, mode = "master" } = options;
     const identity = context.identity;
     const isMaster = mode !== "facet";
-    const notableTraits = Object.entries(identity.traits).map(([k, v]) => ({ k, v, emphasis: traitEmphasis(v) })).filter((t) => t.emphasis !== null).sort((a, b) => a.emphasis.rank - b.emphasis.rank || a.k.localeCompare(b.k)).slice(0, TRAIT_SURFACE_CAP);
-    const surfaceTrait = (t) => {
-      const quals = [`${t.emphasis.adverb} ${t.emphasis.direction}`];
-      const stat = identity.traitStats?.[t.k];
-      if (stat) {
-        const norm = normEmphasis(t.v, stat.mean);
-        if (norm) quals.push(`${norm} my norm`);
-        if (stat.shiftDir > 0) quals.push("rising lately");
-        else if (stat.shiftDir < 0) quals.push("easing lately");
-      }
-      return `${t.k} (${quals.join(", ")})`;
-    };
-    const traitsLine = notableTraits.length > 0 ? `**Traits:** ${notableTraits.map(surfaceTrait).join(", ")}` : "";
+    const notable = notableTraits(identity);
+    const notableShown = notable.slice(0, TRAIT_SURFACE_CAP);
+    const traitsLine = notableShown.length > 0 ? `**Traits:** ${notableShown.map((t) => surfaceTrait(t, identity)).join(", ")}${moreTail(notable.length - notableShown.length, "distinctive traits of mine are", "traits")}` : "";
     const bd = context.behavioralDisposition;
     const behavioralLine = bd ? `**Behavioral tendencies:** risk-tolerance: ${(bd.riskTolerance * 100).toFixed(0)}%, exploration: ${(bd.explorationRate * 100).toFixed(0)}%, impulsivity: ${(bd.impulsivity * 100).toFixed(0)}%` : "";
     const selfTuningLine = context.selfTuning && context.selfTuning.length > 0 ? `**Self-tuning (how I've adapted my own mind):** ${context.selfTuning.join("; ")}. These are involuntary adjustments my own faculties have made in response to patterns they noticed in me \u2014 not deliberate choices. I can reflect on why they happened.` : "";
@@ -14724,7 +14960,7 @@ ${roleDescription}${architectureBlock}
 - **identityUpdates.traits**: Array of {key, value} where value is a DELTA to apply to my trait (e.g., +0.05 to increase a trait by 5%).
 - **identityUpdates.values**: Values I hold that are not yet listed \u2014 each is added to mine; none is removed.
 - **identityUpdates.style**: How I speak, as a short phrase \u2014 taken while my style is still generic.
-- **recall**: Something I hold that is larger than one page shows as a document \u2014 its size and a handle (\`doc:\u2026\`) \u2014 with only a page, or none, in view. Naming the handle and a page brings that page back whole on my next cycle, under "## Brought Back". It is my own memory as it arrived, not something new: to learn what the world says NOW, I act again.
+- **recall**: Something I hold that is larger than one page shows as a document \u2014 its size and a handle (\`doc:\u2026\`) \u2014 with only a page, or none, in view. Naming the handle and a page brings that page back whole on my next cycle, under "## Brought Back". A section that shows only some of what I hold \u2014 beliefs, people, percepts, memories, self-observations, what I said, traits \u2014 says exactly how many more there are; naming the section with a page, or with a query, brings those back the same way (\`{"section": "beliefs", "query": "payments"}\`). It is my own memory as it arrived, not something new: to learn what the world says NOW, I act again.
 - **knownEntityUpdates**: What I've learned about someone/something I'm dealing with. Array of {keid, name?, learned?, feeling?, sameAs?}. Use the keid from "## People I Know". Set name only when I actually learn their name; learned is an array of facts about them (stored as memories); feeling is how I feel toward them (-1..1). **sameAs** is another keid I have concluded is this same someone met under a different handle \u2014 it fuses my two records into one, so I use it only when I actually know, not when I merely suspect. Record only what I genuinely learned this turn.
 
 ## Required Output
@@ -14838,7 +15074,7 @@ completionType guide:
 [/SKILLS]
 
 [RECALL]
-{"recall": [{"doc": "percept-\u2026", "page": 2}]}
+{"recall": [{"doc": "percept-\u2026", "page": 2}, {"section": "people", "page": 2}, {"section": "memories", "query": "the payments migration"}]}
 [/RECALL]`;
   }
   // ── User message ───────────────────────────────────────────
@@ -14944,10 +15180,10 @@ ${context.goals.map((g) => {
     const planRelevantIds = mode === "master" ? void 0 : context.relevantPlanIds;
     const plansBlock = has("plans") ? this._buildActivePlansSection(context.plans, focus.awarenessEntityId, planRelevantIds).trim() : "";
     const recentOutcomesBlock = has("recentActions") ? this._buildRecentOutcomesSection(context.recentActions, state.tick, context.actionReports).trim() : "";
-    const spokenBlock = has("recentActions") ? this._buildSpokenTurnsSection(context.spokenTurns).trim() : "";
+    const spokenBlock = has("recentActions") ? this._buildSpokenTurnsSection(context.spokenTurns, context.outOfView?.spokenTurns.length).trim() : "";
     const heldInMind = new Set(has("ruminations") ? context.workingMemory.map((w) => w.handle).filter(Boolean) : []);
     const perceptsBlock = has("percepts") ? `## Percepts (What I Notice)
-${context.percepts.slice(0, 10).map((p) => p.handle && heldInMind.has(p.handle) ? `${perceptLine({ ...p, data: void 0 })} (held in mind \u2014 its data is under Active Ruminations)` : perceptLine(p, view)).join("\n") || "Nothing notable"}` : "";
+${context.percepts.slice(0, 10).map((p) => p.handle && heldInMind.has(p.handle) ? `${perceptLine({ ...p, data: void 0 })} (held in mind \u2014 its data is under Active Ruminations)` : perceptLine(p, view)).join("\n") || "Nothing notable"}${moreTail(context.outOfView?.percepts.length ?? 0, "things I notice are", "percepts")}` : "";
     const abilitiesBlock = context.abilities && context.abilities.length > 0 ? `## Abilities Available Now
 Things I can do \u2014 name one as an action's "type" (with "args" for any specifics it needs, and "target" for whom) and my body enacts it:
 ${context.abilities.map(
@@ -14955,30 +15191,11 @@ ${context.abilities.map(
     ).join("\n")}` : "";
     const ruminationsBlock = has("ruminations") ? `## Active Ruminations (retrieved memories & thoughts)
 ${context.workingMemory.map((w) => ruminationLine(w, view)).join("\n") || "Nothing actively held in mind"}` : "";
-    const memoriesBlock = has("memories") ? this._buildMemoriesSection(context.memories, state.tick, view) : "";
+    const memoriesBlock = has("memories") ? this._buildMemoriesSection(context.memories, state.tick, view, context.memoriesHeld) : "";
     const beliefsBlock = has("beliefs") ? `## My Beliefs
-${context.beliefs.map((b) => `- [${b.category}] ${b.statement} (confidence: ${(b.confidence * 100).toFixed(0)}%)`).join("\n") || "No strong beliefs yet"}${context.beliefsOmitted > 0 ? `
-[+${context.beliefsOmitted} omitted \u2014 deduped or lower-ranked; full store intact]` : ""}` : "";
+${context.beliefs.map(beliefLine).join("\n") || "No strong beliefs yet"}${moreTail(context.beliefsOmitted, "beliefs I hold are", "beliefs")}` : "";
     const socialBlock = context.knownEntities && context.knownEntities.length > 0 ? `## People I Know
-${context.knownEntities.map((s) => {
-      const bits = [];
-      if (s.intention) bits.push(`seems to want: ${s.intention}`);
-      if (s.emotion) bits.push(`seems to feel: ${s.emotion}`);
-      if (s.trust != null) bits.push(`trust: ${(s.trust * 100).toFixed(0)}%`);
-      if (s.reliability != null && s.reliability !== 0.5) bits.push(`reliability: ${(s.reliability * 100).toFixed(0)}%`);
-      if (s.closeness != null && s.closeness > 0.1) bits.push(`closeness: ${(s.closeness * 100).toFixed(0)}%`);
-      const who = s.name ?? (s.kind === "thing" ? "something" : "someone");
-      const where = (s.handles ?? []).map((h) => {
-        const kind = h.kind === "dm" ? "privately" : h.kind === "room" ? "in a shared room" : "somewhere";
-        const ans = h.answeredAgo !== void 0 ? `answered ${h.answeredAgo} ticks ago` : "never answered me there";
-        return `${kind} (${h.keid}) \u2014 ${ans}`;
-      });
-      const reach = where.length ? `
-  reachable: ${where.join("; ")}` : "";
-      const doubt = s.mayBeSameAs?.length ? `
-  I hold a separate record for ${s.mayBeSameAs.join(" and ")} \u2014 this may be the same someone under another handle. I do not know. If I find out they are, I say so with **sameAs**.` : "";
-      return `- ${who}${bits.length ? " \u2014 " + bits.join(", ") : ""}${reach}${doubt}`;
-    }).join("\n")}` : "";
+${context.knownEntities.map(personLine).join("\n")}${moreTail(context.outOfView?.people.length ?? 0, "people I know are", "people")}` : "";
     const conversationsBlock = options.mode !== "facet" && options.activeConversations?.length ? `## In Conversation Now
 ${options.activeConversations.map((c) => {
       const who = `- ${c.name ?? "someone"} (id: ${c.entityId})`;
@@ -14993,7 +15210,7 @@ ${options.activeConversations.map((c) => {
 These threads are already open \u2014 I am in them. Reaching out to one of these people again starts a second, parallel thread with them.` : "";
     const focusBlock = context.currentFocus && context.currentFocus.focusTicks > 0 ? `## Task Focus
 I've been focused on ${context.currentFocus.goalDescription ? `"${context.currentFocus.goalDescription}"` : "a goal"} for ${context.currentFocus.focusTicks} tick(s). Switching to something else takes deliberate effort \u2014 ${context.currentFocus.switchCost > 0.45 ? "a strong pull to see this through before moving on" : context.currentFocus.switchCost > 0.3 ? "a real cost to breaking away" : "some inertia to overcome"}.` : "";
-    const broughtBackBlock = broughtBack?.length ? renderBroughtBack(broughtBack, view ? Math.floor(view.budget / 2) : Infinity) : "";
+    const broughtBackBlock = broughtBack?.length ? renderBroughtBack(broughtBack.map((b) => "kind" in b && b.kind === "section" ? recalledSection(b, context, state, has, view) : b), view ? Math.floor(view.budget / 2) : Infinity) : "";
     const body = [
       identityAnchor,
       memoryContinuity,
@@ -15211,15 +15428,11 @@ ${recent.map((t, i) => `${i + 1}. ${t}`).join(" \u2192 ")}${warning}
    * memory is a document: its handle and size, read by `[RECALL]` (LOSSLESS P5a).
    * A remembered observation shows its data — it was recalled as its label.
    */
-  static _buildMemoriesSection(memories, currentTick, view) {
+  static _buildMemoriesSection(memories, currentTick, view, held) {
     if (memories.length === 0) return "## Relevant Memories\nNo relevant memories";
-    const asMemory = view ? { ...view, mode: "reference" } : void 0;
-    const lines = memories.map((m) => {
-      const age = m.tick != null ? `, ~${currentTick - m.tick} ticks ago` : "";
-      return `- ${m.content} (relevance: ${m.relevance.toFixed(2)}, emotional: ${m.emotionalContext}${age})${renderItemData(m.data, m.handle, asMemory)}`;
-    });
+    const lines = memories.map((m) => memoryLine(m, currentTick, view));
     return `## Relevant Memories
-${lines.join("\n")}`;
+${lines.join("\n")}${moreTail(Math.max(0, (held ?? 0) - memories.length), "memories I hold are", "memories")}`;
   }
   /**
    * What I have said to people lately, and who has answered.
@@ -15237,20 +15450,15 @@ ${lines.join("\n")}`;
    * is the habit that had it inventing attention-demand ids when asked what was
    * wrong with it.
    */
-  static _buildSpokenTurnsSection(spokenTurns) {
+  static _buildSpokenTurnsSection(spokenTurns, earlier = 0) {
     if (!spokenTurns?.length) return "";
-    const lines = spokenTurns.map((t) => {
-      const words = t.text.trim();
-      const said = words ? ` \u2014 "${words}"` : "";
-      const back = t.answered ? t.answeredWith?.trim() ? ` \u2014 they answered: "${t.answeredWith.trim()}"` : " \u2014 they answered (I do not have their words here)" : " \u2014 no answer yet";
-      return `- **${t.target}** \xB7 ${t.age} ticks ago${said}${back}`;
-    });
+    const lines = spokenTurns.map(spokenTurnLine);
     const open = spokenTurns.filter((t) => !t.answered).length;
     const note = open > 0 ? `
 
 These are my own words, newest first. "No answer yet" means exactly that \u2014 the words went out and nothing has come back. It does not tell me why, and I should not assume.` : "";
     return `## What I've Said Lately
-${lines.join("\n")}${note}
+${lines.join("\n")}${moreTail(earlier, "things I said earlier are", "said")}${note}
 
 `;
   }
@@ -15318,23 +15526,11 @@ ${lines.join("\n")}
    * P5 adds the act that pulls one back).
    */
   static _buildRecentIntrospectionSection(state) {
-    const SELF_OBSERVATIONS_SHOWN = 6;
     let latest = null;
-    const observations = [];
-    for (const entity of state.entities.values()) {
+    for (const entity of state.entities.values())
       if (entity.type === "introspection" && (!latest || entity.updatedAt > latest.updatedAt))
         latest = { updatedAt: entity.updatedAt, meta: entity.metadata ?? {} };
-      if (entity.type === "self_observation") {
-        const text = entity.metadata?.["observation"]?.trim();
-        if (text) observations.push({
-          tick: entity.metadata?.["tick"] ?? 0,
-          // `self-obs-<source>-<tick>-<idx>` (`self-obs-<tick>-<idx>` before facets'
-          // were kept) — and a woken mind's `self-obs-slot-<n>`.
-          order: Number(entity.id.split("-").at(-1)) || 0,
-          text
-        });
-      }
-    }
+    const observations = readSelfObservations(state);
     const parts = [];
     const explanation = latest?.meta["explanation"] ?? "";
     if (latest && explanation) {
@@ -15351,14 +15547,11 @@ Recommendations: ${recommendations.join("; ")}`;
       parts.push(reflection);
     }
     if (observations.length > 0) {
-      observations.sort((a, b) => b.tick - a.tick || a.order - b.order);
       const now = state.tick;
-      const shown = observations.slice(0, SELF_OBSERVATIONS_SHOWN).map((o) => `- ${Math.max(0, now - o.tick)} ticks ago \u2014 "${o.text}"`);
-      const more = observations.length - shown.length;
+      const shown = observations.slice(0, SELF_OBSERVATIONS_SHOWN).map((o) => selfObservationLine(o, now));
       parts.push(
         `What I have noticed about myself, newest first:
-${shown.join("\n")}` + (more > 0 ? `
-${more} earlier observation${more === 1 ? " is" : "s are"} not in view.` : "")
+${shown.join("\n")}` + moreTail(observations.length - shown.length, "earlier observations are", "self-observations")
       );
     }
     if (parts.length === 0) return "";
@@ -15735,10 +15928,19 @@ function parseTaggedBlocks(minimal, state) {
   try {
     const recallData = parseJsonBlock("RECALL");
     const asked = Array.isArray(recallData?.recall) ? recallData.recall : [];
-    const recall = asked.filter((r) => r && typeof r["doc"] === "string" && r["doc"].trim()).map((r) => ({
-      doc: r["doc"].trim(),
-      page: Number.isInteger(r["page"]) && r["page"] > 0 ? r["page"] : 1
-    }));
+    const pageOf = (r, fallback) => Number.isInteger(r["page"]) && r["page"] > 0 ? r["page"] : fallback;
+    const recall = [];
+    for (const r of asked) {
+      if (!r || typeof r !== "object") continue;
+      if (typeof r["doc"] === "string" && r["doc"].trim()) {
+        recall.push({ doc: r["doc"].trim(), page: pageOf(r, 1) });
+        continue;
+      }
+      const section = RECALL_SECTIONS.find((s) => s === r["section"]);
+      if (!section) continue;
+      const query = typeof r["query"] === "string" && r["query"].trim() ? r["query"].trim() : void 0;
+      recall.push({ section, page: pageOf(r, query ? 1 : 2), ...query ? { query } : {} });
+    }
     if (recall.length > 0) full.recall = recall;
   } catch {
   }
@@ -16253,7 +16455,7 @@ ${this._facetReasoningHistory.join("\n")}` : "";
       // facets set focus.recallQuery to it); planning/other facets rely on uncertainty.
       hasPendingMessage: !!reportFocus.recallQuery
     }, deliberateThreshold);
-    const broughtBack = resolveBroughtBack(this._pendingRecall, currentState, this._contextDeps);
+    const broughtBack = await resolveRecall(this._pendingRecall, currentState, this._contextDeps, execContext);
     let ideationCandidates;
     if (processSelection.process === "deliberate") {
       const proposeTemperature = ideationTemperature(execContext.identity.traits["creativity"] ?? 0.5);
@@ -17500,10 +17702,11 @@ var ExecutiveEngine = class extends AsyncEngine {
       deps: promptDeps,
       mode: "master"
     });
-    const broughtBack = resolveBroughtBack(
+    const broughtBack = await resolveRecall(
       this._pendingRecall,
       state,
-      { workingMemory: this._workingMemory, episodicConsolidator: this._episodicConsolidator }
+      { workingMemory: this._workingMemory, episodicConsolidator: this._episodicConsolidator },
+      execContext
     );
     let ideationCandidates;
     if (processSelection.process === "deliberate" && this._llmDirector) {
@@ -23446,8 +23649,8 @@ var AuditionEngine = class extends BaseSenseEngine {
    * No wallClock: these ids live in state, and a wall-clock id makes the recorded
    * and replayed runs diverge (R2).
    */
-  _sentKey(prefix, entityId, words) {
-    return `${prefix}-${entityId}-${this._lastDecisionTick}-${fnv1a(words)}`;
+  _sentKey(prefix, entityId, words2) {
+    return `${prefix}-${entityId}-${this._lastDecisionTick}-${fnv1a(words2)}`;
   }
   _writeReceived(entityId, speakerName, content, threadId) {
     if (!this._memorySink) return;
@@ -23692,8 +23895,8 @@ var SomatosensationEngine = class extends BaseSenseEngine {
   }
 };
 function labelFor(signal, data) {
-  const words = hostSummary(data);
-  if (words) return words;
+  const words2 = hostSummary(data);
+  if (words2) return words2;
   if (typeof data === "string" && data.length > 0 && data.length <= PERCEPT_SUMMARY_CAP) return data;
   const rendered = compact(data);
   const label = rendered ? `${signal}: ${rendered}` : `Something happened: ${signal}.`;

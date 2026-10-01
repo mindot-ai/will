@@ -160,6 +160,65 @@ function humanSize( text: string ): string {
 const recallHint = ( handle: string, page: number ) =>
   `{"recall": [{"doc": "${ handle }", "page": ${ page }}]}`
 
+// ── a section that shows N of more (LOSSLESS P5c) ────────────
+
+/**
+ * The sections a mind can reach past. Each shows its ranked first page; the rest
+ * is counted, and brought back a page or a search at a time by `[RECALL]`.
+ */
+export const RECALL_SECTIONS = [ 'beliefs', 'people', 'percepts', 'memories', 'self-observations', 'said', 'traits' ] as const
+export type RecallSection = typeof RECALL_SECTIONS[number]
+
+/** One thing she asks to have brought back: a page of a document, or of a section, or a search of one. */
+export type RecallRequest =
+  | { doc: string; page: number }
+  | { section: RecallSection; page: number; query?: string }
+
+/**
+ * The line a section ends with when it shows N of more: exactly how many, and the
+ * way to them. '' when nothing is out of view.
+ */
+export function moreLine( count: number, noun: string, section: RecallSection ): string {
+  if( count <= 0 ) return ''
+  return `${ count } more ${ noun } not in view — {"recall": [{"section": "${ section }", "page": 2}]} brings the next page;`
+       + ` {"section": "${ section }", "query": "…"} the ones about something.`
+}
+
+const words = ( s: string ): string[] =>
+  s.toLowerCase().split( /[^\p{L}\p{N}]+/u ).filter( w => w.length > 2 )
+
+/**
+ * How much of a query a text is about, 0–1: the share of the query's words it
+ * carries, a word matching its own stem (`migration` · `migrations`). Plain
+ * arithmetic, so a search is a pure function of what is held (R2).
+ */
+export function queryMatch( query: string, text: string ): number {
+  const q = [ ...new Set( words( query ) ) ]
+  if( q.length === 0 ) return 0
+  const t = words( text )
+  const hit = ( w: string ) => t.some( x => x === w || ( w.length > 3 && x.length > 3 && ( x.startsWith( w ) || w.startsWith( x ) ) ) )
+  return q.filter( hit ).length / q.length
+}
+
+/**
+ * A page of a section: page 1 is what is in view; page 2 on, the rest in rank
+ * order, `size` at a time. With a query, the items about it — in view or not —
+ * best match first, then by rank, `size` a page.
+ */
+export function sectionPage<T>( all: readonly T[], shown: number, size: number, page: number, query: string | undefined, text: ( t: T ) => string ):
+  { items: T[]; pages: number; found: number } {
+  if( query !== undefined ){
+    const matched = all.map( ( item, rank ) => ( { item, rank, score: queryMatch( query, text( item ) ) } ) )
+      .filter( m => m.score > 0 )
+      .sort( ( a, b ) => b.score - a.score || a.rank - b.rank )
+      .map( m => m.item )
+    return { items: matched.slice( ( page - 1 ) * size, page * size ), pages: Math.max( 1, Math.ceil( matched.length / size ) ), found: matched.length }
+  }
+  const pages = 1 + Math.ceil( Math.max( 0, all.length - shown ) / size )
+  const items = page === 1 ? all.slice( 0, shown ) : all.slice( shown + ( page - 2 ) * size, shown + ( page - 1 ) * size )
+  return { items: [ ...items ], pages, found: all.length }
+}
+
 /**
  * An item's data on one line, as prompts have always shown it — a string as it
  * is, anything else as compact JSON, a host's own `summary` left out (it is the
@@ -202,6 +261,7 @@ export function renderItemData( data: unknown, handle: string | undefined, view:
 
 /** One `[RECALL]` request, resolved to what the mind holds. */
 export interface BroughtBack {
+  kind?:   'doc'
   handle:  string
   page:    number
   /** The item's own label — what it was when it arrived. */
@@ -217,19 +277,37 @@ export interface BroughtBack {
 }
 
 /**
+ * A page of a section, or a search of one, already rendered in that section's own
+ * lines (LOSSLESS P5c). `heading` says what it is, and how much there is.
+ */
+export interface BroughtBackList {
+  kind:    'list'
+  heading: string
+  lines:   string[]
+}
+
+/**
  * `## Brought Back (I asked for these)` — the pages the mind asked for last cycle,
  * whole. NOT a percept and NOT working memory: remembering consults no world, so
  * it is neither afference nor an act (LOSSLESS_P5 § agency rules). Each keeps the
  * provenance it arrived with. Rendered within `budget` tokens, in the order asked;
  * what does not fit this call is said so, not dropped.
  */
-export function renderBroughtBack( items: readonly BroughtBack[], budget: number ): string {
+export function renderBroughtBack( items: ReadonlyArray<BroughtBack | BroughtBackList>, budget: number ): string {
   if( items.length === 0 ) return ''
   const out: string[] = []
   let used = 0
   let deferred = 0
 
   for( const it of items ){
+    if( 'kind' in it && it.kind === 'list'){
+      const text = it.lines.length > 0 ? `- ${ it.heading }:\n${ it.lines.join('\n') }` : `- ${ it.heading }.`
+      const cost = estimateTokens( text )
+      if( used > 0 && used + cost > budget ){ deferred++; continue }
+      used += cost
+      out.push( text )
+      continue
+    }
     if( it.data === undefined ){
       out.push(`- doc:${ it.handle } — I hold no record of it now (it may have been forgotten).`)
       continue
@@ -252,7 +330,7 @@ export function renderBroughtBack( items: readonly BroughtBack[], budget: number
   }
 
   const tail = deferred > 0
-    ? `\n${ deferred } more page${ deferred === 1 ? '' : 's' } I asked for did not fit this call — I can ask for ${ deferred === 1 ? 'it' : 'them' } again.`
+    ? `\n${ deferred } more of what I asked for did not fit this call — I can ask for ${ deferred === 1 ? 'it' : 'them' } again.`
     : ''
   return `## Brought Back (I asked for these)\nFrom my own memory, as it arrived — not something new:\n${ out.join('\n\n') }${ tail }`
 }

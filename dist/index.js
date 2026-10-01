@@ -1045,6 +1045,12 @@ var BunStorageAdapter = class {
     const { readFile } = await import('fs/promises');
     return readFile(path, "utf8");
   }
+  async append(path, content) {
+    const { appendFile, mkdir } = await import('fs/promises');
+    const { dirname } = await import('path');
+    await mkdir(dirname(path), { recursive: true });
+    await appendFile(path, content);
+  }
   async readBytes(path) {
     if (!await this.exists(path))
       throw new Error(`File not found: ${path}`);
@@ -5336,6 +5342,10 @@ function endogenousTypes(engines) {
 }
 
 // src/cognition/faculties/exteroception.ts
+function perceptibleContent(entity) {
+  const { createdAt: _c, updatedAt: _u, updatedAtTick: _t, ...said } = entity;
+  return JSON.stringify(said);
+}
 var Exteroception = class {
   name = "exteroception";
   _defaultSalience;
@@ -5461,8 +5471,9 @@ var Exteroception = class {
         this._previousEntityVersions.set(id, { at: entity.updatedAt, type: entity.type });
         continue;
       }
-      const previousVersion = this._previousEntityVersions.get(id)?.at;
-      if (previousVersion === void 0) {
+      const previous = this._previousEntityVersions.get(id);
+      const content = previous === void 0 || entity.updatedAt > previous.at ? perceptibleContent(entity) : previous.content;
+      if (previous === void 0) {
         percepts.push({
           entityId: id,
           changeType: "appeared",
@@ -5472,7 +5483,7 @@ var Exteroception = class {
           matchText: this._matchText(entity),
           ...this._valenceOf(id, state)
         });
-      } else if (entity.updatedAt > previousVersion) {
+      } else if (content !== previous.content) {
         percepts.push({
           entityId: id,
           changeType: "modified",
@@ -5483,7 +5494,7 @@ var Exteroception = class {
           ...this._valenceOf(id, state)
         });
       }
-      this._previousEntityVersions.set(id, { at: entity.updatedAt, type: entity.type });
+      this._previousEntityVersions.set(id, { at: entity.updatedAt, type: entity.type, content });
     }
     for (const [id, seen] of this._previousEntityVersions) {
       if (currentIds.has(id)) continue;
@@ -5948,6 +5959,14 @@ var SocialPerception = class {
   // Track previously observed actions for change detection
   _previousActions = /* @__PURE__ */ new Map();
   // keid → last action
+  /**
+   * Signal id → the write already perceived. A signal is an act, perceived once
+   * per write: a host's signal entity stays in state until swept, and only one
+   * that carries a tick is ever swept, so this re-perceived it — and published
+   * another `interaction.occurred` to reputation, trust, theory of mind and
+   * attachment — on every tick it stayed. Re-set, it is a new act.
+   */
+  _perceived = /* @__PURE__ */ new Map();
   _bus = null;
   _model = new GenerativeModel();
   constructor(config = {}) {
@@ -6059,8 +6078,12 @@ var SocialPerception = class {
     const percepts = [];
     const selfId = "agent-self";
     const aliases = readAliases(state.entities);
+    const present = /* @__PURE__ */ new Set();
     for (const [id, entity] of state.entities) {
       if (!this._signalTypes.has(entity.type)) continue;
+      present.add(id);
+      if (this._perceived.get(id) === entity.updatedAt) continue;
+      this._perceived.set(id, entity.updatedAt);
       const sourceKeid = canonicalOf(aliases, entity.metadata?.sourceKeid ?? entity.metadata?.from ?? "unknown"), action = entity.metadata?.action ?? entity.metadata?.type ?? entity.type, directedAtSelf = entity.metadata?.recipientId === selfId || entity.metadata?.to === selfId || entity.metadata?.targetKeid === selfId || entity.metadata?.directedAtSelf === true, isNew = this._previousActions.get(sourceKeid) !== action;
       const valence = typeof entity.metadata?.valence === "number" ? entity.metadata.valence : this._defaultValence(action);
       const intensity = typeof entity.metadata?.intensity === "number" ? entity.metadata.intensity : typeof entity.metadata?.salience === "number" ? entity.metadata.salience : 0.5;
@@ -6076,6 +6099,8 @@ var SocialPerception = class {
       });
       this._previousActions.set(sourceKeid, action);
     }
+    for (const id of this._perceived.keys())
+      if (!present.has(id)) this._perceived.delete(id);
     percepts.sort((a, b) => b.salience - a.salience);
     return percepts;
   }
@@ -6130,7 +6155,6 @@ var SocialPerception = class {
           stale.push(id);
       }
       if (this._signalTypes.has(entity.type) && entity.type !== "percept.social") {
-        if (entity.type === "communication" && !entity.metadata?.processedByExecutive) continue;
         const createdAtTick = entity.metadata?.tick ?? entity.metadata?.injectedAtTick;
         if (typeof createdAtTick === "number" && currentTick - createdAtTick > 1)
           stale.push(id);
@@ -8112,7 +8136,7 @@ var WorkingMemory = class {
     const id = `wm-${(this._idSeq++).toString(36)}`;
     const createdAt = item.createdAt ?? 0;
     this._evictIfNeeded();
-    this._items.push({ ...item, id, createdAt });
+    this._items.push({ encoding: item.activation, ...item, id, createdAt });
   }
   /**
    * Effective config = base engine-config-working-memory ⊕ persona-prior (single-source).
@@ -8232,6 +8256,7 @@ var WorkingMemory = class {
           ...entity.metadata?.data !== void 0 ? { data: entity.metadata.data } : {}
         },
         activation: PERCEPT_ACTIVATION,
+        encoding: PERCEPT_ACTIVATION,
         attendedAt: [],
         createdAt: tick,
         sourceEntityId: entity.id,
@@ -8258,6 +8283,7 @@ var WorkingMemory = class {
           priority: entity.metadata?.priority ?? 0.5
         },
         activation: 0.65,
+        encoding: 0.65,
         attendedAt: [],
         createdAt: tick,
         sourceEntityId: entity.id,
@@ -8316,6 +8342,12 @@ var WorkingMemory = class {
           wmType: item.type,
           content: item.content,
           activation: item.activation,
+          // The strength it went in with. An item is decayed in the same pass that
+          // admits it, so the first activation anyone reads is already a tick's
+          // decay down — how much depends on the tick's length — and consolidation
+          // weighed THAT: a percept was remembered by 0.018 at 1 tick/s and never
+          // at 2 s (EpisodicConsolidator._findCandidates).
+          encoding: item.encoding ?? item.activation,
           attendedCount: item.attendedAt.length,
           tags: item.tags,
           tick
@@ -8823,7 +8855,13 @@ var EpisodicConsolidator = class {
         id: identity,
         type: entity.metadata?.wmType ?? "unknown",
         content: entity.metadata,
-        activation: entity.metadata?.activation ?? 0,
+        // How strongly it was encoded, or how active it is now if rehearsal has
+        // lifted it since — never the remainder of a tick's decay, which made
+        // remembering a function of the tick's length.
+        activation: Math.max(
+          entity.metadata?.encoding ?? 0,
+          entity.metadata?.activation ?? 0
+        ),
         attendedCount: entity.metadata?.attendedCount ?? 0,
         tags: entity.metadata?.tags ?? []
       });
@@ -8936,22 +8974,7 @@ function buildStateCommands(output, footprint, state, deps, recentActionTypes) {
         }));
     });
   }
-  if (output.introspection)
-    commands.set.push({
-      id: `introspection-executive-${footprint.tickObserved}`,
-      type: "introspection",
-      metadata: output.introspection
-    });
-  if (output.narrative)
-    commands.set.push({
-      id: `narrative-executive-${footprint.tickObserved}`,
-      type: "narrative_chapter",
-      metadata: {
-        narrative: output.narrative,
-        themes: output.narrativeThemes ?? [],
-        currentSelfView: output.currentSelfView ?? ""
-      }
-    });
+  commands.set.push(...selfRecords(output, "executive", footprint.tickObserved));
   if (output.newGoals && deps.goalManager) {
     const goalManager = deps.goalManager;
     const requestingEntityId = deps.requestingEntityId;
@@ -8981,14 +9004,6 @@ function buildStateCommands(output, footprint, state, deps, recentActionTypes) {
     for (const gr of output.goalsToReprioritize)
       effects.push(() => goalManager.updateGoalPriority(gr.goalId, gr.newPriority));
   }
-  if (output.selfObservations)
-    output.selfObservations.forEach((obs, idx) => {
-      commands.set.push({
-        id: `self-obs-${footprint.tickObserved}-${idx}`,
-        type: "self_observation",
-        metadata: { observation: obs, tick: footprint.tickObserved }
-      });
-    });
   commands.metrics.push(
     ["executive.last_tick", footprint.tickObserved],
     ["executive.action_count", output.actions.length],
@@ -9040,20 +9055,7 @@ function publishCognitiveEvents(output, footprint, bus, coherenceVersion, salien
         tick: footprint.tickObserved
       }
     });
-  for (const skill of output.newSkills ?? [])
-    bus.publish({
-      type: "agency.composite.proposed",
-      version: 1,
-      sourceEngine: "executive-engine",
-      salience: 0.7,
-      payload: {
-        id: skill.id,
-        composedOf: skill.composedOf,
-        ...skill.tags ? { tags: skill.tags } : {},
-        ...typeof skill.cost === "number" ? { cost: skill.cost } : {},
-        tick: footprint.tickObserved
-      }
-    });
+  publishSkills(bus, output.newSkills, footprint.tickObserved);
   if (output.newGoals?.length)
     bus.publish({
       type: "executive.goal.proposed",
@@ -9070,20 +9072,7 @@ function publishCognitiveEvents(output, footprint, bus, coherenceVersion, salien
         tick: footprint.tickObserved
       }
     });
-  if (output.introspection)
-    bus.publish({
-      type: "executive.self.reflection",
-      version: 1,
-      sourceEngine: "executive-engine",
-      salience: 0.7,
-      payload: {
-        confidence: output.confidence,
-        identifiedBiases: output.introspection.identifiedBiases ?? [],
-        lessonsLearned: output.introspection.lessonsLearned ?? [],
-        recommendations: output.introspection.recommendations ?? [],
-        tick: footprint.tickObserved
-      }
-    });
+  publishSelfReflection(bus, output.introspection, output.confidence, footprint.tickObserved);
   const predictedDomains = inferPredictedDomains(output);
   bus.publish({
     type: "executive.prediction.formed",
@@ -9232,6 +9221,51 @@ function buildIdeomotorIntents(output, state, footprint) {
   if (unaddressed.size === 0 && state.entities.has("action.unaddressed"))
     del.push("action.unaddressed");
   return { set, delete: del };
+}
+function selfRecords(out, source, tick) {
+  const records = [];
+  if (out.introspection)
+    records.push({ id: `introspection-${source}-${tick}`, type: "introspection", metadata: out.introspection });
+  if (out.narrative)
+    records.push({ id: `narrative-${source}-${tick}`, type: "narrative_chapter", metadata: {
+      narrative: out.narrative,
+      themes: out.narrativeThemes ?? [],
+      currentSelfView: out.currentSelfView ?? ""
+    } });
+  out.selfObservations?.forEach((observation, idx) => records.push({ id: `self-obs-${source}-${tick}-${idx}`, type: "self_observation", metadata: { observation, tick } }));
+  return records;
+}
+function publishSelfReflection(bus, introspection, confidence, tick) {
+  if (introspection)
+    bus.publish({
+      type: "executive.self.reflection",
+      version: 1,
+      sourceEngine: "executive-engine",
+      salience: 0.7,
+      payload: {
+        confidence,
+        identifiedBiases: introspection.identifiedBiases ?? [],
+        lessonsLearned: introspection.lessonsLearned ?? [],
+        recommendations: introspection.recommendations ?? [],
+        tick
+      }
+    });
+}
+function publishSkills(bus, skills, tick) {
+  for (const skill of skills ?? [])
+    bus.publish({
+      type: "agency.composite.proposed",
+      version: 1,
+      sourceEngine: "executive-engine",
+      salience: 0.7,
+      payload: {
+        id: skill.id,
+        composedOf: skill.composedOf,
+        ...skill.tags ? { tags: skill.tags } : {},
+        ...typeof skill.cost === "number" ? { cost: skill.cost } : {},
+        tick
+      }
+    });
 }
 function clamp012(n) {
   return n < 0 ? 0 : n > 1 ? 1 : n;
@@ -10651,6 +10685,9 @@ var GoalManager = class {
         if (payload.goalsToAbandon)
           for (const ga of payload.goalsToAbandon)
             this.abandonGoal(ga.goalId, ga.reason);
+        if (payload.goalsToReprioritize)
+          for (const gr of payload.goalsToReprioritize)
+            this.updateGoalPriority(gr.goalId, gr.newPriority);
         if (payload.goalId && payload.goalProgress !== void 0) {
           const goal = this._goals.get(payload.goalId);
           if (goal?.status === "active") {
@@ -11641,6 +11678,55 @@ function identityCommand(state, patch) {
     metadata: merged(state.entities.get(IDENTITY_ENTITY_ID)?.metadata ?? {}, patch)
   };
 }
+var GENERIC_STYLES = /* @__PURE__ */ new Set([
+  "",
+  "natural",
+  "authentic",
+  "natural and authentic",
+  "helpful",
+  "friendly",
+  "professional",
+  "assistant",
+  "neutral"
+]);
+var isGenericStyle = (style) => GENERIC_STYLES.has((style ?? "").trim().toLowerCase());
+function identityUpdateCommand(state, updates) {
+  const current = state.entities.get(IDENTITY_ENTITY_ID)?.metadata;
+  if (!current) return null;
+  const traits = { ...current["traits"] ?? {} };
+  const values = [...current["values"] ?? []];
+  let style = current["style"] ?? "";
+  let changed = false;
+  for (const u of updates) {
+    for (const t of u.traits ?? []) {
+      if (typeof t?.key !== "string" || !Number.isFinite(t.value)) continue;
+      const next = Math.max(0, Math.min(1, (traits[t.key] ?? 0.5) + t.value));
+      if (next !== traits[t.key]) {
+        traits[t.key] = next;
+        changed = true;
+      }
+    }
+    for (const raw of u.values ?? []) {
+      const v = typeof raw === "string" ? raw.trim() : "";
+      if (v && !values.some((x) => x.toLowerCase() === v.toLowerCase())) {
+        values.push(v);
+        changed = true;
+      }
+    }
+    const said = typeof u.style === "string" ? u.style.trim() : "";
+    if (said && isGenericStyle(style) && !isGenericStyle(said)) {
+      style = said;
+      changed = true;
+    }
+  }
+  if (!changed) return null;
+  return identityCommand(state, {
+    traits,
+    values,
+    style,
+    version: (current["version"] ?? 1) + 1
+  });
+}
 function mergeIdentity(store, patch) {
   const current = currentMetadata((id) => store.getEntity(id));
   const metadata = merged(current, patch);
@@ -12300,7 +12386,8 @@ ${roleDescription}${architectureBlock}
 - **newGoals/goalsToAbandon/goalsToReprioritize**: Manage my goal hierarchy.
 - **selfObservations**: Notice patterns in my own thinking, feeling, or behavior. What I noticed before is under "## Recent Self-Reflection" \u2014 add what is new, or what has changed, rather than noticing the same thing again.
 - **identityUpdates.traits**: Array of {key, value} where value is a DELTA to apply to my trait (e.g., +0.05 to increase a trait by 5%).
-- **identityUpdates.values**: Full list of values to set (replaces existing).
+- **identityUpdates.values**: Values I hold that are not yet listed \u2014 each is added to mine; none is removed.
+- **identityUpdates.style**: How I speak, as a short phrase \u2014 taken while my style is still generic.
 - **knownEntityUpdates**: What I've learned about someone/something I'm dealing with. Array of {keid, name?, learned?, feeling?, sameAs?}. Use the keid from "## People I Know". Set name only when I actually learn their name; learned is an array of facts about them (stored as memories); feeling is how I feel toward them (-1..1). **sameAs** is another keid I have concluded is this same someone met under a different handle \u2014 it fuses my two records into one, so I use it only when I actually know, not when I merely suspect. Record only what I genuinely learned this turn.
 
 ## Required Output
@@ -12382,7 +12469,7 @@ specifying it explicitly.
 [/NARRATIVE]
 
 [IDENTITY]
-{"identityUpdates": {"traits": [{"key": "openness", "value": 0.02}], "values": ["curiosity", "honesty"]}}
+{"identityUpdates": {"traits": [{"key": "openness", "value": 0.02}], "values": ["candour"], "style": "..."}}
 [/IDENTITY]
 
 [KNOWN_ENTITIES]
@@ -12903,7 +12990,8 @@ ${lines.join("\n")}
         const text = entity.metadata?.["observation"]?.trim();
         if (text) observations.push({
           tick: entity.metadata?.["tick"] ?? 0,
-          // `self-obs-<tick>-<idx>` — and a woken mind's `self-obs-slot-<n>`.
+          // `self-obs-<source>-<tick>-<idx>` (`self-obs-<tick>-<idx>` before facets'
+          // were kept) — and a woken mind's `self-obs-slot-<n>`.
           order: Number(entity.id.split("-").at(-1)) || 0,
           text
         });
@@ -12949,13 +13037,12 @@ ${parts.join("\n\n")}
   static _buildIdentityNudge(identity, tick) {
     const NUDGE_INTERVAL = 30;
     if (tick % NUDGE_INTERVAL !== 0) return "";
-    const GENERIC_STYLES2 = /* @__PURE__ */ new Set(["natural and authentic", "natural", "authentic", ""]);
     const valuesEmpty = identity.values.length === 0;
-    const styleGeneric = GENERIC_STYLES2.has((identity.style ?? "").toLowerCase());
+    const styleGeneric = isGenericStyle(identity.style);
     if (!valuesEmpty && !styleGeneric) return "";
     const hints = [];
-    if (valuesEmpty) hints.push('My values list is empty \u2014 reflecting on what matters to me will help ground my decisions. Consider adding a `[IDENTITY_UPDATE]` block with `"values"` this cycle.');
-    if (styleGeneric) hints.push('My communication style is still generic \u2014 what truly characterises how I speak? A note in `[IDENTITY_UPDATE]` with `"style"` will make my voice more distinctly mine.');
+    if (valuesEmpty) hints.push("My values list is empty \u2014 reflecting on what matters to me will help ground my decisions. Consider an `[IDENTITY]` block with `identityUpdates.values` this cycle.");
+    if (styleGeneric) hints.push("My communication style is still generic \u2014 what truly characterises how I speak? `identityUpdates.style` in an `[IDENTITY]` block will make my voice more distinctly mine.");
     return `
 
 ## \u{1F4A1} Identity Reflection (every ${NUDGE_INTERVAL} ticks)
@@ -14413,6 +14500,19 @@ var EscalationBuffer = class {
 };
 
 // src/cognition/faculties/executive.engine/facet.ts
+function selfAccountOf(out) {
+  const self = {};
+  if (out.introspection) self.introspection = out.introspection;
+  if (out.narrative) {
+    self.narrative = out.narrative;
+    if (out.narrativeThemes) self.narrativeThemes = out.narrativeThemes;
+    if (out.currentSelfView) self.currentSelfView = out.currentSelfView;
+  }
+  if (out.selfObservations?.length) self.selfObservations = out.selfObservations;
+  if (out.identityUpdates) self.identityUpdates = out.identityUpdates;
+  if (out.newSkills?.length) self.newSkills = out.newSkills;
+  return Object.keys(self).length > 0 ? self : void 0;
+}
 var ExecutiveFacet = class {
   facetId;
   _bus;
@@ -14762,6 +14862,7 @@ ${this._facetReasoningHistory.join("\n")}` : "";
       tick: currentState.tick
     };
     const dec = typeof decision.decision === "object" && decision.decision !== null ? decision.decision : {};
+    const knownEntityUpdates = dec["knownEntityUpdates"] ?? output.knownEntityUpdates;
     this._bus.publish({
       type: "executive.facet.progress",
       version: 1,
@@ -14776,17 +14877,18 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         goalProgress: dec["goalProgress"],
         newGoals: dec["newGoals"],
         goalsToAbandon: dec["goalsToAbandon"],
+        // Asked for in every facet's prompt and kept by no extractor.
+        goalsToReprioritize: output.goalsToReprioritize,
         // promoted for SemanticIntegrator
         newBeliefs: dec["newBeliefs"],
         // promoted for SemanticIntegrator (learned facts about others → keid-tagged beliefs)
-        knownEntityUpdates: dec["knownEntityUpdates"],
+        knownEntityUpdates,
         contextId: report.contextId,
         tick: currentState.tick
       }
     });
-    const keUpdates = dec["knownEntityUpdates"];
-    if (keUpdates) {
-      for (const u of keUpdates)
+    if (knownEntityUpdates) {
+      for (const u of knownEntityUpdates)
         if (u.keid && u.keid !== "agent-self" && (u.name || u.feeling != null || u.sameAs))
           this._bus.publish({
             type: "known.entity.learned",
@@ -14796,6 +14898,7 @@ ${this._facetReasoningHistory.join("\n")}` : "";
             payload: { keid: u.keid, name: u.name, feeling: u.feeling, sameAs: u.sameAs }
           });
     }
+    const self = selfAccountOf(output);
     this._bus.publish({
       type: "executive.facet.sync",
       version: 1,
@@ -14810,6 +14913,8 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         // the singular seat, so it needs the person, not just the facet number.
         ...focus.subjectEntityId ? { subjectEntityId: focus.subjectEntityId } : {},
         ...focus.subjectName ? { subjectName: focus.subjectName } : {},
+        // What it concluded about the mind itself — the master writes it (_onFacetSync).
+        ...self ? { self } : {},
         tick: currentState.tick
       }
     });
@@ -15265,6 +15370,23 @@ var ExecutiveEngine = class extends AsyncEngine {
    * next cycle by construction.
    */
   _facetSubjects = /* @__PURE__ */ new Map();
+  /**
+   * What a facet concluded about the mind itself — its reflection, a chapter of
+   * its story, what it noticed about itself, a skill it named — carried back on
+   * `executive.facet.sync` and written on the next tick's state.
+   *
+   * A facet is the same mind (two-thirds of its decisions are made in one), its
+   * prompt asks for every one of these, and none of them went anywhere: only the
+   * master's output became state. Measured on Lora's archived runs: 18 of 364
+   * facet decisions carried an introspection and 27 a narrative, all dropped.
+   */
+  _selfAccounts = [];
+  /**
+   * What any cycle — the master's or a facet's — concluded about who the mind is,
+   * applied on the next tick's state so a merge never rests on a snapshot the
+   * reasoning started from (see identityUpdateCommand).
+   */
+  _identityUpdates = [];
   // ── Cognitive models ───────────────────────────────────────
   _model = new GenerativeModel();
   _generativeModel = new GenerativeModel(0.2, 100);
@@ -15620,6 +15742,11 @@ var ExecutiveEngine = class extends AsyncEngine {
     this._deferred.markReactTick(tick);
     this._facetSupervisor.pump(state);
     const result = await super.react(delta, tick, state, context);
+    const self = this._drainSelfAccounts(state);
+    if (self.length) {
+      result.commands ??= {};
+      result.commands.set = [...result.commands.set ?? [], ...self];
+    }
     const focus = this._facetAttentionDemands(state, tick);
     if (focus.set.length || focus.delete.length) {
       result.commands ??= {};
@@ -16036,6 +16163,7 @@ var ExecutiveEngine = class extends AsyncEngine {
       this._recentActionTypes
     );
     this._deferred.enqueue(footprint.tickObserved, effects);
+    if (executiveOutput.identityUpdates) this._identityUpdates.push(executiveOutput.identityUpdates);
     publishCognitiveEvents(
       executiveOutput,
       footprint,
@@ -16175,6 +16303,16 @@ var ExecutiveEngine = class extends AsyncEngine {
    */
   _onFacetSync(event) {
     const payload = event.payload;
+    if (payload.self) {
+      const tick = payload.tick ?? this._currentTick;
+      this._selfAccounts.push({
+        source: payload.facetId ?? "facet",
+        tick,
+        confidence: payload.confidence ?? 0.5,
+        account: payload.self
+      });
+      if (payload.self.identityUpdates) this._identityUpdates.push(payload.self.identityUpdates);
+    }
     if (payload.facetId && payload.subjectEntityId) {
       const prior = this._facetSubjects.get(payload.facetId);
       this._facetSubjects.set(payload.facetId, {
@@ -16195,6 +16333,20 @@ var ExecutiveEngine = class extends AsyncEngine {
     logger.info(
       `[executive] master received facet sync from ${payload.facetId}` + (payload.subjectName || payload.subjectEntityId ? ` (with ${payload.subjectName ?? payload.subjectEntityId})` : "") + ` (confidence=${payload.confidence?.toFixed(2)})`
     );
+  }
+  /** The queued self-accounts and identity updates, as records on `state` (see the fields). */
+  _drainSelfAccounts(state) {
+    const set = [];
+    for (const { source, tick, confidence, account } of this._selfAccounts.splice(0)) {
+      set.push(...selfRecords(account, source, tick));
+      if (this._bus) {
+        publishSelfReflection(this._bus, account.introspection, confidence, tick);
+        publishSkills(this._bus, account.newSkills, tick);
+      }
+    }
+    const identity = identityUpdateCommand(state, this._identityUpdates.splice(0));
+    if (identity) set.push(identity);
+    return set;
   }
   /**
    * A focused part of me surfaced something the singular seat owns — work to plan
@@ -18771,6 +18923,13 @@ var AutobiographicalNarrator = class {
     lastUpdatedAt: 0
   };
   _lastUpdateTick = 0;
+  /**
+   * The executive output last taken into the story. It stays fresh for the
+   * executive's interval (60 ticks by default) and this passes every 50, so one
+   * output could be appended twice — the introspection engine's 14 copies of
+   * one reflection, at a lower rate.
+   */
+  _takenOutput = null;
   _restored = false;
   _episodicConsolidator = null;
   _semanticIntegrator = null;
@@ -18835,7 +18994,8 @@ var AutobiographicalNarrator = class {
       return { commands };
     const executiveOutput = this._executiveEngine?.latestOutput;
     let narrativeSignificance = 0;
-    if (executiveOutput?.narrative && this._executiveEngine?.isFresh(tick)) {
+    if (executiveOutput?.narrative && this._executiveEngine?.isFresh(tick) && executiveOutput !== this._takenOutput) {
+      this._takenOutput = executiveOutput;
       this._narrative.version++;
       this._narrative.lastUpdatedAt = tick;
       this._narrative.story = (this._narrative.story + "\n\n" + executiveOutput.narrative).slice(-this._maxNarrativeLength);
@@ -18845,22 +19005,9 @@ var AutobiographicalNarrator = class {
           .../* @__PURE__ */ new Set([...this._narrative.themes, ...executiveOutput.narrativeThemes])
         ].slice(-10);
       }
-      if (executiveOutput.identityUpdates?.traits) {
-        const existingIdentity = state.entities.get("identity-self");
-        if (existingIdentity) {
-          const currentTraits = existingIdentity.metadata?.traits ?? {};
-          const updatedTraits = { ...currentTraits };
-          for (const { key: trait, value: delta } of executiveOutput.identityUpdates.traits)
-            updatedTraits[trait] = Math.max(0, Math.min(1, (updatedTraits[trait] ?? 0.5) + delta));
-          commands.set.push(identityCommand(state, {
-            traits: updatedTraits,
-            version: (existingIdentity.metadata?.version ?? 1) + 1
-          }));
-        }
-      }
       narrativeSignificance = executiveOutput.narrativeThemes?.length ?? 1;
       commands.metrics.push(["narrative.source", 1]);
-    } else {
+    } else if (executiveOutput !== this._takenOutput || !this._executiveEngine?.isFresh(tick)) {
       const episodes = this._episodicConsolidator?.query({ limit: 20 }) ?? [];
       const significant = episodes.filter(
         (e) => e.activationStrength > 0.5 || Math.abs(e.affectiveContext?.valence ?? 0) > 0.4
@@ -19881,9 +20028,11 @@ var PersonaConsolidator = class {
 };
 
 // src/cognition/faculties/theory.of.mind.ts
+var QUIET_TICKS = 100;
+var LET_GO_AT = 0.05;
 var TheoryOfMind = class {
   name = "theory-of-mind";
-  _beliefDecayRate;
+  _fadePerSecond;
   _confidenceThreshold;
   _models = /* @__PURE__ */ new Map();
   _restored = false;
@@ -19892,7 +20041,7 @@ var TheoryOfMind = class {
   _model = new GenerativeModel();
   constructor(config = {}) {
     this._bus = config.bus ?? null;
-    this._beliefDecayRate = config.beliefDecayRate ?? 2e-3;
+    this._fadePerSecond = config.fadePerSecond ?? DEFAULT_BELIEF_DECAY_PER_SECOND;
     this._confidenceThreshold = config.confidenceThreshold ?? 0.3;
   }
   attachBus(bus) {
@@ -19924,7 +20073,7 @@ var TheoryOfMind = class {
   snapshot() {
     return {};
   }
-  async react(_delta, tick, state, _context) {
+  async react(delta, tick, state, _context) {
     const events = [], commands = { set: [], delete: [], metrics: [] };
     if (!this._restored) {
       this._restoreFromState(state);
@@ -19947,8 +20096,8 @@ var TheoryOfMind = class {
       };
       model.lastUpdated = tick;
     }
-    this._decayBeliefs(tick);
-    this._pruneModels();
+    this._fade(tick, delta / 1e3);
+    commands.delete.push(...this._letGo());
     for (const [keid, model] of this._models) {
       commands.set.push({
         id: `tom-${keid}`,
@@ -19961,7 +20110,11 @@ var TheoryOfMind = class {
           intentionCount: model.intentions.filter((i) => i.confidence > this._confidenceThreshold).length,
           modelConfidence: model.modelConfidence,
           dominantIntention: model.intentions.sort((a, b) => b.confidence - a.confidence)[0]?.goal ?? null,
-          estimatedEmotion: model.emotionalState.dominantEmotion
+          estimatedEmotion: model.emotionalState.dominantEmotion,
+          // When the mind last heard from them. `createdAt` above keeps its first
+          // value (and is sim-time ms), so a woken model was dated to tick 0 and
+          // faded out on its first tick.
+          lastUpdated: model.lastUpdated
         }
       });
     }
@@ -20012,13 +20165,14 @@ var TheoryOfMind = class {
       const dominantIntention = m["dominantIntention"] ?? null;
       const modelConfidence = m["modelConfidence"] ?? 0.3;
       const estimatedEmotion = m["estimatedEmotion"] ?? "neutral";
+      const lastUpdated = m["lastUpdated"] ?? state.tick;
       this._models.set(keid, {
         keid,
         knownObservations: [],
         beliefs: [],
-        intentions: dominantIntention ? [{ goal: dominantIntention, confidence: modelConfidence, lastUpdated: 0 }] : [],
+        intentions: dominantIntention ? [{ goal: dominantIntention, confidence: modelConfidence, lastUpdated }] : [],
         emotionalState: { valence: 0, arousal: 0, dominantEmotion: estimatedEmotion },
-        lastUpdated: 0,
+        lastUpdated,
         modelConfidence
       });
     }
@@ -20050,26 +20204,41 @@ var TheoryOfMind = class {
     });
     model.modelConfidence = Math.min(1, model.modelConfidence + 0.02);
   }
-  _decayBeliefs(currentTick) {
+  /**
+   * The read of someone fades once they have been quiet a while, by a fixed step
+   * per second of running time.
+   *
+   * It took `rate × ticks since update` EVERY tick — a step that grew with the
+   * silence, so a colleague's model hit its floor two ticks after 100 quiet ticks
+   * (and every woken model, dated to tick 0, on its first tick). Empathy reads
+   * the model's emotion only above 0.3, so it read nobody it had not heard from
+   * in the last minute and a half.
+   */
+  _fade(currentTick, seconds) {
+    const step = this._fadePerSecond * seconds;
     for (const model of this._models.values()) {
-      const ticksSinceUpdate = currentTick - model.lastUpdated;
-      if (ticksSinceUpdate > 100) {
-        model.modelConfidence = Math.max(0.05, model.modelConfidence - this._beliefDecayRate * ticksSinceUpdate);
-        for (const belief of model.beliefs)
-          belief.confidence = Math.max(0.05, belief.confidence - this._beliefDecayRate * 2);
-        for (const intention of model.intentions)
-          intention.confidence = Math.max(0.05, intention.confidence - this._beliefDecayRate * 2);
-      }
+      if (currentTick - model.lastUpdated <= QUIET_TICKS) continue;
+      model.modelConfidence = Math.max(0, model.modelConfidence - step);
+      for (const belief of model.beliefs)
+        belief.confidence = Math.max(0, belief.confidence - step);
+      for (const intention of model.intentions)
+        intention.confidence = Math.max(0, intention.confidence - step);
     }
   }
-  _pruneModels() {
-    const toPrune = [];
-    for (const [id, model] of this._models) {
-      if (model.modelConfidence < 0.05)
-        toPrune.push(id);
-    }
-    for (const id of toPrune)
-      this._models.delete(id);
+  /**
+   * Models faded out, removed here and returned for deletion from state. The fade
+   * floored at 0.05 and this let go below 0.05, so no model was ever let go.
+   * There is no count cap (it kept the 10 most confident models, dropping the
+   * rest from memory and not from state — restored next boot).
+   */
+  _letGo() {
+    const gone = [];
+    for (const [keid, model] of this._models)
+      if (model.modelConfidence <= LET_GO_AT) {
+        this._models.delete(keid);
+        gone.push(`tom-${keid}`);
+      }
+    return gone;
   }
 };
 
@@ -25080,17 +25249,6 @@ var RESERVED_SECTIONS = /* @__PURE__ */ new Set([
   "your role",
   "your environment"
 ]);
-var GENERIC_STYLES = /* @__PURE__ */ new Set([
-  "",
-  "natural",
-  "authentic",
-  "natural and authentic",
-  "helpful",
-  "friendly",
-  "professional",
-  "assistant",
-  "neutral"
-]);
 var KNOWN_TRAITS = /* @__PURE__ */ new Set([
   "openness",
   "conscientiousness",
@@ -25182,7 +25340,7 @@ function validateWillIdentity(input) {
   const style = (id.style ?? "").trim();
   if (operator && style.length > MAX_STYLE_CHARS)
     errors.push(`identity.style is ${style.length} chars (max ${MAX_STYLE_CHARS}) \u2014 it reads better as a short phrase.`);
-  if (GENERIC_STYLES.has(style.toLowerCase()))
+  if (isGenericStyle(style))
     warnings.push("identity.style is generic \u2014 a distinct voice prevents collapse into a generic chatbot tone.");
   let effectors = input.effectors ?? null;
   if (Array.isArray(effectors)) {
@@ -25213,7 +25371,7 @@ function validateWillIdentity(input) {
       errors.push(`profile context is ${profileContext.length} chars (max ${MAX_CONTEXT_CHARS}).`);
   }
   const promptFactor = promptEmpty ? 0 : Math.min(1, prompt.length / 240);
-  const identityStrength = Math.round((0.4 * promptFactor + 0.25 * (valuesEmpty ? 0 : 1) + 0.2 * (GENERIC_STYLES.has(style.toLowerCase()) ? 0 : 1) + 0.15 * (Object.keys(traits).length > 0 ? 1 : 0)) * 100) / 100;
+  const identityStrength = Math.round((0.4 * promptFactor + 0.25 * (valuesEmpty ? 0 : 1) + 0.2 * (isGenericStyle(style) ? 0 : 1) + 0.15 * (Object.keys(traits).length > 0 ? 1 : 0)) * 100) / 100;
   if (identityStrength < 0.4)
     warnings.push(`identity is shallow (strength ${identityStrength}) \u2014 the Will behaves generically until it develops one.`);
   return {
@@ -26967,7 +27125,8 @@ function buildEngineConfigEntities(config, executiveInterval) {
       id: "engine-config-theory-of-mind",
       engine: "theory-of-mind",
       params: {
-        beliefDecayRate: 2e-3,
+        // A read of someone fades at a belief's rate (per second, once quiet).
+        fadePerSecond: DEFAULT_BELIEF_DECAY_PER_SECOND,
         confidenceThreshold: 0.3
       }
     },
@@ -28960,28 +29119,38 @@ var OutboxController = class {
         instance.outbox.splice(i, 1);
       }
     }
-    for (const msg of expiredMessages) {
-      instance.sessionLogger?.write({
-        type: "outbox.expire",
-        tick: instance.tickCount,
-        messageId: msg.id,
-        targetEntityId: msg.targetEntityId,
-        effectorName: msg.effectorName,
-        ageAtExpiry: instance.tickCount - msg.createdAtTick
-      });
-      try {
-        instance.simulation.eventBus.publish(
-          {
-            type: "communication.outbound.undelivered",
-            source: "will-manager",
-            payload: { messageId: msg.id, targetEntityId: msg.targetEntityId, effectorName: msg.effectorName }
-          },
-          instance.simulation.context,
-          instance.tickCount
-        );
-      } catch {
-      }
+    for (const msg of expiredMessages) this.expire(instance, msg);
+  }
+  /**
+   * A message nobody confirmed within the TTL. Logged and published as before,
+   * and received by the mind as a failed delivery — the one part it can act on.
+   * `communication.outbound.undelivered` has no subscriber, so an expired
+   * message was, to the mind, a message never answered. Called for the outbox's
+   * own rows and for what the transport carried (TransportController.expireStale).
+   * A late receipt still lands, and corrects the record.
+   */
+  expire(instance, msg) {
+    instance.sessionLogger?.write({
+      type: "outbox.expire",
+      tick: instance.tickCount,
+      messageId: msg.id,
+      targetEntityId: msg.targetEntityId,
+      effectorName: msg.effectorName,
+      ageAtExpiry: instance.tickCount - msg.createdAtTick
+    });
+    try {
+      instance.simulation.eventBus.publish(
+        {
+          type: "communication.outbound.undelivered",
+          source: "will-manager",
+          payload: { messageId: msg.id, targetEntityId: msg.targetEntityId, effectorName: msg.effectorName }
+        },
+        instance.simulation.context,
+        instance.tickCount
+      );
+    } catch {
     }
+    this.confirmDelivery(instance, msg.id, false);
   }
 };
 
@@ -29022,7 +29191,6 @@ var AckReconciler = class {
 };
 
 // src/stem/tracts/transport.controller.ts
-var MAX_PENDING_PER_WILL = 1e3;
 var TransportController = class {
   /** Monotonic outbound sequence number per Will — for peer ordering / dedup. */
   _seq = /* @__PURE__ */ new Map();
@@ -29069,15 +29237,8 @@ var TransportController = class {
   _emit(instance, env, reconcileAs) {
     const transport = instance.transport;
     if (!transport) return;
-    if (reconcileAs !== "none") {
-      const pending2 = this._pendingFor(instance.config.id);
-      pending2.set(env.correlationId, env);
-      while (pending2.size > MAX_PENDING_PER_WILL) {
-        const oldest = pending2.keys().next().value;
-        if (oldest === void 0) break;
-        pending2.delete(oldest);
-      }
-    }
+    if (reconcileAs !== "none")
+      this._pendingFor(instance.config.id).set(env.correlationId, env);
     const pending = transport.emit(env);
     if (reconcileAs === "none") {
       return;
@@ -29183,6 +29344,34 @@ var TransportController = class {
     });
     this._statusUnsub.set(instance.config.id, statusUnsub);
     logger.info(`[transport] attached inbound + outbound streams for ${instance.config.id}`);
+  }
+  /**
+   * Let go of what the mind no longer awaits, so a reconnect re-emits only what
+   * is still pending. Called by the tick loop each tick, beside the outbox's own
+   * expiry.
+   *
+   * A message the transport carried left the outbox the tick it was written, so
+   * the outbox's TTL never saw it: un-acked, it was held for as long as the Will
+   * lived and delivered on the next reconnect, however late, while the mind was
+   * never told it had not landed. It expires at the outbox's TTL now, and is
+   * reported the way an outbox row is.
+   *
+   * An invocation is awaited while its `agency.intent` is. Once the executor has
+   * timed it out (and recorded the failure), or a change in its target has
+   * confirmed it, a re-emit had the host perform an act the mind had already
+   * settled — perhaps after it had tried again.
+   */
+  expireStale(instance, outbox) {
+    const pending = this._pending.get(instance.config.id);
+    if (!pending) return;
+    for (const [id, env] of pending) {
+      if (env.channel === "effector_invocation") {
+        if (instance.simulation.stateManager.getEntity(id)?.type !== "agency.intent") pending.delete(id);
+      } else if (env.channel === "message" && instance.tickCount - env.message.createdAtTick > OUTBOX_TTL_TICKS) {
+        pending.delete(id);
+        outbox.expire(instance, env.message);
+      }
+    }
   }
   /** Re-emit un-acked outbound envelopes after the transport reconnects. */
   _reemitPending(instance) {
@@ -30978,6 +31167,7 @@ var WillStem = class {
           sb.impulsiveActionCount += actCount;
       }
       this._outbox.expireStale(instance);
+      this._transport.expireStale(instance, this._outbox);
       if (maxTicks > 0 && instance.tickCount >= maxTicks) {
         instance.status = "paused";
       }

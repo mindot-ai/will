@@ -67,6 +67,8 @@ interface WMItem {
   tags: string[]
   /** A percept's salience when it arrived — breaks ties between equally active items. */
   salience?: number
+  /** The activation it was encoded with — what consolidation weighs (see _persistItems). */
+  encoding?: number
 }
 
 /** A percept enters working memory at this activation, whatever its salience. */
@@ -174,7 +176,7 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
     const id = `wm-${( this._idSeq++ ).toString( 36 )}`
     const createdAt = item.createdAt ?? 0
     this._evictIfNeeded()
-    this._items.push({ ...item, id, createdAt })
+    this._items.push({ encoding: item.activation, ...item, id, createdAt })
   }
 
   /**
@@ -333,6 +335,7 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
         content: { summary, entityId: entity.id,
                    ...( entity.metadata?.data !== undefined ? { data: entity.metadata.data } : {} ) },
         activation: PERCEPT_ACTIVATION,
+        encoding: PERCEPT_ACTIVATION,
         attendedAt: [],
         createdAt: tick,
         sourceEntityId: entity.id,
@@ -361,6 +364,7 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
           priority:    entity.metadata?.priority ?? 0.5,
         },
         activation: 0.65,
+        encoding: 0.65,
         attendedAt: [],
         createdAt: tick,
         sourceEntityId: entity.id,
@@ -425,6 +429,12 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
           wmType: item.type,
           content: item.content,
           activation: item.activation,
+          // The strength it went in with. An item is decayed in the same pass that
+          // admits it, so the first activation anyone reads is already a tick's
+          // decay down — how much depends on the tick's length — and consolidation
+          // weighed THAT: a percept was remembered by 0.018 at 1 tick/s and never
+          // at 2 s (EpisodicConsolidator._findCandidates).
+          encoding: item.encoding ?? item.activation,
           attendedCount: item.attendedAt.length,
           tags: item.tags,
           tick

@@ -182,25 +182,8 @@ export function buildStateCommands(
     })
   }
 
-  // ── Apply Introspection ────────────────────────────────────
-  if( output.introspection )
-    commands.set!.push({
-      id: `introspection-executive-${footprint.tickObserved}`,
-      type: 'introspection',
-      metadata: output.introspection
-    })
-
-  // ── Apply Narrative ────────────────────────────────────────
-  if( output.narrative )
-    commands.set!.push({
-      id: `narrative-executive-${footprint.tickObserved}`,
-      type: 'narrative_chapter',
-      metadata: {
-        narrative: output.narrative,
-        themes: output.narrativeThemes ?? [],
-        currentSelfView: output.currentSelfView ?? ''
-      }
-    })
+  // ── Introspection, narrative, self-observations ────────────
+  commands.set!.push( ...selfRecords( output, 'executive', footprint.tickObserved ) )
 
   // ── Apply Goal Changes ─────────────────────────────────────
   if( output.newGoals && deps.goalManager ){
@@ -242,20 +225,6 @@ export function buildStateCommands(
 
   // Created effectors are owned by the agency repertoire now (skills proceduralize
   // from enaction); the executive no longer composes effectors in its output.
-
-  // ── Apply Self-Observations ────────────────────────────────
-  //
-  // Every one, each kept. This took the first five and wrote them into a ring of
-  // twenty slots (`self-obs-slot-${ (tick + idx) % 20 }`), so each new observation
-  // overwrote an old one — sometimes one from the same cycle (LOSSLESS P1).
-  if( output.selfObservations )
-    output.selfObservations.forEach( ( obs, idx ) => {
-      commands.set!.push({
-        id: `self-obs-${ footprint.tickObserved }-${ idx }`,
-        type: 'self_observation',
-        metadata: { observation: obs, tick: footprint.tickObserved }
-      })
-    })
 
   // ── Metrics ────────────────────────────────────────────────
   commands.metrics!.push(
@@ -345,20 +314,7 @@ export function publishCognitiveEvents(
   // One event per proposal — the consumer registers them individually and drops
   // anything with fewer than two sub-schemas, since a "composite" of one is just
   // the schema it already had.
-  for( const skill of output.newSkills ?? [] )
-    bus.publish({
-      type: 'agency.composite.proposed',
-      version: 1,
-      sourceEngine: 'executive-engine',
-      salience: 0.7,
-      payload: {
-        id:         skill.id,
-        composedOf: skill.composedOf,
-        ...( skill.tags ? { tags: skill.tags } : {} ),
-        ...( typeof skill.cost === 'number' ? { cost: skill.cost } : {} ),
-        tick: footprint.tickObserved,
-      }
-    })
+  publishSkills( bus, output.newSkills, footprint.tickObserved )
 
   // goal.proposed — when executive proposes new goals
   if( output.newGoals?.length )
@@ -379,20 +335,7 @@ export function publishCognitiveEvents(
     })
 
   // self.reflection — when executive includes introspection
-  if( output.introspection )
-    bus.publish({
-      type: 'executive.self.reflection',
-      version: 1,
-      sourceEngine: 'executive-engine',
-      salience: 0.7,
-      payload: {
-        confidence: output.confidence,
-        identifiedBiases: output.introspection.identifiedBiases ?? [],
-        lessonsLearned: output.introspection.lessonsLearned ?? [],
-        recommendations: output.introspection.recommendations ?? [],
-        tick: footprint.tickObserved
-      }
-    })
+  publishSelfReflection( bus, output.introspection, output.confidence, footprint.tickObserved )
 
   // prediction.formed — top-down signal for satellite engines
   const predictedDomains = inferPredictedDomains( output )
@@ -646,6 +589,77 @@ function buildIdeomotorIntents(
     del.push('action.unaddressed')
 
   return { set, delete: del }
+}
+
+// ── The mind's account of itself ──────────────────────────────
+
+/** The parts of a cycle's output that are about the mind itself, not its task. */
+export type SelfAccount = Pick<ExecutiveOutputFull,
+  'introspection' | 'narrative' | 'narrativeThemes' | 'currentSelfView' | 'selfObservations'
+  | 'identityUpdates' | 'newSkills'>
+
+/**
+ * What a cycle concluded about the mind itself, as records: its reflection, a
+ * chapter of its story, each thing it noticed about itself. The master's output
+ * and a facet's (carried back on `executive.facet.sync`) are written alike;
+ * `source` keeps two minds-at-work in one tick from writing over each other.
+ *
+ * Self-observations: every one, each kept. This took the first five and wrote
+ * them into a ring of twenty slots, so a new one overwrote an old one —
+ * sometimes one from the same cycle (LOSSLESS P1).
+ */
+export function selfRecords( out: SelfAccount, source: string, tick: number ): EntityInput[] {
+  const records: EntityInput[] = []
+  if( out.introspection )
+    records.push({ id: `introspection-${ source }-${ tick }`, type: 'introspection', metadata: out.introspection })
+  if( out.narrative )
+    records.push({ id: `narrative-${ source }-${ tick }`, type: 'narrative_chapter', metadata: {
+      narrative: out.narrative, themes: out.narrativeThemes ?? [], currentSelfView: out.currentSelfView ?? '' } })
+  out.selfObservations?.forEach( ( observation, idx ) =>
+    records.push({ id: `self-obs-${ source }-${ tick }-${ idx }`, type: 'self_observation', metadata: { observation, tick } }) )
+  return records
+}
+
+/** A reflection, to the faculties that weigh it (bias detector, calibrator, self-model). */
+export function publishSelfReflection(
+  bus: CognitiveBus, introspection: ExecutiveOutputFull['introspection'], confidence: number, tick: number,
+): void {
+  if( introspection )
+    bus.publish({
+      type: 'executive.self.reflection',
+      version: 1,
+      sourceEngine: 'executive-engine',
+      salience: 0.7,
+      payload: {
+        confidence,
+        identifiedBiases: introspection.identifiedBiases ?? [],
+        lessonsLearned: introspection.lessonsLearned ?? [],
+        recommendations: introspection.recommendations ?? [],
+        tick,
+      }
+    })
+}
+
+/**
+ * agency.composite.proposed — the mind names a compound action as one skill. One
+ * event per proposal; ReafferenceEngine registers each (and drops a "composite"
+ * of fewer than two sub-schemas).
+ */
+export function publishSkills( bus: CognitiveBus, skills: ExecutiveOutputFull['newSkills'], tick: number ): void {
+  for( const skill of skills ?? [] )
+    bus.publish({
+      type: 'agency.composite.proposed',
+      version: 1,
+      sourceEngine: 'executive-engine',
+      salience: 0.7,
+      payload: {
+        id:         skill.id,
+        composedOf: skill.composedOf,
+        ...( skill.tags ? { tags: skill.tags } : {} ),
+        ...( typeof skill.cost === 'number' ? { cost: skill.cost } : {} ),
+        tick,
+      }
+    })
 }
 
 function clamp01( n: number ): number { return n < 0 ? 0 : n > 1 ? 1 : n }

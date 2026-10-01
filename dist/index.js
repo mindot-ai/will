@@ -1045,6 +1045,12 @@ var BunStorageAdapter = class {
     const { readFile } = await import('fs/promises');
     return readFile(path, "utf8");
   }
+  async append(path, content) {
+    const { appendFile, mkdir } = await import('fs/promises');
+    const { dirname } = await import('path');
+    await mkdir(dirname(path), { recursive: true });
+    await appendFile(path, content);
+  }
   async readBytes(path) {
     if (!await this.exists(path))
       throw new Error(`File not found: ${path}`);
@@ -29015,28 +29021,38 @@ var OutboxController = class {
         instance.outbox.splice(i, 1);
       }
     }
-    for (const msg of expiredMessages) {
-      instance.sessionLogger?.write({
-        type: "outbox.expire",
-        tick: instance.tickCount,
-        messageId: msg.id,
-        targetEntityId: msg.targetEntityId,
-        effectorName: msg.effectorName,
-        ageAtExpiry: instance.tickCount - msg.createdAtTick
-      });
-      try {
-        instance.simulation.eventBus.publish(
-          {
-            type: "communication.outbound.undelivered",
-            source: "will-manager",
-            payload: { messageId: msg.id, targetEntityId: msg.targetEntityId, effectorName: msg.effectorName }
-          },
-          instance.simulation.context,
-          instance.tickCount
-        );
-      } catch {
-      }
+    for (const msg of expiredMessages) this.expire(instance, msg);
+  }
+  /**
+   * A message nobody confirmed within the TTL. Logged and published as before,
+   * and received by the mind as a failed delivery — the one part it can act on.
+   * `communication.outbound.undelivered` has no subscriber, so an expired
+   * message was, to the mind, a message never answered. Called for the outbox's
+   * own rows and for what the transport carried (TransportController.expireStale).
+   * A late receipt still lands, and corrects the record.
+   */
+  expire(instance, msg) {
+    instance.sessionLogger?.write({
+      type: "outbox.expire",
+      tick: instance.tickCount,
+      messageId: msg.id,
+      targetEntityId: msg.targetEntityId,
+      effectorName: msg.effectorName,
+      ageAtExpiry: instance.tickCount - msg.createdAtTick
+    });
+    try {
+      instance.simulation.eventBus.publish(
+        {
+          type: "communication.outbound.undelivered",
+          source: "will-manager",
+          payload: { messageId: msg.id, targetEntityId: msg.targetEntityId, effectorName: msg.effectorName }
+        },
+        instance.simulation.context,
+        instance.tickCount
+      );
+    } catch {
     }
+    this.confirmDelivery(instance, msg.id, false);
   }
 };
 
@@ -29077,7 +29093,6 @@ var AckReconciler = class {
 };
 
 // src/stem/tracts/transport.controller.ts
-var MAX_PENDING_PER_WILL = 1e3;
 var TransportController = class {
   /** Monotonic outbound sequence number per Will — for peer ordering / dedup. */
   _seq = /* @__PURE__ */ new Map();
@@ -29124,15 +29139,8 @@ var TransportController = class {
   _emit(instance, env, reconcileAs) {
     const transport = instance.transport;
     if (!transport) return;
-    if (reconcileAs !== "none") {
-      const pending2 = this._pendingFor(instance.config.id);
-      pending2.set(env.correlationId, env);
-      while (pending2.size > MAX_PENDING_PER_WILL) {
-        const oldest = pending2.keys().next().value;
-        if (oldest === void 0) break;
-        pending2.delete(oldest);
-      }
-    }
+    if (reconcileAs !== "none")
+      this._pendingFor(instance.config.id).set(env.correlationId, env);
     const pending = transport.emit(env);
     if (reconcileAs === "none") {
       return;
@@ -29238,6 +29246,34 @@ var TransportController = class {
     });
     this._statusUnsub.set(instance.config.id, statusUnsub);
     logger.info(`[transport] attached inbound + outbound streams for ${instance.config.id}`);
+  }
+  /**
+   * Let go of what the mind no longer awaits, so a reconnect re-emits only what
+   * is still pending. Called by the tick loop each tick, beside the outbox's own
+   * expiry.
+   *
+   * A message the transport carried left the outbox the tick it was written, so
+   * the outbox's TTL never saw it: un-acked, it was held for as long as the Will
+   * lived and delivered on the next reconnect, however late, while the mind was
+   * never told it had not landed. It expires at the outbox's TTL now, and is
+   * reported the way an outbox row is.
+   *
+   * An invocation is awaited while its `agency.intent` is. Once the executor has
+   * timed it out (and recorded the failure), or a change in its target has
+   * confirmed it, a re-emit had the host perform an act the mind had already
+   * settled — perhaps after it had tried again.
+   */
+  expireStale(instance, outbox) {
+    const pending = this._pending.get(instance.config.id);
+    if (!pending) return;
+    for (const [id, env] of pending) {
+      if (env.channel === "effector_invocation") {
+        if (instance.simulation.stateManager.getEntity(id)?.type !== "agency.intent") pending.delete(id);
+      } else if (env.channel === "message" && instance.tickCount - env.message.createdAtTick > OUTBOX_TTL_TICKS) {
+        pending.delete(id);
+        outbox.expire(instance, env.message);
+      }
+    }
   }
   /** Re-emit un-acked outbound envelopes after the transport reconnects. */
   _reemitPending(instance) {
@@ -31033,6 +31069,7 @@ var WillStem = class {
           sb.impulsiveActionCount += actCount;
       }
       this._outbox.expireStale(instance);
+      this._transport.expireStale(instance, this._outbox);
       if (maxTicks > 0 && instance.tickCount >= maxTicks) {
         instance.status = "paused";
       }

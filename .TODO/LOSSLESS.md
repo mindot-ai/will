@@ -317,8 +317,10 @@ Found doing P3a and **not** changed — each is the model of a mind, and the own
       mind's own identity, reloaded from its artifact, is kept whole — the
       self-model grows its values, and rejecting them there would refuse to wake it
 - [x] `surface/host/utterances.ts` holds every word until a host takes it (was 50)
-- [x] Reclassified **NONE**: the transport's 1,000 un-acked envelopes (anything it
-      could drop has already expired in the outbox — 100 ticks); the event log's
+- [x] Reclassified **NONE**: ~~the transport's 1,000 un-acked envelopes (anything it
+      could drop has already expired in the outbox — 100 ticks)~~ — wrong: a
+      message the transport carries leaves the outbox the tick it is written, so
+      the outbox's TTL never sees it (closed below); the event log's
       in-memory ring (no live mind wires an event log: `createProductionBus()`
       takes none); the artifact's top-3 actions and 5-session emotional baseline
       (statistics over records kept whole on disk)
@@ -329,11 +331,25 @@ Found doing P3b and **not** changed:
   output schema asks for them and the identity nudge prompts for them every 30
   ticks; only `traits` are read (the narrator). Values change only through the
   self-model's own heuristic. Asked for and dropped — the self-observation shape.
-- **The transport re-emits what the mind already knows failed.** Un-acked
-  envelopes are kept for reconnect after their outbox entry has expired, so a
-  reconnect delivers messages the mind recorded as undelivered.
-- **The event log, if ever wired, rewrites the whole file on every flush** (read
-  all, append 100, write all).
+- ~~**The transport re-emits what the mind already knows failed.**~~ Closed (its
+  own PR, after P4), and worse than recorded. A message the transport carried
+  left the outbox the tick it was written, so the outbox's TTL never saw it:
+  un-acked, it was held for as long as the Will lived and delivered on the next
+  reconnect however late. And an invocation was re-emitted after the executor
+  had timed it out (failure recorded) or a change in its target had confirmed
+  it — the host performed an act the mind had already settled. The tick loop now
+  lets go of both, beside the outbox's own expiry: a message at the outbox's TTL,
+  an invocation once its `agency.intent` is gone. The 1,000 cap (a silent FIFO
+  drop) is gone — the buffer holds what the mind awaits. And the mind is told: an
+  expired message, the outbox's or the transport's, is received as a failed
+  delivery (`confirmDelivery(…, false)` — the sent record and a reafferent
+  percept). `communication.outbound.undelivered` has no subscriber, so to the
+  mind an expired message had been a message never answered.
+- ~~**The event log, if ever wired, rewrites the whole file on every flush**~~
+  Closed (same PR). `StorageAdapter.append` (the file store implements it); a
+  store without it falls back. `flush()` drains — it returned the write in
+  flight, so what arrived meanwhile stayed unwritten — and a failed write puts
+  its batch back.
 
 ### P4 — the operator's record is whole ✅
 

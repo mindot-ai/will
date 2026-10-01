@@ -162,6 +162,13 @@ export interface WillProviderConfig {
    * price can never change what a mind does or break a replay.
    */
   prices?:  PriceTable
+  /**
+   * Context window in tokens, keyed by model id (matched like `prices`). Unlike a
+   * price it changes what a call is SHOWN — the engine pages anything that would
+   * not fit — so it is configuration a replay must share. Undeclared models get a
+   * conservative 128k (LOSSLESS_P5).
+   */
+  contextWindows?: Record<string, number>
 }
 
 export interface WillLLMConfig {
@@ -170,6 +177,8 @@ export interface WillLLMConfig {
   baseUrl?:         string
   maxOutputTokens?: number
   timeoutMs?:       number
+  /** The default model's context window, in tokens. See `WillProviderConfig.contextWindows`. */
+  contextWindow?:   number
   /**
    * Everything the host knows about each provider — credential, endpoint, and
    * prices — declared once per provider. The single-provider fields above stay
@@ -228,6 +237,18 @@ export function mergeProviderPrices(
       if( !( model in out ) ) out[ model ] = price
     }
   }
+  return Object.keys( out ).length > 0 ? out : undefined
+}
+
+/** Flatten the per-provider `contextWindows` maps into one model→window table (first declared wins). */
+export function mergeProviderWindows(
+  providers?: Partial<Record<LLMProvider, WillProviderConfig>>,
+): Record<string, number> | undefined {
+  if( !providers ) return undefined
+  const out: Record<string, number> = {}
+  for( const entry of Object.values( providers ) )
+    for( const [ model, window ] of Object.entries( entry?.contextWindows ?? {} ) )
+      if( !( model in out ) && Number.isFinite( window ) && window > 0 ) out[ model ] = window
   return Object.keys( out ).length > 0 ? out : undefined
 }
 
@@ -936,6 +957,7 @@ function _constructCognition(
     ? {
         ...config.llm,
         ...( config.llm.providers ? { credentials: providerCredentials( config.llm.providers ) } : {} ),
+        ...( mergeProviderWindows( config.llm.providers ) ? { contextWindows: mergeProviderWindows( config.llm.providers ) } : {} ),
         router: chainRouters( config.llm.router, roleRouter ),
       }
     : ( roleRouter ? { router: roleRouter } : null )

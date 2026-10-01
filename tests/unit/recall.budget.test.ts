@@ -2,13 +2,14 @@
 // tests/unit/recall.budget.test.ts
 // ─────────────────────────────────────────────────────────────
 /**
- * §5.3 — explicit char budget on the "## Relevant Memories" recall block.
+ * "## Relevant Memories" — every recalled memory, whole, in recall order.
  *
- * The recall surface is rendered in the deterministic order set by
- * buildExecutiveContext (semantic matches first, then recent). The renderer
- * adds lines until the next would overflow the budget, then emits an explicit
- * "[+N omitted]" tail — so a long recall set can never crowd out the rest of the
- * prompt, and the model is told the surface was truncated rather than empty.
+ * The block had its own 1,200-character budget (§5.3): it stopped at the first
+ * line that would overflow it, and said "[+N omitted]". Once a remembered
+ * observation carries its data that line is the first one, and every memory after
+ * it was hidden. What bounds a call now is the call's own budget against its
+ * window (LOSSLESS P5a): a large memory is a document — its handle and size —
+ * never a reason to hide the ones after it. How MANY are recalled is P5c.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -53,7 +54,7 @@ function memoriesSection( prompt: string ): string {
 const mem = ( content: string, relevance = 0.7, tick = 90 ): Memory =>
   ( { content, relevance, emotionalContext: 'neutral', tick } )
 
-describe('Relevant Memories — char budget (§5.3)', () => {
+describe('Relevant Memories — whole, in recall order', () => {
   it('renders every memory in order when under budget (no omission tail)', () => {
     const memories = [ mem('first thing'), mem('second thing'), mem('third thing') ]
     const section  = memoriesSection( render( memories ) )
@@ -67,37 +68,19 @@ describe('Relevant Memories — char budget (§5.3)', () => {
     expect( section.indexOf('second thing') ).toBeLessThan( section.indexOf('third thing') )
   } )
 
-  it('truncates an oversized recall set and reports the omitted count', () => {
-    // 30 memories × ~200 chars each ≫ 1200-char budget → most are omitted.
+  it('renders every memory recalled, whole — 30 lines of ~200 characters, none omitted', () => {
     const memories = Array.from( { length: 30 }, ( _v, i ) =>
       mem(`memory-${i} ` + 'x'.repeat( 200 ), 0.5, 90 ) )
     const section  = memoriesSection( render( memories ) )
-
-    // Budget bounds the block — far short of the full 30×~230 chars.
-    expect( section.length ).toBeLessThan( 1700 )
-    // Highest-priority (first) memories survive; later ones are dropped.
-    expect( section ).toContain('memory-0')
-    expect( section ).not.toContain('memory-29')
-
-    // The omission tail names a positive count and the full store is intact.
-    const tailMatch = section.match( /\[\+(\d+) omitted/ )
-    expect( tailMatch ).not.toBeNull()
-    const omitted = Number( tailMatch![1] )
-    expect( omitted ).toBeGreaterThan( 0 )
-
-    // Rendered + omitted must account for the whole set.
-    const rendered = ( section.match( /- memory-/g ) ?? [] ).length
-    expect( rendered + omitted ).toBe( 30 )
+    expect( ( section.match( /- memory-\d+ x{200} /g ) ?? [] ) ).toHaveLength( 30 )
+    expect( section ).not.toContain('omitted')
   } )
 
-  it('always keeps the first memory even when it alone exceeds the budget', () => {
+  it('a long memory does not hide the ones after it', () => {
     const huge     = mem('huge ' + 'y'.repeat( 4000 ), 0.9 )
     const section  = memoriesSection( render( [ huge, mem('tiny tail', 0.1 ) ] ) )
-
-    expect( section ).toContain('huge')
-    // The single huge line consumed the budget — the second is omitted.
-    expect( section ).toContain('[+1 omitted')
-    expect( section ).not.toContain('tiny tail')
+    expect( section ).toContain('huge ' + 'y'.repeat( 4000 ) )
+    expect( section ).toContain('tiny tail')
   } )
 
   it('renders the empty-state line when there are no memories', () => {

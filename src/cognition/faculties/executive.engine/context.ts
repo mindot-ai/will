@@ -15,6 +15,7 @@ import { readIdentityName } from '#cognition/identity.entity'
 import { readSpokenTurns } from '#agency/conversation.aim'
 import { nameOf as referentName } from '#cognition/social.identity'
 import { SCHEMA_ENTITY_TYPE } from '#agency/schemas/repertoire'
+import type { BroughtBack } from '#faculties/executive.engine/view'
 
 /** How many of the mind's own recent utterances it is shown. Enough to notice a
  *  repetition, few enough not to crowd out what is happening now. */
@@ -69,7 +70,7 @@ export async function buildExecutiveContext(
     // lose it just as completely, one step later. A percept entity is swept
     // after 2 ticks and the executive fires on its own schedule, so memory is
     // often where the mind meets an observation at all.
-    ...( itemData( item.content ) !== undefined ? { data: itemData( item.content ) } : {} ),
+    ...( itemData( item.content ) !== undefined ? { data: itemData( item.content ), ...itemHandle( item.content ) } : {} ),
   }))
 
   // Episodic memory — semantic query for relevant memories based on current goals
@@ -652,12 +653,24 @@ function mapEpisodeToMemory( ep: {
   const dominantEmotion = Object.entries( ep.emotionalTags ?? {} )
                                 .sort( ( [, a], [, b] ) => b - a )[0]?.[0] ?? 'neutral'
 
+  // An observation remembered: its WM content (`content.content`) holds the data
+  // and the percept id. It was recalled as its label alone, so once it left
+  // working memory the mind knew it had read something and not what it said.
+  const held = ( ep.content as { content?: unknown } | null )?.content
+  const data = itemData( held )
   return {
     content:          _extractEpisodeContent( ep.content ),
     relevance:        ep.activationStrength,
     emotionalContext: dominantEmotion,
-    tick:             typeof ep.timestamp === 'number' ? ep.timestamp : undefined
+    tick:             typeof ep.timestamp === 'number' ? ep.timestamp : undefined,
+    ...( data !== undefined ? { data, ...itemHandle( held ) } : {} ),
   }
+}
+
+/** The handle of the percept a held item came from — `content.entityId`. */
+function itemHandle( content: unknown ): { handle?: string } {
+  const id = content && typeof content === 'object' ? ( content as Record<string, unknown> )['entityId'] : undefined
+  return typeof id === 'string' ? { handle: id } : {}
 }
 
 /** A working-memory item's host payload, when it carries one. */
@@ -682,8 +695,8 @@ function extractSummary( content: unknown ): string {
   return String( content ?? '').slice( 0, 120 )
 }
 
-function extractPercepts( state: ReadonlySimulationState ): Array<{ category: string; summary: string; salience: number; data?: unknown }> {
-  const percepts: Array<{ category: string; summary: string; salience: number; data?: unknown }> = []
+function extractPercepts( state: ReadonlySimulationState ): ExecutiveContext['percepts'] {
+  const percepts: ExecutiveContext['percepts'] = []
 
   for( const entity of state.entities.values() ){
     if( entity.type !== 'percept' && entity.type !== 'percept.social') continue
@@ -699,7 +712,7 @@ function extractPercepts( state: ReadonlySimulationState ): Array<{ category: st
       // What the host actually sent, beside the label the engine wrote. A mind
       // reasoning only from labels is reasoning from somebody else's summary of
       // the evidence.
-      ...( entity.metadata?.data !== undefined ? { data: entity.metadata.data } : {} ),
+      ...( entity.metadata?.data !== undefined ? { data: entity.metadata.data, handle: entity.id } : {} ),
       salience: (entity.metadata?.salience as number) ?? 0
     })
   }
@@ -734,4 +747,48 @@ function extractAffect( state: ReadonlySimulationState ): ExecutiveContext['affe
   }
 
   return { dominantEmotion, valence, arousal, dominance, blends }
+}
+/**
+ * What the mind asked to have brought back, resolved against what it holds — the
+ * live percept, else the working-memory item that holds it, else the episode it
+ * became. One handle (the percept's id) reaches an item for as long as she
+ * remembers it. Reading an episode is a retrieval and strengthens it, as recall
+ * already does. Never a percept and never a WM item: remembering consults no
+ * world (LOSSLESS_P5, the agency rules).
+ */
+export function resolveBroughtBack(
+  asked: ReadonlyArray<{ doc: string; page: number }>,
+  state: ReadonlySimulationState,
+  deps:  Pick<ContextDependencies, 'workingMemory' | 'episodicConsolidator'>,
+): BroughtBack[] {
+  return asked.map( ( { doc: handle, page } ) => {
+    const percept = state.entities.get( handle )
+    if( percept?.type === 'percept' && percept.metadata?.['data'] !== undefined ){
+      const m = percept.metadata
+      return { handle, page, data: m['data'], label: m['summary'] as string | undefined,
+        provenance: m['provenance'] as string | undefined, sourceIntentId: m['sourceIntentId'] as string | undefined,
+        tick: ( m['tick'] as number | undefined ) ?? percept.updatedAtTick as number | undefined }
+    }
+
+    const held = deps.workingMemory?.getItems().find( i => itemHandle( i.content ).handle === handle )
+    if( held && itemData( held.content ) !== undefined ){
+      const c = held.content as Record<string, unknown>
+      return { handle, page, data: c['data'], label: c['summary'] as string | undefined,
+        provenance: c['provenance'] as string | undefined, sourceIntentId: c['sourceIntentId'] as string | undefined,
+        tick: held.createdAt as unknown as number }
+    }
+
+    const episode = deps.episodicConsolidator?.getAllEpisodes().find( ep =>
+      ep.id === handle || itemHandle( ( ep.content as { content?: unknown } | null )?.content ).handle === handle )
+    const kept = ( episode?.content as { content?: unknown } | null )?.content
+    if( episode && itemData( kept ) !== undefined ){
+      deps.episodicConsolidator!.markRetrieved( episode.id, state.tick )
+      const c = kept as Record<string, unknown>
+      return { handle, page, data: c['data'], label: c['summary'] as string | undefined,
+        provenance: c['provenance'] as string | undefined, sourceIntentId: c['sourceIntentId'] as string | undefined,
+        tick: episode.timestamp as unknown as number }
+    }
+
+    return { handle, page }
+  } )
 }

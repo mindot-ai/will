@@ -38,6 +38,8 @@ import { selectProcess, ideationTemperature, DELIBERATE_THRESHOLD } from '#facul
 import { proposeCandidates } from '#faculties/executive.engine/deliberate.reasoning'
 import { readEffectiveParams } from '#cognition/persona.prior'
 import type { SelfAccount } from '#faculties/executive.engine/commands'
+import { callView, fitToBudget, estimateTokens, type CallView } from '#faculties/executive.engine/view'
+import { resolveBroughtBack } from '#faculties/executive.engine/context'
 
 // ── Facet event types ─────────────────────────────────────────
 
@@ -187,6 +189,15 @@ export class ExecutiveFacet {
 
   /** Confidence of this facet's *previous* decision — a dual-process gate signal. */
   private _lastConfidence = 0.5
+
+  /** What this facet asked, on its last completed call, to have brought back (LOSSLESS P5a). */
+  private _pendingRecall: Array<{ doc: string; page: number }> = []
+
+  /** What one call may spend: the window and output ceiling of the model it will be routed to. */
+  private _callView( meta: LLMCallMeta, systemPrompt: string ): CallView {
+    const limits = this._llmDirector.callLimits( meta )
+    return callView( limits.contextWindow, limits.maxOutputTokens, systemPrompt )
+  }
 
   /** Current state reference (updated by orchestrator each tick) */
   private _currentStateRef: ReadonlySimulationState | null = null
@@ -463,10 +474,67 @@ export class ExecutiveFacet {
       hasPendingMessage: !!reportFocus.recallQuery,
     }, deliberateThreshold )
 
+    // What this facet asked, on its last call, to have brought back.
+    const broughtBack = resolveBroughtBack( this._pendingRecall, currentState, this._contextDeps )
+
     let ideationCandidates: IdeationCandidate[] | undefined
     if( processSelection.process === 'deliberate'){
       const proposeTemperature = ideationTemperature( execContext.identity.traits[ 'creativity' ] ?? 0.5 )
-      const ideationUserMessage = PromptFactory.buildUserMessage( {
+      const ideationMeta: LLMCallMeta = {
+        category: 'executive',
+        attribute: 'facet',
+        process: 'ideation',
+        function: reportFocus.function ?? '-',
+        scope: this.facetId,
+        demand: processSelection.effortScore
+      }
+      const { message: ideationUserMessage } = fitToBudget( this._callView( ideationMeta, systemPrompt ), view =>
+        PromptFactory.buildUserMessage( {
+          context: execContext,
+          state: currentState,
+          qualityModulation,
+          epistemicUncertainty,
+          focus,
+          deps: this._promptDeps,
+          recentActionTypes: [],
+          mode: 'facet',
+          reportContent,
+          outputFormat: PromptFactory.buildIdeationFormatInstruction(),
+          view,
+          broughtBack,
+        } ) )
+      ideationCandidates = await proposeCandidates( {
+        director: this._llmDirector,
+        systemPrompt,
+        ideationUserMessage,
+        tick: currentState.tick,
+        proposeTemperature,
+        meta: ideationMeta,
+      } )
+      logger.info(
+        `[executive.facet] ${this.facetId} ◆ deliberate propose tick=${currentState.tick}  ` +
+        `candidates=${ideationCandidates?.length ?? 0}  temp=${proposeTemperature.toFixed( 2 )}`
+      )
+    }
+
+    // MODEL_ROUTING W0 — same effort gate as master, so a facet's demand is
+    // measured on the identical scale (a live message awaiting reply is this
+    // focus's stakes-bearing moment, and already weighs into the score).
+    const facetMeta: LLMCallMeta = {
+      category:  'executive',
+      attribute: 'facet',
+      process: 'decision',
+      // A focus that declares no function is making its decision call, the
+      // facet's analogue of master's 'decision'. This previously fell back to
+      // 'facet' — an *attribute* value, which quietly created a bogus bucket
+      // in the by-function cost breakdown. The typed axes caught it.
+      function:  reportFocus.function ?? '-',
+      scope:     this.facetId,
+      demand:    processSelection.effortScore,
+    }
+    // Within the routed model's window (LOSSLESS P5a) — see the master's call.
+    const fitted = fitToBudget( this._callView( facetMeta, systemPrompt ), view =>
+      PromptFactory.buildUserMessage( {
         context: execContext,
         state: currentState,
         qualityModulation,
@@ -476,42 +544,15 @@ export class ExecutiveFacet {
         recentActionTypes: [],
         mode: 'facet',
         reportContent,
-        outputFormat: PromptFactory.buildIdeationFormatInstruction(),
-      } )
-      ideationCandidates = await proposeCandidates( {
-        director: this._llmDirector,
-        systemPrompt,
-        ideationUserMessage,
-        tick: currentState.tick,
-        proposeTemperature,
-        meta: {
-          category: 'executive',
-          attribute: 'facet',
-          process: 'ideation',
-          function: reportFocus.function ?? '-',
-          scope: this.facetId,
-          demand: processSelection.effortScore
-        },
-      } )
-      logger.info(
-        `[executive.facet] ${this.facetId} ◆ deliberate propose tick=${currentState.tick}  ` +
-        `candidates=${ideationCandidates?.length ?? 0}  temp=${proposeTemperature.toFixed( 2 )}`
-      )
-    }
-
-    const userMessage = PromptFactory.buildUserMessage( {
-      context: execContext,
-      state: currentState,
-      qualityModulation,
-      epistemicUncertainty,
-      focus,
-      deps: this._promptDeps,
-      recentActionTypes: [],
-      mode: 'facet',
-      reportContent,
-      outputFormat: focus.outputFormat,
-      ideationCandidates
-    } )
+        outputFormat: focus.outputFormat,
+        ideationCandidates,
+        view,
+        broughtBack,
+      } ) )
+    const userMessage = fitted.message
+    if( fitted.tightened > 0 )
+      logger.warn(`[executive.facet] ${ this.facetId } view tightened ${ fitted.tightened }× to fit the window (${ fitted.view.window } tok)` +
+        `${ fitted.overBudget ? ' — STILL OVER BUDGET' : '' }`)
 
     // Log the call
     this._sessionLogger?.write( {
@@ -519,7 +560,9 @@ export class ExecutiveFacet {
       tick: currentState.tick,
       facetId: this.facetId,
       promptChars: systemPrompt.length + userMessage.length,
-      promptTokensEst: Math.round( ( systemPrompt.length + userMessage.length ) / 4 ),
+      promptTokensEst: estimateTokens( systemPrompt ) + estimateTokens( userMessage ),
+      view: { window: fitted.view.window, budget: fitted.view.budget, mode: fitted.view.mode,
+              inlineTokens: fitted.view.inlineTokens, tightened: fitted.tightened, overBudget: fitted.overBudget },
       systemChars: systemPrompt.length,
       userChars: userMessage.length
     } )
@@ -531,25 +574,11 @@ export class ExecutiveFacet {
       // Use streaming call when a per-facet chunk handler is registered —
       // this enables entity-scoped token delivery (e.g. AuditionEngine SSE).
       // Falls back to regular call when no handler is present.
-      // MODEL_ROUTING W0 — same effort gate as master, so a facet's demand is
-      // measured on the identical scale (a live message awaiting reply is this
-      // focus's stakes-bearing moment, and already weighs into the score).
-      const facetMeta: LLMCallMeta = {
-        category:  'executive',
-        attribute: 'facet',
-        process: 'decision',
-        // A focus that declares no function is making its decision call, the
-        // facet's analogue of master's 'decision'. This previously fell back to
-        // 'facet' — an *attribute* value, which quietly created a bogus bucket
-        // in the by-function cost breakdown. The typed axes caught it.
-        function:  reportFocus.function ?? '-',
-        scope:     this.facetId,
-        demand:    processSelection.effortScore,
-      }
       const result = this._chunkHandler
         ? await this._llmDirector.callStream( systemPrompt, userMessage, currentState.tick, this._chunkHandler, undefined, facetMeta )
         : await this._llmDirector.call( systemPrompt, userMessage, currentState.tick, undefined, facetMeta )
       output = parseResponse( result.text, currentState, [] )
+      this._pendingRecall = output.recall ?? []
 
       // System 2 — retain the options this facet weighed for its focus decision.
       if( ideationCandidates && ideationCandidates.length > 0 )

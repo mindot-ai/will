@@ -105,7 +105,7 @@ const CACHE_WRITE_MULT = 1.25
  * first, so a host that prices a long-context variant differently just lists it
  * verbatim and that wins.
  */
-function normalizeModelKey( model: string ): string {
+export function normalizeModelKey( model: string ): string {
   let m = model.toLowerCase().trim()
   const slash = m.lastIndexOf('/')
   if( slash >= 0 ) m = m.slice( slash + 1 )    // drop "provider/" prefix

@@ -2717,6 +2717,472 @@ var OutboxWriter = class {
     return ids;
   }
 };
+var CACHE_READ_MULT = 0.1;
+var CACHE_WRITE_MULT = 1.25;
+function normalizeModelKey(model) {
+  let m = model.toLowerCase().trim();
+  const slash = m.lastIndexOf("/");
+  if (slash >= 0) m = m.slice(slash + 1);
+  m = m.replace(/\[[^\]]*\]$/, "");
+  return m.replace(/[-@]\d{6,8}$/, "");
+}
+var _unpricedWarned = /* @__PURE__ */ new Set();
+function resolvePricing(model, hostPrices) {
+  if (!hostPrices) return null;
+  const exact = hostPrices[model];
+  if (exact) return exact;
+  const norm = normalizeModelKey(model);
+  if (hostPrices[norm]) return hostPrices[norm];
+  for (const [key, price] of Object.entries(hostPrices)) {
+    if (normalizeModelKey(key) === norm) return price;
+  }
+  return null;
+}
+function composeLabel(m) {
+  const base = [m.category, m.attribute, m.process, m.function === "-" ? "" : m.function].filter(Boolean).join("/");
+  return m.scope ? `${base}#${m.scope}` : base;
+}
+var TokenTracker = class {
+  name = "token-tracker";
+  _emitCostEvents;
+  _costWarningThreshold;
+  _prices;
+  // All recorded usage for the simulation run
+  _usageLog = [];
+  // Running totals
+  _totalPromptTokens = 0;
+  _totalCompletionTokens = 0;
+  _totalCost = 0;
+  // Per-axis breakdowns (cost + tokens), keyed by category and by function.
+  _categoryCosts = /* @__PURE__ */ new Map();
+  _categoryTokens = /* @__PURE__ */ new Map();
+  _functionCosts = /* @__PURE__ */ new Map();
+  _functionTokens = /* @__PURE__ */ new Map();
+  // Split out of the function axis: `decision` vs `ideation` is which PROCESS ran,
+  // not which function it served. Without its own bucket the deliberate path's
+  // propose pass became invisible in cost reporting — every master call landing in
+  // the '-' function bucket regardless of whether it deliberated.
+  _processCosts = /* @__PURE__ */ new Map();
+  _processTokens = /* @__PURE__ */ new Map();
+  // Per-provider spend. The axis a host actually reconciles against invoices —
+  // "which vendor did we pay?" is not answerable from the model id once routing
+  // can reach one model through several of them.
+  _providerCosts = /* @__PURE__ */ new Map();
+  _providerTokens = /* @__PURE__ */ new Map();
+  // Per-tick costs (for spike detection)
+  _tickCosts = [];
+  _maxTickCostSamples = 1e3;
+  // Track last cost warning tick to avoid spam
+  _lastCostWarningTick = 0;
+  _lastProcessedIndex = 0;
+  // Attributed-ledger transports. Listeners are the production transport (the
+  // stem bridges them onto the ExternalTransport); the file (`_ledgerPath`) is a
+  // dev-only mirror, null when disabled.
+  _recordListeners = /* @__PURE__ */ new Set();
+  _ledgerPath;
+  _ledgerDirReady = false;
+  constructor(config = {}) {
+    this._emitCostEvents = config.emitCostEvents ?? true;
+    this._costWarningThreshold = config.costWarningThresholdUsd ?? 0.05;
+    this._prices = config.prices;
+    this._ledgerPath = config.writeLedger && config.willId ? `./data/wills/${config.willId}/debug/token-report.jsonl` : null;
+  }
+  // ── Public API: record usage ──────────────────────────────
+  /**
+   * Record a completed LLM call.
+   * Called by LLMDirector.call after each completion (src/llm/index.ts).
+   */
+  recordUsage(usage) {
+    const pricing = resolvePricing(usage.model, this._prices);
+    const cacheRead = usage.cacheReadTokens ?? 0;
+    const cacheWrite = usage.cacheWriteTokens ?? 0;
+    if (!pricing && !_unpricedWarned.has(usage.model)) {
+      _unpricedWarned.add(usage.model);
+      logger.warn(
+        `[tokens] no price for "${usage.model}" \u2014 reporting cost 0 for it. Supply one via llm.providers.<provider>.prices to get cost telemetry.`
+      );
+    }
+    const costUsd = pricing ? usage.promptTokens / 1e6 * pricing.input + usage.completionTokens / 1e6 * pricing.output + // `?? fallback` rather than `||`: a stated 0 is a real rate (free cache
+    // reads / free storage) and must not silently become the Anthropic ratio.
+    cacheRead / 1e6 * (pricing.cachedInput ?? pricing.input * CACHE_READ_MULT) + cacheWrite / 1e6 * (pricing.cacheWrite ?? pricing.input * CACHE_WRITE_MULT) : 0;
+    const full = {
+      ...usage,
+      label: usage.label ?? composeLabel(usage),
+      priced: pricing !== null,
+      estimatedCostUsd: Math.round(costUsd * 1e6) / 1e6
+      // round to micro-dollars
+    };
+    this._usageLog.push(full);
+    this._totalPromptTokens += full.promptTokens;
+    this._totalCompletionTokens += full.completionTokens;
+    this._totalCost += full.estimatedCostUsd;
+    this._accumulate(this._categoryCosts, this._categoryTokens, full.category, full);
+    this._accumulate(this._functionCosts, this._functionTokens, full.function, full);
+    this._accumulate(this._processCosts, this._processTokens, full.process, full);
+    this._accumulate(this._providerCosts, this._providerTokens, full.provider ?? "unattributed", full);
+    this._emitLedger(full);
+  }
+  /**
+   * Subscribe to every attributed ledger record (5-axis attribution + tokens +
+   * cost). Neutral sink — the stem bridges these onto the ExternalTransport so
+   * cognition/ stays free of any transport dependency. Returns an unsubscribe fn.
+   */
+  onRecord(listener) {
+    this._recordListeners.add(listener);
+    return () => {
+      this._recordListeners.delete(listener);
+    };
+  }
+  _emitLedger(full) {
+    if (this._recordListeners.size === 0 && !this._ledgerPath) return;
+    const record = {
+      tick: full.tick,
+      ts: new Date(wallClock()).toISOString(),
+      // determinism-ok: ledger timestamp is telemetry, never replay state
+      model: full.model,
+      provider: full.provider,
+      category: full.category,
+      attribute: full.attribute,
+      process: full.process,
+      function: full.function,
+      scope: full.scope,
+      label: full.label,
+      inputTok: full.promptTokens,
+      outputTok: full.completionTokens,
+      cacheReadTok: full.cacheReadTokens ?? 0,
+      cacheWriteTok: full.cacheWriteTokens ?? 0,
+      estPromptTok: full.estPromptTokens,
+      costUsd: full.estimatedCostUsd,
+      // Whether costUsd came from a real price. False ⇒ 0 because nothing
+      // priced this model, NOT because the call was free — a consumer summing
+      // spend must not fold unpriced calls in as zero.
+      priced: full.priced,
+      // Undefined stays undefined — see TokenUsage.demand. A consumer that
+      // coerces this to 0 has silently invented a measurement.
+      demand: full.demand,
+      latencyMs: full.latencyMs,
+      ...full.truncated ? { truncated: true } : {}
+    };
+    for (const fn of this._recordListeners) {
+      try {
+        fn(record);
+      } catch {
+      }
+    }
+    if (this._ledgerPath) {
+      try {
+        if (!this._ledgerDirReady) {
+          mkdirSync(this._ledgerPath.slice(0, this._ledgerPath.lastIndexOf("/")), { recursive: true });
+          this._ledgerDirReady = true;
+        }
+        appendFileSync(this._ledgerPath, JSON.stringify(record) + "\n");
+      } catch {
+      }
+    }
+  }
+  /** Fold one call's cost + tokens into a (cost, tokens) breakdown pair under `key`. */
+  _accumulate(costMap, tokenMap, key, full) {
+    costMap.set(key, (costMap.get(key) ?? 0) + full.estimatedCostUsd);
+    const prev = tokenMap.get(key) ?? { prompt: 0, completion: 0 };
+    tokenMap.set(key, {
+      prompt: prev.prompt + full.promptTokens,
+      completion: prev.completion + full.completionTokens
+    });
+  }
+  // ── Engine interface ─────────────────────────────────────
+  async react(_delta, tick, _state, context) {
+    const events = [], commands = { metrics: [] };
+    const tickCost = this._computeTickCost();
+    this._tickCosts.push(tickCost);
+    if (this._tickCosts.length > this._maxTickCostSamples)
+      this._tickCosts.shift();
+    commands.metrics.push(
+      ["llm.prompt_tokens_total", this._totalPromptTokens],
+      ["llm.completion_tokens_total", this._totalCompletionTokens],
+      ["llm.total_calls", this._usageLog.length]
+    );
+    for (const [cat, tok] of this._categoryTokens) {
+      commands.metrics.push(
+        [`llm.prompt_tokens.${cat}`, tok.prompt],
+        [`llm.completion_tokens.${cat}`, tok.completion]
+      );
+    }
+    if (tickCost > this._costWarningThreshold && this._emitCostEvents && tick - this._lastCostWarningTick > 50) {
+      this._lastCostWarningTick = tick;
+      events.push({
+        type: "llm.cost_spike",
+        source: this.name,
+        payload: {
+          tickCost,
+          totalCost: this._totalCost,
+          categoryBreakdown: Object.fromEntries(this._categoryCosts),
+          functionBreakdown: Object.fromEntries(this._functionCosts),
+          processBreakdown: Object.fromEntries(this._processCosts)
+        }
+      });
+    }
+    return { events: events.length > 0 ? events : void 0, commands };
+  }
+  // ── Public query methods ─────────────────────────────────
+  /** Total cost since simulation start */
+  get totalCostUsd() {
+    return this._totalCost;
+  }
+  /** Total tokens consumed */
+  get totalTokens() {
+    return {
+      prompt: this._totalPromptTokens,
+      completion: this._totalCompletionTokens
+    };
+  }
+  /** Cost broken down by category ('executive' | 'summarizer' | 'embedding' | …). */
+  get categoryBreakdown() {
+    return this._categoryCosts;
+  }
+  /** Token counts (prompt + completion) broken down by category. */
+  get categoryTokenBreakdown() {
+    return this._categoryTokens;
+  }
+  /** Cost broken down by function ('decision' | 'ideation' | 'conversation' | 'planning' | …). */
+  get functionBreakdown() {
+    return this._functionCosts;
+  }
+  /** Token counts (prompt + completion) broken down by function. */
+  get functionTokenBreakdown() {
+    return this._functionTokens;
+  }
+  /** Cost broken down by process ('decision' | 'ideation' | 'cog'). */
+  get processBreakdown() {
+    return this._processCosts;
+  }
+  /** Token counts (prompt + completion) broken down by process. */
+  get processTokenBreakdown() {
+    return this._processTokens;
+  }
+  /**
+   * Cost broken down by provider ('anthropic' | 'glm' | 'moonshot' | …), plus
+   * an `unattributed` bucket for usage recorded without one.
+   *
+   * This is the axis a host reconciles against vendor invoices. Calls whose
+   * model went unpriced contribute 0 here, so compare against
+   * `getUsageLog()`'s `priced` flag before treating a small number as a small
+   * bill.
+   */
+  get providerBreakdown() {
+    return this._providerCosts;
+  }
+  /** Token counts (prompt + completion) broken down by provider. */
+  get providerTokenBreakdown() {
+    return this._providerTokens;
+  }
+  /** Cost per call average */
+  get averageCostPerCall() {
+    if (this._usageLog.length === 0) return 0;
+    return this._totalCost / this._usageLog.length;
+  }
+  /** Cost per tick average */
+  get averageCostPerTick() {
+    return this._averageTickCost();
+  }
+  /** Estimated cost per hour at current rate */
+  estimateHourlyCost() {
+    if (this._tickCosts.length === 0) return 0;
+    const avgTickCost = this._averageTickCost();
+    return avgTickCost * 3600;
+  }
+  /** Full usage log for export/analysis */
+  getUsageLog() {
+    return this._usageLog;
+  }
+  /** Reset all counters (for new simulation run) */
+  reset() {
+    this._usageLog = [];
+    this._totalPromptTokens = 0;
+    this._totalCompletionTokens = 0;
+    this._totalCost = 0;
+    this._categoryCosts.clear();
+    this._categoryTokens.clear();
+    this._functionCosts.clear();
+    this._functionTokens.clear();
+    this._processCosts.clear();
+    this._processTokens.clear();
+    this._providerCosts.clear();
+    this._providerTokens.clear();
+    this._tickCosts = [];
+  }
+  // ── Internal ─────────────────────────────────────────────
+  _computeTickCost() {
+    if (this._usageLog.length === 0) return 0;
+    let total = 0;
+    for (let i = this._lastProcessedIndex; i < this._usageLog.length; i++)
+      total += this._usageLog[i].estimatedCostUsd;
+    this._lastProcessedIndex = this._usageLog.length;
+    return total;
+  }
+  _averageTickCost() {
+    if (this._tickCosts.length === 0) return 0;
+    return this._tickCosts.reduce((s, c) => s + c, 0) / this._tickCosts.length;
+  }
+};
+
+// src/cognition/faculties/executive.engine/view.ts
+var DEFAULT_CONTEXT_WINDOW = 128e3;
+var PAGE_TOKENS = 8e3;
+var INLINE_TOKENS_MIN = 250;
+var RESERVE = 0.05;
+var BYTES_PER_TOKEN = 3;
+var encoder = new TextEncoder();
+function estimateTokens(text) {
+  return Math.ceil(encoder.encode(text).length / BYTES_PER_TOKEN);
+}
+function callView(window, maxOutputTokens, systemPrompt) {
+  const budget = Math.max(0, window - maxOutputTokens - estimateTokens(systemPrompt) - Math.ceil(window * RESERVE));
+  return { window, budget, inlineTokens: PAGE_TOKENS, mode: "page" };
+}
+function fitToBudget(view, build) {
+  let v = view, message = build(v), tightened = 0;
+  while (estimateTokens(message) > v.budget) {
+    if (v.mode === "page") v = { ...v, mode: "reference" };
+    else if (v.inlineTokens > INLINE_TOKENS_MIN) v = { ...v, inlineTokens: Math.max(INLINE_TOKENS_MIN, Math.floor(v.inlineTokens / 2)) };
+    else break;
+    tightened++;
+    message = build(v);
+  }
+  return { message, view: v, tightened, overBudget: estimateTokens(message) > v.budget };
+}
+function itemText(data) {
+  if (typeof data === "string") return data;
+  if (Array.isArray(data)) return `[
+${data.map((d) => JSON.stringify(d)).join(",\n")}
+]`;
+  if (data && typeof data === "object") {
+    const shown = Object.fromEntries(Object.entries(data).filter(([k]) => k !== "summary"));
+    return JSON.stringify(shown, null, 2);
+  }
+  return String(data);
+}
+function paginate(text, pageTokens) {
+  const size = Math.max(1, pageTokens * BYTES_PER_TOKEN);
+  if (encoder.encode(text).length <= size) return [text];
+  const pages = [];
+  let page = "", pageBytes = 0;
+  const flush = () => {
+    if (page) {
+      pages.push(page);
+      page = "";
+      pageBytes = 0;
+    }
+  };
+  for (const line of text.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
+    const bytes = encoder.encode(line).length;
+    if (pageBytes + bytes <= size) {
+      page += line;
+      pageBytes += bytes;
+      continue;
+    }
+    flush();
+    if (bytes <= size) {
+      page = line;
+      pageBytes = bytes;
+      continue;
+    }
+    let rest = line;
+    while (encoder.encode(rest).length > size) {
+      const head = sliceBytes(rest, size);
+      const floor = Math.floor(head.length * 0.75);
+      const soft = Math.max(head.lastIndexOf(","), head.lastIndexOf(" "));
+      const cut = soft >= floor ? soft + 1 : head.length;
+      pages.push(rest.slice(0, cut));
+      rest = rest.slice(cut);
+    }
+    page = rest;
+    pageBytes = encoder.encode(rest).length;
+  }
+  flush();
+  return pages;
+}
+function sliceBytes(s, bytes) {
+  let used = 0, i = 0;
+  for (const ch of s) {
+    const b = encoder.encode(ch).length;
+    if (used + b > bytes) break;
+    used += b;
+    i += ch.length;
+  }
+  return s.slice(0, Math.max(1, i));
+}
+function humanSize(text) {
+  const bytes = encoder.encode(text).length;
+  return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+var recallHint = (handle, page) => `{"recall": [{"doc": "${handle}", "page": ${page}}]}`;
+function compactText(data) {
+  if (data === void 0 || data === null) return "";
+  if (typeof data === "string") return data;
+  try {
+    const shown = Array.isArray(data) ? data : Object.fromEntries(Object.entries(data).filter(([k]) => k !== "summary"));
+    const json2 = JSON.stringify(shown);
+    return json2 === "{}" || json2 === "[]" ? "" : json2;
+  } catch {
+    return "";
+  }
+}
+function renderItemData(data, handle, view) {
+  const compact2 = compactText(data);
+  if (compact2 === "") return "";
+  if (!view || !handle || estimateTokens(compact2) <= view.inlineTokens) return `
+    ${compact2}`;
+  const text = itemText(data);
+  const pages = paginate(text, PAGE_TOKENS);
+  const size = `${humanSize(text)} \u2248 ${estimateTokens(text).toLocaleString("en-US")} tokens, ${pages.length} pages \xB7 doc:${handle}`;
+  if (view.mode === "reference")
+    return `
+    [${size} \u2014 whole in memory, not shown here; ${recallHint(handle, 1)} to read it]`;
+  if (pages.length === 1)
+    return `
+    [${size} \u2014 whole in memory, not shown here; ${recallHint(handle, 1)} to read it]`;
+  return `
+    [${size} \u2014 page 1 of ${pages.length} below; the rest is whole in memory: ${recallHint(handle, 2)}]
+${pages[0]}`;
+}
+function renderBroughtBack(items, budget) {
+  if (items.length === 0) return "";
+  const out = [];
+  let used = 0;
+  let deferred = 0;
+  for (const it of items) {
+    if (it.data === void 0) {
+      out.push(`- doc:${it.handle} \u2014 I hold no record of it now (it may have been forgotten).`);
+      continue;
+    }
+    const pages = paginate(itemText(it.data), PAGE_TOKENS);
+    const origin = [
+      it.provenance === "reafferent" ? "what I found by acting" : it.provenance ? `${it.provenance}` : void 0,
+      it.label,
+      it.tick !== void 0 ? `tick ${it.tick}` : void 0
+    ].filter(Boolean).join(" \xB7 ");
+    if (it.page < 1 || it.page > pages.length) {
+      out.push(`- doc:${it.handle} (${origin}) has ${pages.length} page${pages.length === 1 ? "" : "s"}; there is no page ${it.page}.`);
+      continue;
+    }
+    const text = pages[it.page - 1];
+    const cost = estimateTokens(text);
+    if (used > 0 && used + cost > budget) {
+      deferred++;
+      continue;
+    }
+    used += cost;
+    const next = it.page < pages.length ? `
+\u2192 the next: ${recallHint(it.handle, it.page + 1)}` : "\n\u2192 that was the last page.";
+    out.push(`- doc:${it.handle} (${origin}) \u2014 page ${it.page} of ${pages.length}:
+${text}${next}`);
+  }
+  const tail = deferred > 0 ? `
+${deferred} more page${deferred === 1 ? "" : "s"} I asked for did not fit this call \u2014 I can ask for ${deferred === 1 ? "it" : "them"} again.` : "";
+  return `## Brought Back (I asked for these)
+From my own memory, as it arrived \u2014 not something new:
+${out.join("\n\n")}${tail}`;
+}
 
 // src/llm/routing.ts
 var NULL_ROUTER = {
@@ -3023,6 +3489,8 @@ var LLMDirector = class {
   _willId;
   _model;
   _maxOutputTokens;
+  _contextWindow;
+  _contextWindows;
   _apiKey;
   _provider;
   _sessionLogger;
@@ -3040,6 +3508,8 @@ var LLMDirector = class {
     this._willId = config.willId;
     this._model = config.model;
     this._maxOutputTokens = config.maxOutputTokens;
+    this._contextWindow = config.contextWindow;
+    this._contextWindows = config.contextWindows ?? {};
     this._apiKey = config.apiKey;
     this._provider = config.provider;
     this._sessionLogger = config.sessionLogger;
@@ -3057,6 +3527,18 @@ var LLMDirector = class {
       wire: config.wire,
       maxOutputTokens: this._maxOutputTokens
     });
+  }
+  /**
+   * The window and output ceiling of the model THIS call will be routed to —
+   * resolved before the prompt is built, because what fits depends on it. The
+   * router is a pure function of the call's attribution, so this is too.
+   * Undeclared → DEFAULT_CONTEXT_WINDOW (LOSSLESS_P5 D2).
+   */
+  callLimits(meta3) {
+    const ep = meta3 ? this._resolveEndpoint(meta3) : this._defaultEndpoint;
+    const windows = this._contextWindows;
+    const declared = windows[ep.model] ?? Object.entries(windows).find(([k]) => normalizeModelKey(k) === normalizeModelKey(ep.model))?.[1] ?? (ep === this._defaultEndpoint ? this._contextWindow : void 0);
+    return { contextWindow: declared ?? DEFAULT_CONTEXT_WINDOW, maxOutputTokens: ep.maxOutputTokens };
   }
   /**
    * Resolve which model serves this call. Falls back to the default endpoint
@@ -3849,8 +4331,8 @@ var HNSWIndex = class {
         }))
       }))
     };
-    const encoder = new TextEncoder();
-    return encoder.encode(JSON.stringify(data));
+    const encoder2 = new TextEncoder();
+    return encoder2.encode(JSON.stringify(data));
   }
   async deserialize(bytes) {
     const decoder = new TextDecoder();
@@ -5283,313 +5765,6 @@ function externalSchemas(effectors) {
 function effectorName(d) {
   return typeof d === "string" ? d : d.name;
 }
-var CACHE_READ_MULT = 0.1;
-var CACHE_WRITE_MULT = 1.25;
-function normalizeModelKey(model) {
-  let m = model.toLowerCase().trim();
-  const slash = m.lastIndexOf("/");
-  if (slash >= 0) m = m.slice(slash + 1);
-  m = m.replace(/\[[^\]]*\]$/, "");
-  return m.replace(/[-@]\d{6,8}$/, "");
-}
-var _unpricedWarned = /* @__PURE__ */ new Set();
-function resolvePricing(model, hostPrices) {
-  if (!hostPrices) return null;
-  const exact = hostPrices[model];
-  if (exact) return exact;
-  const norm = normalizeModelKey(model);
-  if (hostPrices[norm]) return hostPrices[norm];
-  for (const [key, price] of Object.entries(hostPrices)) {
-    if (normalizeModelKey(key) === norm) return price;
-  }
-  return null;
-}
-function composeLabel(m) {
-  const base = [m.category, m.attribute, m.process, m.function === "-" ? "" : m.function].filter(Boolean).join("/");
-  return m.scope ? `${base}#${m.scope}` : base;
-}
-var TokenTracker = class {
-  name = "token-tracker";
-  _emitCostEvents;
-  _costWarningThreshold;
-  _prices;
-  // All recorded usage for the simulation run
-  _usageLog = [];
-  // Running totals
-  _totalPromptTokens = 0;
-  _totalCompletionTokens = 0;
-  _totalCost = 0;
-  // Per-axis breakdowns (cost + tokens), keyed by category and by function.
-  _categoryCosts = /* @__PURE__ */ new Map();
-  _categoryTokens = /* @__PURE__ */ new Map();
-  _functionCosts = /* @__PURE__ */ new Map();
-  _functionTokens = /* @__PURE__ */ new Map();
-  // Split out of the function axis: `decision` vs `ideation` is which PROCESS ran,
-  // not which function it served. Without its own bucket the deliberate path's
-  // propose pass became invisible in cost reporting — every master call landing in
-  // the '-' function bucket regardless of whether it deliberated.
-  _processCosts = /* @__PURE__ */ new Map();
-  _processTokens = /* @__PURE__ */ new Map();
-  // Per-provider spend. The axis a host actually reconciles against invoices —
-  // "which vendor did we pay?" is not answerable from the model id once routing
-  // can reach one model through several of them.
-  _providerCosts = /* @__PURE__ */ new Map();
-  _providerTokens = /* @__PURE__ */ new Map();
-  // Per-tick costs (for spike detection)
-  _tickCosts = [];
-  _maxTickCostSamples = 1e3;
-  // Track last cost warning tick to avoid spam
-  _lastCostWarningTick = 0;
-  _lastProcessedIndex = 0;
-  // Attributed-ledger transports. Listeners are the production transport (the
-  // stem bridges them onto the ExternalTransport); the file (`_ledgerPath`) is a
-  // dev-only mirror, null when disabled.
-  _recordListeners = /* @__PURE__ */ new Set();
-  _ledgerPath;
-  _ledgerDirReady = false;
-  constructor(config = {}) {
-    this._emitCostEvents = config.emitCostEvents ?? true;
-    this._costWarningThreshold = config.costWarningThresholdUsd ?? 0.05;
-    this._prices = config.prices;
-    this._ledgerPath = config.writeLedger && config.willId ? `./data/wills/${config.willId}/debug/token-report.jsonl` : null;
-  }
-  // ── Public API: record usage ──────────────────────────────
-  /**
-   * Record a completed LLM call.
-   * Called by LLMDirector.call after each completion (src/llm/index.ts).
-   */
-  recordUsage(usage) {
-    const pricing = resolvePricing(usage.model, this._prices);
-    const cacheRead = usage.cacheReadTokens ?? 0;
-    const cacheWrite = usage.cacheWriteTokens ?? 0;
-    if (!pricing && !_unpricedWarned.has(usage.model)) {
-      _unpricedWarned.add(usage.model);
-      logger.warn(
-        `[tokens] no price for "${usage.model}" \u2014 reporting cost 0 for it. Supply one via llm.providers.<provider>.prices to get cost telemetry.`
-      );
-    }
-    const costUsd = pricing ? usage.promptTokens / 1e6 * pricing.input + usage.completionTokens / 1e6 * pricing.output + // `?? fallback` rather than `||`: a stated 0 is a real rate (free cache
-    // reads / free storage) and must not silently become the Anthropic ratio.
-    cacheRead / 1e6 * (pricing.cachedInput ?? pricing.input * CACHE_READ_MULT) + cacheWrite / 1e6 * (pricing.cacheWrite ?? pricing.input * CACHE_WRITE_MULT) : 0;
-    const full = {
-      ...usage,
-      label: usage.label ?? composeLabel(usage),
-      priced: pricing !== null,
-      estimatedCostUsd: Math.round(costUsd * 1e6) / 1e6
-      // round to micro-dollars
-    };
-    this._usageLog.push(full);
-    this._totalPromptTokens += full.promptTokens;
-    this._totalCompletionTokens += full.completionTokens;
-    this._totalCost += full.estimatedCostUsd;
-    this._accumulate(this._categoryCosts, this._categoryTokens, full.category, full);
-    this._accumulate(this._functionCosts, this._functionTokens, full.function, full);
-    this._accumulate(this._processCosts, this._processTokens, full.process, full);
-    this._accumulate(this._providerCosts, this._providerTokens, full.provider ?? "unattributed", full);
-    this._emitLedger(full);
-  }
-  /**
-   * Subscribe to every attributed ledger record (5-axis attribution + tokens +
-   * cost). Neutral sink — the stem bridges these onto the ExternalTransport so
-   * cognition/ stays free of any transport dependency. Returns an unsubscribe fn.
-   */
-  onRecord(listener) {
-    this._recordListeners.add(listener);
-    return () => {
-      this._recordListeners.delete(listener);
-    };
-  }
-  _emitLedger(full) {
-    if (this._recordListeners.size === 0 && !this._ledgerPath) return;
-    const record = {
-      tick: full.tick,
-      ts: new Date(wallClock()).toISOString(),
-      // determinism-ok: ledger timestamp is telemetry, never replay state
-      model: full.model,
-      provider: full.provider,
-      category: full.category,
-      attribute: full.attribute,
-      process: full.process,
-      function: full.function,
-      scope: full.scope,
-      label: full.label,
-      inputTok: full.promptTokens,
-      outputTok: full.completionTokens,
-      cacheReadTok: full.cacheReadTokens ?? 0,
-      cacheWriteTok: full.cacheWriteTokens ?? 0,
-      estPromptTok: full.estPromptTokens,
-      costUsd: full.estimatedCostUsd,
-      // Whether costUsd came from a real price. False ⇒ 0 because nothing
-      // priced this model, NOT because the call was free — a consumer summing
-      // spend must not fold unpriced calls in as zero.
-      priced: full.priced,
-      // Undefined stays undefined — see TokenUsage.demand. A consumer that
-      // coerces this to 0 has silently invented a measurement.
-      demand: full.demand,
-      latencyMs: full.latencyMs,
-      ...full.truncated ? { truncated: true } : {}
-    };
-    for (const fn of this._recordListeners) {
-      try {
-        fn(record);
-      } catch {
-      }
-    }
-    if (this._ledgerPath) {
-      try {
-        if (!this._ledgerDirReady) {
-          mkdirSync(this._ledgerPath.slice(0, this._ledgerPath.lastIndexOf("/")), { recursive: true });
-          this._ledgerDirReady = true;
-        }
-        appendFileSync(this._ledgerPath, JSON.stringify(record) + "\n");
-      } catch {
-      }
-    }
-  }
-  /** Fold one call's cost + tokens into a (cost, tokens) breakdown pair under `key`. */
-  _accumulate(costMap, tokenMap, key, full) {
-    costMap.set(key, (costMap.get(key) ?? 0) + full.estimatedCostUsd);
-    const prev = tokenMap.get(key) ?? { prompt: 0, completion: 0 };
-    tokenMap.set(key, {
-      prompt: prev.prompt + full.promptTokens,
-      completion: prev.completion + full.completionTokens
-    });
-  }
-  // ── Engine interface ─────────────────────────────────────
-  async react(_delta, tick, _state, context) {
-    const events = [], commands = { metrics: [] };
-    const tickCost = this._computeTickCost();
-    this._tickCosts.push(tickCost);
-    if (this._tickCosts.length > this._maxTickCostSamples)
-      this._tickCosts.shift();
-    commands.metrics.push(
-      ["llm.prompt_tokens_total", this._totalPromptTokens],
-      ["llm.completion_tokens_total", this._totalCompletionTokens],
-      ["llm.total_calls", this._usageLog.length]
-    );
-    for (const [cat, tok] of this._categoryTokens) {
-      commands.metrics.push(
-        [`llm.prompt_tokens.${cat}`, tok.prompt],
-        [`llm.completion_tokens.${cat}`, tok.completion]
-      );
-    }
-    if (tickCost > this._costWarningThreshold && this._emitCostEvents && tick - this._lastCostWarningTick > 50) {
-      this._lastCostWarningTick = tick;
-      events.push({
-        type: "llm.cost_spike",
-        source: this.name,
-        payload: {
-          tickCost,
-          totalCost: this._totalCost,
-          categoryBreakdown: Object.fromEntries(this._categoryCosts),
-          functionBreakdown: Object.fromEntries(this._functionCosts),
-          processBreakdown: Object.fromEntries(this._processCosts)
-        }
-      });
-    }
-    return { events: events.length > 0 ? events : void 0, commands };
-  }
-  // ── Public query methods ─────────────────────────────────
-  /** Total cost since simulation start */
-  get totalCostUsd() {
-    return this._totalCost;
-  }
-  /** Total tokens consumed */
-  get totalTokens() {
-    return {
-      prompt: this._totalPromptTokens,
-      completion: this._totalCompletionTokens
-    };
-  }
-  /** Cost broken down by category ('executive' | 'summarizer' | 'embedding' | …). */
-  get categoryBreakdown() {
-    return this._categoryCosts;
-  }
-  /** Token counts (prompt + completion) broken down by category. */
-  get categoryTokenBreakdown() {
-    return this._categoryTokens;
-  }
-  /** Cost broken down by function ('decision' | 'ideation' | 'conversation' | 'planning' | …). */
-  get functionBreakdown() {
-    return this._functionCosts;
-  }
-  /** Token counts (prompt + completion) broken down by function. */
-  get functionTokenBreakdown() {
-    return this._functionTokens;
-  }
-  /** Cost broken down by process ('decision' | 'ideation' | 'cog'). */
-  get processBreakdown() {
-    return this._processCosts;
-  }
-  /** Token counts (prompt + completion) broken down by process. */
-  get processTokenBreakdown() {
-    return this._processTokens;
-  }
-  /**
-   * Cost broken down by provider ('anthropic' | 'glm' | 'moonshot' | …), plus
-   * an `unattributed` bucket for usage recorded without one.
-   *
-   * This is the axis a host reconciles against vendor invoices. Calls whose
-   * model went unpriced contribute 0 here, so compare against
-   * `getUsageLog()`'s `priced` flag before treating a small number as a small
-   * bill.
-   */
-  get providerBreakdown() {
-    return this._providerCosts;
-  }
-  /** Token counts (prompt + completion) broken down by provider. */
-  get providerTokenBreakdown() {
-    return this._providerTokens;
-  }
-  /** Cost per call average */
-  get averageCostPerCall() {
-    if (this._usageLog.length === 0) return 0;
-    return this._totalCost / this._usageLog.length;
-  }
-  /** Cost per tick average */
-  get averageCostPerTick() {
-    return this._averageTickCost();
-  }
-  /** Estimated cost per hour at current rate */
-  estimateHourlyCost() {
-    if (this._tickCosts.length === 0) return 0;
-    const avgTickCost = this._averageTickCost();
-    return avgTickCost * 3600;
-  }
-  /** Full usage log for export/analysis */
-  getUsageLog() {
-    return this._usageLog;
-  }
-  /** Reset all counters (for new simulation run) */
-  reset() {
-    this._usageLog = [];
-    this._totalPromptTokens = 0;
-    this._totalCompletionTokens = 0;
-    this._totalCost = 0;
-    this._categoryCosts.clear();
-    this._categoryTokens.clear();
-    this._functionCosts.clear();
-    this._functionTokens.clear();
-    this._processCosts.clear();
-    this._processTokens.clear();
-    this._providerCosts.clear();
-    this._providerTokens.clear();
-    this._tickCosts = [];
-  }
-  // ── Internal ─────────────────────────────────────────────
-  _computeTickCost() {
-    if (this._usageLog.length === 0) return 0;
-    let total = 0;
-    for (let i = this._lastProcessedIndex; i < this._usageLog.length; i++)
-      total += this._usageLog[i].estimatedCostUsd;
-    this._lastProcessedIndex = this._usageLog.length;
-    return total;
-  }
-  _averageTickCost() {
-    if (this._tickCosts.length === 0) return 0;
-    return this._tickCosts.reduce((s, c) => s + c, 0) / this._tickCosts.length;
-  }
-};
 
 // src/cognition/generative.model.ts
 var DEFAULT_ALPHA = 0.15;
@@ -10077,7 +10252,11 @@ var WorkingMemory = class {
         content: {
           summary,
           entityId: entity.id,
-          ...entity.metadata?.data !== void 0 ? { data: entity.metadata.data } : {}
+          ...entity.metadata?.data !== void 0 ? { data: entity.metadata.data } : {},
+          // How it arrived, so a memory of it can say — "what I found by acting"
+          // is a different thing to remember than news from the world.
+          ...typeof entity.metadata?.provenance === "string" ? { provenance: entity.metadata.provenance } : {},
+          ...typeof entity.metadata?.sourceIntentId === "string" ? { sourceIntentId: entity.metadata.sourceIntentId } : {}
         },
         activation: PERCEPT_ACTIVATION,
         encoding: PERCEPT_ACTIVATION,
@@ -13976,7 +14155,7 @@ async function buildExecutiveContext(state, deps, recallQuery) {
     // lose it just as completely, one step later. A percept entity is swept
     // after 2 ticks and the executive fires on its own schedule, so memory is
     // often where the mind meets an observation at all.
-    ...itemData(item.content) !== void 0 ? { data: itemData(item.content) } : {}
+    ...itemData(item.content) !== void 0 ? { data: itemData(item.content), ...itemHandle(item.content) } : {}
   }));
   let memories = [];
   let relevantPlanIds = [];
@@ -14331,12 +14510,19 @@ function _extractEpisodeContent(raw) {
 }
 function mapEpisodeToMemory(ep) {
   const dominantEmotion = Object.entries(ep.emotionalTags ?? {}).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "neutral";
+  const held = ep.content?.content;
+  const data = itemData(held);
   return {
     content: _extractEpisodeContent(ep.content),
     relevance: ep.activationStrength,
     emotionalContext: dominantEmotion,
-    tick: typeof ep.timestamp === "number" ? ep.timestamp : void 0
+    tick: typeof ep.timestamp === "number" ? ep.timestamp : void 0,
+    ...data !== void 0 ? { data, ...itemHandle(held) } : {}
   };
+}
+function itemHandle(content) {
+  const id = content && typeof content === "object" ? content["entityId"] : void 0;
+  return typeof id === "string" ? { handle: id } : {};
 }
 function itemData(content) {
   if (content && typeof content === "object")
@@ -14364,7 +14550,7 @@ function extractPercepts(state) {
       // What the host actually sent, beside the label the engine wrote. A mind
       // reasoning only from labels is reasoning from somebody else's summary of
       // the evidence.
-      ...entity.metadata?.data !== void 0 ? { data: entity.metadata.data } : {},
+      ...entity.metadata?.data !== void 0 ? { data: entity.metadata.data, handle: entity.id } : {},
       salience: entity.metadata?.salience ?? 0
     });
   }
@@ -14382,6 +14568,52 @@ function extractAffect(state) {
     blends = affectEntity.metadata?.blends ?? [];
   }
   return { dominantEmotion, valence, arousal, dominance, blends };
+}
+function resolveBroughtBack(asked, state, deps) {
+  return asked.map(({ doc: handle, page }) => {
+    const percept = state.entities.get(handle);
+    if (percept?.type === "percept" && percept.metadata?.["data"] !== void 0) {
+      const m = percept.metadata;
+      return {
+        handle,
+        page,
+        data: m["data"],
+        label: m["summary"],
+        provenance: m["provenance"],
+        sourceIntentId: m["sourceIntentId"],
+        tick: m["tick"] ?? percept.updatedAtTick
+      };
+    }
+    const held = deps.workingMemory?.getItems().find((i) => itemHandle(i.content).handle === handle);
+    if (held && itemData(held.content) !== void 0) {
+      const c = held.content;
+      return {
+        handle,
+        page,
+        data: c["data"],
+        label: c["summary"],
+        provenance: c["provenance"],
+        sourceIntentId: c["sourceIntentId"],
+        tick: held.createdAt
+      };
+    }
+    const episode = deps.episodicConsolidator?.getAllEpisodes().find((ep) => ep.id === handle || itemHandle(ep.content?.content).handle === handle);
+    const kept = episode?.content?.content;
+    if (episode && itemData(kept) !== void 0) {
+      deps.episodicConsolidator.markRetrieved(episode.id, state.tick);
+      const c = kept;
+      return {
+        handle,
+        page,
+        data: c["data"],
+        label: c["summary"],
+        provenance: c["provenance"],
+        sourceIntentId: c["sourceIntentId"],
+        tick: episode.timestamp
+      };
+    }
+    return { handle, page };
+  });
 }
 
 // src/cognition/faculties/executive.engine/prompt.factory.ts
@@ -14401,24 +14633,11 @@ function traitEmphasis(value) {
   return { adverb: band.adverb, direction: value >= 0.5 ? "high" : "low", rank: band.rank };
 }
 var TRAIT_NORM_BAND = 0.12;
-function perceptLine(p) {
-  return `- [${p.category}] ${p.summary} (salience: ${p.salience.toFixed(2)})${perceptData(p.data)}`;
+function perceptLine(p, view) {
+  return `- [${p.category}] ${p.summary} (salience: ${p.salience.toFixed(2)})${renderItemData(p.data, p.handle, view)}`;
 }
-function ruminationLine(w) {
-  return `- [${w.type}] ${w.summary} (activation: ${w.activation.toFixed(2)})${perceptData(w.data)}`;
-}
-function perceptData(data) {
-  if (data === void 0 || data === null) return "";
-  if (typeof data === "string") return data.length > 0 ? `
-    ${data}` : "";
-  try {
-    const shown = Array.isArray(data) ? data : Object.fromEntries(Object.entries(data).filter(([k]) => k !== "summary"));
-    const json2 = JSON.stringify(shown);
-    return json2 === "{}" || json2 === "[]" ? "" : `
-    ${json2}`;
-  } catch {
-    return "";
-  }
+function ruminationLine(w, view) {
+  return `- [${w.type}] ${w.summary} (activation: ${w.activation.toFixed(2)})${renderItemData(w.data, w.handle, view)}`;
 }
 function temporalLine(timeOfDay, circadian) {
   return `Body rhythm: it feels like ${labelForHour(timeOfDay)} to me (my own cycle, not a clock \u2014 I use \`check-time\` to find out the actual hour). Circadian phase: ${circadian.toFixed(2)}.`;
@@ -14505,6 +14724,7 @@ ${roleDescription}${architectureBlock}
 - **identityUpdates.traits**: Array of {key, value} where value is a DELTA to apply to my trait (e.g., +0.05 to increase a trait by 5%).
 - **identityUpdates.values**: Values I hold that are not yet listed \u2014 each is added to mine; none is removed.
 - **identityUpdates.style**: How I speak, as a short phrase \u2014 taken while my style is still generic.
+- **recall**: Something I hold that is larger than one page shows as a document \u2014 its size and a handle (\`doc:\u2026\`) \u2014 with only a page, or none, in view. Naming the handle and a page brings that page back whole on my next cycle, under "## Brought Back". It is my own memory as it arrived, not something new: to learn what the world says NOW, I act again.
 - **knownEntityUpdates**: What I've learned about someone/something I'm dealing with. Array of {keid, name?, learned?, feeling?, sameAs?}. Use the keid from "## People I Know". Set name only when I actually learn their name; learned is an array of facts about them (stored as memories); feeling is how I feel toward them (-1..1). **sameAs** is another keid I have concluded is this same someone met under a different handle \u2014 it fuses my two records into one, so I use it only when I actually know, not when I merely suspect. Record only what I genuinely learned this turn.
 
 ## Required Output
@@ -14615,7 +14835,11 @@ completionType guide:
 
 [SKILLS]
 {"newSkills": [{"id": "brief-then-confirm", "composedOf": ["reach-out", "wait"], "tags": ["social"], "cost": 0.15}]}
-[/SKILLS]`;
+[/SKILLS]
+
+[RECALL]
+{"recall": [{"doc": "percept-\u2026", "page": 2}]}
+[/RECALL]`;
   }
   // ── User message ───────────────────────────────────────────
   /**
@@ -14646,7 +14870,9 @@ completionType guide:
       mode = "master",
       reportContent,
       outputFormat,
-      ideationCandidates
+      ideationCandidates,
+      view,
+      broughtBack
     } = options;
     const actionDiversity = this._buildActionDiversitySection(recentActionTypes);
     const recentIntrospection = this._buildRecentIntrospectionSection(state);
@@ -14721,16 +14947,17 @@ ${context.goals.map((g) => {
     const plansBlock = has("plans") ? this._buildActivePlansSection(context.plans, focus.awarenessEntityId, planRelevantIds).trim() : "";
     const recentOutcomesBlock = has("recentActions") ? this._buildRecentOutcomesSection(context.recentActions, state.tick, context.actionReports).trim() : "";
     const spokenBlock = has("recentActions") ? this._buildSpokenTurnsSection(context.spokenTurns).trim() : "";
+    const heldInMind = new Set(has("ruminations") ? context.workingMemory.map((w) => w.handle).filter(Boolean) : []);
     const perceptsBlock = has("percepts") ? `## Percepts (What I Notice)
-${context.percepts.slice(0, 10).map(perceptLine).join("\n") || "Nothing notable"}` : "";
+${context.percepts.slice(0, 10).map((p) => p.handle && heldInMind.has(p.handle) ? `${perceptLine({ ...p, data: void 0 })} (held in mind \u2014 its data is under Active Ruminations)` : perceptLine(p, view)).join("\n") || "Nothing notable"}` : "";
     const abilitiesBlock = context.abilities && context.abilities.length > 0 ? `## Abilities Available Now
 Things I can do \u2014 name one as an action's "type" (with "args" for any specifics it needs, and "target" for whom) and my body enacts it:
 ${context.abilities.map(
       (a) => `- **${a.name}**${a.targets?.length ? ` (toward ${a.targets.join(", ")})` : a.towardReferent ? " (toward someone or something I know \u2014 this moment offers it toward no one)" : ""}${a.unavailable ? " (not available to me right now)" : ""}${a.description ? ` \u2014 ${a.description}` : ""}`
     ).join("\n")}` : "";
     const ruminationsBlock = has("ruminations") ? `## Active Ruminations (retrieved memories & thoughts)
-${context.workingMemory.map(ruminationLine).join("\n") || "Nothing actively held in mind"}` : "";
-    const memoriesBlock = has("memories") ? this._buildMemoriesSection(context.memories, state.tick) : "";
+${context.workingMemory.map((w) => ruminationLine(w, view)).join("\n") || "Nothing actively held in mind"}` : "";
+    const memoriesBlock = has("memories") ? this._buildMemoriesSection(context.memories, state.tick, view) : "";
     const beliefsBlock = has("beliefs") ? `## My Beliefs
 ${context.beliefs.map((b) => `- [${b.category}] ${b.statement} (confidence: ${(b.confidence * 100).toFixed(0)}%)`).join("\n") || "No strong beliefs yet"}${context.beliefsOmitted > 0 ? `
 [+${context.beliefsOmitted} omitted \u2014 deduped or lower-ranked; full store intact]` : ""}` : "";
@@ -14768,6 +14995,7 @@ ${options.activeConversations.map((c) => {
 These threads are already open \u2014 I am in them. Reaching out to one of these people again starts a second, parallel thread with them.` : "";
     const focusBlock = context.currentFocus && context.currentFocus.focusTicks > 0 ? `## Task Focus
 I've been focused on ${context.currentFocus.goalDescription ? `"${context.currentFocus.goalDescription}"` : "a goal"} for ${context.currentFocus.focusTicks} tick(s). Switching to something else takes deliberate effort \u2014 ${context.currentFocus.switchCost > 0.45 ? "a strong pull to see this through before moving on" : context.currentFocus.switchCost > 0.3 ? "a real cost to breaking away" : "some inertia to overcome"}.` : "";
+    const broughtBackBlock = broughtBack?.length ? renderBroughtBack(broughtBack, view ? Math.floor(view.budget / 2) : Infinity) : "";
     const body = [
       identityAnchor,
       memoryContinuity,
@@ -14789,6 +15017,7 @@ I've been focused on ${context.currentFocus.goalDescription ? `"${context.curren
       focusBlock,
       identityNudge.trim(),
       ideationBlock,
+      broughtBackBlock,
       tailSections
     ].filter(Boolean).join("\n\n");
     return `${body}${outputFormatBlock}`;
@@ -14802,7 +15031,7 @@ I've been focused on ${context.currentFocus.goalDescription ? `"${context.curren
    *               facets never send messages.
    */
   static buildOutputFormatInstruction(mode = "master") {
-    const availableTags = "PLANS, BELIEFS, INTROSPECTION, NARRATIVE, IDENTITY, GOALS_NEW, GOALS_ABANDON, GOALS_REPRIORITIZE, SELF_OBS";
+    const availableTags = "PLANS, BELIEFS, INTROSPECTION, NARRATIVE, IDENTITY, GOALS_NEW, GOALS_ABANDON, GOALS_REPRIORITIZE, SELF_OBS, RECALL";
     return `
 
 ## Response Format (REQUIRED)
@@ -14970,37 +15199,29 @@ ${recent.map((t, i) => `${i + 1}. ${t}`).join(" \u2192 ")}${warning}
    * Only rendered when there are status-bearing action records in state.
    */
   /**
-   * Render the "## Relevant Memories" block under an explicit char budget (§5.3).
+   * Render the "## Relevant Memories" block.
    *
    * Ordering is the deterministic recall order set by buildExecutiveContext —
    * semantic (similarity-ranked) matches first, then recent episodes for
    * freshness, deduped and capped. This is the re-ranking surface; we do NOT
    * re-sort here so that order is preserved.
    *
-   * The budget bounds the block deterministically: lines are added in order
-   * until the next would overflow RECALL_CHAR_BUDGET (the first line always
-   * renders, even if it alone exceeds the budget), then an explicit
-   * "[+N omitted]" tail mirrors the beliefs block so the model knows the recall
-   * surface was truncated, not empty.
+   * Every line whole. A 1,200-character budget used to stop the block at the
+   * first line that would overflow it — and once a remembered observation
+   * carries its data, that is the first line: every memory after it would have
+   * been "omitted". What bounds a call now is its budget (`view`), and a large
+   * memory is a document: its handle and size, read by `[RECALL]` (LOSSLESS P5a).
+   * A remembered observation shows its data — it was recalled as its label.
    */
-  static RECALL_CHAR_BUDGET = 1200;
-  // ~300 tokens — keeps recall from crowding the prompt
-  static _buildMemoriesSection(memories, currentTick) {
+  static _buildMemoriesSection(memories, currentTick, view) {
     if (memories.length === 0) return "## Relevant Memories\nNo relevant memories";
-    const lines = [];
-    let used = 0;
-    for (const m of memories) {
+    const asMemory = view ? { ...view, mode: "reference" } : void 0;
+    const lines = memories.map((m) => {
       const age = m.tick != null ? `, ~${currentTick - m.tick} ticks ago` : "";
-      const line = `- ${m.content} (relevance: ${m.relevance.toFixed(2)}, emotional: ${m.emotionalContext}${age})`;
-      if (lines.length > 0 && used + line.length + 1 > this.RECALL_CHAR_BUDGET) break;
-      lines.push(line);
-      used += line.length + 1;
-    }
-    const omitted = memories.length - lines.length;
-    const tail = omitted > 0 ? `
-[+${omitted} omitted \u2014 over recall budget; full store intact]` : "";
+      return `- ${m.content} (relevance: ${m.relevance.toFixed(2)}, emotional: ${m.emotionalContext}${age})${renderItemData(m.data, m.handle, asMemory)}`;
+    });
     return `## Relevant Memories
-${lines.join("\n")}${tail}`;
+${lines.join("\n")}`;
   }
   /**
    * What I have said to people lately, and who has answered.
@@ -15408,6 +15629,7 @@ var TAGGED_BLOCK_NAMES = [
   "EFFECTORS",
   "SELF_OBS",
   "SKILLS",
+  "RECALL",
   "REPLY_TEXT",
   "ACK"
 ];
@@ -15434,7 +15656,8 @@ function parseTaggedBlocks(minimal, state) {
     "GOALS_REPRIORITIZE",
     "EFFECTORS",
     "SELF_OBS",
-    "SKILLS"
+    "SKILLS",
+    "RECALL"
   ], found = taggedTypes.filter((t) => text.includes(`[${t}]`));
   if (found.length > 0) {
     const closed = found.map((t) => `${t}: ${text.includes(`[/${t}]`) ? "CLOSED" : "UNCLOSED"}`).join(", ");
@@ -15509,6 +15732,16 @@ function parseTaggedBlocks(minimal, state) {
   try {
     const skillsData = parseJsonBlock("SKILLS");
     if (skillsData?.newSkills) full.newSkills = skillsData.newSkills;
+  } catch {
+  }
+  try {
+    const recallData = parseJsonBlock("RECALL");
+    const asked = Array.isArray(recallData?.recall) ? recallData.recall : [];
+    const recall = asked.filter((r) => r && typeof r["doc"] === "string" && r["doc"].trim()).map((r) => ({
+      doc: r["doc"].trim(),
+      page: Number.isInteger(r["page"]) && r["page"] > 0 ? r["page"] : 1
+    }));
+    if (recall.length > 0) full.recall = recall;
   } catch {
   }
   return full;
@@ -15840,6 +16073,13 @@ var ExecutiveFacet = class {
   }
   /** Confidence of this facet's *previous* decision — a dual-process gate signal. */
   _lastConfidence = 0.5;
+  /** What this facet asked, on its last completed call, to have brought back (LOSSLESS P5a). */
+  _pendingRecall = [];
+  /** What one call may spend: the window and output ceiling of the model it will be routed to. */
+  _callView(meta3, systemPrompt) {
+    const limits = this._llmDirector.callLimits(meta3);
+    return callView(limits.contextWindow, limits.maxOutputTokens, systemPrompt);
+  }
   /** Current state reference (updated by orchestrator each tick) */
   _currentStateRef = null;
   /**
@@ -16015,10 +16255,19 @@ ${this._facetReasoningHistory.join("\n")}` : "";
       // facets set focus.recallQuery to it); planning/other facets rely on uncertainty.
       hasPendingMessage: !!reportFocus.recallQuery
     }, deliberateThreshold);
+    const broughtBack = resolveBroughtBack(this._pendingRecall, currentState, this._contextDeps);
     let ideationCandidates;
     if (processSelection.process === "deliberate") {
       const proposeTemperature = ideationTemperature(execContext.identity.traits["creativity"] ?? 0.5);
-      const ideationUserMessage = PromptFactory.buildUserMessage({
+      const ideationMeta = {
+        category: "executive",
+        attribute: "facet",
+        process: "ideation",
+        function: reportFocus.function ?? "-",
+        scope: this.facetId,
+        demand: processSelection.effortScore
+      };
+      const { message: ideationUserMessage } = fitToBudget(this._callView(ideationMeta, systemPrompt), (view) => PromptFactory.buildUserMessage({
         context: execContext,
         state: currentState,
         qualityModulation,
@@ -16028,28 +16277,35 @@ ${this._facetReasoningHistory.join("\n")}` : "";
         recentActionTypes: [],
         mode: "facet",
         reportContent,
-        outputFormat: PromptFactory.buildIdeationFormatInstruction()
-      });
+        outputFormat: PromptFactory.buildIdeationFormatInstruction(),
+        view,
+        broughtBack
+      }));
       ideationCandidates = await proposeCandidates({
         director: this._llmDirector,
         systemPrompt,
         ideationUserMessage,
         tick: currentState.tick,
         proposeTemperature,
-        meta: {
-          category: "executive",
-          attribute: "facet",
-          process: "ideation",
-          function: reportFocus.function ?? "-",
-          scope: this.facetId,
-          demand: processSelection.effortScore
-        }
+        meta: ideationMeta
       });
       logger.info(
         `[executive.facet] ${this.facetId} \u25C6 deliberate propose tick=${currentState.tick}  candidates=${ideationCandidates?.length ?? 0}  temp=${proposeTemperature.toFixed(2)}`
       );
     }
-    const userMessage = PromptFactory.buildUserMessage({
+    const facetMeta = {
+      category: "executive",
+      attribute: "facet",
+      process: "decision",
+      // A focus that declares no function is making its decision call, the
+      // facet's analogue of master's 'decision'. This previously fell back to
+      // 'facet' — an *attribute* value, which quietly created a bogus bucket
+      // in the by-function cost breakdown. The typed axes caught it.
+      function: reportFocus.function ?? "-",
+      scope: this.facetId,
+      demand: processSelection.effortScore
+    };
+    const fitted = fitToBudget(this._callView(facetMeta, systemPrompt), (view) => PromptFactory.buildUserMessage({
       context: execContext,
       state: currentState,
       qualityModulation,
@@ -16060,34 +16316,36 @@ ${this._facetReasoningHistory.join("\n")}` : "";
       mode: "facet",
       reportContent,
       outputFormat: focus.outputFormat,
-      ideationCandidates
-    });
+      ideationCandidates,
+      view,
+      broughtBack
+    }));
+    const userMessage = fitted.message;
+    if (fitted.tightened > 0)
+      logger.warn(`[executive.facet] ${this.facetId} view tightened ${fitted.tightened}\xD7 to fit the window (${fitted.view.window} tok)${fitted.overBudget ? " \u2014 STILL OVER BUDGET" : ""}`);
     this._sessionLogger?.write({
       type: "executive.facet.call",
       tick: currentState.tick,
       facetId: this.facetId,
       promptChars: systemPrompt.length + userMessage.length,
-      promptTokensEst: Math.round((systemPrompt.length + userMessage.length) / 4),
+      promptTokensEst: estimateTokens(systemPrompt) + estimateTokens(userMessage),
+      view: {
+        window: fitted.view.window,
+        budget: fitted.view.budget,
+        mode: fitted.view.mode,
+        inlineTokens: fitted.view.inlineTokens,
+        tightened: fitted.tightened,
+        overBudget: fitted.overBudget
+      },
       systemChars: systemPrompt.length,
       userChars: userMessage.length
     });
     let output;
     const llmStart = wallClock();
     try {
-      const facetMeta = {
-        category: "executive",
-        attribute: "facet",
-        process: "decision",
-        // A focus that declares no function is making its decision call, the
-        // facet's analogue of master's 'decision'. This previously fell back to
-        // 'facet' — an *attribute* value, which quietly created a bogus bucket
-        // in the by-function cost breakdown. The typed axes caught it.
-        function: reportFocus.function ?? "-",
-        scope: this.facetId,
-        demand: processSelection.effortScore
-      };
       const result = this._chunkHandler ? await this._llmDirector.callStream(systemPrompt, userMessage, currentState.tick, this._chunkHandler, void 0, facetMeta) : await this._llmDirector.call(systemPrompt, userMessage, currentState.tick, void 0, facetMeta);
       output = parseResponse(result.text, currentState, []);
+      this._pendingRecall = output.recall ?? [];
       if (ideationCandidates && ideationCandidates.length > 0)
         output.consideredAlternatives = ideationCandidates.map((c) => c.approach || c.description);
       logger.info(
@@ -16671,6 +16929,12 @@ var ExecutiveEngine = class extends AsyncEngine {
    * reasoning started from (see identityUpdateCommand).
    */
   _identityUpdates = [];
+  /**
+   * What the master asked, on its last completed cycle, to have brought back —
+   * rendered on its next call (LOSSLESS P5a). Replaced by each completed cycle,
+   * so a failed call does not lose the request.
+   */
+  _pendingRecall = [];
   // ── Cognitive models ───────────────────────────────────────
   _model = new GenerativeModel();
   _generativeModel = new GenerativeModel(0.2, 100);
@@ -16877,7 +17141,10 @@ var ExecutiveEngine = class extends AsyncEngine {
       ...this._llm?.router ? { router: this._llm.router } : {},
       // Dialect for the default provider — required for anything outside the
       // known set, so the engine never guesses how to talk to an endpoint.
-      ...this._llm?.wire ? { wire: this._llm.wire } : {}
+      ...this._llm?.wire ? { wire: this._llm.wire } : {},
+      // What fits a call — host-declared, matched per routed model (LOSSLESS P5a).
+      ...this._llm?.contextWindow ? { contextWindow: this._llm.contextWindow } : {},
+      ...this._llm?.contextWindows ? { contextWindows: this._llm.contextWindows } : {}
     });
   }
   /**
@@ -17235,10 +17502,16 @@ var ExecutiveEngine = class extends AsyncEngine {
       deps: promptDeps,
       mode: "master"
     });
+    const broughtBack = resolveBroughtBack(
+      this._pendingRecall,
+      state,
+      { workingMemory: this._workingMemory, episodicConsolidator: this._episodicConsolidator }
+    );
     let ideationCandidates;
     if (processSelection.process === "deliberate" && this._llmDirector) {
       const ideationStart = wallClock();
-      const ideationUserMessage = PromptFactory.buildUserMessage({
+      const ideationMeta = { category: "executive", attribute: "master", process: "ideation", function: "-", demand: processSelection.effortScore };
+      const { message: ideationUserMessage } = fitToBudget(this._callView(ideationMeta, systemPrompt), (view) => PromptFactory.buildUserMessage({
         context: execContext,
         state,
         qualityModulation,
@@ -17248,8 +17521,10 @@ var ExecutiveEngine = class extends AsyncEngine {
         recentActionTypes: [...this._recentActionTypes],
         mode: "master",
         activeConversations: this._activeConversations(),
-        outputFormat: PromptFactory.buildIdeationFormatInstruction()
-      });
+        outputFormat: PromptFactory.buildIdeationFormatInstruction(),
+        view,
+        broughtBack
+      }));
       const proposeTemperature = ideationTemperature(execContext.identity.traits["creativity"] ?? 0.5);
       ideationCandidates = await proposeCandidates({
         director: this._llmDirector,
@@ -17257,13 +17532,7 @@ var ExecutiveEngine = class extends AsyncEngine {
         ideationUserMessage,
         tick: state.tick,
         proposeTemperature,
-        meta: {
-          category: "executive",
-          attribute: "master",
-          process: "ideation",
-          function: "-",
-          demand: processSelection.effortScore
-        }
+        meta: ideationMeta
       });
       logger.info(
         `[executive] \u25C6 deliberate propose tick=${state.tick}  candidates=${ideationCandidates?.length ?? 0}  temp=${proposeTemperature.toFixed(2)}  latency=${wallClock() - ideationStart}ms`
@@ -17273,7 +17542,8 @@ var ExecutiveEngine = class extends AsyncEngine {
       process: processSelection.process,
       candidateCount: ideationCandidates?.length ?? 0
     });
-    const userMessage = PromptFactory.buildUserMessage({
+    const masterMeta = { category: "executive", attribute: "master", process: "decision", function: "-", demand: processSelection.effortScore };
+    const fitted = fitToBudget(this._callView(masterMeta, systemPrompt), (view) => PromptFactory.buildUserMessage({
       context: execContext,
       state,
       qualityModulation,
@@ -17283,13 +17553,27 @@ var ExecutiveEngine = class extends AsyncEngine {
       recentActionTypes: [...this._recentActionTypes],
       mode: "master",
       activeConversations: this._activeConversations(),
-      ideationCandidates
-    });
+      ideationCandidates,
+      view,
+      broughtBack
+    }));
+    const userMessage = fitted.message;
+    if (fitted.tightened > 0)
+      logger.warn(`[executive] view tightened ${fitted.tightened}\xD7 to fit the window (${fitted.view.window} tok) \u2014 ${fitted.view.mode}, inline \u2264 ${fitted.view.inlineTokens} tok${fitted.overBudget ? "; STILL OVER BUDGET" : ""}`);
     this._sessionLogger?.write({
       type: "executive.call",
       tick: state.tick,
       promptChars: systemPrompt.length + userMessage.length,
-      promptTokensEst: Math.round((systemPrompt.length + userMessage.length) / 4),
+      promptTokensEst: estimateTokens(systemPrompt) + estimateTokens(userMessage),
+      // What the call was fitted to, and whether it had to tighten (LOSSLESS P5a).
+      view: {
+        window: fitted.view.window,
+        budget: fitted.view.budget,
+        mode: fitted.view.mode,
+        inlineTokens: fitted.view.inlineTokens,
+        tightened: fitted.tightened,
+        overBudget: fitted.overBudget
+      },
       systemChars: systemPrompt.length,
       userChars: userMessage.length,
       // D2: context counts for per-tick cognitive state snapshot
@@ -17304,7 +17588,6 @@ var ExecutiveEngine = class extends AsyncEngine {
     const llmStart = wallClock();
     let executiveOutput;
     try {
-      const masterMeta = { category: "executive", attribute: "master", process: "decision", function: "-", demand: processSelection.effortScore };
       const result = this._chunkBroadcaster ? await this._llmDirector.callStream(systemPrompt, userMessage, state.tick, this._chunkBroadcaster, void 0, masterMeta) : await this._llmDirector.call(systemPrompt, userMessage, state.tick, void 0, masterMeta);
       logger.info(
         `[executive] \u2713 tick=${state.tick}  in=${result.inputTok} tok  out=${result.outputTok} tok  latency=${wallClock() - llmStart}ms`
@@ -17448,6 +17731,7 @@ var ExecutiveEngine = class extends AsyncEngine {
     );
     this._deferred.enqueue(footprint.tickObserved, effects);
     if (executiveOutput.identityUpdates) this._identityUpdates.push(executiveOutput.identityUpdates);
+    this._pendingRecall = executiveOutput.recall ?? [];
     publishCognitiveEvents(
       executiveOutput,
       footprint,
@@ -17617,6 +17901,11 @@ var ExecutiveEngine = class extends AsyncEngine {
     logger.info(
       `[executive] master received facet sync from ${payload.facetId}` + (payload.subjectName || payload.subjectEntityId ? ` (with ${payload.subjectName ?? payload.subjectEntityId})` : "") + ` (confidence=${payload.confidence?.toFixed(2)})`
     );
+  }
+  /** What one call may spend: the window and output ceiling of the model it will be routed to. */
+  _callView(meta3, systemPrompt) {
+    const limits = this._llmDirector?.callLimits(meta3) ?? { contextWindow: DEFAULT_CONTEXT_WINDOW, maxOutputTokens: this._llm?.maxOutputTokens ?? 8096 };
+    return callView(limits.contextWindow, limits.maxOutputTokens, systemPrompt);
   }
   /** The queued self-accounts and identity updates, as records on `state` (see the fields). */
   _drainSelfAccounts(state) {
@@ -22429,7 +22718,7 @@ Step 1 \u2014 JSON object (my private reasoning, optionally in a \`\`\`json code
 }
 \`\`\`
 
-Available reasoning tags: BELIEFS, GOALS_NEW, GOALS_ABANDON, SELF_OBS. Include only those with meaningful content.
+Available reasoning tags: BELIEFS, GOALS_NEW, GOALS_ABANDON, SELF_OBS, RECALL. Include only those with meaningful content.
 
 Step 2 \u2014 My reply to the speaker (plain text, streamed live to them):
 
@@ -26316,6 +26605,14 @@ function mergeProviderPrices(providers) {
   }
   return Object.keys(out).length > 0 ? out : void 0;
 }
+function mergeProviderWindows(providers) {
+  if (!providers) return void 0;
+  const out = {};
+  for (const entry of Object.values(providers))
+    for (const [model, window] of Object.entries(entry?.contextWindows ?? {}))
+      if (!(model in out) && Number.isFinite(window) && window > 0) out[model] = window;
+  return Object.keys(out).length > 0 ? out : void 0;
+}
 function providerCredentials(providers) {
   const out = {};
   for (const [name, entry] of Object.entries(providers)) {
@@ -26535,6 +26832,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   executiveEngine.llm = config.llm ? {
     ...config.llm,
     ...config.llm.providers ? { credentials: providerCredentials(config.llm.providers) } : {},
+    ...mergeProviderWindows(config.llm.providers) ? { contextWindows: mergeProviderWindows(config.llm.providers) } : {},
     router: chainRouters(config.llm.router, roleRouter)
   } : roleRouter ? { router: roleRouter } : null;
   executiveEngine.modelId = modelRoles.executive;
@@ -27288,8 +27586,8 @@ var DefaultReplaySession = class {
     }
   }
   async export() {
-    const encoder = new TextEncoder();
-    return encoder.encode(JSON.stringify({ metadata: this._metadata, records: this._records }));
+    const encoder2 = new TextEncoder();
+    return encoder2.encode(JSON.stringify({ metadata: this._metadata, records: this._records }));
   }
   onEvent(handler) {
     this._eventHandlers.push(handler);
@@ -31685,7 +31983,7 @@ function isTextual(a) {
   if (ct === "application/json" || ct === "application/x-yaml") return true;
   return TEXTUAL_EXT.test(a.name);
 }
-function humanSize(bytes) {
+function humanSize2(bytes) {
   if (bytes == null) return "";
   return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
@@ -31695,7 +31993,7 @@ async function renderAttachments(attachments, speaker, fetchText) {
   const out = [];
   let inlined = 0;
   for (const a of attachments) {
-    const meta3 = [a.contentType, humanSize(a.size)].filter(Boolean).join(", ");
+    const meta3 = [a.contentType, humanSize2(a.size)].filter(Boolean).join(", ");
     const label = `${a.name}${meta3 ? ` (${meta3})` : ""}`;
     if (!fetchText || !isTextual(a) || inlined >= INLINE_COUNT_CAP) {
       out.push(`[${who} shared a file I have not read: ${label}]`);
@@ -31708,7 +32006,7 @@ async function renderAttachments(attachments, speaker, fetchText) {
     }
     inlined++;
     const clipped = body.length > INLINE_CHAR_CAP ? `${body.slice(0, INLINE_CHAR_CAP)}
-[\u2026 truncated \u2014 ${humanSize(body.length)} of ${humanSize(a.size ?? body.length)}]` : body;
+[\u2026 truncated \u2014 ${humanSize2(body.length)} of ${humanSize2(a.size ?? body.length)}]` : body;
     out.push(`[${who} shared ${label}; its contents follow \u2014 this is a document I was handed, not something said to me]
 ---
 ${clipped}

@@ -202,7 +202,7 @@ function extractBalancedArray( text: string, key: string ): string | null {
 const TAGGED_BLOCK_NAMES = [
   'PLANS', 'BELIEFS', 'INTROSPECTION', 'NARRATIVE', 'IDENTITY', 'KNOWN_ENTITIES',
   'GOALS_NEW', 'GOALS_ABANDON', 'GOALS_REPRIORITIZE', 'EFFECTORS', 'SELF_OBS',
-  'SKILLS', 'REPLY_TEXT', 'ACK',
+  'SKILLS', 'RECALL', 'REPLY_TEXT', 'ACK',
 ] as const
 
 /**
@@ -251,6 +251,7 @@ function parseTaggedBlocks(
     'EFFECTORS',
     'SELF_OBS',
     'SKILLS',
+    'RECALL',
   ],
   found = taggedTypes.filter( t => text.includes(`[${t}]`) )
   if( found.length > 0 ){
@@ -361,6 +362,19 @@ function parseTaggedBlocks(
   try {
     const skillsData = parseJsonBlock('SKILLS') as { newSkills?: ExecutiveOutputFull['newSkills'] } | null
     if( skillsData?.newSkills ) full.newSkills = skillsData.newSkills
+  }
+  catch { /* ignore */ }
+
+  // What the mind asks to have brought back next call (LOSSLESS P5a). Only
+  // well-formed requests survive: a handle, and a page that is a whole number.
+  try {
+    const recallData = parseJsonBlock('RECALL') as { recall?: unknown } | null
+    const asked = Array.isArray( recallData?.recall ) ? recallData!.recall as Array<Record<string, unknown>> : []
+    const recall = asked
+      .filter( r => r && typeof r['doc'] === 'string' && ( r['doc'] as string ).trim() )
+      .map( r => ( { doc: ( r['doc'] as string ).trim(),
+        page: Number.isInteger( r['page'] ) && ( r['page'] as number ) > 0 ? r['page'] as number : 1 } ) )
+    if( recall.length > 0 ) full.recall = recall
   }
   catch { /* ignore */ }
 

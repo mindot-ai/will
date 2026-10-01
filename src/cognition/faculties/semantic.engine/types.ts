@@ -22,14 +22,27 @@ export interface SemanticIntegratorConfig {
   minNewEpisodes?: number
   /** Ticks without reinforcement before a belief starts losing confidence */
   beliefStalenessThreshold?: number
-  /** Confidence lost per tick once a belief goes stale */
-  beliefDecayRate?: number
+  /** Confidence lost per second of running time once a belief goes stale. See DEFAULT_BELIEF_DECAY_PER_SECOND. */
+  beliefDecayPerSecond?: number
   /** Minimum similarity threshold for semantic pattern detection (0-1) */
   semanticSimilarityThreshold?: number
   /** Maximum episodes to query for semantic pattern detection */
   semanticQueryLimit?: number
   bus?: CognitiveBus
 }
+
+/**
+ * How fast an unreinforced belief fades: per second of RUNNING time (the mind's
+ * waking time, as the forgetting curve counts it), set so a weak belief (0.3)
+ * reaches the 0.12 prune in ~3 days, an even one (0.5) in ~6, a firm one (0.9)
+ * in ~13 — the scale of episodic forgetting, which semantic memory should not
+ * undercut.
+ *
+ * It was 0.001 per TICK: at ~1 tick/s a fact nobody repeated was gone in about
+ * 16 minutes. Measured on the real integrator, spaced repetition and consolidator
+ * over a quiet run: four beliefs at 0.3–0.9, all gone inside an hour.
+ */
+export const DEFAULT_BELIEF_DECAY_PER_SECOND = ( 0.3 - 0.12 ) / ( 3 * 86_400 )
 
 export interface BeliefHistoryEntry {
   tick:       Tick

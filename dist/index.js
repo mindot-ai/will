@@ -9314,6 +9314,7 @@ var _STOP_WORDS = /* @__PURE__ */ new Set([
   "most",
   "also"
 ]);
+var DEFAULT_BELIEF_DECAY_PER_SECOND = (0.3 - 0.12) / (3 * 86400);
 
 // src/cognition/memory/vector.content.ts
 function episodeContentToText(content) {
@@ -9347,7 +9348,7 @@ var SemanticIntegrator = class _SemanticIntegrator {
   _minIntervalTicks;
   _minNewEpisodes;
   _beliefStalenessThreshold;
-  _beliefDecayRate;
+  _beliefDecayPerSecond;
   _semanticSimilarityThreshold;
   _semanticQueryLimit;
   _beliefs = [];
@@ -9371,7 +9372,7 @@ var SemanticIntegrator = class _SemanticIntegrator {
     this._minIntervalTicks = config.minIntervalTicks ?? 30;
     this._minNewEpisodes = config.minNewEpisodes ?? 10;
     this._beliefStalenessThreshold = config.beliefStalenessThreshold ?? 300;
-    this._beliefDecayRate = config.beliefDecayRate ?? 1e-3;
+    this._beliefDecayPerSecond = config.beliefDecayPerSecond ?? DEFAULT_BELIEF_DECAY_PER_SECOND;
     this._semanticSimilarityThreshold = config.semanticSimilarityThreshold ?? 0.65;
     this._semanticQueryLimit = config.semanticQueryLimit ?? 20;
   }
@@ -9506,7 +9507,7 @@ var SemanticIntegrator = class _SemanticIntegrator {
     if (p.minIntervalTicks != null) this._minIntervalTicks = p.minIntervalTicks;
     if (p.minNewEpisodes != null) this._minNewEpisodes = p.minNewEpisodes;
     if (p.beliefStalenessThreshold != null) this._beliefStalenessThreshold = p.beliefStalenessThreshold;
-    if (p.beliefDecayRate != null) this._beliefDecayRate = p.beliefDecayRate;
+    if (p.beliefDecayPerSecond != null) this._beliefDecayPerSecond = p.beliefDecayPerSecond;
   }
   async react(_delta, tick, state, context) {
     this._readConfigFromState(state);
@@ -9528,7 +9529,7 @@ var SemanticIntegrator = class _SemanticIntegrator {
       const hadOpportunity = this._lastIntegrationTick > belief.lastUpdatedAt;
       if (staleness > this._beliefStalenessThreshold && hadOpportunity) {
         const prev = belief.confidence;
-        belief.confidence = Math.max(0.1, belief.confidence - this._beliefDecayRate);
+        belief.confidence = Math.max(0.1, belief.confidence - this._beliefDecayPerSecond * (_delta / 1e3));
         if (belief.confidence !== prev)
           _SemanticIntegrator._recordHistory(belief, tick, prev, "decayed");
       }
@@ -9862,6 +9863,7 @@ var SemanticIntegrator = class _SemanticIntegrator {
 };
 
 // src/cognition/faculties/spaced.repetition.ts
+var reviewRecordId = (beliefId) => `sr-${beliefId}`;
 var SpacedRepetition = class {
   name = "spaced-repetition";
   _reviewIntervalTicks;
@@ -9988,10 +9990,11 @@ var SpacedRepetition = class {
   _restoreFromState(state) {
     for (const entity of state.entities.values()) {
       if (entity.type !== "spaced_repetition_record") continue;
-      if (this._reviewRecords.has(entity.id)) continue;
+      const beliefId = entity.metadata?.["beliefId"] ?? entity.id;
+      if (this._reviewRecords.has(beliefId)) continue;
       const m = entity.metadata ?? {};
-      this._reviewRecords.set(entity.id, {
-        beliefId: entity.id,
+      this._reviewRecords.set(beliefId, {
+        beliefId,
         interval: m["interval"] ?? this._baseIntervalTicks,
         lastReviewedAt: m["lastReviewedAt"] ?? 0,
         consecutiveSuccesses: m["consecutiveSuccesses"] ?? 0,
@@ -10006,7 +10009,7 @@ var SpacedRepetition = class {
       this._restoreFromState(state);
       this._restored = true;
     }
-    const commands = { set: [], metrics: [] };
+    const commands = { set: [], delete: [], metrics: [] };
     const ticksSinceLastCycle = tick - this._lastReviewCycleTick;
     if (ticksSinceLastCycle >= this._reviewIntervalTicks) {
       await this._runReviewCycle(tick, commands);
@@ -10015,18 +10018,27 @@ var SpacedRepetition = class {
         this._rehearseEpisodes(tick, commands);
       this._lastReviewCycleTick = tick;
     }
-    for (const [beliefId, record] of this._reviewRecords.entries())
+    const live = new Set(this._semanticIntegrator?.getBeliefs().map((b) => b.id) ?? []);
+    for (const [beliefId, record] of this._reviewRecords.entries()) {
+      if (!live.has(beliefId) && state.entities.get(beliefId)?.type !== "belief") {
+        this._reviewRecords.delete(beliefId);
+        commands.delete.push(reviewRecordId(beliefId));
+        if (state.entities.get(beliefId)?.type === "spaced_repetition_record") commands.delete.push(beliefId);
+        continue;
+      }
       commands.set.push({
-        id: beliefId,
+        id: reviewRecordId(beliefId),
         type: "spaced_repetition_record",
         updatedAt: tick,
         metadata: {
+          beliefId,
           interval: record.interval,
           lastReviewedAt: record.lastReviewedAt,
           consecutiveSuccesses: record.consecutiveSuccesses,
           easinessFactor: record.easinessFactor
         }
       });
+    }
     if (!commands.metrics) commands.metrics = [];
     commands.metrics.push(
       ["memory.spaced_repetition_records", this._reviewRecords.size],
@@ -10086,8 +10098,10 @@ var SpacedRepetition = class {
     if (this._executiveReviewEnabled && this._executiveEngine)
       await this._surfaceToExecutive(toReview, tick);
     else
-      for (const belief of toReview)
-        this._processReviewOutcome(belief.id, true, tick, commands);
+      for (const belief of toReview) {
+        const record = this._reviewRecords.get(belief.id);
+        if (record) record.lastReviewedAt = tick;
+      }
   }
   // ── Episodic rehearsal (waking episodic spaced repetition) ───
   /**
@@ -26742,7 +26756,7 @@ function buildEngineConfigEntities(config, executiveInterval) {
         minIntervalTicks: 30,
         minNewEpisodes: 10,
         beliefStalenessThreshold: 300,
-        beliefDecayRate: 1e-3
+        beliefDecayPerSecond: DEFAULT_BELIEF_DECAY_PER_SECOND
       }
     },
     {

@@ -11909,6 +11909,165 @@ function resolveReplyExpectations(entities, tick, windowTicks = DEFAULT_REPLY_WI
   return { answered, unanswered };
 }
 
+// src/cognition/faculties/executive.engine/view.ts
+var DEFAULT_CONTEXT_WINDOW = 128e3;
+var PAGE_TOKENS = 8e3;
+var INLINE_TOKENS_MIN = 250;
+var RESERVE = 0.05;
+var BYTES_PER_TOKEN = 3;
+var encoder = new TextEncoder();
+function estimateTokens(text) {
+  return Math.ceil(encoder.encode(text).length / BYTES_PER_TOKEN);
+}
+function callView(window, maxOutputTokens, systemPrompt) {
+  const budget = Math.max(0, window - maxOutputTokens - estimateTokens(systemPrompt) - Math.ceil(window * RESERVE));
+  return { window, budget, inlineTokens: PAGE_TOKENS, mode: "page" };
+}
+function fitToBudget(view, build) {
+  let v = view, message = build(v), tightened = 0;
+  while (estimateTokens(message) > v.budget) {
+    if (v.mode === "page") v = { ...v, mode: "reference" };
+    else if (v.inlineTokens > INLINE_TOKENS_MIN) v = { ...v, inlineTokens: Math.max(INLINE_TOKENS_MIN, Math.floor(v.inlineTokens / 2)) };
+    else break;
+    tightened++;
+    message = build(v);
+  }
+  return { message, view: v, tightened, overBudget: estimateTokens(message) > v.budget };
+}
+function itemText(data) {
+  if (typeof data === "string") return data;
+  if (Array.isArray(data)) return `[
+${data.map((d) => JSON.stringify(d)).join(",\n")}
+]`;
+  if (data && typeof data === "object") {
+    const shown = Object.fromEntries(Object.entries(data).filter(([k]) => k !== "summary"));
+    return JSON.stringify(shown, null, 2);
+  }
+  return String(data);
+}
+function paginate(text, pageTokens) {
+  const size = Math.max(1, pageTokens * BYTES_PER_TOKEN);
+  if (encoder.encode(text).length <= size) return [text];
+  const pages = [];
+  let page = "", pageBytes = 0;
+  const flush = () => {
+    if (page) {
+      pages.push(page);
+      page = "";
+      pageBytes = 0;
+    }
+  };
+  for (const line of text.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
+    const bytes = encoder.encode(line).length;
+    if (pageBytes + bytes <= size) {
+      page += line;
+      pageBytes += bytes;
+      continue;
+    }
+    flush();
+    if (bytes <= size) {
+      page = line;
+      pageBytes = bytes;
+      continue;
+    }
+    let rest = line;
+    while (encoder.encode(rest).length > size) {
+      const head = sliceBytes(rest, size);
+      const floor = Math.floor(head.length * 0.75);
+      const soft = Math.max(head.lastIndexOf(","), head.lastIndexOf(" "));
+      const cut = soft >= floor ? soft + 1 : head.length;
+      pages.push(rest.slice(0, cut));
+      rest = rest.slice(cut);
+    }
+    page = rest;
+    pageBytes = encoder.encode(rest).length;
+  }
+  flush();
+  return pages;
+}
+function sliceBytes(s, bytes) {
+  let used = 0, i = 0;
+  for (const ch of s) {
+    const b = encoder.encode(ch).length;
+    if (used + b > bytes) break;
+    used += b;
+    i += ch.length;
+  }
+  return s.slice(0, Math.max(1, i));
+}
+function humanSize(text) {
+  const bytes = encoder.encode(text).length;
+  return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+var recallHint = (handle, page) => `{"recall": [{"doc": "${handle}", "page": ${page}}]}`;
+function compactText(data) {
+  if (data === void 0 || data === null) return "";
+  if (typeof data === "string") return data;
+  try {
+    const shown = Array.isArray(data) ? data : Object.fromEntries(Object.entries(data).filter(([k]) => k !== "summary"));
+    const json = JSON.stringify(shown);
+    return json === "{}" || json === "[]" ? "" : json;
+  } catch {
+    return "";
+  }
+}
+function renderItemData(data, handle, view) {
+  const compact2 = compactText(data);
+  if (compact2 === "") return "";
+  if (!view || !handle || estimateTokens(compact2) <= view.inlineTokens) return `
+    ${compact2}`;
+  const text = itemText(data);
+  const pages = paginate(text, PAGE_TOKENS);
+  const size = `${humanSize(text)} \u2248 ${estimateTokens(text).toLocaleString("en-US")} tokens, ${pages.length} pages \xB7 doc:${handle}`;
+  if (view.mode === "reference")
+    return `
+    [${size} \u2014 whole in memory, not shown here; ${recallHint(handle, 1)} to read it]`;
+  if (pages.length === 1)
+    return `
+    [${size} \u2014 whole in memory, not shown here; ${recallHint(handle, 1)} to read it]`;
+  return `
+    [${size} \u2014 page 1 of ${pages.length} below; the rest is whole in memory: ${recallHint(handle, 2)}]
+${pages[0]}`;
+}
+function renderBroughtBack(items, budget) {
+  if (items.length === 0) return "";
+  const out = [];
+  let used = 0;
+  let deferred = 0;
+  for (const it of items) {
+    if (it.data === void 0) {
+      out.push(`- doc:${it.handle} \u2014 I hold no record of it now (it may have been forgotten).`);
+      continue;
+    }
+    const pages = paginate(itemText(it.data), PAGE_TOKENS);
+    const origin = [
+      it.provenance === "reafferent" ? "what I found by acting" : it.provenance ? `${it.provenance}` : void 0,
+      it.label,
+      it.tick !== void 0 ? `tick ${it.tick}` : void 0
+    ].filter(Boolean).join(" \xB7 ");
+    if (it.page < 1 || it.page > pages.length) {
+      out.push(`- doc:${it.handle} (${origin}) has ${pages.length} page${pages.length === 1 ? "" : "s"}; there is no page ${it.page}.`);
+      continue;
+    }
+    const text = pages[it.page - 1];
+    const cost = estimateTokens(text);
+    if (used > 0 && used + cost > budget) {
+      deferred++;
+      continue;
+    }
+    used += cost;
+    const next = it.page < pages.length ? `
+\u2192 the next: ${recallHint(it.handle, it.page + 1)}` : "\n\u2192 that was the last page.";
+    out.push(`- doc:${it.handle} (${origin}) \u2014 page ${it.page} of ${pages.length}:
+${text}${next}`);
+  }
+  const tail = deferred > 0 ? `
+${deferred} more page${deferred === 1 ? "" : "s"} I asked for did not fit this call \u2014 I can ask for ${deferred === 1 ? "it" : "them"} again.` : "";
+  return `## Brought Back (I asked for these)
+From my own memory, as it arrived \u2014 not something new:
+${out.join("\n\n")}${tail}`;
+}
+
 // src/cognition/faculties/executive.engine/context.ts
 var SPOKEN_TURNS_SHOWN = 6;
 async function buildExecutiveContext(state, deps, recallQuery) {
@@ -12280,7 +12439,7 @@ function _extractEpisodeContent(raw) {
     return `"${c["userMessage"]}"${reply}`;
   }
   if (typeof c["description"] === "string") return c["description"];
-  return JSON.stringify(raw).slice(0, 200);
+  return compactText(raw);
 }
 function mapEpisodeToMemory(ep) {
   const dominantEmotion = Object.entries(ep.emotionalTags ?? {}).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "neutral";
@@ -12305,12 +12464,12 @@ function itemData(content) {
 }
 function extractSummary(content) {
   if (typeof content === "string")
-    return content.slice(0, 120);
+    return content;
   if (content && typeof content === "object") {
     const obj = content;
-    return obj.summary ?? obj.description ?? JSON.stringify(content).slice(0, 120);
+    return obj.summary ?? obj.description ?? compactText({ ...obj, data: void 0 });
   }
-  return String(content ?? "").slice(0, 120);
+  return String(content ?? "");
 }
 function extractPercepts(state) {
   const percepts = [];
@@ -12388,165 +12547,6 @@ function resolveBroughtBack(asked, state, deps) {
     }
     return { handle, page };
   });
-}
-
-// src/cognition/faculties/executive.engine/view.ts
-var DEFAULT_CONTEXT_WINDOW = 128e3;
-var PAGE_TOKENS = 8e3;
-var INLINE_TOKENS_MIN = 250;
-var RESERVE = 0.05;
-var BYTES_PER_TOKEN = 3;
-var encoder = new TextEncoder();
-function estimateTokens(text) {
-  return Math.ceil(encoder.encode(text).length / BYTES_PER_TOKEN);
-}
-function callView(window, maxOutputTokens, systemPrompt) {
-  const budget = Math.max(0, window - maxOutputTokens - estimateTokens(systemPrompt) - Math.ceil(window * RESERVE));
-  return { window, budget, inlineTokens: PAGE_TOKENS, mode: "page" };
-}
-function fitToBudget(view, build) {
-  let v = view, message = build(v), tightened = 0;
-  while (estimateTokens(message) > v.budget) {
-    if (v.mode === "page") v = { ...v, mode: "reference" };
-    else if (v.inlineTokens > INLINE_TOKENS_MIN) v = { ...v, inlineTokens: Math.max(INLINE_TOKENS_MIN, Math.floor(v.inlineTokens / 2)) };
-    else break;
-    tightened++;
-    message = build(v);
-  }
-  return { message, view: v, tightened, overBudget: estimateTokens(message) > v.budget };
-}
-function itemText(data) {
-  if (typeof data === "string") return data;
-  if (Array.isArray(data)) return `[
-${data.map((d) => JSON.stringify(d)).join(",\n")}
-]`;
-  if (data && typeof data === "object") {
-    const shown = Object.fromEntries(Object.entries(data).filter(([k]) => k !== "summary"));
-    return JSON.stringify(shown, null, 2);
-  }
-  return String(data);
-}
-function paginate(text, pageTokens) {
-  const size = Math.max(1, pageTokens * BYTES_PER_TOKEN);
-  if (encoder.encode(text).length <= size) return [text];
-  const pages = [];
-  let page = "", pageBytes = 0;
-  const flush = () => {
-    if (page) {
-      pages.push(page);
-      page = "";
-      pageBytes = 0;
-    }
-  };
-  for (const line of text.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
-    const bytes = encoder.encode(line).length;
-    if (pageBytes + bytes <= size) {
-      page += line;
-      pageBytes += bytes;
-      continue;
-    }
-    flush();
-    if (bytes <= size) {
-      page = line;
-      pageBytes = bytes;
-      continue;
-    }
-    let rest = line;
-    while (encoder.encode(rest).length > size) {
-      const head = sliceBytes(rest, size);
-      const floor = Math.floor(head.length * 0.75);
-      const soft = Math.max(head.lastIndexOf(","), head.lastIndexOf(" "));
-      const cut = soft >= floor ? soft + 1 : head.length;
-      pages.push(rest.slice(0, cut));
-      rest = rest.slice(cut);
-    }
-    page = rest;
-    pageBytes = encoder.encode(rest).length;
-  }
-  flush();
-  return pages;
-}
-function sliceBytes(s, bytes) {
-  let used = 0, i = 0;
-  for (const ch of s) {
-    const b = encoder.encode(ch).length;
-    if (used + b > bytes) break;
-    used += b;
-    i += ch.length;
-  }
-  return s.slice(0, Math.max(1, i));
-}
-function humanSize(text) {
-  const bytes = encoder.encode(text).length;
-  return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-var recallHint = (handle, page) => `{"recall": [{"doc": "${handle}", "page": ${page}}]}`;
-function compactText(data) {
-  if (data === void 0 || data === null) return "";
-  if (typeof data === "string") return data;
-  try {
-    const shown = Array.isArray(data) ? data : Object.fromEntries(Object.entries(data).filter(([k]) => k !== "summary"));
-    const json = JSON.stringify(shown);
-    return json === "{}" || json === "[]" ? "" : json;
-  } catch {
-    return "";
-  }
-}
-function renderItemData(data, handle, view) {
-  const compact2 = compactText(data);
-  if (compact2 === "") return "";
-  if (!view || !handle || estimateTokens(compact2) <= view.inlineTokens) return `
-    ${compact2}`;
-  const text = itemText(data);
-  const pages = paginate(text, PAGE_TOKENS);
-  const size = `${humanSize(text)} \u2248 ${estimateTokens(text).toLocaleString("en-US")} tokens, ${pages.length} pages \xB7 doc:${handle}`;
-  if (view.mode === "reference")
-    return `
-    [${size} \u2014 whole in memory, not shown here; ${recallHint(handle, 1)} to read it]`;
-  if (pages.length === 1)
-    return `
-    [${size} \u2014 whole in memory, not shown here; ${recallHint(handle, 1)} to read it]`;
-  return `
-    [${size} \u2014 page 1 of ${pages.length} below; the rest is whole in memory: ${recallHint(handle, 2)}]
-${pages[0]}`;
-}
-function renderBroughtBack(items, budget) {
-  if (items.length === 0) return "";
-  const out = [];
-  let used = 0;
-  let deferred = 0;
-  for (const it of items) {
-    if (it.data === void 0) {
-      out.push(`- doc:${it.handle} \u2014 I hold no record of it now (it may have been forgotten).`);
-      continue;
-    }
-    const pages = paginate(itemText(it.data), PAGE_TOKENS);
-    const origin = [
-      it.provenance === "reafferent" ? "what I found by acting" : it.provenance ? `${it.provenance}` : void 0,
-      it.label,
-      it.tick !== void 0 ? `tick ${it.tick}` : void 0
-    ].filter(Boolean).join(" \xB7 ");
-    if (it.page < 1 || it.page > pages.length) {
-      out.push(`- doc:${it.handle} (${origin}) has ${pages.length} page${pages.length === 1 ? "" : "s"}; there is no page ${it.page}.`);
-      continue;
-    }
-    const text = pages[it.page - 1];
-    const cost = estimateTokens(text);
-    if (used > 0 && used + cost > budget) {
-      deferred++;
-      continue;
-    }
-    used += cost;
-    const next = it.page < pages.length ? `
-\u2192 the next: ${recallHint(it.handle, it.page + 1)}` : "\n\u2192 that was the last page.";
-    out.push(`- doc:${it.handle} (${origin}) \u2014 page ${it.page} of ${pages.length}:
-${text}${next}`);
-  }
-  const tail = deferred > 0 ? `
-${deferred} more page${deferred === 1 ? "" : "s"} I asked for did not fit this call \u2014 I can ask for ${deferred === 1 ? "it" : "them"} again.` : "";
-  return `## Brought Back (I asked for these)
-From my own memory, as it arrived \u2014 not something new:
-${out.join("\n\n")}${tail}`;
 }
 
 // src/cognition/faculties/executive.engine/prompt.factory.ts
@@ -12816,11 +12816,9 @@ completionType guide:
     const has = (s) => scopes.has(s);
     const identityAnchor = `I am ${context.identity.name}. Tick: ${state.tick}.
 Respond with JSON: {"actions":[...],"reasoning":"...","confidence":0.0\u20131.0}`;
-    const MEMORY_CONTINUITY_CAP = 1200;
-    const rawSummary = deps.summarizer?.current ?? "";
-    const cappedSummary = rawSummary.length > MEMORY_CONTINUITY_CAP ? rawSummary.slice(0, MEMORY_CONTINUITY_CAP) + "\n[...summarized]" : rawSummary;
-    const memoryContinuity = cappedSummary ? `## Memory Continuity
-${cappedSummary}` : "";
+    const continuity = deps.summarizer?.current ?? "";
+    const memoryContinuity = continuity ? `## Memory Continuity
+${continuity}` : "";
     const uncertaintyLabel = epistemicUncertainty > 0.7 ? " (high \u2014 be especially humble about confidence ratings)" : epistemicUncertainty < 0.3 ? " (low \u2014 I have strong grounding)" : "";
     const energy = context.worldState.energyLevel;
     const stress = context.worldState.stressLoad;
@@ -13233,7 +13231,7 @@ ${lines.join("\n")}${reached}${note}
       live = live.filter((p) => entityId !== void 0 && p.requestingEntityId === entityId || relSet.has(p.id));
     if (live.length === 0) return "";
     const lines = live.map((p) => {
-      const outcome = p.expectedOutcome ? ` \u2014 "${p.expectedOutcome.slice(0, 80)}"` : "";
+      const outcome = p.expectedOutcome ? ` \u2014 "${p.expectedOutcome}"` : "";
       return `- [${p.id}] goal ${p.goalId}: ${p.status}, ${p.completedSteps}/${p.totalSteps} steps (${p.executionTier})${outcome}`;
     });
     return `## Active Plans
@@ -21486,12 +21484,19 @@ var BaseSenseEngine = class {
    * replayed run diverge (R2). Two identical signals from one entity on one
    * tick collapse to one percept, which is the same coalescing audition already
    * applies to a burst of identical messages.
+   *
+   * IDENTICAL means the same data, answering the same act — not the same label.
+   * The id hashed only the label, and a label may be a bounded glance: two calls
+   * of one tool whose answers began alike, or two that each said "Done (no
+   * output).", were one percept, and the second overwrote the first — its data,
+   * and which act it was the answer to (LOSSLESS P5b).
    */
   _writeTrace(p) {
     if (!this.tracesPercepts || !this._trace || !this._now) return;
     const tick = this._now();
+    const identity = [p.sourceEntityId, p.summary, p.sourceIntentId ?? "", dataKey(p.data)].join("\0");
     this._trace(perceptEntity({
-      id: `sense-${this.domain}-${tick}-${fnv1a(`${p.sourceEntityId}\0${p.summary}`)}`,
+      id: `sense-${this.domain}-${tick}-${fnv1a(identity)}`,
       tick,
       salience: p.salience,
       category: this.domain,
@@ -21503,6 +21508,15 @@ var BaseSenseEngine = class {
     }));
   }
 };
+function dataKey(data) {
+  if (data === void 0) return "";
+  if (typeof data === "string") return data;
+  try {
+    return JSON.stringify(data) ?? "";
+  } catch {
+    return "";
+  }
+}
 var ShellSenseEngine = class extends BaseSenseEngine {
   snapshot() {
     return { domain: this.domain, status: "shell" };
@@ -22498,14 +22512,14 @@ var SomatosensationEngine = class extends BaseSenseEngine {
   }
 };
 function labelFor(signal, data) {
-  const words = hostWords(data);
-  if (words) return words.length > PERCEPT_SUMMARY_CAP ? `${words.slice(0, PERCEPT_SUMMARY_CAP - 1)}\u2026` : words;
+  const words = hostSummary(data);
+  if (words) return words;
+  if (typeof data === "string" && data.length > 0 && data.length <= PERCEPT_SUMMARY_CAP) return data;
   const rendered = compact(data);
   const label = rendered ? `${signal}: ${rendered}` : `Something happened: ${signal}.`;
   return label.length > PERCEPT_SUMMARY_CAP ? `${label.slice(0, PERCEPT_SUMMARY_CAP - 1)}\u2026` : label;
 }
-function hostWords(data) {
-  if (typeof data === "string") return data.length > 0 ? data : void 0;
+function hostSummary(data) {
   if (typeof data === "object" && data !== null && !Array.isArray(data)) {
     const s = data["summary"];
     if (typeof s === "string" && s.length > 0) return s;

@@ -109,20 +109,26 @@ describe('the label is the engine\'s to bound; the payload is the host\'s to kee
     expect( published[0]!.data ).toBe('the deploy finished')
   } )
 
-  it('caps the summary it writes, but carries the whole payload in data', async () => {
-    // A host `summary` longer than the engine's own label budget is truncated in
-    // the summary (the ENGINE's words) — while the full payload survives untouched
-    // in `data` (the mind's only copy). Clipping the label destroys nobody's copy;
-    // clipping the payload would.
+  it('a host\'s own summary is the label whole — those are the host\'s words, not the engine\'s', async () => {
+    // It was cut at PERCEPT_SUMMARY_CAP as if the engine had written it. The data
+    // beneath leaves `summary` out (it is the label), so what was cut was read
+    // nowhere (LOSSLESS P5b).
     const { e, published } = wired()
     const long = 'x'.repeat( PERCEPT_SUMMARY_CAP + 50 )
     await e.sense( { kind: 'system', signal: 'X', provenance: 'exafferent',
                       data: { summary: long } } )
-    expect( published[0]!.summary ).toHaveLength( PERCEPT_SUMMARY_CAP )
-    expect( published[0]!.summary!.endsWith('…') ).toBe( true )
-    expect( published[0]!.summary ).not.toBe( long )
-    // The payload is not clipped — the whole reading is still there to be read.
+    expect( published[0]!.summary ).toBe( long )
     expect( ( published[0]!.data as { summary: string } ).summary ).toBe( long )
+  } )
+
+  it('caps only the label it composes — a long payload is named by its signal, and rides whole in data', async () => {
+    const { e, published } = wired()
+    const long = '[{"number":1}' + ',{"number":2}'.repeat( 40 ) + ']'
+    await e.sense( { kind: 'system', signal: 'list_pull_requests', provenance: 'reafferent', data: long } )
+    expect( published[0]!.summary ).toHaveLength( PERCEPT_SUMMARY_CAP )
+    expect( published[0]!.summary!.startsWith('list_pull_requests: [{"number":1}') ).toBe( true )
+    expect( published[0]!.summary!.endsWith('…') ).toBe( true )
+    expect( published[0]!.data ).toBe( long )
   } )
 
   it('labels a wordless object payload with a compact render, payload beside it', async () => {

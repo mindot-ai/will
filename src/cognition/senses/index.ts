@@ -64,8 +64,9 @@ export interface Percept extends SensorySignal {
    * `object_detected, confidence 0.9, bbox […]`, and making it also write
    * "I see a red ball on the table" is asking the arm to do the thinking.
    *
-   * Because the ENGINE composes this, `PERCEPT_SUMMARY_CAP` may bound it —
-   * bounding its own words destroys nobody's only copy. `data` beside it is the
+   * Where the ENGINE composes this, `PERCEPT_SUMMARY_CAP` may bound it —
+   * bounding its own words destroys nobody's only copy. A host's own `summary`
+   * is the label whole: it is not the engine's to bound (P5b). `data` beside it is the
    * host's, and is never bounded.
    */
   summary:        string

@@ -686,15 +686,15 @@ completionType guide:
 
     // Memory continuity — sourced from the rolling summarizer (updates every N cycles).
     // Lives here, not in the system prompt, so the system prompt stays cache-stable.
-    // Capped at 1200 chars: an unconstrained rolling summary grows linearly and wastes
-    // tokens on stale context — the summarizer should condense, not accumulate.
-    const MEMORY_CONTINUITY_CAP = 1200
-    const rawSummary = deps.summarizer?.current ?? ''
-    const cappedSummary = rawSummary.length > MEMORY_CONTINUITY_CAP
-      ? rawSummary.slice( 0, MEMORY_CONTINUITY_CAP ) + '\n[...summarized]'
-      : rawSummary
-    const memoryContinuity = cappedSummary
-      ? `## Memory Continuity\n${cappedSummary}`
+    // Whole (LOSSLESS P5b). It was cut at 1,200 characters and marked
+    // "[...summarized]", on the belief that a rolling summary grows; it does not —
+    // each run REPLACES it with one 150–250-word paragraph of the last cycles, and
+    // that is the bound. Lora's 70 ran 1,270–1,654 characters, so every one was cut
+    // (731 of 731 prompts), and the cut took the paragraph's end: what she had
+    // noticed about herself.
+    const continuity = deps.summarizer?.current ?? ''
+    const memoryContinuity = continuity
+      ? `## Memory Continuity\n${continuity}`
       : ''
 
     const uncertaintyLabel = epistemicUncertainty > 0.70
@@ -1306,7 +1306,9 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
     if( live.length === 0 ) return ''
 
     const lines = live.map( p => {
-      const outcome = p.expectedOutcome ? ` — "${p.expectedOutcome.slice( 0, 80 )}"` : ''
+      // Whole: it is what she judges the plan by ("used to evaluate whether the plan
+      // is working"). Cut at 80, Lora read 40–60% of each (843 of 843 lines).
+      const outcome = p.expectedOutcome ? ` — "${p.expectedOutcome}"` : ''
       return `- [${p.id}] goal ${p.goalId}: ${p.status}, ${p.completedSteps}/${p.totalSteps} steps (${p.executionTier})${outcome}`
     } )
 

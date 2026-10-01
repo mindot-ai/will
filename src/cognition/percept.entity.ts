@@ -45,14 +45,13 @@ export const PERCEPT_TYPE = 'percept'
 export const PERCEPT_STALE_AFTER_TICKS = 2
 
 /**
- * How much of a percept's `summary` survives.
+ * How long a label the ENGINE composes may be — the signal's name and a glance
+ * at a payload that renders whole beneath it. Never a host's own words: a host's
+ * `summary` is the label whole, as exteroception keeps what the world says about
+ * itself whole (LOSSLESS P5b). Bounding a glance destroys nobody's only copy.
  *
- * 100 because that is what `exteroception._summarizeEntity` has always used —
- * adopted rather than chosen, so naming it changes no behaviour. It is now one
- * constant instead of a literal per writer, which is the point: the sizing
- * question is real and open (SIGNAL_BOUNDARY §4 asks it of 120/300/700 too, and
- * notes that none of those was ever a budget decision), and answering it should
- * be a one-line change in one place rather than an archaeology exercise.
+ * 100 because that is what `exteroception._summarizeEntity` used — adopted, not
+ * chosen; one constant so the sizing question is a one-line change.
  */
 export const PERCEPT_SUMMARY_CAP = 100
 

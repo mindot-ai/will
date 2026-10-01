@@ -177,13 +177,20 @@ export abstract class BaseSenseEngine implements SenseEngine {
    * replayed run diverge (R2). Two identical signals from one entity on one
    * tick collapse to one percept, which is the same coalescing audition already
    * applies to a burst of identical messages.
+   *
+   * IDENTICAL means the same data, answering the same act — not the same label.
+   * The id hashed only the label, and a label may be a bounded glance: two calls
+   * of one tool whose answers began alike, or two that each said "Done (no
+   * output).", were one percept, and the second overwrote the first — its data,
+   * and which act it was the answer to (LOSSLESS P5b).
    */
   private _writeTrace( p: Percept ): void {
     if( !this.tracesPercepts || !this._trace || !this._now ) return
 
     const tick = this._now()
+    const identity = [ p.sourceEntityId, p.summary, p.sourceIntentId ?? '', dataKey( p.data ) ].join('\u0000')
     this._trace( perceptEntity( {
-      id:         `sense-${ this.domain }-${ tick }-${ fnv1a( `${ p.sourceEntityId }\u0000${ p.summary }` ) }`,
+      id:         `sense-${ this.domain }-${ tick }-${ fnv1a( identity ) }`,
       tick,
       salience:   p.salience,
       category:   this.domain,
@@ -194,6 +201,14 @@ export abstract class BaseSenseEngine implements SenseEngine {
       ...( p.data           !== undefined ? { data:           p.data           } : {} ),
     } ) )
   }
+}
+
+/** What a percept's data is, for its identity. Deterministic; '' when it has none or cannot be written. */
+function dataKey( data: unknown ): string {
+  if( data === undefined ) return ''
+  if( typeof data === 'string') return data
+  try { return JSON.stringify( data ) ?? '' }
+  catch { return '' }   // circular — the rest of the identity still stands
 }
 
 /**

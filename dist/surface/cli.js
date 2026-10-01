@@ -14506,7 +14506,7 @@ function _extractEpisodeContent(raw) {
     return `"${c["userMessage"]}"${reply}`;
   }
   if (typeof c["description"] === "string") return c["description"];
-  return JSON.stringify(raw).slice(0, 200);
+  return compactText(raw);
 }
 function mapEpisodeToMemory(ep) {
   const dominantEmotion = Object.entries(ep.emotionalTags ?? {}).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "neutral";
@@ -14531,12 +14531,12 @@ function itemData(content) {
 }
 function extractSummary(content) {
   if (typeof content === "string")
-    return content.slice(0, 120);
+    return content;
   if (content && typeof content === "object") {
     const obj = content;
-    return obj.summary ?? obj.description ?? JSON.stringify(content).slice(0, 120);
+    return obj.summary ?? obj.description ?? compactText({ ...obj, data: void 0 });
   }
-  return String(content ?? "").slice(0, 120);
+  return String(content ?? "");
 }
 function extractPercepts(state) {
   const percepts = [];
@@ -14883,11 +14883,9 @@ completionType guide:
     const has = (s) => scopes.has(s);
     const identityAnchor = `I am ${context.identity.name}. Tick: ${state.tick}.
 Respond with JSON: {"actions":[...],"reasoning":"...","confidence":0.0\u20131.0}`;
-    const MEMORY_CONTINUITY_CAP = 1200;
-    const rawSummary = deps.summarizer?.current ?? "";
-    const cappedSummary = rawSummary.length > MEMORY_CONTINUITY_CAP ? rawSummary.slice(0, MEMORY_CONTINUITY_CAP) + "\n[...summarized]" : rawSummary;
-    const memoryContinuity = cappedSummary ? `## Memory Continuity
-${cappedSummary}` : "";
+    const continuity = deps.summarizer?.current ?? "";
+    const memoryContinuity = continuity ? `## Memory Continuity
+${continuity}` : "";
     const uncertaintyLabel = epistemicUncertainty > 0.7 ? " (high \u2014 be especially humble about confidence ratings)" : epistemicUncertainty < 0.3 ? " (low \u2014 I have strong grounding)" : "";
     const energy = context.worldState.energyLevel;
     const stress = context.worldState.stressLoad;
@@ -15300,7 +15298,7 @@ ${lines.join("\n")}${reached}${note}
       live = live.filter((p) => entityId !== void 0 && p.requestingEntityId === entityId || relSet.has(p.id));
     if (live.length === 0) return "";
     const lines = live.map((p) => {
-      const outcome = p.expectedOutcome ? ` \u2014 "${p.expectedOutcome.slice(0, 80)}"` : "";
+      const outcome = p.expectedOutcome ? ` \u2014 "${p.expectedOutcome}"` : "";
       return `- [${p.id}] goal ${p.goalId}: ${p.status}, ${p.completedSteps}/${p.totalSteps} steps (${p.executionTier})${outcome}`;
     });
     return `## Active Plans
@@ -22666,12 +22664,19 @@ var BaseSenseEngine = class {
    * replayed run diverge (R2). Two identical signals from one entity on one
    * tick collapse to one percept, which is the same coalescing audition already
    * applies to a burst of identical messages.
+   *
+   * IDENTICAL means the same data, answering the same act — not the same label.
+   * The id hashed only the label, and a label may be a bounded glance: two calls
+   * of one tool whose answers began alike, or two that each said "Done (no
+   * output).", were one percept, and the second overwrote the first — its data,
+   * and which act it was the answer to (LOSSLESS P5b).
    */
   _writeTrace(p) {
     if (!this.tracesPercepts || !this._trace || !this._now) return;
     const tick = this._now();
+    const identity = [p.sourceEntityId, p.summary, p.sourceIntentId ?? "", dataKey(p.data)].join("\0");
     this._trace(perceptEntity({
-      id: `sense-${this.domain}-${tick}-${fnv1a(`${p.sourceEntityId}\0${p.summary}`)}`,
+      id: `sense-${this.domain}-${tick}-${fnv1a(identity)}`,
       tick,
       salience: p.salience,
       category: this.domain,
@@ -22683,6 +22688,15 @@ var BaseSenseEngine = class {
     }));
   }
 };
+function dataKey(data) {
+  if (data === void 0) return "";
+  if (typeof data === "string") return data;
+  try {
+    return JSON.stringify(data) ?? "";
+  } catch {
+    return "";
+  }
+}
 var ShellSenseEngine = class extends BaseSenseEngine {
   snapshot() {
     return { domain: this.domain, status: "shell" };
@@ -23678,14 +23692,14 @@ var SomatosensationEngine = class extends BaseSenseEngine {
   }
 };
 function labelFor(signal, data) {
-  const words = hostWords(data);
-  if (words) return words.length > PERCEPT_SUMMARY_CAP ? `${words.slice(0, PERCEPT_SUMMARY_CAP - 1)}\u2026` : words;
+  const words = hostSummary(data);
+  if (words) return words;
+  if (typeof data === "string" && data.length > 0 && data.length <= PERCEPT_SUMMARY_CAP) return data;
   const rendered = compact(data);
   const label = rendered ? `${signal}: ${rendered}` : `Something happened: ${signal}.`;
   return label.length > PERCEPT_SUMMARY_CAP ? `${label.slice(0, PERCEPT_SUMMARY_CAP - 1)}\u2026` : label;
 }
-function hostWords(data) {
-  if (typeof data === "string") return data.length > 0 ? data : void 0;
+function hostSummary(data) {
   if (typeof data === "object" && data !== null && !Array.isArray(data)) {
     const s = data["summary"];
     if (typeof s === "string" && s.length > 0) return s;

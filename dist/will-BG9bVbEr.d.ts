@@ -7473,8 +7473,9 @@ interface Percept extends SensorySignal {
      * `object_detected, confidence 0.9, bbox […]`, and making it also write
      * "I see a red ball on the table" is asking the arm to do the thinking.
      *
-     * Because the ENGINE composes this, `PERCEPT_SUMMARY_CAP` may bound it —
-     * bounding its own words destroys nobody's only copy. `data` beside it is the
+     * Where the ENGINE composes this, `PERCEPT_SUMMARY_CAP` may bound it —
+     * bounding its own words destroys nobody's only copy. A host's own `summary`
+     * is the label whole: it is not the engine's to bound (P5b). `data` beside it is the
      * host's, and is never bounded.
      */
     summary: string;
@@ -7693,6 +7694,12 @@ declare abstract class BaseSenseEngine implements SenseEngine {
      * replayed run diverge (R2). Two identical signals from one entity on one
      * tick collapse to one percept, which is the same coalescing audition already
      * applies to a burst of identical messages.
+     *
+     * IDENTICAL means the same data, answering the same act — not the same label.
+     * The id hashed only the label, and a label may be a bounded glance: two calls
+     * of one tool whose answers began alike, or two that each said "Done (no
+     * output).", were one percept, and the second overwrote the first — its data,
+     * and which act it was the answer to (LOSSLESS P5b).
      */
     private _writeTrace;
 }

@@ -6,9 +6,11 @@
 // Every `summaryInterval` executive calls it asynchronously asks the
 // LLM to condense the buffer into a compact paragraph.
 //
-// The current summary is injected as a "## Memory Continuity" section
-// in the system prompt so Will always has a narrative sense of its
-// recent history across executive cycles.
+// The current summary is shown whole as "## Memory Continuity" in every
+// executive call's user message (the system prompt stays cache-stable), so
+// Will always has a narrative sense of its recent history across cycles. Each
+// run REPLACES it — it never accumulates — so its length is the paragraph the
+// prompt below asks for, and that is the bound (LOSSLESS P5b).
 //
 // Cost: ~2,500 input tokens + ~200 output tokens per summarization.
 // At Sonnet rates: ~$0.01 per summary. At 10-call intervals and 50 calls/hr

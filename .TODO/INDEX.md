@@ -230,11 +230,11 @@ four runs of one COO Will on Discord, the earliest recorded on or before 2026-08
 
 **2026-09-30 · DESIGNED** · [LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut](LOSSLESS.md)
 
-scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P4 and P5a landed, unreleased
+scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P4, P5a and P5b landed, unreleased
 
 ## October 2026
 
 **2026-10-01 · DESIGNED** · [LOSSLESS P5 — every call fits its window, and nothing leaves a call silently](LOSSLESS_P5.md)
 
-traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; the owner took all six recommendations (D1–D6) the same day
+traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; the owner took all six recommendations (D1–D6) the same day; P5a and P5b landed
 

@@ -1880,8 +1880,15 @@ declare class EpisodicConsolidator implements SimulationEngine, CognitiveEngine 
      * react() (a rate-limit retry chain would stall the whole tick loop), so this is
      * the handle for the two callers that genuinely must wait for it: shutdown,
      * before persisting the index, and tests asserting on it.
+     *
+     * EVERY batch still in flight, not the latest. A single promise was overwritten
+     * by each new batch, so a draining shutdown waited for the last few episodes and
+     * not for a 220 KB listing's pages still embedding before them — or a whole-store
+     * rebuild — and wrote an index without them (found running her pipeline live).
      */
     private _indexing;
+    /** Hold a background indexing run until it settles. It must already be caught. */
+    private _track;
     private _embedder;
     private _autoIndex;
     private readonly _model;
@@ -6794,6 +6801,8 @@ interface MotorSchema {
     /** What the schema is *for* — its meaning, carried to the host on enaction. */
     description?: string;
     tags?: string[];
+    /** Specifics it cannot be done without — see `EffectorDeclaration.requires`. Never on the floor. */
+    requires?: string[];
 }
 /**
  * How a host declares a domain effector to a Will. A bare string is the
@@ -6827,6 +6836,14 @@ type EffectorDeclaration = string | {
      * homeostatic drive lift this ability in the competition when pressing.
      */
     tags?: string[];
+    /**
+     * Specifics the ability cannot be done without — an MCP tool's `required`
+     * args. Such an ability is not offered on the floor: a situation that
+     * supplies none of them does not afford it, and an affordance must never
+     * arrive at execution with empty arguments. It is reached by will, with
+     * them (`args`), and still competes.
+     */
+    requires?: string[];
 };
 /**
  * LearnedSkill — the persisted competence unit. This, not the transient
@@ -8425,6 +8442,7 @@ declare class ActionSelector implements CognitiveEngine {
     private _lastDeliberate;
     private _lastRevoked;
     private _senseBuffer;
+    private _released;
     attachBus(bus: CognitiveBus): void;
     publishes(): CognitiveEventSchema[];
     subscribes(): string[];
@@ -8545,11 +8563,11 @@ declare class ReafferenceEngine implements CognitiveEngine {
     private _emitResponsiveness;
     private _emitProceduralized;
     /**
-     * Emit the `action.outcome{planId,stepId}` for an async (host-acked) plan-step
-     * enaction. Mirrors the executor's `_emitActionOutcome` payload so the
-     * PlanningEngine's consumer can't tell which path produced it.
+     * Emit the `action.outcome` for an async (host-acked) enaction — a plan step's
+     * carrying `{planId, stepId}`. Mirrors the executor's `_emitActionOutcome`
+     * payload so no consumer can tell which path produced it.
      */
-    private _emitPlanOutcome;
+    private _emitHostOutcome;
     private _emitDiscovered;
 }
 
@@ -10098,6 +10116,11 @@ interface EffectorSpec {
      * presses.
      */
     tags?: string[];
+    /**
+     * Args the ability cannot be done without. It is then not offered on its own —
+     * no situation supplies them — and is reached when the mind wills it with them.
+     */
+    requires?: string[];
     /** Your implementation. */
     handler: EffectorHandler;
 }

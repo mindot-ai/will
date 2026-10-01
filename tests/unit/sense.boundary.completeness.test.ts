@@ -33,6 +33,7 @@ import { SENT_TYPE, RECEIVED_TYPE } from '#agency/conversation.aim'
 import { AVAILABILITY_ENTITY_TYPE, SCHEMA_ENTITY_TYPE } from '#agency/schemas/repertoire'
 import { ACTION_RECORD_TYPE } from '#faculties/executive.engine/action.record'
 import { AFFECT_STATE_TYPE } from '#faculties/affective.blender'
+import { PERSONA_PRIOR_TYPE } from '#cognition/persona.prior'
 
 /**
  * Every exported entity-type constant naming something the mind writes about
@@ -53,6 +54,7 @@ const MIND_OWN_TYPE_CONSTANTS: ReadonlyArray<readonly [ string, string ]> = [
   [ 'SCHEMA_ENTITY_TYPE',        SCHEMA_ENTITY_TYPE ],
   [ 'ACTION_RECORD_TYPE',        ACTION_RECORD_TYPE ],
   [ 'AFFECT_STATE_TYPE',         AFFECT_STATE_TYPE ],
+  [ 'PERSONA_PRIOR_TYPE',        PERSONA_PRIOR_TYPE ],
 ]
 
 describe('the sense boundary is complete, not just enforced', () => {
@@ -66,6 +68,6 @@ describe('the sense boundary is complete, not just enforced', () => {
   it('names every constant it knows about — a silent shrink is a regression', () => {
     // Guards the guard: deleting a row above would make this file quietly weaker
     // while still passing. The count is the tripwire.
-    expect( MIND_OWN_TYPE_CONSTANTS ).toHaveLength( 10 )
+    expect( MIND_OWN_TYPE_CONSTANTS ).toHaveLength( 11 )
   } )
 } )

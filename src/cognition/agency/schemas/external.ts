@@ -68,6 +68,7 @@ export function externalSchemas( effectors?: EffectorDeclaration[] | null ): Mot
       baseValence:   typeof meta?.valence === 'number' ? clamp( meta.valence, -1, 1 ) : 0,
       ...( meta?.preconditions ? { preconditions: meta.preconditions } : {} ),
       ...( meta?.description   ? { description:   meta.description   } : {} ),
+      ...( meta?.requires?.length ? { requires: [ ...meta.requires ] } : {} ),
       tags,
     })
   }

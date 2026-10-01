@@ -333,7 +333,11 @@ export class WorkingMemory implements SimulationEngine, CognitiveEngine {
         // the evidence instead of the evidence is how a mind ends up unable to
         // answer a question it already had the answer to.
         content: { summary, entityId: entity.id,
-                   ...( entity.metadata?.data !== undefined ? { data: entity.metadata.data } : {} ) },
+                   ...( entity.metadata?.data !== undefined ? { data: entity.metadata.data } : {} ),
+                   // How it arrived, so a memory of it can say — "what I found by acting"
+                   // is a different thing to remember than news from the world.
+                   ...( typeof entity.metadata?.provenance === 'string' ? { provenance: entity.metadata.provenance } : {} ),
+                   ...( typeof entity.metadata?.sourceIntentId === 'string' ? { sourceIntentId: entity.metadata.sourceIntentId } : {} ) },
         activation: PERCEPT_ACTIVATION,
         encoding: PERCEPT_ACTIVATION,
         attendedAt: [],

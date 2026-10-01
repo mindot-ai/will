@@ -80,6 +80,12 @@ export interface ExecutiveOutputFull {
   goalsToAbandon?: Array<{ goalId: string; reason: string }>
   goalsToReprioritize?: Array<{ goalId: string; newPriority: number; reason: string }>
   selfObservations?: string[]
+  /**
+   * What the mind asks to have brought back on its next call — a document's page,
+   * by the handle the prompt showed (LOSSLESS P5a). Attention, not an act: it
+   * reads the mind's own memory, consults no world, and never enters the field.
+   */
+  recall?: Array<{ doc: string; page: number }>
   /** Compound actions the mind is naming as single skills (see ProposedSkill). */
   newSkills?: ProposedSkill[]
   /**
@@ -248,6 +254,8 @@ export interface ExecutiveContext {
     salience: number
     /** What the host actually sent, whole — the evidence under the label. */
     data?: unknown
+    /** The percept's id — the handle its data is reached by, as percept, held item and memory. */
+    handle?: string
   }>
   /**
    * Every host ability the Will holds, and what each is for — whole. Surfaced so
@@ -272,6 +280,8 @@ export interface ExecutiveContext {
     activation: number
     /** What a host sent, whole — carried through memory, not only into it. */
     data?: unknown
+    /** The percept it holds, when it holds one — its data's handle. */
+    handle?: string
   }>
   memories: Array<{
     content: string
@@ -279,6 +289,9 @@ export interface ExecutiveContext {
     emotionalContext: string
     /** Simulation tick when this memory was consolidated. Used to render approximate age. */
     tick?: number
+    /** What it held when it was an observation — whole in the episode — and its handle. */
+    data?: unknown
+    handle?: string
   }>
   beliefs: Array<{
     statement: string

@@ -202,7 +202,7 @@ Step 1 — JSON object (my private reasoning, optionally in a \`\`\`json code bl
 }
 \`\`\`
 
-Available reasoning tags: BELIEFS, GOALS_NEW, GOALS_ABANDON, SELF_OBS. Include only those with meaningful content.
+Available reasoning tags: BELIEFS, GOALS_NEW, GOALS_ABANDON, SELF_OBS, RECALL. Include only those with meaningful content.
 
 Step 2 — My reply to the speaker (plain text, streamed live to them):
 

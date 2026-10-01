@@ -1,6 +1,6 @@
 # LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut
 
-> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P4 of 6 landed, unreleased
+> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P4 and P5a landed, unreleased
 
 > **The rule:** *lossless, not unbounded.* Every cut that loses data — at intake, in
 > transit between the mind's own parts, in what it keeps, in its artifact, in its
@@ -393,12 +393,45 @@ host tails it), so every cut here was a cut in our analysis of her.
 
 **Designed in [[LOSSLESS_P5]]** (2026-10-01): the window, paging an oversize item,
 honest counts with a `[RECALL]` request, the text cuts, attachments as items, and
-recall by meaning of what she read — five PRs, six decisions for the owner. It
-found the overflow P2 opened: a tool's whole output renders in every prompt (twice
-while its percept lives), and one 30-PR listing is ~135k tokens. The sketch below
-is the scope it started from.
+recall by meaning of what she read — five PRs; the owner's six decisions are taken
+(D1–D6). It found the overflow P2 opened: a tool's whole output renders in every
+prompt (twice while its percept lives), and one 30-PR listing is ~135k tokens.
 
-The design work. Three parts, in order:
+**P5a — every call fits its window ✅**
+
+- [x] **A window the engine knows.** Host-declared per model beside prices
+      (`providers.<p>.contextWindows`, `llm.contextWindow`), matched like prices
+      (exact id, then bare — `glm-5.2[1m]` apart from `glm-5.2`); undeclared is
+      128k. Resolved through the router BEFORE the prompt is built
+      (`LLMDirector.callLimits( meta )`), so it is the routed model's — the
+      master's decision and ideation calls and every facet's.
+- [x] **An item larger than a page is a document.** `view.ts`: a deterministic
+      estimate (3 bytes of UTF-8 a token — measured 3.72–4.42 characters on 242 of
+      Lora's master calls); a page is a FIXED 8k tokens, so "page 2" names the same
+      text in every call (D3's budget/8 would have shifted it between calls — what
+      the budget decides is only what shows inline); pages break between an
+      array's elements, at a line, else at a comma or space, and rejoin to the
+      item byte for byte. A small item renders exactly as before.
+- [x] **One handle, as long as she remembers it.** The percept's id reaches the
+      item as percept, as working-memory item and as episode (`resolveBroughtBack`);
+      working memory now carries a percept's provenance, so a memory can say "what
+      I found by acting".
+- [x] **One item, one render.** A percept working memory also holds shows its data
+      under Ruminations only — a 135k-token read rendered twice while it lived.
+- [x] **A remembered observation shows its data** (or its handle and size when
+      large) — it was recalled as its label alone. The memories block's own
+      1,200-character budget is gone: with data on the first line it would have
+      hidden every memory after it.
+- [x] **`[RECALL]`**, honoured on the same seat's next call under `## Brought
+      Back` — up to half the call, the rest said so. Attention, not an act: never a
+      percept, never a working-memory item, never in the field; reading an episode
+      is a retrieval and strengthens it.
+- [x] **The safety net.** Over budget, the view tightens — oversize items to
+      their headers, then less inline — and the call is rebuilt; nothing is cut.
+      Recorded on the call's own record (`executive.call` / `executive.facet.call`
+      `view`: window, budget, mode, inline, tightened, overBudget).
+
+The sketch it started from — the design work, in three parts:
 
 1. **A context window the engine knows.** Host-declared per model, beside prices
    (`llmConfig.providers.<p>.models.<m>.contextWindow`) — prices taught us these

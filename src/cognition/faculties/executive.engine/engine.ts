@@ -86,6 +86,8 @@ import {
   type SelfAccount,
 } from '#faculties/executive.engine/commands'
 import { identityUpdateCommand, type IdentityUpdates } from '#cognition/identity.entity'
+import { callView, fitToBudget, estimateTokens, DEFAULT_CONTEXT_WINDOW, type CallView } from '#faculties/executive.engine/view'
+import { resolveBroughtBack } from '#faculties/executive.engine/context'
 import { DeferredEffectQueue } from '#faculties/executive.engine/deferred.effects'
 import { EscalationBuffer, type HandoffBody } from '#faculties/executive.engine/escalation.buffer'
 import { FacetSupervisor } from '#faculties/executive.engine/facet.supervisor'
@@ -184,7 +186,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
    */
   private _modelId: string | null = null
   /** Per-Will LLM transport overrides (config.llm) — env fallbacks apply per field. */
-  private _llm: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number; credentials?: Partial<Record<string, ProviderCredential>>; router?: ModelRouter | null; wire?: LLMWire } | null = null
+  private _llm: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number; credentials?: Partial<Record<string, ProviderCredential>>; router?: ModelRouter | null; wire?: LLMWire; contextWindow?: number; contextWindows?: Record<string, number> } | null = null
   private _workingMemory: WorkingMemory | null = null
   private _goalManager: GoalManager | null = null
   private _episodicConsolidator: EpisodicConsolidator | null = null
@@ -258,6 +260,13 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
    * reasoning started from (see identityUpdateCommand).
    */
   private _identityUpdates: IdentityUpdates[] = []
+
+  /**
+   * What the master asked, on its last completed cycle, to have brought back —
+   * rendered on its next call (LOSSLESS P5a). Replaced by each completed cycle,
+   * so a failed call does not lose the request.
+   */
+  private _pendingRecall: Array<{ doc: string; page: number }> = []
 
   // ── Cognitive models ───────────────────────────────────────
   private readonly _model = new GenerativeModel()
@@ -376,7 +385,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   get modelId(): string | null { return this._modelId }
 
   /** Per-Will LLM transport overrides (config.llm). Set before the first tick. */
-  set llm( c: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number; credentials?: Partial<Record<string, ProviderCredential>>; router?: ModelRouter | null; wire?: LLMWire } | null ){ this._llm = c }
+  set llm( c: { provider?: string; apiKey?: string; baseUrl?: string; maxOutputTokens?: number; timeoutMs?: number; credentials?: Partial<Record<string, ProviderCredential>>; router?: ModelRouter | null; wire?: LLMWire; contextWindow?: number; contextWindows?: Record<string, number> } | null ){ this._llm = c }
 
   // ── Public surface ─────────────────────────────────────────
 
@@ -475,6 +484,9 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       // Dialect for the default provider — required for anything outside the
       // known set, so the engine never guesses how to talk to an endpoint.
       ...( this._llm?.wire ? { wire: this._llm.wire } : {} ),
+      // What fits a call — host-declared, matched per routed model (LOSSLESS P5a).
+      ...( this._llm?.contextWindow  ? { contextWindow:  this._llm.contextWindow  } : {} ),
+      ...( this._llm?.contextWindows ? { contextWindows: this._llm.contextWindows } : {} ),
     } )
   }
 
@@ -1018,6 +1030,10 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       mode: 'master'
     } )
 
+    // What I asked, last cycle, to have brought back — from my own memory.
+    const broughtBack = resolveBroughtBack( this._pendingRecall, state,
+      { workingMemory: this._workingMemory, episodicConsolidator: this._episodicConsolidator } )
+
     // System 2 (deliberate) — propose pass. When the effort gate engaged deliberation,
     // first generate a divergent candidate set at elevated temperature. This call is
     // non-streaming (internal scratch — nothing leaks to the user) and reuses the SAME
@@ -1028,18 +1044,22 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     let ideationCandidates: IdeationCandidate[] | undefined
     if( processSelection.process === 'deliberate' && this._llmDirector ){
       const ideationStart = wallClock()
-      const ideationUserMessage = PromptFactory.buildUserMessage( {
-        context: execContext,
-        state,
-        qualityModulation,
-        epistemicUncertainty,
+      const ideationMeta: LLMCallMeta = { category: 'executive', attribute: 'master', process: 'ideation', function: '-', demand: processSelection.effortScore }
+      const { message: ideationUserMessage } = fitToBudget( this._callView( ideationMeta, systemPrompt ), view =>
+        PromptFactory.buildUserMessage( {
+          context: execContext,
+          state,
+          qualityModulation,
+          epistemicUncertainty,
           focus,
-        deps: promptDeps,
-        recentActionTypes: [ ...this._recentActionTypes ],
-        mode: 'master',
-        activeConversations: this._activeConversations(),
-        outputFormat: PromptFactory.buildIdeationFormatInstruction(),
-      } )
+          deps: promptDeps,
+          recentActionTypes: [ ...this._recentActionTypes ],
+          mode: 'master',
+          activeConversations: this._activeConversations(),
+          outputFormat: PromptFactory.buildIdeationFormatInstruction(),
+          view,
+          broughtBack,
+        } ) )
       // Propose temperature scales with the creativity trait (TODO #4): a creative Will
       // diverges harder when generating options. Reads the live self-model trait, so it
       // rises for free as creativity develops. The propose pass itself is the shared
@@ -1051,13 +1071,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         ideationUserMessage,
         tick: state.tick,
         proposeTemperature,
-        meta: {
-          category: 'executive',
-          attribute: 'master',
-          process: 'ideation',
-          function: '-',
-          demand: processSelection.effortScore
-        },
+        meta: ideationMeta,
       } )
       logger.info(
         `[executive] ◆ deliberate propose tick=${state.tick}  ` +
@@ -1072,24 +1086,40 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // Build user message — includes live state, dynamic guidance, focus context, and
     // output format. On the deliberate path the propose pass's candidates are injected
     // so this (the decision/evaluate pass) weighs concrete options before committing.
-    const userMessage = PromptFactory.buildUserMessage( {
-      context: execContext,
-      state,
-      qualityModulation,
-      epistemicUncertainty,
-      focus,
-      deps: promptDeps,
-      recentActionTypes: [ ...this._recentActionTypes ],
-      mode: 'master',
-      activeConversations: this._activeConversations(),
-      ideationCandidates
-    } )
+    // Built within the routed model's window: an item larger than a page is a
+    // document, and over budget the view tightens rather than the call failing.
+    // MODEL_ROUTING W0 — the effort gate already weighed this tick's demand
+    // (uncertainty, prior confidence, novelty, a pending reply, stress load);
+    // forward it rather than inventing a second measure of the same thing.
+    const masterMeta: LLMCallMeta = { category: 'executive', attribute: 'master', process: 'decision', function: '-', demand: processSelection.effortScore }
+    const fitted = fitToBudget( this._callView( masterMeta, systemPrompt ), view =>
+      PromptFactory.buildUserMessage( {
+        context: execContext,
+        state,
+        qualityModulation,
+        epistemicUncertainty,
+        focus,
+        deps: promptDeps,
+        recentActionTypes: [ ...this._recentActionTypes ],
+        mode: 'master',
+        activeConversations: this._activeConversations(),
+        ideationCandidates,
+        view,
+        broughtBack,
+      } ) )
+    const userMessage = fitted.message
+    if( fitted.tightened > 0 )
+      logger.warn(`[executive] view tightened ${ fitted.tightened }× to fit the window (${ fitted.view.window } tok) — ` +
+        `${ fitted.view.mode }, inline ≤ ${ fitted.view.inlineTokens } tok${ fitted.overBudget ? '; STILL OVER BUDGET' : '' }`)
 
     this._sessionLogger?.write( {
       type: 'executive.call',
       tick: state.tick,
       promptChars: systemPrompt.length + userMessage.length,
-      promptTokensEst: Math.round( ( systemPrompt.length + userMessage.length ) / 4 ),
+      promptTokensEst: estimateTokens( systemPrompt ) + estimateTokens( userMessage ),
+      // What the call was fitted to, and whether it had to tighten (LOSSLESS P5a).
+      view: { window: fitted.view.window, budget: fitted.view.budget, mode: fitted.view.mode,
+              inlineTokens: fitted.view.inlineTokens, tightened: fitted.tightened, overBudget: fitted.overBudget },
       systemChars: systemPrompt.length,
       userChars: userMessage.length,
       // D2: context counts for per-tick cognitive state snapshot
@@ -1109,10 +1139,6 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
     try {
       // Use streaming call when clients are connected (F3); fall back to regular call.
-      // MODEL_ROUTING W0 — the effort gate already weighed this tick's demand
-      // (uncertainty, prior confidence, novelty, a pending reply, stress load);
-      // forward it rather than inventing a second measure of the same thing.
-      const masterMeta: LLMCallMeta = { category: 'executive', attribute: 'master', process: 'decision', function: '-', demand: processSelection.effortScore }
       const result = this._chunkBroadcaster
         ? await this._llmDirector.callStream( systemPrompt, userMessage, state.tick, this._chunkBroadcaster, undefined, masterMeta )
         : await this._llmDirector.call( systemPrompt, userMessage, state.tick, undefined, masterMeta )
@@ -1324,6 +1350,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     // runs them on the next react() once this tick is confirmed committed.
     this._deferred.enqueue( footprint.tickObserved as unknown as number, effects )
     if( executiveOutput.identityUpdates ) this._identityUpdates.push( executiveOutput.identityUpdates )
+    this._pendingRecall = executiveOutput.recall ?? []
 
     // Publish cognitive events
     publishCognitiveEvents(
@@ -1564,6 +1591,13 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         ? ` (with ${payload.subjectName ?? payload.subjectEntityId})` : '') +
       ` (confidence=${payload.confidence?.toFixed( 2 )})`
     )
+  }
+
+  /** What one call may spend: the window and output ceiling of the model it will be routed to. */
+  private _callView( meta: LLMCallMeta, systemPrompt: string ): CallView {
+    const limits = this._llmDirector?.callLimits( meta )
+      ?? { contextWindow: DEFAULT_CONTEXT_WINDOW, maxOutputTokens: this._llm?.maxOutputTokens ?? 8096 }
+    return callView( limits.contextWindow, limits.maxOutputTokens, systemPrompt )
   }
 
   /** The queued self-accounts and identity updates, as records on `state` (see the fields). */

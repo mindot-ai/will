@@ -10,6 +10,8 @@ import type {
   TokenTracker, LLMCallCategory, LLMCallAttribute, LLMCallFunction,
   LLMCallProcess,
 } from '#cognition/utilities/token.tracker'
+import { normalizeModelKey } from '#cognition/utilities/token.tracker'
+import { DEFAULT_CONTEXT_WINDOW } from '#faculties/executive.engine/view'
 import { type ModelRouter, isNullRouter } from '#llm/routing'
 import { getCompletionRecorder, getCompletionSource } from '#core/completion.recorder'
 import type { LLMCompletionRecord } from '#core/completion.recorder'
@@ -226,6 +228,15 @@ export interface LLMDirectorConfig {
    * endpoint it has never heard of.
    */
   wire?: LLMWire
+  /** The default model's context window, in tokens (host-declared). */
+  contextWindow?: number
+  /**
+   * Context windows by model id, from the host's per-provider maps — matched like
+   * prices: exact id first, then its bare form, so `glm-5.2[1m]` can be declared
+   * apart from `glm-5.2`. A window, unlike a price, changes what a call is SHOWN,
+   * so it is configuration a replay must share (prompts replay byte for byte).
+   */
+  contextWindows?: Record<string, number>
 }
 
 /**
@@ -429,6 +440,8 @@ export class LLMDirector {
   private _willId: string
   private _model: string
   private _maxOutputTokens: number
+  private _contextWindow:   number | undefined
+  private _contextWindows:  Record<string, number>
   private _apiKey: string
   private _provider: LLMProvider
   private _sessionLogger: SessionLogger | null
@@ -447,6 +460,8 @@ export class LLMDirector {
     this._willId = config.willId
     this._model = config.model
     this._maxOutputTokens = config.maxOutputTokens
+    this._contextWindow   = config.contextWindow
+    this._contextWindows  = config.contextWindows ?? {}
     this._apiKey = config.apiKey
     this._provider = config.provider
     this._sessionLogger = config.sessionLogger
@@ -464,6 +479,21 @@ export class LLMDirector {
       wire:            config.wire,
       maxOutputTokens: this._maxOutputTokens,
     } )
+  }
+
+  /**
+   * The window and output ceiling of the model THIS call will be routed to —
+   * resolved before the prompt is built, because what fits depends on it. The
+   * router is a pure function of the call's attribution, so this is too.
+   * Undeclared → DEFAULT_CONTEXT_WINDOW (LOSSLESS_P5 D2).
+   */
+  callLimits( meta?: LLMCallMeta ): { contextWindow: number; maxOutputTokens: number } {
+    const ep = meta ? this._resolveEndpoint( meta ) : this._defaultEndpoint
+    const windows = this._contextWindows
+    const declared = windows[ ep.model ]
+      ?? Object.entries( windows ).find( ( [ k ] ) => normalizeModelKey( k ) === normalizeModelKey( ep.model ) )?.[1]
+      ?? ( ep === this._defaultEndpoint ? this._contextWindow : undefined )
+    return { contextWindow: declared ?? DEFAULT_CONTEXT_WINDOW, maxOutputTokens: ep.maxOutputTokens }
   }
 
   /**

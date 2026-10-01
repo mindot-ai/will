@@ -4422,6 +4422,15 @@ interface LLMDirectorConfig {
      * endpoint it has never heard of.
      */
     wire?: LLMWire;
+    /** The default model's context window, in tokens (host-declared). */
+    contextWindow?: number;
+    /**
+     * Context windows by model id, from the host's per-provider maps — matched like
+     * prices: exact id first, then its bare form, so `glm-5.2[1m]` can be declared
+     * apart from `glm-5.2`. A window, unlike a price, changes what a call is SHOWN,
+     * so it is configuration a replay must share (prompts replay byte for byte).
+     */
+    contextWindows?: Record<string, number>;
 }
 /**
  * Everything a single call needs to reach a model. Resolved once per call and
@@ -4515,6 +4524,8 @@ declare class LLMDirector {
     private _willId;
     private _model;
     private _maxOutputTokens;
+    private _contextWindow;
+    private _contextWindows;
     private _apiKey;
     private _provider;
     private _sessionLogger;
@@ -4529,6 +4540,16 @@ declare class LLMDirector {
     /** Routes already warned about (missing credential / bad provider) — log once. */
     private _routeWarned;
     constructor(config: LLMDirectorConfig);
+    /**
+     * The window and output ceiling of the model THIS call will be routed to —
+     * resolved before the prompt is built, because what fits depends on it. The
+     * router is a pure function of the call's attribution, so this is too.
+     * Undeclared → DEFAULT_CONTEXT_WINDOW (LOSSLESS_P5 D2).
+     */
+    callLimits(meta?: LLMCallMeta): {
+        contextWindow: number;
+        maxOutputTokens: number;
+    };
     /**
      * Resolve which model serves this call. Falls back to the default endpoint
      * whenever the router has no opinion, throws, or names a provider we hold no
@@ -4794,6 +4815,15 @@ interface ExecutiveOutputFull {
         reason: string;
     }>;
     selfObservations?: string[];
+    /**
+     * What the mind asks to have brought back on its next call — a document's page,
+     * by the handle the prompt showed (LOSSLESS P5a). Attention, not an act: it
+     * reads the mind's own memory, consults no world, and never enters the field.
+     */
+    recall?: Array<{
+        doc: string;
+        page: number;
+    }>;
     /** Compound actions the mind is naming as single skills (see ProposedSkill). */
     newSkills?: ProposedSkill[];
     /**
@@ -5178,6 +5208,12 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * reasoning started from (see identityUpdateCommand).
      */
     private _identityUpdates;
+    /**
+     * What the master asked, on its last completed cycle, to have brought back —
+     * rendered on its next call (LOSSLESS P5a). Replaced by each completed cycle,
+     * so a failed call does not lose the request.
+     */
+    private _pendingRecall;
     private readonly _model;
     private readonly _generativeModel;
     private _summarizerRestored;
@@ -5240,6 +5276,8 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         credentials?: Partial<Record<string, ProviderCredential>>;
         router?: ModelRouter | null;
         wire?: LLMWire;
+        contextWindow?: number;
+        contextWindows?: Record<string, number>;
     } | null);
     get latestOutput(): ExecutiveOutputFull | null;
     isFresh(currentTick: Tick): boolean;
@@ -5418,6 +5456,8 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
      * ordinary competition like any other.
      */
     private _onFacetSync;
+    /** What one call may spend: the window and output ceiling of the model it will be routed to. */
+    private _callView;
     /** The queued self-accounts and identity updates, as records on `state` (see the fields). */
     private _drainSelfAccounts;
     /**
@@ -8677,6 +8717,13 @@ interface WillProviderConfig {
      * price can never change what a mind does or break a replay.
      */
     prices?: PriceTable;
+    /**
+     * Context window in tokens, keyed by model id (matched like `prices`). Unlike a
+     * price it changes what a call is SHOWN — the engine pages anything that would
+     * not fit — so it is configuration a replay must share. Undeclared models get a
+     * conservative 128k (LOSSLESS_P5).
+     */
+    contextWindows?: Record<string, number>;
 }
 interface WillLLMConfig {
     provider?: LLMProvider;
@@ -8684,6 +8731,8 @@ interface WillLLMConfig {
     baseUrl?: string;
     maxOutputTokens?: number;
     timeoutMs?: number;
+    /** The default model's context window, in tokens. See `WillProviderConfig.contextWindows`. */
+    contextWindow?: number;
     /**
      * Everything the host knows about each provider — credential, endpoint, and
      * prices — declared once per provider. The single-provider fields above stay

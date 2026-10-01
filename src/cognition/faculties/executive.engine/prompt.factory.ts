@@ -51,6 +51,7 @@ import type { ExecutiveContext, IdeationCandidate } from '#faculties/executive.e
 import { buildExecutiveContext, type ContextDependencies } from '#faculties/executive.engine/context'
 import { INNATE_SCHEMAS } from '#agency/schemas/innate'
 import { isGenericStyle } from '#cognition/identity.entity'
+import { renderItemData, renderBroughtBack, type CallView, type BroughtBack } from '#faculties/executive.engine/view'
 
 /**
  * The stances a mind always has, named so it need not guess at them.
@@ -128,9 +129,10 @@ const TRAIT_NORM_BAND = 0.12  // deviation from personal baseline to read as abo
  * `temporalLine`.
  */
 export function perceptLine(
-  p: { category: string; summary: string; salience: number; data?: unknown },
+  p: { category: string; summary: string; salience: number; data?: unknown; handle?: string },
+  view?: CallView,
 ): string {
-  return `- [${ p.category }] ${ p.summary } (salience: ${ p.salience.toFixed( 2 ) })${ perceptData( p.data ) }`
+  return `- [${ p.category }] ${ p.summary } (salience: ${ p.salience.toFixed( 2 ) })${ renderItemData( p.data, p.handle, view ) }`
 }
 
 /**
@@ -143,37 +145,10 @@ export function perceptLine(
  * loses it just as completely as never storing it, one step later.
  */
 export function ruminationLine(
-  w: { type: string; summary: string; activation: number; data?: unknown },
+  w: { type: string; summary: string; activation: number; data?: unknown; handle?: string },
+  view?: CallView,
 ): string {
-  return `- [${ w.type }] ${ w.summary } (activation: ${ w.activation.toFixed( 2 ) })${ perceptData( w.data ) }`
-}
-
-/**
- * A percept's own data, rendered under its label — what the host actually sent.
- *
- * The label is the engine's words about the signal; this is the evidence. A mind
- * that only ever sees labels is being handed conclusions, and the whole job of a
- * mind is to make meaning by connecting pieces of information it can see.
- *
- * Indented on its own line rather than inlined: it can be long, and a host is
- * explicitly not asked to keep it short — what it sent is what it sent.
- */
-function perceptData( data: unknown ): string {
-  if( data === undefined || data === null ) return ''
-  if( typeof data === 'string') return data.length > 0 ? `\n    ${ data }` : ''
-
-  try {
-    // A host's own `summary`, when it offered one, is already the label on the
-    // line above. Repeating it underneath is noise, and noise in a percept is
-    // not free — it is read every tick the percept is alive. NOT reshaping: the
-    // stored data keeps every field, this only declines to print one twice.
-    const shown = Array.isArray( data )
-      ? data
-      : Object.fromEntries( Object.entries( data as Record<string, unknown> ).filter( ( [ k ] ) => k !== 'summary') )
-    const json = JSON.stringify( shown )
-    return json === '{}' || json === '[]' ? '' : `\n    ${ json }`
-  }
-  catch { return '' }
+  return `- [${ w.type }] ${ w.summary } (activation: ${ w.activation.toFixed( 2 ) })${ renderItemData( w.data, w.handle, view ) }`
 }
 
 /**
@@ -328,6 +303,14 @@ export interface PromptBuildOptions {
   epistemicUncertainty: number
   focus:                FocusSection
   deps:                 PromptDependencies
+  /**
+   * What this call may spend, against the routed model's window (LOSSLESS P5a).
+   * With it, an item larger than a page is a document — a header, a page, and a
+   * handle to the rest; without it (a harness, a test) every item is whole.
+   */
+  view?: CallView
+  /** What the mind asked, last cycle, to have brought back — resolved, rendered whole. */
+  broughtBack?: BroughtBack[]
   /** Optional: Recent action types for diversity tracking */
   recentActionTypes?: string[]
   /**
@@ -527,6 +510,7 @@ ${roleDescription}${architectureBlock}
 - **identityUpdates.traits**: Array of {key, value} where value is a DELTA to apply to my trait (e.g., +0.05 to increase a trait by 5%).
 - **identityUpdates.values**: Values I hold that are not yet listed — each is added to mine; none is removed.
 - **identityUpdates.style**: How I speak, as a short phrase — taken while my style is still generic.
+- **recall**: Something I hold that is larger than one page shows as a document — its size and a handle (\`doc:…\`) — with only a page, or none, in view. Naming the handle and a page brings that page back whole on my next cycle, under "## Brought Back". It is my own memory as it arrived, not something new: to learn what the world says NOW, I act again.
 - **knownEntityUpdates**: What I've learned about someone/something I'm dealing with. Array of {keid, name?, learned?, feeling?, sameAs?}. Use the keid from "## People I Know". Set name only when I actually learn their name; learned is an array of facts about them (stored as memories); feeling is how I feel toward them (-1..1). **sameAs** is another keid I have concluded is this same someone met under a different handle — it fuses my two records into one, so I use it only when I actually know, not when I merely suspect. Record only what I genuinely learned this turn.
 
 ## Required Output
@@ -637,7 +621,11 @@ completionType guide:
 
 [SKILLS]
 {"newSkills": [{"id": "brief-then-confirm", "composedOf": ["reach-out", "wait"], "tags": ["social"], "cost": 0.15}]}
-[/SKILLS]`
+[/SKILLS]
+
+[RECALL]
+{"recall": [{"doc": "percept-…", "page": 2}]}
+[/RECALL]`
   }
 
   // ── User message ───────────────────────────────────────────
@@ -671,6 +659,8 @@ completionType guide:
       reportContent,
       outputFormat,
       ideationCandidates,
+      view,
+      broughtBack,
     } = options
 
     const actionDiversity     = this._buildActionDiversitySection( recentActionTypes )
@@ -814,8 +804,14 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       ? this._buildSpokenTurnsSection( context.spokenTurns ).trim()
       : ''
 
+    // One item, one render. A percept working memory also holds shows its data
+    // under Active Ruminations, where it lives longer; here, only its label. It
+    // rendered in both while the percept lived — a 135k-token read, twice.
+    const heldInMind = new Set( has('ruminations') ? context.workingMemory.map( w => w.handle ).filter( Boolean ) : [] )
     const perceptsBlock = has('percepts')
-      ? `## Percepts (What I Notice)\n${context.percepts.slice( 0, 10 ).map( perceptLine ).join('\n') || 'Nothing notable'}`
+      ? `## Percepts (What I Notice)\n${context.percepts.slice( 0, 10 ).map( p => p.handle && heldInMind.has( p.handle )
+          ? `${ perceptLine( { ...p, data: undefined } ) } (held in mind — its data is under Active Ruminations)`
+          : perceptLine( p, view ) ).join('\n') || 'Nothing notable'}`
       : ''
 
     // Every host ability I hold + what each is for, whole. Framed as
@@ -831,11 +827,11 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       : ''
 
     const ruminationsBlock = has('ruminations')
-      ? `## Active Ruminations (retrieved memories & thoughts)\n${context.workingMemory.map( ruminationLine ).join('\n') || 'Nothing actively held in mind'}`
+      ? `## Active Ruminations (retrieved memories & thoughts)\n${context.workingMemory.map( w => ruminationLine( w, view ) ).join('\n') || 'Nothing actively held in mind'}`
       : ''
 
     const memoriesBlock = has('memories')
-      ? this._buildMemoriesSection( context.memories, state.tick )
+      ? this._buildMemoriesSection( context.memories, state.tick, view )
       : ''
 
     const beliefsBlock = has('beliefs')
@@ -924,6 +920,11 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
         }.`
       : ''
 
+    // Pages the mind asked for last cycle — up to half the call; the rest is said so.
+    const broughtBackBlock = broughtBack?.length
+      ? renderBroughtBack( broughtBack, view ? Math.floor( view.budget / 2 ) : Infinity )
+      : ''
+
     // Assemble in canonical order; empties drop out so spacing stays clean.
     const body = [
       identityAnchor,
@@ -946,6 +947,7 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
       focusBlock,
       identityNudge.trim(),
       ideationBlock,
+      broughtBackBlock,
       tailSections,
     ].filter( Boolean ).join('\n\n')
 
@@ -962,7 +964,7 @@ Dominance: ${context.affect.dominance.toFixed( 2 )}${context.affect.blends.lengt
    *               facets never send messages.
    */
   static buildOutputFormatInstruction( mode: 'master' | 'facet' = 'master'): string {
-    const availableTags = 'PLANS, BELIEFS, INTROSPECTION, NARRATIVE, IDENTITY, GOALS_NEW, GOALS_ABANDON, GOALS_REPRIORITIZE, SELF_OBS'
+    const availableTags = 'PLANS, BELIEFS, INTROSPECTION, NARRATIVE, IDENTITY, GOALS_NEW, GOALS_ABANDON, GOALS_REPRIORITIZE, SELF_OBS, RECALL'
 
     return `\n\n## Response Format (REQUIRED)
 Respond with a single JSON object (optionally wrapped in a \`\`\`json code block).
@@ -1158,41 +1160,34 @@ ${recent.map( ( t, i ) => `${i + 1}. ${t}`).join(' → ')}${warning}
    * Only rendered when there are status-bearing action records in state.
    */
   /**
-   * Render the "## Relevant Memories" block under an explicit char budget (§5.3).
+   * Render the "## Relevant Memories" block.
    *
    * Ordering is the deterministic recall order set by buildExecutiveContext —
    * semantic (similarity-ranked) matches first, then recent episodes for
    * freshness, deduped and capped. This is the re-ranking surface; we do NOT
    * re-sort here so that order is preserved.
    *
-   * The budget bounds the block deterministically: lines are added in order
-   * until the next would overflow RECALL_CHAR_BUDGET (the first line always
-   * renders, even if it alone exceeds the budget), then an explicit
-   * "[+N omitted]" tail mirrors the beliefs block so the model knows the recall
-   * surface was truncated, not empty.
+   * Every line whole. A 1,200-character budget used to stop the block at the
+   * first line that would overflow it — and once a remembered observation
+   * carries its data, that is the first line: every memory after it would have
+   * been "omitted". What bounds a call now is its budget (`view`), and a large
+   * memory is a document: its handle and size, read by `[RECALL]` (LOSSLESS P5a).
+   * A remembered observation shows its data — it was recalled as its label.
    */
-  private static readonly RECALL_CHAR_BUDGET = 1200   // ~300 tokens — keeps recall from crowding the prompt
-
   private static _buildMemoriesSection(
     memories: ExecutiveContext['memories'],
     currentTick: number,
+    view?: CallView,
   ): string {
     if( memories.length === 0 ) return '## Relevant Memories\nNo relevant memories'
 
-    const lines: string[] = []
-    let used = 0
-    for( const m of memories ){
-      const age  = m.tick != null ? `, ~${currentTick - m.tick} ticks ago` : ''
-      const line = `- ${m.content} (relevance: ${m.relevance.toFixed( 2 )}, emotional: ${m.emotionalContext}${age})`
-      // Always keep the first line; stop once the next would overflow the budget.
-      if( lines.length > 0 && used + line.length + 1 > this.RECALL_CHAR_BUDGET ) break
-      lines.push( line )
-      used += line.length + 1
-    }
-
-    const omitted = memories.length - lines.length
-    const tail    = omitted > 0 ? `\n[+${omitted} omitted — over recall budget; full store intact]` : ''
-    return `## Relevant Memories\n${lines.join('\n')}${tail}`
+    // A memory never inlines a page: it is a pointer to follow, not a re-reading.
+    const asMemory = view ? { ...view, mode: 'reference' as const } : undefined
+    const lines = memories.map( m => {
+      const age = m.tick != null ? `, ~${currentTick - m.tick} ticks ago` : ''
+      return `- ${m.content} (relevance: ${m.relevance.toFixed( 2 )}, emotional: ${m.emotionalContext}${age})${ renderItemData( m.data, m.handle, asMemory ) }`
+    } )
+    return `## Relevant Memories\n${lines.join('\n')}`
   }
 
   /**

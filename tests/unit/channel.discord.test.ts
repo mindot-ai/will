@@ -245,6 +245,13 @@ describe('discord bridge — outbound', () => {
 
 describe('discord bridge — attachments', () => {
   const cdn = ( name: string ) => `https://cdn.discordapp.com/attachments/1/2/${ name }`
+  const withFetch = async ( body: () => Response, run: ( calls: () => number ) => Promise<void> ) => {
+    let called = 0
+    const original = globalThis.fetch
+    globalThis.fetch = ( async () => { called++; return body() } ) as unknown as typeof fetch
+    try { await run( () => called ) }
+    finally { globalThis.fetch = original }
+  }
 
   it('perceives an attachment-only message instead of dropping it', async () => {
     const { client, will } = await bridgeUp( { readAttachments: false } )
@@ -255,65 +262,77 @@ describe('discord bridge — attachments', () => {
     await flush()
 
     expect( will.sensed ).toHaveLength( 1 )
-    expect( will.sensed[0]!.text ).toContain('ROADMAP.md')
-    expect( will.sensed[0]!.text ).toContain('have not read')
-    expect( will.sensed[0] ).toMatchObject( { from: 'discord:U1', speaker: 'Ada', thread: 'discord:c1' } )
+    expect( will.sensed[0] ).toMatchObject( { from: 'discord:U1', speaker: 'Ada', thread: 'discord:c1', text: '' } )
+    expect( will.sensed[0]!.attachments ).toEqual( [ { name: 'ROADMAP.md', contentType: 'text/markdown', size: 8402,
+      unread: 'reading shared files is turned off here' } ] )
   } )
 
-  it('reads a text attachment from the CDN into the percept, alongside what was said', async () => {
-    const original = globalThis.fetch
-    globalThis.fetch = ( async () => new Response('# Roadmap\nShip the thing.') ) as unknown as typeof fetch
-    try {
+  it('hands a text attachment over WHOLE, beside what was said — not inlined, not cut (LOSSLESS P5d)', async () => {
+    // It was inlined at 24,000 characters; a 100 KB spec arrives whole now.
+    const spec = '# Payments spec\n' + 'The ledger writer moves behind the schema review. '.repeat( 2_000 )
+    await withFetch( () => new Response( spec ), async () => {
       const { client, will } = await bridgeUp()
       client.emit( {
         content: 'here it is', channelId: 'c1', author: { id: 'U1' },
-        attachments: [ { name: 'ROADMAP.md', contentType: 'text/markdown', size: 25, url: cdn('ROADMAP.md') } ],
+        attachments: [ { name: 'spec.md', contentType: 'text/markdown', size: spec.length, url: cdn('spec.md') } ],
       } )
       await flush()
+      expect( will.sensed[0]!.text ).toBe('here it is')
+      expect( will.sensed[0]!.attachments![0]!.text ).toBe( spec )
+    } )
+  } )
 
-      const text = will.sensed[0]!.text
-      expect( text ).toContain('here it is')          // speech survives
-      expect( text ).toContain('Ship the thing.')     // document is readable
-      expect( text ).toContain('not something said to me')   // …and marked as handed over
-    }
-    finally { globalThis.fetch = original }
+  it('reads every file of a message — not the first four', async () => {
+    await withFetch( () => new Response('body'), async () => {
+      const { client, will } = await bridgeUp()
+      client.emit( {
+        content: '', channelId: 'c1', author: { id: 'U1' },
+        attachments: [ 1, 2, 3, 4, 5, 6 ].map( n => ( { name: `part-${ n }.txt`, contentType: 'text/plain', size: 4, url: cdn(`part-${ n }.txt`) } ) ),
+      } )
+      await flush()
+      expect( will.sensed[0]!.attachments!.map( a => a.text ) ).toEqual( Array( 6 ).fill('body') )
+    } )
+  } )
+
+  it('names a file above the ceiling without reading any of it — and says why', async () => {
+    await withFetch( () => new Response('x'), async calls => {
+      const { client, will } = await bridgeUp()
+      client.emit( {
+        content: '', channelId: 'c1', author: { id: 'U1' },
+        attachments: [ { name: 'huge.log', contentType: 'text/plain', size: 30 * 1024 * 1024, url: cdn('huge.log') } ],
+      } )
+      await flush()
+      expect( calls() ).toBe( 0 )
+      expect( will.sensed[0]!.attachments![0] ).toMatchObject( { name: 'huge.log', unread: 'it is larger than the 20 MB I read' } )
+      expect( will.sensed[0]!.attachments![0]!.text ).toBeUndefined()
+    } )
   } )
 
   it('refuses to fetch from any host but Discord\'s CDN — an inbound url is untrusted input', async () => {
-    let called = 0
-    const original = globalThis.fetch
-    globalThis.fetch = ( async () => { called++; return new Response('pwned') } ) as unknown as typeof fetch
-    try {
+    await withFetch( () => new Response('pwned'), async calls => {
       const { client, will } = await bridgeUp()
       client.emit( {
         content: '', channelId: 'c1', author: { id: 'U1' },
         attachments: [ { name: 'notes.md', contentType: 'text/markdown', size: 5, url: 'https://evil.example/notes.md' } ],
       } )
       await flush()
-
-      expect( called ).toBe( 0 )
-      expect( will.sensed[0]!.text ).not.toContain('pwned')
-      expect( will.sensed[0]!.text ).toContain('notes.md')
-    }
-    finally { globalThis.fetch = original }
+      expect( calls() ).toBe( 0 )
+      expect( JSON.stringify( will.sensed[0] ) ).not.toContain('pwned')
+      expect( will.sensed[0]!.attachments![0]!.unread ).toContain("not on Discord's own servers (evil.example)")
+    } )
   } )
 
   it('names a non-textual attachment without fetching it', async () => {
-    let called = 0
-    const original = globalThis.fetch
-    globalThis.fetch = ( async () => { called++; return new Response('binary') } ) as unknown as typeof fetch
-    try {
+    await withFetch( () => new Response('binary'), async calls => {
       const { client, will } = await bridgeUp()
       client.emit( {
         content: '', channelId: 'c1', author: { id: 'U1' },
         attachments: [ { name: 'diagram.png', contentType: 'image/png', size: 40_000, url: cdn('diagram.png') } ],
       } )
       await flush()
-
-      expect( called ).toBe( 0 )
-      expect( will.sensed[0]!.text ).toContain('diagram.png')
-    }
-    finally { globalThis.fetch = original }
+      expect( calls() ).toBe( 0 )
+      expect( will.sensed[0]!.attachments![0] ).toMatchObject( { name: 'diagram.png', unread: 'not something I can read as text' } )
+    } )
   } )
 } )
 
@@ -341,11 +360,9 @@ describe('discord bridge — attachments arrive as a Map (the discord.js Collect
       } )
       await flush()
 
-      const text = will.sensed[0]!.text
-      expect( text ).toContain('Here it is')
-      expect( text ).toContain('message.txt')            // the NAME resolved, not undefined
-      expect( text ).not.toContain('unnamed')
-      expect( text ).toContain('Stalled: rollout.')      // and the body was actually fetched
+      expect( will.sensed[0]!.text ).toBe('Here it is')
+      expect( will.sensed[0]!.attachments![0]!.name ).toBe('message.txt')       // the NAME resolved, not undefined
+      expect( will.sensed[0]!.attachments![0]!.text ).toContain('Stalled: rollout.')   // and the body was actually fetched
     }
     finally { globalThis.fetch = original }
   } )
@@ -357,8 +374,7 @@ describe('discord bridge — attachments arrive as a Map (the discord.js Collect
       attachments: [ { name: 'notes.md', contentType: 'text/markdown', size: 12 } ],
     } )
     await flush()
-    expect( will.sensed[0]!.text ).toContain('notes.md')
-    expect( will.sensed[0]!.text ).not.toContain('unnamed')
+    expect( will.sensed[0]!.attachments![0]!.name ).toBe('notes.md')
   } )
 } )
 

@@ -56,8 +56,7 @@ var ChannelRoster = class {
 };
 
 // src/surface/channels/types.ts
-var INLINE_CHAR_CAP = 24e3;
-var INLINE_COUNT_CAP = 4;
+var ATTACHMENT_READ_CEILING = 20 * 1024 * 1024;
 var TEXTUAL_EXT = /\.(md|markdown|txt|text|json|jsonl|csv|tsv|ya?ml|log|ini|toml)$/i;
 function isTextual(a) {
   const ct = a.contentType?.split(";")[0]?.trim().toLowerCase() ?? "";
@@ -65,36 +64,18 @@ function isTextual(a) {
   if (ct === "application/json" || ct === "application/x-yaml") return true;
   return TEXTUAL_EXT.test(a.name);
 }
-function humanSize(bytes) {
-  if (bytes == null) return "";
-  return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-async function renderAttachments(attachments, speaker, fetchText) {
-  if (attachments.length === 0) return "";
-  const who = speaker ?? "someone";
+async function readAttachments(attachments, read) {
   const out = [];
-  let inlined = 0;
   for (const a of attachments) {
-    const meta = [a.contentType, humanSize(a.size)].filter(Boolean).join(", ");
-    const label = `${a.name}${meta ? ` (${meta})` : ""}`;
-    if (!fetchText || !isTextual(a) || inlined >= INLINE_COUNT_CAP) {
-      out.push(`[${who} shared a file I have not read: ${label}]`);
+    const base = { name: a.name, ...a.contentType ? { contentType: a.contentType } : {}, ...a.size != null ? { size: a.size } : {} };
+    if (!read) {
+      out.push({ ...base, unread: "reading shared files is turned off here" });
       continue;
     }
-    const body = await fetchText(a).catch(() => null);
-    if (body == null) {
-      out.push(`[${who} shared a file I could not read: ${label}]`);
-      continue;
-    }
-    inlined++;
-    const clipped = body.length > INLINE_CHAR_CAP ? `${body.slice(0, INLINE_CHAR_CAP)}
-[\u2026 truncated \u2014 ${humanSize(body.length)} of ${humanSize(a.size ?? body.length)}]` : body;
-    out.push(`[${who} shared ${label}; its contents follow \u2014 this is a document I was handed, not something said to me]
----
-${clipped}
----`);
+    const got = await read(a).catch((e) => ({ unread: `I could not fetch it (${e instanceof Error ? e.message : String(e)})` }));
+    out.push({ ...base, ...got });
   }
-  return out.join("\n");
+  return out;
 }
 function chunkText(text, max) {
   if (text.length <= max) return [text];
@@ -114,7 +95,6 @@ function chunkText(text, max) {
 // src/surface/channels/discord.ts
 var DISCORD_MESSAGE_LIMIT = 2e3;
 var DISCORD_CDN_HOSTS = /* @__PURE__ */ new Set(["cdn.discordapp.com", "media.discordapp.net"]);
-var MAX_FETCH_BYTES = 256 * 1024;
 function roomLabel(message) {
   if (!message.guildId) return void 0;
   const own = message.channel?.name;
@@ -188,14 +168,10 @@ async function connectDiscord(will, opts) {
     const said = (message.cleanContent || message.content).trim();
     const files = collectAttachments(message);
     if (!said && files.length === 0) return;
-    const shared = await renderAttachments(
-      files,
-      speaker,
-      opts.readAttachments === false ? void 0 : fetchAttachmentText
-    );
-    const text = [said, shared].filter(Boolean).join("\n");
+    const shared = await readAttachments(files, opts.readAttachments === false ? void 0 : readAttachment);
     await will.sense({
-      text,
+      text: said,
+      ...shared.length > 0 ? { attachments: shared } : {},
       from: entityId,
       thread: `discord:${message.channelId}`,
       // `isDM` has been computed on every inbound since this bridge shipped and
@@ -226,28 +202,31 @@ async function connectDiscord(will, opts) {
       });
     return out;
   }
-  async function fetchAttachmentText(a) {
-    if (!a.url || !isTextual(a)) return null;
+  async function readAttachment(a) {
+    if (!isTextual(a)) return { unread: "not something I can read as text" };
+    if (!a.url) return { unread: "Discord gave no way to fetch it" };
     let host;
     try {
       host = new URL(a.url).hostname;
     } catch {
-      return null;
+      return { unread: "its address is not one I can read" };
     }
     if (!DISCORD_CDN_HOSTS.has(host)) {
       log(`refusing to fetch attachment '${a.name}' from non-CDN host ${host}`);
-      return null;
+      return { unread: `it is not on Discord's own servers (${host}), and I only read files from there` };
     }
-    if (a.size != null && a.size > MAX_FETCH_BYTES) {
+    const tooLarge = { unread: `it is larger than the ${ATTACHMENT_READ_CEILING / 1024 / 1024} MB I read` };
+    if (a.size != null && a.size > ATTACHMENT_READ_CEILING) {
       log(`attachment '${a.name}' is ${a.size} bytes \u2014 naming it without reading`);
-      return null;
+      return tooLarge;
     }
-    const res = await fetch(a.url, { signal: AbortSignal.timeout(1e4) });
+    const res = await fetch(a.url, { signal: AbortSignal.timeout(3e4) });
     if (!res.ok) {
       log(`attachment '${a.name}' fetch failed: ${res.status}`);
-      return null;
+      return { unread: `I could not fetch it (HTTP ${res.status})` };
     }
-    return (await res.text()).slice(0, MAX_FETCH_BYTES);
+    const text = await res.text();
+    return new TextEncoder().encode(text).length > ATTACHMENT_READ_CEILING ? tooLarge : { text };
   }
   will.effector("inspect", async (_args, ctx) => {
     const address = (ctx.targetAddresses ?? []).find((a) => a.startsWith("discord:"));

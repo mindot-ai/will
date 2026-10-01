@@ -1,6 +1,6 @@
 # LOSSLESS P5 — every call fits its window, and nothing leaves a call silently
 
-> **Standing:** DESIGNED · 2026-10-01 · traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; the owner took all six recommendations (D1–D6) the same day; P5a, P5b and P5c landed
+> **Standing:** DESIGNED · 2026-10-01 · traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; the owner took all six recommendations (D1–D6) the same day; P5a–P5d landed
 
 > The last phase of [[LOSSLESS]]. P0–P4 made what the mind takes in, thinks, says and
 > keeps whole. This phase is about what a **single LLM call** is shown. That view
@@ -199,7 +199,7 @@ Memories renders that page through Part 2. Deleting an episode removes its chunk
 vectors (the P3a in-flight cancel extends to them). Cost: Jina, about $0.02 per 1M
 tokens. Re-reading the same 135k-token listing every day comes to well under a cent.
 
-### Attachments are their own items (moved from P2)
+### Attachments are their own items (moved from P2) ✅
 
 The bridge delivers each file **whole as its own item** (the heard percept's
 `data.attachments`). The message text carries only a reference:
@@ -230,7 +230,7 @@ window, that is a configuration error, raised loudly at assembly.
 | **P5a** ✅ | Window, estimate, budget, Part 2 paging, one render per item, `[RECALL]` for `doc` pages, the safety net | Closes the overflow P2 opened, before Lora's first GitHub boot |
 | **P5b** ✅ | Part 4: text cuts removed, `MEANING_CAP` first | Her GitHub tools' required args |
 | **P5c** ✅ | Part 3: honest counts, ranked abilities, `[RECALL]` for sections, queries and memories | The silent drops |
-| **P5d** | Attachments as items | Depends on P5a's paging |
+| **P5d** ✅ | Attachments as items | Depends on P5a's paging |
 | **P5e** | Part 5: chunked embedding of what she read | Depends on P5a's pages |
 
 The tests follow the epoch's rule: each test asserts on the **rendered prompt or

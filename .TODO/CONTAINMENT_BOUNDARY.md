@@ -80,6 +80,15 @@ Which fixes three facts:
    asked to do.** A handler cleared for `search_docs` can open a socket, read a
    file, or shell out, and the boundary never sees it. The verdict tape in
    `policy/verdict.recorder.ts` records decisions; there is no record of reach.
+
+   Narrower than it first looked, and worth stating precisely: the *act* record
+   was itself incomplete until recently. On `fix/live-scenario-findings`, fault 1
+   is that a host-acked act **outside a plan emitted no `action.outcome` at
+   all** — none of a live mind's GitHub reads reached `action.record`, on ack or
+   on timeout. Reafference now emits for every reconciled outcome with its
+   target. So the gap this document names is the *second* half of that commit's
+   title: every act now leaves its record, and nothing yet records its
+   **reach**.
 3. **Credentials are out of the mind's sight but not out of the blast radius.**
    The Will never holds a secret — correct, and already better than most — but
    LLM-chosen *parameters* flow into a closure that does hold one.
@@ -206,6 +215,8 @@ Open questions to settle before building:
 [[POLICY_REAFFERENCE]] (the decision layer this sits under) ·
 [[CUSTOM_ABILITY_WIRING]] (host-declared effectors — the surface being contained) ·
 [[RECORD_ANCHORING]] (the accountability half; the egress ledger belongs there) ·
+[[ORGANS]] (what the organs needing a grant would be) ·
+[[ACT_EXPECTATIONS]] (an act still in the air — the representation a held or refused reach needs) ·
 [[EXAFFERENCE]] (provenance — the near-miss, and the one reusable piece) ·
 [[SIGNAL_BOUNDARY]] (portability: the cage is host-supplied, like the body)
 

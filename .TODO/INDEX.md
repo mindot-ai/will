@@ -136,7 +136,7 @@ found 2026-07-02 while making the suite CI-green for the public release; all thr
 
 **2026-07-06 · SHIPPED** · [Will — Custom (host-owned) effector wiring](CUSTOM_ABILITY_WIRING.md)
 
-partial — gap found 2026-06-15, Phase 1 wired; entity binding, per-effector metadata, preconditions and the learning surface are open
+partial — gap found 2026-06-15, Phase 1 wired; entity **and object** binding, per-effector metadata (cost, valence, preconditions, description), deliberation surfacing and routing tags all landed 2026-07-05/06 and are marked ✅ in Phase 2+ below. Still open: **field width** (N objectless effectors all enter the floor uncapped), **revoking** a runtime grant plus the backend `PATCH /v1/wills/:id/effectors` route, and **verifying** host acks feed `recordOutcome` with a meaningful `outcomeQuality`
 
 **2026-07-08 · SHIPPED** · [Audition conversation-reply determinism + reliability gap](AUDITION_REPLY_DETERMINISM.md)
 
@@ -184,7 +184,7 @@ the clock resumes from the snapshot tick, so the arithmetic is correct; the *sen
 
 **2026-08-03 · DESIGNED** · [High-Value Engineering Contributions](__CONTRIBUTION_TOPICS.md)
 
-scoped invitations for contributors, not commitments — the four shell sense engines are still empty scaffolds
+scoped invitations for contributors, not commitments. Two have since been overtaken by the engine and are marked so inline (§1 partially, §5 fully) — check an item against `src/` before taking it, because this document does not update itself
 
 **2026-08-03 · DESIGNED** · [DeliberationCache — Production Proposal for Will](DELIBERATION_CACHE_PROPOSAL.md)
 

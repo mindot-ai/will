@@ -1,19 +1,21 @@
 # High-Value Engineering Contributions
 
-> **Standing:** DESIGNED · 2026-08-03 · scoped invitations for contributors, not commitments — the four shell sense engines are still empty scaffolds
+> **Standing:** DESIGNED · 2026-08-03 · scoped invitations for contributors, not commitments. Two have since been overtaken by the engine and are marked so inline (§1 partially, §5 fully) — check an item against `src/` before taking it, because this document does not update itself
 
 These are scoped, well-defined tasks that fit Will's existing architecture and would be welcomed per `CONTRIBUTING.md`.
 
 ## 1. Fill the Shell Sense Engines
 
-**Status:** Scaffolded but empty (`src/cognition/senses/vision.ts`, `somatosensation.ts`, `olfaction.ts`, `gustation.ts`)
+**Status:** Three remain shells — `src/cognition/senses/vision.engine.ts`, `olfaction.engine.ts`, `gustation.engine.ts` (~24 lines each, via `ShellSenseEngine`, producing no percepts).
+
+**`somatosensation.engine.ts` is no longer one** — the SIGNAL_BOUNDARY epoch gave it real transduction for system signals and webhooks, so it produces percepts today. Which means the cross-modal condition below **has already been met**: see the note added to `SENSES_HARDENING.md` §6.
 
 **What to do:**
-- Implement a `VisionEngine` that accepts image captions, bounding boxes, or CLIP embeddings and produces `percept.visual` events with salience scores
-- Cross-modal binding is already stubbed — a second sense producing percepts would activate it
+- Implement a `VisionEngine` that accepts image captions, bounding boxes, or CLIP embeddings and produces visual percepts with salience scores
 - Keep it deterministic: no unseeded RNG, no wall-clock reads inside `react()`
+- Decide the representation deliberately before coding. **A screenshot is not a percept** — a bitmap carries no `sourceEntityId`, no salience, nothing to bind cross-modally and nothing for the `GenerativeModel` to predict. Three candidate answers: *structural* (an accessibility tree, so entities fall out for free), *described* (a caption becomes the percept — cheap, hostile to determinism, and it puts an LLM call inside a sense engine, so do not choose it by accident), or *attended* (regions of interest as entities with their own salience — most faithful, most expensive).
 
-**Why it matters:** Will claims "five sensory domains" but only audition is live. This is the most obvious gap in the codebase.
+**Why it matters:** Will claims "five sensory domains" and two are live. Vision is the valuable one — and cross-modal binding is no longer waiting on it, because somatosensation already met that condition.
 
 ---
 
@@ -61,17 +63,28 @@ These are scoped, well-defined tasks that fit Will's existing architecture and w
 
 ---
 
-## 5. Add Per-Effector Cost and Preconditions
+## 5. ~~Add Per-Effector Cost and Preconditions~~ — SHIPPED, do not take this
 
-**Status:** Explicitly on the roadmap (README: "Per-effector cost/preconditions and entity-targeting are on the roadmap")
+**Status: done 2026-07-05/06.** `EffectorDeclaration` (`agency/types.ts`) carries
+`description`, `cost`, `valence`, `preconditions`, `binds` and `tags`;
+`externalSchemas()` populates them onto the `MotorSchema`, and they flow through
+the affordance build and selection. There is no `EffectorSchema` type — that was
+never the name. Entity *and* object targeting shipped the same week.
 
-**What to do:**
-- Extend `EffectorSchema` with `cost: number` and `preconditions: string[]`
-- Teach `ActionSelector` to read cost/preconditions from the schema registry
-- The `MotorSchemaExecutor` already has a binding phase — add precondition validation before enactment
-- Consider energy cost: high-cost effectors should drain `energy.level` on enactment
+**What is actually still open in this area,** and is the real invitation — all
+three from `CUSTOM_ABILITY_WIRING.md` Phase 2+:
 
-**Why it matters:** Well-scoped feature with a clear user need (game NPCs, smart home, robotics). The seam is stable.
+- **Field width.** N objectless effectors all enter the always-offered floor, so
+  a host declaring a large catalog emits every one of them every tick. Gate
+  external affordances by attention/preconditions instead. This is the
+  highest-value item on this page.
+- **Revoking a runtime grant.** Granting at runtime adds the schema
+  (`SchemaRepertoire.registerExternal`); removing one does not exist, and the
+  backend `PATCH /v1/wills/:id/effectors` route is unwired.
+- **Verify the learning surface.** External schemas accrue `LearnedSkill` stats
+  via reafference, but that host acks feed `recordOutcome` with a meaningful
+  `outcomeQuality` is unverified — so "the Will gets better at your effectors"
+  is a claim without a test behind it.
 
 ---
 

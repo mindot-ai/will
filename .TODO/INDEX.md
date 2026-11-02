@@ -4,13 +4,13 @@
 > document in this folder and the release headers in `CHANGELOG.md`.
 > Do not edit by hand — edit the document, then re-emit.
 
-Day zero is **2026-05-28**. 48 documents, 8 releases.
+Day zero is **2026-05-28**. 50 documents, 8 releases.
 What each level means, and what it may be cited for, is [STANDING.md](STANDING.md).
 
 - **SHIPPED** · 30 — in the engine, gated by CI, carried by a release
 - **OBSERVED** · 8 — true of the real system at a moment, established by looking
-- **DESIGNED** · 9 — reasoned to a plan of record — intent, not capability
-- **SPECULATIVE** · 1 — a hypothesis the project is holding
+- **DESIGNED** · 10 — reasoned to a plan of record — intent, not capability
+- **SPECULATIVE** · 2 — a hypothesis the project is holding
 
 > Dates before 2026-07-02 predate this repository — `will` was split out and
 > squashed on that date. These come from the documents, not from `git log`.
@@ -243,4 +243,12 @@ traced from prompt.factory, context, facet, the MCP and channel bridges and the 
 **2026-11-02 · DESIGNED** · [CONTAINMENT_BOUNDARY — what the mind's process may reach, under what the mind may do](CONTAINMENT_BOUNDARY.md)
 
 no code; the gap is verified by reading it — the PEP is an in-process call at `effectorController.bufferInvocation` and a host handler runs with the host process's full ambient authority. Opened from an external comparison, not from a fault in a live run, which is the weakest provenance in this folder
+
+**2026-11-02 · DESIGNED** · [ORGANS — the body a Will needs, and the contract every organ signs](ORGANS.md)
+
+§2 and §3 are read from `main` — the declaration's seven fields, `externalSchemas`, the floor/candidate split and salience formula in `affordance.synthesizer`, `scoreAffordance`/`driveUrgency`/`goalRelevance` and the weight table, `enactionFootprint` and the satiation arms in `consequence.ts`, `repeatWindowTicks` and its persona gains, `BaseSenseEngine`, and the PEP site. §4 onward is a plan of record with no code. Three stale-record defects found while tracing it are listed in §2 and are NOT fixed here
+
+**2026-11-02 · SPECULATIVE** · [EMBODIMENT_PROJECTION — what a whole mind in a whole body would, and would not, be good at](EMBODIMENT_PROJECTION.md)
+
+a projection about a combination that does not exist — this engine fully realised, in a body of the class Meta shipped with Muse. The regime table is reasoning and nothing in it is measured; one claim it originally made about drives was wrong and is corrected inline against `selection.scoring.ts`, which is the only part of this document with code behind it
 

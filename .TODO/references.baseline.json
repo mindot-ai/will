@@ -232,7 +232,6 @@
   "src/cognition/agency/engines/affordance.synthesizer.ts|path|src/agency/affordance.synthesizer.ts",
   "src/cognition/agency/engines/deliberation.engine.ts|path|src/agency/deliberation.engine.ts",
   "src/cognition/agency/engines/instruction.intake.ts|path|src/agency/instruction.intake.ts",
-  "src/cognition/agency/engines/motor.schema.executor.ts|path|.test.ts",
   "src/cognition/agency/engines/motor.schema.executor.ts|path|PLANNING_AS_PRIOR_TODO.md",
   "src/cognition/agency/engines/motor.schema.executor.ts|path|src/agency/motor.schema.executor.ts",
   "src/cognition/agency/engines/reafference.engine.ts|path|src/agency/reafference.engine.ts",

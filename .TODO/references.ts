@@ -74,8 +74,21 @@ type Finding = { file: string; line: number; token: string; rule: 'path' | 'symb
 const findings: Finding[] = []
 
 // ── A. dead paths ────────────────────────────────────────────
-const PATH_RE = /(?<![\w/.-])((?:[\w.@-]+\/)*[\w.-]+\.(?:ts|tsx|md|svg|json|yml|yaml))(?![\w/-])/g
+const PATH_RE = /(?<![\w/.*<>-])((?:[\w.@-]+\/)*[\w.-]+\.(?:ts|tsx|md|svg|json|yml|yaml))(?![\w/-])/g
 const EXT_OK  = /^(?:https?:|node_modules|@[\w-]+\/)/
+
+// A glob (`*.engine.ts`) and a placeholder (`<domain>.engine.ts`) are not
+// references, and the lookbehind is where that has to be said — not the
+// resolver. `*` and `<` cannot occur INSIDE a captured token, so a resolver
+// guard for them never runs: the match simply starts after the star and
+// `.engine.ts` is reported as a missing file. That is how `*.engine.ts` got
+// through a check that appeared to allow globs. The two guards are deleted
+// rather than kept as reassurance.
+//
+// The cost, measured rather than assumed: a dead path written flush against a
+// blockquote marker — `>src/nope.ts`, no space — is no longer seen. Markdown
+// puts a space after `>`, so this has never occurred here, and it is the right
+// trade against reporting every glob in the repo as missing.
 
 // Every tracked file, plus every path SUFFIX of it. This codebase cites paths
 // shorn of their prefix — `agency/types.ts` for src/cognition/agency/types.ts —
@@ -91,7 +104,7 @@ for( const f of [ ...walk( 'src', () => true ), ...walk( '.TODO', () => true ),
 for( const f of readdirSync( ROOT, { withFileTypes: true } ) ) if( f.isFile() ) ALL_PATHS.add( f.name )
 
 const resolvesPath = ( token: string, from: string ): boolean => {
-  if( EXT_OK.test( token ) || token.includes('*') || token.includes('<') ) return true
+  if( EXT_OK.test( token ) ) return true
   // A bare basename is only a repo path if it is source or a document. Without
   // this, `res.json` — a method call — and runtime artifacts like `latest.json`
   // read as missing files.

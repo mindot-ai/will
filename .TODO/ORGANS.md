@@ -57,16 +57,18 @@ Five domains exist. Their real state:
 | **Vision** | **Shell.** 23 lines via `ShellSenseEngine`, zero percepts produced. |
 | **Olfaction / Gustation** | **Shells.** 24 lines each, zero percepts. |
 
-> **Record defect found here (not fixed in this change).** Cross-modal binding
-> was **deliberately deferred**, and the deferral is recorded in two places:
+> **Record defect found here — fixed beneath this commit.** Cross-modal binding
+> was **deliberately deferred**, and the deferral was recorded in two places:
 > [[SENSES_HARDENING]] §6 — *"base extraction shipped with cross-modal binding
 > deferred until a second sense produces percepts (seam in place)"* — and
 > [[__CONTRIBUTION_TOPICS]] §1, *"a second sense producing percepts would
 > activate it"*. **A second sense now produces percepts** (somatosensation,
-> four `Transduced` sites). The condition those documents set has been met and
-> neither has been revisited; the chokepoint is already in place at
-> `publishPercept()`. This is not a design gap — it is a trigger nobody is
-> watching.
+> four `Transduced` sites), so the condition those documents set had been met
+> and neither had been revisited, while the chokepoint sat ready at
+> `publishPercept()`. It was never a design gap — it was a trigger nobody was
+> watching. §6 now says the condition has fired, and the README lists
+> somatosensation active. The deferral stays [[SENSES_HARDENING]]'s to own;
+> §2a says why this document does not re-propose it.
 
 ### The efferent half
 
@@ -88,42 +90,61 @@ object form is the one that matters, and it has **seven** fields:
 enactable `MotorSchema` tagged `external`; the synthesizer surfaces it, the
 selector competes it, the `MotorSchemaExecutor` routes it to the host.
 
-> **Record defect found here (not fixed in this change).** `binds: 'entity' |
+> **Record defect found here — fixed beneath this commit.** `binds: 'entity' |
 > 'object'` **is implemented** — `external.ts:57,67`. But that file's own header
-> still reads *"Scope (Phase 1): objectless schemas … Entity-bound external
-> effectors … are a follow-up"* and points at `CUSTOM_EFFECTOR_WIRING_TODO.md`,
+> read *"Scope (Phase 1): objectless schemas … Entity-bound external
+> effectors … are a follow-up"* and pointed at `CUSTOM_EFFECTOR_WIRING_TODO.md`,
 > a filename that does not exist (the document is
-> [[CUSTOM_ABILITY_WIRING]]). That document's Standing line also still lists
-> entity binding as open. A host author reading either would not know the single
-> most important field exists. This is the `EXAFFERENCE`-sat-OPEN failure from
-> [[STANDING]], relocated into a source comment.
+> [[CUSTOM_ABILITY_WIRING]]), and that document's Standing line listed entity
+> binding as open. A host author reading either would not learn that the single
+> most important field exists. This was the `EXAFFERENCE`-sat-OPEN failure from
+> [[STANDING]], relocated into a source comment. The header now describes
+> binding and names what is genuinely open — field width, not binding.
 
-> **Third record defect (not fixed in this change).** `types.ts:94` tells a host
+> **Third record defect — fixed beneath this commit, and now pinned.** Before
+> that fix, `types.ts:94` told a host
 > that *"a tag the drive system recognises (e.g. `'social'`, `'nourishment'`)"*
 > will let a drive lift the ability. `driveUrgency()`
 > (`agency/selection.scoring.ts:165`) recognises `'regulatory' | 'self-care' |
 > 'rest'`, `'social'`, and `'self-protection'`. **`'nourishment'` returns 0.**
-> This is the worst of the three, because it is in the field a host author is
+> This was the worst of the three, because it is the field a host author is
 > most likely to copy, and the failure is silent: the ability competes with
-> `drive = 0` and nothing says so.
+> `drive = 0` and nothing says so. A dead *name* a reference check would catch;
+> a well-formed *false* claim it would not, so the comment is now executable —
+> `tests/unit/record.drive-tags.test.ts` reads the mapping out of the comment
+> and fails if an advertised tag reaches no drive, or a tag the code honours
+> goes unadvertised.
 
-> **Fourth and fifth.** [[__CONTRIBUTION_TOPICS]]'s Standing line says *"the
-> four shell sense engines are still empty scaffolds"* and its §1 names
-> `src/cognition/senses/vision.ts` etc. Somatosensation is **not** a scaffold
-> any more, and the filenames are `*.engine.ts`. Its §5 invites a contributor to
-> *"Add Per-Effector Cost and Preconditions"* by extending `EffectorSchema` —
-> `cost`, `valence`, `preconditions` and `binds` all shipped on
-> `EffectorDeclaration`, and `EffectorSchema` is not the type's name. A
-> contributor taking either invitation would build something that exists.
+> **Fourth and fifth — both fixed beneath this commit.**
+> [[__CONTRIBUTION_TOPICS]]'s Standing line said *"the four shell sense engines
+> are still empty scaffolds"* and its §1 named `src/cognition/senses/vision.ts`
+> etc. Somatosensation is **not** a scaffold any more, and the filenames carry
+> an `.engine` segment. Its §5 invited a contributor to *"Add Per-Effector Cost
+> and Preconditions"* by extending `EffectorSchema` — `cost`, `valence`,
+> `preconditions` and `binds` all shipped on `EffectorDeclaration`, and
+> `EffectorSchema` is not the type's name. A contributor taking either
+> invitation would have built something that exists. §1 now says three remain
+> shells and §5 is struck through as shipped, with what is actually open in its
+> place.
 
 > **The pattern, which is the real finding.** Five defects, all in the
-> agency/senses corner, and **all in the same direction**: the record understates
+> agency/senses corner, and **all in the same direction**: the record understated
 > what the code does. That is the corner a host author and a new contributor read
-> first, and every one of these defects tells them something is missing or
-> deferred when it is present. [[STANDING]] exists because `EXAFFERENCE` sat
-> marked OPEN for a month; this is the same failure at five sites, and it argues
+> first, and every one of these defects told them something was missing or
+> deferred when it was present. [[STANDING]] exists because `EXAFFERENCE` sat
+> marked OPEN for a month; this was the same failure at five sites, and it argued
 > that the generated `INDEX.md` solved the *document header* problem without
 > touching source comments, contributor invitations, or README claims.
+>
+> That argument is what the two commits beneath this one answer. The first
+> corrects all five. The second generalises the correction into a gate:
+> `.TODO/references.ts` fails CI on a cited path or backticked type that
+> resolves to nothing, in `src/` comments as well as prose, against a checked-in
+> baseline that can only shrink. Three of the five were dead *names* and are now
+> mechanically unrepeatable. Defect 3 was a true-looking false claim and is
+> pinned by a test instead. The remaining one — a Standing line contradicting
+> its own document's body — still needs a human read, and `references.ts` says
+> so in its header rather than implying coverage.
 
 ### The loop that closes
 

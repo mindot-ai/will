@@ -127,3 +127,66 @@ export function staleActionRecordIds(
   all.sort( ( a, b ) => b.r.tick - a.r.tick || ( a.r.type < b.r.type ? -1 : a.r.type > b.r.type ? 1 : 0 ) )
   return all.slice( keep ).map( x => x.id )
 }
+
+// ── what she remembers of what she did ───────────────────────
+//
+// `ACTION_RECORD_KEEP` holds six acts, by design: a working record, not a memory
+// system. But nothing else held them. An act that brings something back is
+// remembered — its answer is a percept, then working memory, then an episode
+// (LOSSLESS P2) — while an act known only by its FATE ("unban ran.", failed,
+// withheld) fed calibration, goals, planning and the self-model as signals and
+// was kept by none of them: past the sixth, she had no memory she had done it.
+//
+// So each act is offered to memory the way speech is (`conversation.memory.ts`):
+// a `working_memory.item` that lives for the tick the consolidator reads it. How
+// strongly it goes in is how much it matters, read from the act's own schema: an
+// act toward someone (`binds: 'entity'`), an act through a host's ability
+// (`source: 'external'`), or any act that failed goes in as a spoken exchange
+// does; an objectless stance — rest, wait, orient, express, reflect — goes in
+// faintly, and the consolidator's own threshold decides, as it does for
+// everything (MIND). Most of what a mind does is such stances (Lora: 798 acts,
+// 19 of them reaching anyone), and each carries a sentence ("I let myself
+// recover…"), so having words is no sign of mattering: encoded as speech is, a
+// quiet mind remembered one every two ticks (the bounded-growth soak).
+
+/** How strongly an act is encoded: as a conversation turn is, or faintly. */
+const ACT_SIGNIFICANT = { activation: 0.85, attendedCount: 3 } as const
+const ACT_FAINT       = { activation: 0.2,  attendedCount: 0 } as const
+
+/** What an act's schema declares about it — where it comes from, and what it binds. Undefined when unknown. */
+export interface ActKind { source?: string; binds?: string }
+
+/** An act that reached someone, used a host's ability, or failed. An unknown schema is presumed to matter. */
+export function actMatters( r: ActionRecord, kind: ActKind | undefined ): boolean {
+  return r.status === 'failed' || !kind || kind.binds === 'entity' || kind.source === 'external'
+}
+
+/** The memory item for one recorded act — named for the record, so one act is one memory for its whole life. */
+export function actMemoryEntity( recordId: string, r: ActionRecord, targetName: string | undefined, kind: ActKind | undefined ): EntityInput {
+  const toward  = r.targetEntityId ? ` toward ${ targetName ?? 'someone' }` : ''
+  const outcome = r.outcome.trim()
+  const said    = outcome ? ` — ${ outcome }` : ''
+  const summary = r.status === 'withheld' ? `I held back from ${ r.type }${ toward }${ said }`
+                : r.status === 'failed'   ? `I tried ${ r.type }${ toward }, and it failed${ said }`
+                :                           `I did ${ r.type }${ toward }${ said }`
+  const { activation, attendedCount } = actMatters( r, kind ) ? ACT_SIGNIFICANT : ACT_FAINT
+
+  return {
+    id:   `wm-act-${ recordId }`,
+    type: 'working_memory.item',
+    metadata: {
+      wmType:     'action.outcome',
+      activation,
+      encoding:   activation,
+      attendedCount,
+      tags:       [ 'action', r.status, `act:${ r.type }`, ...( r.targetEntityId ? [ `entity:${ r.targetEntityId }` ] : [] ) ],
+      summary,
+      actionType: r.type,
+      status:     r.status,
+      ...( outcome ? { outcome } : {} ),
+      ...( r.targetEntityId ? { targetEntityId: r.targetEntityId, ...( targetName ? { targetName } : {} ) } : {} ),
+      ...( r.planId ? { planId: r.planId } : {} ),
+      tick:       r.tick,
+    },
+  }
+}

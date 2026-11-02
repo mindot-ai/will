@@ -85,6 +85,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "record": "bun .TODO/index.ts",
+    "refs": "bun .TODO/references.ts",
+    "refs:update": "bun .TODO/references.ts --update",
     "prepublishOnly": "bun run typecheck && bun test && bun run build",
     "test": "vitest run",
     "test:watch": "vitest watch",

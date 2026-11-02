@@ -1,6 +1,6 @@
 # Will — Custom (host-owned) effector wiring
 
-> **Standing:** SHIPPED · 2026-07-06 · partial — gap found 2026-06-15, Phase 1 wired; entity binding, per-effector metadata, preconditions and the learning surface are open
+> **Standing:** SHIPPED · 2026-07-06 · partial — gap found 2026-06-15, Phase 1 wired; entity **and object** binding, per-effector metadata (cost, valence, preconditions, description), deliberation surfacing and routing tags all landed 2026-07-05/06 and are marked ✅ in Phase 2+ below. Still open: **field width** (N objectless effectors all enter the floor uncapped), **revoking** a runtime grant plus the backend `PATCH /v1/wills/:id/effectors` route, and **verifying** host acks feed `recordOutcome` with a meaningful `outcomeQuality`
 
 > **Status: 🟢 Phase 1 wired.** A host's declared domain effectors now reach the
 > agency field and route to the world. Phases 2+ (entity binding, per-effector

@@ -246,7 +246,7 @@ no code; the gap is verified by reading it — the PEP is an in-process call at 
 
 **2026-11-02 · DESIGNED** · [ORGANS — the body a Will needs, and the contract every organ signs](ORGANS.md)
 
-§2 and §3 are read from `main` — the declaration's seven fields, `externalSchemas`, the floor/candidate split and salience formula in `affordance.synthesizer`, `scoreAffordance`/`driveUrgency`/`goalRelevance` and the weight table, `enactionFootprint` and the satiation arms in `consequence.ts`, `repeatWindowTicks` and its persona gains, `BaseSenseEngine`, and the PEP site. §4 onward is a plan of record with no code. Three stale-record defects found while tracing it are listed in §2 and are NOT fixed here
+§2 and §3 are read from `main` — the declaration's seven fields, `externalSchemas`, the floor/candidate split and salience formula in `affordance.synthesizer`, `scoreAffordance`/`driveUrgency`/`goalRelevance` and the weight table, `enactionFootprint` and the satiation arms in `consequence.ts`, `repeatWindowTicks` and its persona gains, `BaseSenseEngine`, and the PEP site — and against the unmerged `fix/live-scenario-findings`, which already moves Rules 2 and 3 (§2a). §4 onward is a plan of record with no code. Five stale-record defects found while tracing it are listed in §2 and are NOT fixed here
 
 **2026-11-02 · SPECULATIVE** · [EMBODIMENT_PROJECTION — what a whole mind in a whole body would, and would not, be good at](EMBODIMENT_PROJECTION.md)
 

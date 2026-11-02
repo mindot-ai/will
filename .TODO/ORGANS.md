@@ -1,6 +1,6 @@
 # ORGANS — the body a Will needs, and the contract every organ signs
 
-> **Standing:** DESIGNED · 2026-11-02 · §2 and §3 are read from `main` — the declaration's seven fields, `externalSchemas`, the floor/candidate split and salience formula in `affordance.synthesizer`, `scoreAffordance`/`driveUrgency`/`goalRelevance` and the weight table, `enactionFootprint` and the satiation arms in `consequence.ts`, `repeatWindowTicks` and its persona gains, `BaseSenseEngine`, and the PEP site. §4 onward is a plan of record with no code. Three stale-record defects found while tracing it are listed in §2 and are NOT fixed here
+> **Standing:** DESIGNED · 2026-11-02 · §2 and §3 are read from `main` — the declaration's seven fields, `externalSchemas`, the floor/candidate split and salience formula in `affordance.synthesizer`, `scoreAffordance`/`driveUrgency`/`goalRelevance` and the weight table, `enactionFootprint` and the satiation arms in `consequence.ts`, `repeatWindowTicks` and its persona gains, `BaseSenseEngine`, and the PEP site — and against the unmerged `fix/live-scenario-findings`, which already moves Rules 2 and 3 (§2a). §4 onward is a plan of record with no code. Five stale-record defects found while tracing it are listed in §2 and are NOT fixed here
 
 > A Will is the percept-and-intelligence layer; the host supplies the organs
 > (memory `mind-syncs-any-body`). That division is load-bearing and it is also
@@ -57,10 +57,16 @@ Five domains exist. Their real state:
 | **Vision** | **Shell.** 23 lines via `ShellSenseEngine`, zero percepts produced. |
 | **Olfaction / Gustation** | **Shells.** 24 lines each, zero percepts. |
 
-> **Record defect found here (not fixed in this change).** `README.md` says
-> cross-modal binding "lands when a second sense produces percepts". A second
-> sense now does — somatosensation. The trigger the repository set for itself has
-> fired and the binder is unbuilt, with its chokepoint already in place.
+> **Record defect found here (not fixed in this change).** Cross-modal binding
+> was **deliberately deferred**, and the deferral is recorded in two places:
+> [[SENSES_HARDENING]] §6 — *"base extraction shipped with cross-modal binding
+> deferred until a second sense produces percepts (seam in place)"* — and
+> [[__CONTRIBUTION_TOPICS]] §1, *"a second sense producing percepts would
+> activate it"*. **A second sense now produces percepts** (somatosensation,
+> four `Transduced` sites). The condition those documents set has been met and
+> neither has been revisited; the chokepoint is already in place at
+> `publishPercept()`. This is not a design gap — it is a trigger nobody is
+> watching.
 
 ### The efferent half
 
@@ -101,6 +107,24 @@ selector competes it, the `MotorSchemaExecutor` routes it to the host.
 > most likely to copy, and the failure is silent: the ability competes with
 > `drive = 0` and nothing says so.
 
+> **Fourth and fifth.** [[__CONTRIBUTION_TOPICS]]'s Standing line says *"the
+> four shell sense engines are still empty scaffolds"* and its §1 names
+> `src/cognition/senses/vision.ts` etc. Somatosensation is **not** a scaffold
+> any more, and the filenames are `*.engine.ts`. Its §5 invites a contributor to
+> *"Add Per-Effector Cost and Preconditions"* by extending `EffectorSchema` —
+> `cost`, `valence`, `preconditions` and `binds` all shipped on
+> `EffectorDeclaration`, and `EffectorSchema` is not the type's name. A
+> contributor taking either invitation would build something that exists.
+
+> **The pattern, which is the real finding.** Five defects, all in the
+> agency/senses corner, and **all in the same direction**: the record understates
+> what the code does. That is the corner a host author and a new contributor read
+> first, and every one of these defects tells them something is missing or
+> deferred when it is present. [[STANDING]] exists because `EXAFFERENCE` sat
+> marked OPEN for a month; this is the same failure at five sites, and it argues
+> that the generated `INDEX.md` solved the *document header* problem without
+> touching source comments, contributor invitations, or README claims.
+
 ### The loop that closes
 
 - The Will's chosen acts land in two host-drained queues: `outbox`
@@ -122,6 +146,30 @@ World profiles sit above all of it, seeding a list of effector **names** plus a
 express today: it names abilities but says nothing about the senses that would
 make them legible, and nothing about the objects they bind to. That gap is most
 of this document.
+
+---
+
+## 2a. What is already in flight (do not re-propose it)
+
+`fix/live-scenario-findings` is unmerged at the time of writing and lands six
+faults found by running a live mind against real MCP GitHub tools and real
+embeddings — *"only the LLM scripted."* Four of them are inside this document's
+scope and are **already answered**, which is why §3 defers to them rather than
+re-deriving:
+
+| Fault | What it changes for an organ |
+| :--- | :--- |
+| Host-acked acts outside a plan emitted no `action.outcome` | Reafference now emits for **every** reconciled outcome with its target; the executor's timeout emits for every act given up on. Rule 3. |
+| A late answer was dropped with the act's fate | The controller remembers what it dispatched (bounded, 600 ticks) and takes a late answer in as a reafferent percept tied to the act. Rule 3. |
+| Host tools on the always-offered floor, picked with no arguments | **`requires`**, and the floor offers only what needs nothing. Rule 2 — and the reason this document's first draft was wrong. |
+| The mind perceived its own `persona.prior` | It declares its own writes, and **a census test runs a live mind and checks every type it writes.** That test is the precedent §4.12 should be built on. |
+
+Two [[LOSSLESS]] P5 phases on the same branch are §4.9's afferent half, already
+built: a shared file is laid down as **its own exafferent percept** with its text
+as the data (`ATTACHMENT_READ_CEILING` 20 MB, above which a file is named rather
+than read), and every page of an observation is embedded per
+`<episode>#<page>` so recall lands on the page that answered rather than on the
+label. An archive organ does not need designing — it needs connecting.
 
 ---
 
@@ -154,6 +202,29 @@ synthesizer, and the third is the one that bites:
   never attention-capped"** (`affordance.synthesizer.ts:193`). Bound schemas
   instead enter as candidates *at the target's salience* and compete through the
   attention cap (`:227–258`).
+
+  **The floor is not the defect, and binding is not the whole fix.** This
+  document's first draft prescribed "bind everything to an object". The engine's
+  own answer, landed on `fix/live-scenario-findings`, is narrower and better: an
+  ability declares **`requires`** — the specifics it cannot run without — and
+  the floor offers only what needs nothing
+  (`floor = binds === 'none' && !s.requires?.length`). An ability with
+  `requires` stays in the repertoire and is still **reachable by will, with
+  args**; it simply is not offered as an always-available stance. So the real
+  distinction is three-way, not two-way:
+
+  | Shape | Correct declaration |
+  | :--- | :--- |
+  | Objectless, needs nothing (`orient`, `rest`, a snapshot read) | `binds: 'none'`, no `requires` — the floor is right |
+  | Objectless, needs arguments (most host tools) | `binds: 'none'` **+ `requires`** |
+  | Acts on a perceived target | `binds: 'entity' \| 'object'` |
+
+  The failure that produced it: *"Her GitHub tools sat on the always-offered
+  floor and were picked with no arguments, refused, and learned as failures."*
+  An organ that skips `requires` does not merely misbehave — it **teaches the
+  mind that its own abilities fail.** For an MCP-backed organ the field is free:
+  `requires` is read from `tool.inputSchema.required`
+  (`surface/mcp/effectors.ts:167`).
 - `goalRelevance()` is **structural, not lexical**: it returns `maxGoalPriority`
   only when the affordance's `targetEntityId` is in `goalTargets`. An objectless
   act has no target, so **`goal` — tied for the largest weight at 0.30 — is
@@ -167,8 +238,20 @@ synthesizer, and the third is the one that bites:
   familiarity accrues. An organ that mints objects must also make them
   goal-linked, or its whole world loses the cap to ambient rumination.
 
-**Rule 3 — your satiation must not wait for your ack.** This is the rule that
-cost the most to learn, and it is not about binding at all. For an objectless
+**Rule 3 — your satiation must not wait for your ack, and an act is still in
+the air until the world says otherwise.** The second half is not this
+document's: it is the thesis of [[ACT_EXPECTATIONS]], which is the design of
+record here and should be read first. Its model to copy is `conversation.aim.ts`
+— `SpokenTurn.answeredAt` / `unansweredAt`, durable, snapshotted, and
+*deliberately not bounded by the 30-tick echo window*, with `isOpen(t)` and
+`resolveReplyExpectations` folding the world's answer **or its absence** onto
+turns still in the air, so **the mind does the attributing rather than a
+matcher**. Speech has that representation; acts do not, which is why a mind can
+look one person up sixty-five times with nothing able to say *"I have already
+asked this."* An organ should want that cog, not a damping constant.
+
+The damping half below is the mechanical corollary, and it is not about binding
+at all. For an objectless
 act the damping source `selfEnactedAt` is a **skill record, written when the
 outcome is reconciled** — for a host effector, an async ack landing some ticks
 after the act. In the window between dispatch and reconciliation, satiation read
@@ -186,6 +269,16 @@ dispatch-time consequence descriptors *and* the durable records. What an organ
 must not do is be the thing whose only trace is a late ack. **The slower an
 organ's ack, the more dangerous it is**, independently of what it binds to. A
 browser organ whose acks take seconds is the worst case in §4.
+
+Three of the six faults on `fix/live-scenario-findings` move this directly: a
+host-acked act outside a plan emitted **no `action.outcome` at all** (so none of
+her GitHub reads reached `action.record`); a late answer arriving after its act
+was given up on was **dropped with the fate**, and the controller now remembers
+what it dispatched for 600 ticks and takes the answer in as a reafferent percept
+tied to the act; and preemption **deleted an awaiting intent already sent to a
+host**, so the executor now stamps `sent` and the selector *releases* a sent act
+instead of deleting it. An organ whose acts are slow is the organ all three
+faults were found with.
 
 The mirror failure is on record too, from over-damping: a live COO willed
 `reach-out` 63 times in four minutes, delivered nothing, and 18 of those lost to
@@ -385,9 +478,9 @@ Declarations are illustrative, in the object form of §2.
 
 ### 4.9 The archive — documents and knowledge · *partly exists*
 
-- **Senses:** [[LOSSLESS]] P5 is this organ's afferent half in progress — what
-  she read, recallable by meaning, a page at a time; a handed-over file as its
-  own item, whole.
+- **Senses:** [[LOSSLESS]] P5d/P5e are this organ's afferent half, **built**
+  (§2a) — a handed-over file as its own exafferent percept, whole; every page
+  embedded and recall naming the page that answered.
 - **Acts:** `search_knowledge`, `draft`, `file` — `binds: 'object'`, no drive
   tag (Rule 5).
 - **Objects:** documents and passages as entities.
@@ -439,6 +532,10 @@ refusals, re-created once per organ.
 - **Hazard:** it is the one organ that must exist for the others to behave, and
   it is the one with no external product to copy from. Build it with the first
   real organ, not after the fifth.
+- **Precedent to copy:** §2a's census test — a live mind run, every type it
+  writes checked — is exactly the instrument a body needs, because "which organs
+  does this mind actually have" is the same question as "which types does it
+  write".
 
 ---
 
@@ -450,10 +547,10 @@ loop expensive.
 
 | Phase | What it delivers | Gated on |
 | :--- | :--- | :--- |
-| **P0** | **Fix the record.** The three defects in §2 — `external.ts`'s stale header, [[CUSTOM_ABILITY_WIRING]]'s Standing line, and the `'nourishment'` example in `types.ts` that routes to no drive. A host author cannot satisfy Rule 2 while the code says `binds` does not exist, and cannot satisfy Rule 5 while the type suggests a tag that silently scores 0. Hours, not days. | nothing |
-| **P1** | **The organ contract, as a type.** An `Organ` declaration binding a sense contribution to effector declarations, so §3's rules are expressible and a profile can require both halves. Profiles gain organs where they currently list names. | P0 |
+| **P0** | **Fix the record — five defects, §2.** `external.ts`'s stale header; [[CUSTOM_ABILITY_WIRING]]'s Standing line; the `'nourishment'` example in `types.ts` that routes to no drive; [[__CONTRIBUTION_TOPICS]]'s "empty scaffolds" Standing line plus its wrong filenames; and its §5 invitation to build what shipped. A host author cannot satisfy Rule 2 while the code says `binds` does not exist, cannot satisfy Rule 5 while the type suggests a tag that scores 0, and a contributor cannot take §1 or §5 without duplicating work. Hours, not days — and it is the only phase with no design question in it. | nothing |
+| **P1** | **The organ contract, as a type.** An `Organ` declaration binding a sense contribution to effector declarations, so §3's rules are expressible and a profile can require both halves. Must be designed **on top of** `requires` (§2a) rather than beside it, and must give a declaration some way to say whether dispatch *is* the act — the distinction `ConsequenceDescriptor.pending` makes internally and no declaration can express (Rule 3). | P0, `fix/live-scenario-findings` merged |
 | **P2** | **Proprioception** (§4.12). The body becomes perceivable before it grows. Organ presence/health/grant published **as metrics**, not only as percepts — Rule 6 means `preconditions` can only gate on a key some faculty publishes, so this phase is what makes `{ metric: 'organ.page.available', … }` writable at all. | P1 |
-| **P3** | **Cross-modal binding.** The trigger has already fired (§2); the chokepoint exists. Needed before a second *rich* sense, or percepts of one object across domains stay unrelated. | P1 |
+| **P3** | **Cross-modal binding.** The trigger fired and nobody is watching it (§2); the chokepoint exists. Owned on paper by [[SENSES_HARDENING]] §6, so this phase is closing that deferral rather than opening a new design. Needed before a second *rich* sense, or percepts of one object across domains stay unrelated. | P1 |
 | **P4** | **The page** (§4.4) as the first full organ, with vision's representation question settled in favour of structure (§4.3 option 1). First real test of Rule 2 at scale. | P2, P3, [[CONTAINMENT_BOUNDARY]] |
 | **P5** | **The machine** (§4.5) and **the clock** (§4.7). The machine must not precede a containment seam. The clock folds in [[ELAPSED_ABSENCE]], which is already designed. | P4, containment seam shipped |
 | **P6** | **The purse** (§4.6), last and narrowest, with `escalate` as the default verdict. | P5, and the reliability epoch closed |
@@ -540,7 +637,10 @@ would quietly undo the architecture:
 [[EMBODIMENT_PROJECTION]] (why this order, and what it would be good at) ·
 [[CUSTOM_ABILITY_WIRING]] (the efferent seam as shipped — Standing line stale) ·
 [[AGENCY_PIPELINE]] (the loop every organ joins) ·
-[[SENSES_HARDENING]] · [[SIGNAL_BOUNDARY]] (the afferent seam and Rule 6) ·
+[[ACT_EXPECTATIONS]] (Rule 3's design of record — read before building any organ) ·
+[[SENSES_HARDENING]] §6 (the cross-modal deferral whose trigger has fired) ·
+[[__CONTRIBUTION_TOPICS]] §1, §5 (stale invitations; P0) ·
+[[SIGNAL_BOUNDARY]] (the afferent seam, Rule 8, and the stimulus → sense organ → transduction → afference order this document's vocabulary follows) ·
 [[ELAPSED_ABSENCE]] (§4.7's afferent half, already designed) ·
 [[LOSSLESS]] (§4.9's afferent half, in progress) ·
 [[KNOWN_ENTITY]] (§4.8) · [[POLICY_REAFFERENCE]] (the verdict every act passes) ·

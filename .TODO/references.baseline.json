@@ -42,6 +42,7 @@
   ".TODO/AGENCY_PIPELINE.md|symbol|ActionExecutor",
   ".TODO/AGENCY_PIPELINE.md|symbol|ChannelRegistry",
   ".TODO/AGENCY_PIPELINE.md|symbol|EffectorRegistry",
+  ".TODO/CONTAINMENT_BOUNDARY.md|symbol|EffectorSandbox",
   ".TODO/CUSTOM_ABILITY_WIRING.md|path|src/engines/agency/schemas/external.ts",
   ".TODO/CUSTOM_ABILITY_WIRING.md|path|tests/unit/agency.external-effectors.test.ts",
   ".TODO/DELIBERATION_CACHE_PROPOSAL.md|path|examples/cache-demo.ts",

@@ -433,6 +433,28 @@ so it does not survive a snapshot/restore — a restored escalation would expire
 a refusal rather than resume. Both are acceptable for the mechanism; neither
 changes the lifecycle.
 
+**P4b — the hold is the world's, and a no is not a never ⟶ done (2026-11-09).**
+Found from the host side, building Ripplix CA as an arbiter: a proposal that
+waits for a review step or a 15-minute veto window cannot fit inside a fixed
+30-tick hold, and the expiry that follows teaches the mind its asks go
+unanswered — a constraint it cannot fathom, taught by a number it cannot see.
+
+- [x] `Verdict.holdTicks` — on `escalate`, how long the world needs. A positive
+      whole number is honoured; anything else is `ESCALATION_TTL_TICKS`, so a
+      malformed hold neither drops the ask nor holds it for ever. Recorded on
+      `PolicyVerdictRecord` and re-fed by `recordToVerdict`, so a replay holds
+      exactly as long as the live run.
+- [x] A denial defaults to **`parameter`**, not `class`. `expire` already
+      argued that `class` is a lie when nobody said never; the same holds for a
+      reviewer who turns down one release. `resolveEscalation( …, finality? )`
+      lets a host that means never say so.
+- [x] `Will.resolveEscalation( intentId, approved, finality? )` on the facade.
+      The ask could be raised from the facade and answered only through `.stem`.
+
+Still open: a host's resolution is not on the tape, so a replay of an escalated
+run depends on the host answering the same way at the same tick. The verdict is
+replayed; the answer to it is not yet.
+
 ### P5 — The finality taxonomy, provider-neutral ⟶ done (2026-07-28)
 
 The joint RFC's enum is a **vocabulary**, not a transport, so it can be adopted

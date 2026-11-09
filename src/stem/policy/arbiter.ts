@@ -81,6 +81,21 @@ export interface Verdict {
    *  `asFinality` for why that, and not 'context', is the safe default. */
   finality?:       DenialFinality
   counterfactual?: PolicyCounterfactual
+  /**
+   * Meaningful on 'escalate' only: how many ticks the world needs to answer.
+   *
+   * The ask is held for this long, then degrades to a refusal exactly as it
+   * always has. Absent ⇒ `ESCALATION_TTL_TICKS`. It is the WORLD's number, not
+   * the mind's: a host whose approvals pass a review step or a veto window
+   * knows how long that takes, and a mind held to a constant shorter than it
+   * would let go of every such ask, and then learn from the expiry that nobody
+   * answers when in fact nobody was allowed to yet. A wrong lesson, taught by a
+   * number the mind cannot perceive.
+   *
+   * Recorded on the verdict tape and replayed with the verdict, so a replay
+   * holds for exactly as long as the live run did.
+   */
+  holdTicks?:      number
   /** Free-text for logs and host UX. NEVER parsed by cognition. */
   detail?:         string
 }

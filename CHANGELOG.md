@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **An escalation is held as long as the world needs, and a person's no means
+  "not this one".** `Verdict.holdTicks` lets an arbiter say how long its answer
+  takes: a review step or a veto window outlasting the fixed 30-tick hold used
+  to expire every such ask, and the mind learned from the expiry that nobody
+  answers when nobody was yet allowed to. The hold is recorded on the verdict
+  tape and replayed. A denial now defaults to `parameter` finality instead of
+  `class`, because a reviewer turning down one release has not forbidden the
+  ability; a host that means never passes `'class'`. `Will.resolveEscalation()`
+  is on the facade, so a host can answer the asks its arbiter raises without
+  reaching into `.stem`.
+
 ## 0.10.0 — 2026-08-31 · the mind knows its own doing from the world's
 
 A mind that cannot tell what it did from what was done to it cannot be surprised,

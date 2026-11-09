@@ -39,7 +39,7 @@
 
 import { logger } from '#core/logger'
 import { reconcileInvocation } from '#agency/reconcile.learning'
-import type { PolicyArbiter, PolicyInvocation } from '#stem/policy/arbiter'
+import type { DenialFinality, PolicyArbiter, PolicyInvocation } from '#stem/policy/arbiter'
 import type { effectorInvocation } from '#types'
 import type { WillInstance } from '#stem/index'
 import { PolicyEnforcement } from './effector/policy.enforcement'
@@ -96,10 +96,13 @@ export class effectorController {
   /**
    * Record a host's answer to an escalation (POLICY_REAFFERENCE P4). Applied at
    * the next tick boundary. A no-op if the intent id is not (or no longer) an
-   * active escalation.
+   * active escalation. A denial's `finality` defaults to `'parameter'`: a no to
+   * this ask, not to the ability.
    */
-  resolveEscalation( instance: WillInstance, intentId: string, approved: boolean ): void {
-    this._escalations.resolve( instance, intentId, approved )
+  resolveEscalation(
+    instance: WillInstance, intentId: string, approved: boolean, finality?: DenialFinality,
+  ): void {
+    this._escalations.resolve( instance, intentId, approved, finality )
   }
 
   /**

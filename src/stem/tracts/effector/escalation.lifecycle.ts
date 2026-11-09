@@ -18,10 +18,7 @@ import { logger } from '#core/logger'
 // reading it, and a second spelling here would be a contract kept in two places.
 import { SENT_TYPE } from '#agency/conversation.aim'
 import type { WillInstance } from '#stem/index'
-import {
-  ESCALATION_TTL_TICKS,
-  type EffectorOps, type Escalation, type PendingResolution,
-} from './types'
+import type { EffectorOps, Escalation, PendingResolution } from './types'
 
 /** What the lifecycle needs from the seams either side of it. */
 export interface EscalationDeps extends EffectorOps {
@@ -56,9 +53,12 @@ export class EscalationLifecycle {
    * approve dispatches the held invocation to the world; deny refuses it. A
    * no-op if the intent id is not (or no longer) an active escalation.
    */
-  resolve( instance: WillInstance, intentId: string, approved: boolean ): void {
+  resolve(
+    instance: WillInstance, intentId: string, approved: boolean,
+    finality: 'class' | 'parameter' | 'context' = 'parameter',
+  ): void {
     const queue = this._pendingResolutions.get( instance.config.id ) ?? []
-    queue.push({ intentId, approved })
+    queue.push({ intentId, approved, finality })
     this._pendingResolutions.set( instance.config.id, queue )
   }
 
@@ -69,7 +69,7 @@ export class EscalationLifecycle {
     this._pendingResolutions.set( instance.config.id, [] )
 
     const active = this._activeEscalations.get( instance.config.id )
-    for( const { intentId, approved } of queue ){
+    for( const { intentId, approved, finality } of queue ){
       const esc = active?.get( intentId )
       if( !esc ) continue                        // unknown / already resolved — ignore
       active!.delete( intentId )
@@ -79,7 +79,12 @@ export class EscalationLifecycle {
         logger.info(`[policy] escalation APPROVED → dispatching "${esc.schema}" intent "${intentId}"`)
       }
       else {
-        this._deps.queueRefusal( instance, esc.intentId, esc.schema, esc.reasonCode, 'class')
+        // A person's no to THIS ask, so `'parameter'` unless they said more. It
+        // used to be `'class'` — "never this action" — and `expire` below gives
+        // the reason that was wrong: 'class' is a lie when nobody said never. A
+        // reviewer who turns down one release has not forbidden the ability,
+        // and a mind taught that they had stops proposing it at all.
+        this._deps.queueRefusal( instance, esc.intentId, esc.schema, esc.reasonCode, finality )
         logger.info(`[policy] escalation DENIED → refusing "${esc.schema}" intent "${intentId}"`)
       }
     }
@@ -116,7 +121,7 @@ export class EscalationLifecycle {
 
     const active = this._activeEscalations.get( instance.config.id ) ?? new Map<string, Escalation>()
     for( const esc of pending ){
-      esc.expiresAt = tick + ESCALATION_TTL_TICKS
+      esc.expiresAt = tick + esc.holdTicks
       this._markEscalated( instance, esc.intentId, esc.expiresAt )
       this._voiceEscalation( instance, esc )
       active.set( esc.intentId, esc )

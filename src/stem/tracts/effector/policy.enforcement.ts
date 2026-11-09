@@ -20,7 +20,7 @@ import {
   getVerdictRecorder, getVerdictSource, type PolicyVerdictRecord,
 } from '#stem/policy/verdict.recorder'
 import type { WillInstance } from '#stem/index'
-import type { EffectorOps, Escalation, PendingRefusal } from './types'
+import { ESCALATION_TTL_TICKS, type EffectorOps, type Escalation, type PendingRefusal } from './types'
 
 /**
  * The verdict a fault produces (POLICY_REAFFERENCE P5, conformance S9).
@@ -159,6 +159,7 @@ export class PolicyEnforcement {
       ...( verdict.reasonCode     ? { reasonCode:     verdict.reasonCode     } : {} ),
       ...( verdict.finality       ? { finality:       verdict.finality       } : {} ),
       ...( verdict.counterfactual ? { counterfactual: verdict.counterfactual } : {} ),
+      ...( verdict.holdTicks !== undefined ? { holdTicks: verdict.holdTicks } : {} ),
       timestamp:  Date.now(),
     })
     this._applyVerdict( instance, payload, invocation, verdict )
@@ -220,6 +221,7 @@ export class PolicyEnforcement {
       schema:     invocation.schema,
       reasonCode: verdict.reasonCode ?? 'APPROVAL_REQUIRED',
       payload,
+      holdTicks:  holdOf( verdict ),
       expiresAt:  0,   // stamped when applied (we don't have the current tick here)
     } )
   }
@@ -257,5 +259,18 @@ function recordToVerdict( record: PolicyVerdictRecord ): Verdict {
     ...( record.reasonCode     ? { reasonCode:     record.reasonCode     } : {} ),
     ...( record.finality       ? { finality:       record.finality       } : {} ),
     ...( record.counterfactual ? { counterfactual: record.counterfactual } : {} ),
+    ...( record.holdTicks !== undefined ? { holdTicks: record.holdTicks } : {} ),
   }
+}
+
+/**
+ * How long an escalation is held: the arbiter's `holdTicks` when it is a
+ * positive whole number of ticks, else the default. Anything else — zero, a
+ * negative, a fraction, `Infinity`, a string across a JSON boundary — is the
+ * default rather than an error, because a malformed hold must neither drop the
+ * ask at once nor hold it for ever.
+ */
+function holdOf( verdict: Verdict ): number {
+  const h = verdict.holdTicks
+  return typeof h === 'number' && Number.isInteger( h ) && h > 0 ? h : ESCALATION_TTL_TICKS
 }

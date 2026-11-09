@@ -18,6 +18,7 @@
 
 import { logger } from '#core/logger'
 import type { DefaultSimulation } from '#core/simulation'
+import type { ClockStepSource } from '#core/clock'
 import type { SimulationEvent, SimulationContext, SimulationState } from '#core/types'
 import type { ExecutiveOutputFull } from '#faculties/executive.engine'
 import type { Cognition, OutboxMessage, effectorInvocation, WorldInterface } from '#types'
@@ -49,6 +50,8 @@ import { BiographyWriter } from '#stem/tracts/biography.writer'
 import { HealthReporter } from '#stem/tracts/health.reporter'
 import { AnchorController, checkAnchoring } from '#stem/tracts/anchor.controller'
 import { getRecordTap } from '#core/record.tap'
+import { stateHash, type RestoredStart } from '#stem/tracts/anchor.controller'
+import type { InboundEnvelope } from '#stem/tracts/transport/types'
 import { mergeIdentity } from '#cognition/identity.entity'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -146,6 +149,17 @@ export interface WillInstance {
   _tickWakeFn:               (() => void) | null
   /** The tick loop itself; settles once the loop has exited. Archiving waits on it. */
   _loop:                     Promise<void> | null
+  /**
+   * Driven one tick at a time by `runTick()`, never by the loop: a replay
+   * decides when each tick runs (RECORD_ANCHORING step 4).
+   */
+  _manual:                   boolean
+  /** Host inputs not yet applied, by correlation id → the caller waiting on each. */
+  _hostWaits:                Map<string, () => void>
+  /** Correlation ids for host inputs, per Will. */
+  _hostSeq:                  number
+  /** Archiving has waited for all it will wait for: anything landing now is given up. */
+  _settled:                  boolean
   /** Timestamp when the Will was last paused — used to compute offline duration for the wake percept on resume. */
   pausedAt:                  Date | null
   /** Set of active LLM-chunk listeners (one per SSE connection). F3 word-level streaming. */
@@ -195,6 +209,24 @@ export interface WillInstance {
   } | null
 }
 
+/** An inbound envelope as a host input is built: the stem fills in the rest. */
+type HostEnvelope = InboundEnvelope extends infer E
+  ? E extends InboundEnvelope ? Omit<E, 'willId' | 'seq' | 'wallTime'> : never
+  : never
+
+/**
+ * How a replay raises a mind (RECORD_ANCHORING step 4). Not for hosts.
+ *   `manual` — ticks run only through `runTick()`, never on the loop;
+ *   `steps`  — the clock takes each step from here rather than measuring one.
+ */
+export interface CreateOptions {
+  manual?: boolean
+  steps?:  ClockStepSource
+}
+
+/** The senses `senseSignal` routes to. */
+const SENSE_DOMAINS = new Set( [ 'audition', 'vision', 'somatosensation', 'olfaction', 'gustation' ] )
+
 // ── Manager ───────────────────────────────────────────────────
 
 export class WillStem {
@@ -216,13 +248,14 @@ export class WillStem {
    * Assemble a new Will and start its autonomous tick loop.
    * Returns the Will ID (same as config.id) once the loop is running.
    */
-  async createWill( config: WillConfig, startPaused = false ): Promise<string> {
+  async createWill( config: WillConfig, startPaused = false, opts: CreateOptions = {} ): Promise<string> {
     if( this._wills.has( config.id ) )
       throw new Error(`Will already exists: ${config.id}`)
     if( config.anchoring ) checkAnchoring( config.anchoring )
 
     const
     { simulation, cognition, outbox } = assembleMind( config.id, config )
+    if( opts.steps ) simulation.clock.setStepSource( opts.steps )
 
     // ── Snapshot restore ─────────────────────────────────────
     // If persistentMemory is enabled (snapshotStorage configured), attempt to
@@ -231,10 +264,12 @@ export class WillStem {
     // back to life across wills restarts without re-running the simulation.
     //
     // NOTE: Metrics are NOT restored — they rebuild naturally from tick 1.
+    let restored: RestoredStart | null = null
     if( config.persistentMemory || config.snapshotStorage )
       try {
         const previousState = await simulation.snapshotManager.loadLatestFromStorage()
         if( previousState ){
+          restored = { tick: previousState.tick, entities: previousState.entities.size, hash: stateHash( previousState ) }
           // Work that was in flight when the mind slept does not resume — see
           // agency/restart.ts. Dropped BEFORE restore so it never enters live
           // state at all, rather than being swept on some later tick.
@@ -323,6 +358,10 @@ export class WillStem {
       sessionLogger,
       _tickWakeFn:               null,
       _loop:                     null,
+      _manual:                   opts.manual ?? false,
+      _hostWaits:                new Map(),
+      _hostSeq:                  0,
+      _settled:                  false,
       pausedAt:                  null,
       chunkListeners:            new Set(),
       sensoryChunkListeners:      new Map(),
@@ -348,8 +387,9 @@ export class WillStem {
     cognition.planningEngine.attachSessionLogger( sessionLogger )
     cognition.goalManager.attachSessionLogger( sessionLogger )
 
-    // The record chain begins before the first entry is logged (RECORD_ANCHORING).
-    this._anchor.attach( instance )
+    // The record chain begins before the first entry is logged (RECORD_ANCHORING),
+    // committing to the state this mind starts from.
+    this._anchor.attach( instance, restored )
 
     // Bridge telemetry onto the configured transport (StreamTransport / SocketIo /
     // Loopback) as 'session_log' / 'token_report' envelopes. No-op when no
@@ -521,6 +561,8 @@ export class WillStem {
     const instance = this._get( id )
     if( instance.status !== 'active')
       throw new Error(`Cannot pause Will with status '${instance.status}': ${id}`)
+    // A host's act on the mind, so an input: chained before what it causes.
+    this._anchor.lifecycle( instance, 'pause')
 
     // Flush all in-memory episode mutations to state entities, then force a
     // disk persist so the next session cold-starts with every episode intact.
@@ -565,6 +607,7 @@ export class WillStem {
     const instance = this._get( id )
     if( instance.status !== 'paused')
       throw new Error(`Cannot resume Will with status '${instance.status}': ${id}`)
+    this._anchor.lifecycle( instance, 'resume')
 
     const dataDir     = process.env.WILL_DATA_DIR ?? './data'
     const newLogger   = new SessionLogger( id, dataDir, {
@@ -620,15 +663,21 @@ export class WillStem {
       // Fire-and-forget: `ingest` is async and the resume path is not. The
       // signal reaches state on the sense's own timing, exactly as an inbound
       // message does.
-      void instance.cognition.somatosensationEngine.sense({
-        kind:       'system',
-        signal:     'WAKE',
-        provenance: 'exafferent',   // time passed; nothing I did caused it
-        data: {
-          summary:  `I was offline for ${duration}. I am now online again.`,
-          offlineMs,
+      //
+      // Through the stem's door as well (RECORD_ANCHORING step 4): how long it
+      // was away is read from the wall, so it is an input, and is chained.
+      void this._hostInput( instance, {
+        channel: 'sense', correlationId: `sense-${instance._hostSeq + 1}`, domain: 'somatosensation',
+        input: {
+          kind:       'system',
+          signal:     'WAKE',
+          provenance: 'exafferent',   // time passed; nothing I did caused it
+          data: {
+            summary:  `I was offline for ${duration}. I am now online again.`,
+            offlineMs,
+          },
         },
-      })
+      } )
 
       instance.pausedAt = null
     }
@@ -656,11 +705,14 @@ export class WillStem {
    */
   async archiveWill( id: string ): Promise<void> {
     const instance = this._get( id )
+    this._anchor.lifecycle( instance, 'archive')
     instance.status = 'archived'
 
     // Nothing new comes in: tear down the external transport + discard
-    // un-applied inbound.
+    // un-applied inbound. A host still waiting on one hears that it is over.
     this._transport.detach( instance )
+    for( const resolve of instance._hostWaits.values() ) resolve()
+    instance._hostWaits.clear()
 
     // Stopped means stopped. Wake the loop from its sleep and wait for it to
     // leave, then for every call the mind already started. This used to sleep
@@ -730,9 +782,16 @@ export class WillStem {
       for( const e of orchestrator.engines )
         if( e.onDetach ) await within(`${e.name} detaching`, e.onDetach( stateManager, context ) )
       const working = orchestrator.engines.filter( e => e.awaitPending )
-      await Promise.all( working.map( e => within(`${e.name}'s work in flight`, e.awaitPending!() ) ) )
+      await Promise.all( [
+        ...working.map( e => within(`${e.name}'s work in flight`, e.awaitPending!() ) ),
+        // A verdict an async arbiter still owes lands before the session ends.
+        within('verdicts still out', this._effector.awaitVerdicts( instance ) ),
+      ] )
     }
-    finally { clearTimeout( timer ) }
+    finally {
+      clearTimeout( timer )
+      instance._settled = true
+    }
   }
 
   // Session-biography writers (behavioral + emotional) extracted to
@@ -746,7 +805,27 @@ export class WillStem {
    * The event is picked up by perceptual engines on the next tick.
    */
   injectEvent( id: string, event: { type: string; payload: Record<string, unknown> } ): void {
-    this._sensory.injectEvent( this._get( id ), event )
+    const instance = this._get( id )
+    void this._hostInput( instance, { channel: 'event', correlationId: `event-${instance._hostSeq + 1}`, type: event.type, payload: event.payload } )
+  }
+
+  /**
+   * Every input a host hands the stem directly reaches the mind the way a
+   * transport peer's does: enqueued now, applied at the next tick, recorded and
+   * chained there. Applied between ticks it was already first seen at the next
+   * step, so only the door changes — and with one door, every input is on the
+   * replay tape and in the record chain at the place it reached the mind
+   * (RECORD_ANCHORING step 4). `wait` returns a promise of the input's work,
+   * which for a sense is its turn; it resolves too if the Will stops first.
+   */
+  private _hostInput( instance: WillInstance, env: HostEnvelope, wait = false ): Promise<void> {
+    if( instance.status === 'archived') return Promise.resolve()   // nothing comes in once stopped
+    const seq  = ++instance._hostSeq
+    const done = wait
+      ? new Promise<void>( resolve => { instance._hostWaits.set( env.correlationId, resolve ) } )
+      : Promise.resolve()
+    instance.inbound.enqueue( { ...env, willId: instance.config.id, seq, wallTime: Date.now() } as InboundEnvelope )
+    return done
   }
 
   // ── State inspection ───────────────────────────────────────
@@ -814,6 +893,9 @@ export class WillStem {
    */
   loadPMA( id: string, pma: PMASnapshot ): void {
     const instance = this._get( id )
+    // The artifact a woken mind starts from is an input like any other, and
+    // the portable one: chained whole, so a replay can begin from it.
+    this._anchor.loaded( instance, pma )
     this._pma.load( id, instance, pma )
 
     // A MIND THAT WAKES SHOULD KNOW IT WAS AWAY (SIGNAL_BOUNDARY P1, follow-up).
@@ -996,7 +1078,7 @@ export class WillStem {
     invocationId: string,
     result:       EffectorAck,
   ): void {
-    this._effector.confirmExecution( this._get( id ), invocationId, result )
+    void this._hostInput( this._get( id ), { channel: 'ack', ackKind: 'result', correlationId: invocationId, result } )
   }
 
   /**
@@ -1013,7 +1095,11 @@ export class WillStem {
   resolveEscalation(
     id: string, invocationId: string, approved: boolean, finality?: DenialFinality,
   ): void {
-    this._effector.resolveEscalation( this._get( id ), invocationId, approved, finality )
+    const instance = this._get( id )
+    void this._hostInput( instance, {
+      channel: 'escalation', correlationId: `escalation-${invocationId}`, intentId: invocationId, approved,
+      ...( finality ? { finality } : {} ),
+    } )
   }
 
 
@@ -1048,7 +1134,7 @@ export class WillStem {
    * conversation.sent entity that tracks the outbox message.
    */
   confirmMessageDelivery( id: string, messageId: string, delivered: boolean ): void {
-    this._outbox.confirmDelivery( this._get( id ), messageId, delivered )
+    void this._hostInput( this._get( id ), { channel: 'ack', ackKind: 'delivery', correlationId: messageId, delivered } )
   }
 
   /**
@@ -1097,7 +1183,8 @@ export class WillStem {
    * @param input  TextMessage — `{ kind: 'text', entityId, threadId, content, speakerName? }`
    */
   async senseText( id: string, input: TextMessage ): Promise<void> {
-    await this._sensory.senseText( this._get( id ), input )
+    const instance = this._get( id )
+    await this._hostInput( instance, { channel: 'sense', correlationId: `sense-${instance._hostSeq + 1}`, domain: 'audition', input }, true )
   }
 
   /**
@@ -1152,7 +1239,10 @@ export class WillStem {
    * Audition inputs are gated by the 'listen' effector like senseText().
    */
   async senseSignal( id: string, domain: string, input: SensoryInput ): Promise<void> {
-    await this._sensory.senseSignal( this._get( id ), domain, input )
+    const instance = this._get( id )
+    // Refused at the door, as before, rather than at the tick.
+    if( !SENSE_DOMAINS.has( domain ) ) throw Object.assign( new Error(`Unknown sense domain: ${domain}`), { code: 400 } )
+    await this._hostInput( instance, { channel: 'sense', correlationId: `sense-${instance._hostSeq + 1}`, domain, input }, true )
   }
 
   listWills(): WillSummary[] {
@@ -1177,179 +1267,13 @@ export class WillStem {
 
     while( instance.status !== 'archived'){
       // Pause: spin-wait at low cost until resumed or archived
-      if( instance.status === 'paused'){
+      if( instance.status === 'paused' || instance._manual ){
         await _sleep( 100 )
         continue
       }
 
       const start = Date.now()
-
-      // Apply all inbound external I/O at a fixed point BEFORE the step, stamped
-      // to this tick. Result-acks mutate state synchronously here so the step
-      // sees them; messages/percepts are fire-and-forget (async reasoning is
-      // recorded/replayed by the LLM layer, not the deterministic core).
-      this._transport.applyInbound( instance, instance.tickCount, {
-        effector: this._effector,
-        outbox:  this._outbox,
-        sensory: this._sensory,
-      } )
-
-      // Apply policy refusals queued during the previous step's flush, at the
-      // same boundary and for the same reason (POLICY_REAFFERENCE P1): a denial
-      // reconciles as a host-rejection-shaped failure ack the step then sees.
-      this._effector.applyPolicyOutcomes( instance )
-
-      await instance.simulation.step( 1 )
-
-      instance.tickCount++
-      instance.lastTickAt = new Date()
-
-      // Fire tick listeners with a fresh snapshot.
-      // Outbox is snapshotted BEFORE notifying any listener so all active SSE
-      // connections receive the same set of outbound messages.  The outbox is
-      // cleared here; each listener that fails to write may call requeueToOutbox()
-      // to preserve messages for the next tick.
-      const
-      snapshot               = instance.simulation.stateManager.snapshot(),
-      outboxSnapshot         = instance.outbox.splice( 0 ),
-      invocationsSnapshot    = instance.pendingEffectorInvocations.splice( 0 )
-
-      for( const msg of outboxSnapshot )
-        if( msg.createdAtTick === 0 ) msg.createdAtTick = instance.tickCount
-
-      // Bridge drained outbox messages + effector invocations onto the transport
-      // (2.3 / 2.4). No-op when no transport (legacy SSE tick-listener path).
-      // Facet replies are NOT in the outbox when a transport is present — they go
-      // via the 2.1 reply fast-path — so emitOutbox carries only master/action messages.
-      this._transport.emitOutbox( instance, outboxSnapshot )
-      this._transport.emitInvocations( instance, invocationsSnapshot )
-
-      if( instance.tickListeners.size > 0 )
-        for( const fn of instance.tickListeners ){
-          try { fn( snapshot, instance.tickCount, outboxSnapshot, invocationsSnapshot ) }
-          catch( err ){ logger.error(`[WillStem] tick listener error (${id}):`, err ) }
-        }
-
-      // Session log — per-tick metrics snapshot.
-      // MUST_LOG_METRICS: canonical list of signals required for PMA + behavioral analysis.
-      // If any of these are absent from the tick log, the engine responsible is not pushing
-      // the metric or is using a different key — investigate the engine's metrics push block.
-      //
-      // Affective:       affect.valence, affect.arousal, affect.dominance, intero.mood
-      // Homeostasis:     energy.level, sleep.pressure, stress.load
-      // Memory:          memory.episodic_total, memory.beliefs_total
-      // Goals:           goals.active, goals.avg_progress, goals.top_priority
-      // Executive:       executive.confidence, executive.epistemic_uncertainty, executive.action_count, executive.action_diversity
-      // Self-model:      self_model.version
-      // Executor:        executor.success_rate, executor.actions_this_tick
-      if( instance.sessionLogger ){
-        const metrics: Record<string, number> = {}
-        for( const [ k, v ] of snapshot.metrics ) metrics[ k ] = v
-
-        const entityCounts: Record<string, number> = {}
-        for( const e of snapshot.entities.values() )
-          entityCounts[ e.type ] = ( entityCounts[ e.type ] ?? 0 ) + 1
-
-        instance.sessionLogger.write({
-          type:        'tick',
-          tick:        instance.tickCount,
-          durationMs:  instance.lastTickAt ? Date.now() - instance.lastTickAt.getTime() : 0,
-          outboxSize:  instance.outbox.length,
-          entityCounts,
-          metrics
-        })
-      }
-
-      // Behavioral fingerprint + emotional biography accumulator.
-      // Updated every tick so session.end has a complete picture of emotional range,
-      // executive confidence, goal outcomes, and significant emotional events.
-      if( instance._sessionBehavior ){
-        const sb = instance._sessionBehavior
-        const v = snapshot.metrics.get('affect.valence') ?? 0
-        const a = snapshot.metrics.get('affect.arousal') ?? 0
-        const c = snapshot.metrics.get('executive.confidence')
-
-        // ── Range tracking ──────────────────────────────────────
-        if( v < sb.valenceMin ) sb.valenceMin = v
-        if( v > sb.valenceMax ) sb.valenceMax = v
-        if( a < sb.arousalMin ) sb.arousalMin = a
-        if( a > sb.arousalMax ) sb.arousalMax = a
-        if( c !== undefined ){ sb.confidenceSum += c; sb.confidenceCount++ }
-        const gt = snapshot.metrics.get('goals.total')
-        const gc = snapshot.metrics.get('goals.completed_total')
-        if( gt !== undefined ) sb.goalsTotal     = gt
-        if( gc !== undefined ) sb.goalsCompleted = gc
-
-        // ── Emotional biography: seed arc start on first sample ─
-        if( sb.avgValenceCount === 0 ){
-          sb.valenceStart = v
-          sb.arousalStart = a
-          sb.prevValence  = v
-          sb.prevArousal  = a
-        }
-
-        sb.avgValenceSum   += v
-        sb.avgValenceCount ++
-        sb.valenceEnd = v
-        sb.arousalEnd = a
-
-        // ── Spike detection ─────────────────────────────────────
-        // Write a real-time entry to emotional_biography.jsonl for each spike
-        // so PMA can pin emotional events to specific ticks without scanning
-        // the full session log.  Thresholds: |Δv| ≥ 0.12, |Δa| ≥ 0.18.
-        const dv = v - sb.prevValence
-        const da = a - sb.prevArousal
-
-        if( Math.abs( dv ) >= 0.12 ){
-          sb.spikeCount++
-          this._biography.writeEmotionalEvent( instance, 'spike', {
-            dimension: 'valence', from: sb.prevValence, to: v, delta: dv,
-            tick: instance.tickCount,
-          })
-        }
-
-        if( Math.abs( da ) >= 0.18 ){
-          sb.spikeCount++
-          this._biography.writeEmotionalEvent( instance, 'spike', {
-            dimension: 'arousal', from: sb.prevArousal, to: a, delta: da,
-            tick: instance.tickCount,
-          })
-        }
-
-        // ── Sustained high-arousal episodes ─────────────────────
-        // An episode completes when the streak exits (arousal drops back below 0.7)
-        // after ≥ 10 consecutive ticks.  Session-end flush handles open streaks.
-        if( a > 0.70 ){
-          sb.highArousalStreak++
-        } else {
-          if( sb.highArousalStreak >= 10 ){
-            sb.sustainedEpisodes++
-            this._biography.writeEmotionalEvent( instance, 'sustained_high_arousal', {
-              startTick:     instance.tickCount - sb.highArousalStreak,
-              durationTicks: sb.highArousalStreak,
-              tick:          instance.tickCount,
-            })
-          }
-          sb.highArousalStreak = 0
-        }
-
-        sb.prevValence = v
-        sb.prevArousal = a
-
-        // Track impulsive actions: ticks where executive fired with low confidence
-        const conf      = snapshot.metrics.get('executive.confidence')
-        const actCount  = Math.round( snapshot.metrics.get('executive.action_count') ?? 0 )
-        if( conf !== undefined && conf < 0.35 && actCount > 0 )
-          sb.impulsiveActionCount += actCount
-      }
-
-      // Expire stale outbox messages (TTL cleanup; OutboxController owns the policy),
-      // and what the transport still holds for a reconnect that the mind no longer awaits.
-      this._outbox.expireStale( instance )
-      this._transport.expireStale( instance, this._outbox )
-
-      // A digest of the record chain, on the simulation tick (RECORD_ANCHORING).
-      this._anchor.afterTick( instance )
+      await this._tick( instance )
 
       // Pause when the per-session tick budget is exhausted.
       // maxTicks is a run-length limit, not a TTL — the Will stays alive
@@ -1374,6 +1298,196 @@ export class WillStem {
         instance._tickWakeFn = null
       }
     }
+  }
+
+  /**
+   * Run one tick of a Will created `manual`, now. A replay drives a mind this
+   * way, so it decides what happens between ticks (RECORD_ANCHORING step 4).
+   */
+  async runTick( id: string ): Promise<void> {
+    const instance = this._get( id )
+    if( !instance._manual ) throw new Error(`Will ${id} is driven by its own loop; runTick() is for a Will created manual`)
+    if( instance.status === 'archived') throw new Error(`Will ${id} is archived`)
+    await this._tick( instance )
+  }
+
+  /** One tick: everything the loop does between two sleeps. */
+  private async _tick( instance: WillInstance ): Promise<void> {
+    const id = instance.config.id
+
+    // Apply all inbound external I/O at a fixed point BEFORE the step, stamped
+    // to this tick — the simulation tick, the axis every record is on. Result-
+    // acks mutate state synchronously here so the step sees them;
+    // messages/percepts are fire-and-forget (async reasoning is recorded and
+    // replayed by the LLM layer, not the deterministic core).
+    this._transport.applyInbound( instance, instance.simulation.clock.currentTick, {
+      effector: this._effector,
+      outbox:   this._outbox,
+      sensory:  this._sensory,
+      applied:  ( inst, correlationId, done ) => {
+        const resolve = inst._hostWaits.get( correlationId )
+        if( !resolve ) return
+        inst._hostWaits.delete( correlationId )
+        void done.then( resolve, resolve )
+      },
+    } )
+
+    // Apply policy refusals queued during the previous step's flush, at the
+    // same boundary and for the same reason (POLICY_REAFFERENCE P1): a denial
+    // reconciles as a host-rejection-shaped failure ack the step then sees.
+    this._effector.applyPolicyOutcomes( instance )
+
+    await instance.simulation.step( 1 )
+
+    instance.tickCount++
+    instance.lastTickAt = new Date()
+
+    // Fire tick listeners with a fresh snapshot.
+    // Outbox is snapshotted BEFORE notifying any listener so all active SSE
+    // connections receive the same set of outbound messages.  The outbox is
+    // cleared here; each listener that fails to write may call requeueToOutbox()
+    // to preserve messages for the next tick.
+    const
+    snapshot               = instance.simulation.stateManager.snapshot(),
+    outboxSnapshot         = instance.outbox.splice( 0 ),
+    invocationsSnapshot    = instance.pendingEffectorInvocations.splice( 0 )
+
+    for( const msg of outboxSnapshot )
+      if( msg.createdAtTick === 0 ) msg.createdAtTick = instance.tickCount
+
+    // Bridge drained outbox messages + effector invocations onto the transport
+    // (2.3 / 2.4). No-op when no transport (legacy SSE tick-listener path).
+    // Facet replies are NOT in the outbox when a transport is present — they go
+    // via the 2.1 reply fast-path — so emitOutbox carries only master/action messages.
+    this._transport.emitOutbox( instance, outboxSnapshot )
+    this._transport.emitInvocations( instance, invocationsSnapshot )
+
+    if( instance.tickListeners.size > 0 )
+      for( const fn of instance.tickListeners ){
+        try { fn( snapshot, instance.tickCount, outboxSnapshot, invocationsSnapshot ) }
+        catch( err ){ logger.error(`[WillStem] tick listener error (${id}):`, err ) }
+      }
+
+    // Session log — per-tick metrics snapshot.
+    // MUST_LOG_METRICS: canonical list of signals required for PMA + behavioral analysis.
+    // If any of these are absent from the tick log, the engine responsible is not pushing
+    // the metric or is using a different key — investigate the engine's metrics push block.
+    //
+    // Affective:       affect.valence, affect.arousal, affect.dominance, intero.mood
+    // Homeostasis:     energy.level, sleep.pressure, stress.load
+    // Memory:          memory.episodic_total, memory.beliefs_total
+    // Goals:           goals.active, goals.avg_progress, goals.top_priority
+    // Executive:       executive.confidence, executive.epistemic_uncertainty, executive.action_count, executive.action_diversity
+    // Self-model:      self_model.version
+    // Executor:        executor.success_rate, executor.actions_this_tick
+    if( instance.sessionLogger ){
+      const metrics: Record<string, number> = {}
+      for( const [ k, v ] of snapshot.metrics ) metrics[ k ] = v
+
+      const entityCounts: Record<string, number> = {}
+      for( const e of snapshot.entities.values() )
+        entityCounts[ e.type ] = ( entityCounts[ e.type ] ?? 0 ) + 1
+
+      instance.sessionLogger.write({
+        type:        'tick',
+        tick:        instance.tickCount,
+        durationMs:  instance.lastTickAt ? Date.now() - instance.lastTickAt.getTime() : 0,
+        outboxSize:  instance.outbox.length,
+        entityCounts,
+        metrics
+      })
+    }
+
+    // Behavioral fingerprint + emotional biography accumulator.
+    // Updated every tick so session.end has a complete picture of emotional range,
+    // executive confidence, goal outcomes, and significant emotional events.
+    if( instance._sessionBehavior ){
+      const sb = instance._sessionBehavior
+      const v = snapshot.metrics.get('affect.valence') ?? 0
+      const a = snapshot.metrics.get('affect.arousal') ?? 0
+      const c = snapshot.metrics.get('executive.confidence')
+
+      // ── Range tracking ──────────────────────────────────────
+      if( v < sb.valenceMin ) sb.valenceMin = v
+      if( v > sb.valenceMax ) sb.valenceMax = v
+      if( a < sb.arousalMin ) sb.arousalMin = a
+      if( a > sb.arousalMax ) sb.arousalMax = a
+      if( c !== undefined ){ sb.confidenceSum += c; sb.confidenceCount++ }
+      const gt = snapshot.metrics.get('goals.total')
+      const gc = snapshot.metrics.get('goals.completed_total')
+      if( gt !== undefined ) sb.goalsTotal     = gt
+      if( gc !== undefined ) sb.goalsCompleted = gc
+
+      // ── Emotional biography: seed arc start on first sample ─
+      if( sb.avgValenceCount === 0 ){
+        sb.valenceStart = v
+        sb.arousalStart = a
+        sb.prevValence  = v
+        sb.prevArousal  = a
+      }
+
+      sb.avgValenceSum   += v
+      sb.avgValenceCount ++
+      sb.valenceEnd = v
+      sb.arousalEnd = a
+
+      // ── Spike detection ─────────────────────────────────────
+      // Write a real-time entry to emotional_biography.jsonl for each spike
+      // so PMA can pin emotional events to specific ticks without scanning
+      // the full session log.  Thresholds: |Δv| ≥ 0.12, |Δa| ≥ 0.18.
+      const dv = v - sb.prevValence
+      const da = a - sb.prevArousal
+
+      if( Math.abs( dv ) >= 0.12 ){
+        sb.spikeCount++
+        this._biography.writeEmotionalEvent( instance, 'spike', {
+          dimension: 'valence', from: sb.prevValence, to: v, delta: dv,
+          tick: instance.tickCount,
+        })
+      }
+
+      if( Math.abs( da ) >= 0.18 ){
+        sb.spikeCount++
+        this._biography.writeEmotionalEvent( instance, 'spike', {
+          dimension: 'arousal', from: sb.prevArousal, to: a, delta: da,
+          tick: instance.tickCount,
+        })
+      }
+
+      // ── Sustained high-arousal episodes ─────────────────────
+      // An episode completes when the streak exits (arousal drops back below 0.7)
+      // after ≥ 10 consecutive ticks.  Session-end flush handles open streaks.
+      if( a > 0.70 ){
+        sb.highArousalStreak++
+      } else {
+        if( sb.highArousalStreak >= 10 ){
+          sb.sustainedEpisodes++
+          this._biography.writeEmotionalEvent( instance, 'sustained_high_arousal', {
+            startTick:     instance.tickCount - sb.highArousalStreak,
+            durationTicks: sb.highArousalStreak,
+            tick:          instance.tickCount,
+          })
+        }
+        sb.highArousalStreak = 0
+      }
+
+      sb.prevValence = v
+      sb.prevArousal = a
+
+      // Track impulsive actions: ticks where executive fired with low confidence
+      const conf      = snapshot.metrics.get('executive.confidence')
+      const actCount  = Math.round( snapshot.metrics.get('executive.action_count') ?? 0 )
+      if( conf !== undefined && conf < 0.35 && actCount > 0 )
+        sb.impulsiveActionCount += actCount
+    }
+
+    // Expire stale outbox messages (TTL cleanup; OutboxController owns the policy),
+    // and what the transport still holds for a reconnect that the mind no longer awaits.
+    this._outbox.expireStale( instance )
+    this._transport.expireStale( instance, this._outbox )
+
+    // A digest of the record chain, on the simulation tick (RECORD_ANCHORING).
+    this._anchor.afterTick( instance )
   }
 
   // ── Helpers ────────────────────────────────────────────────

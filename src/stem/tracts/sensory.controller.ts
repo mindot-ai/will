@@ -4,7 +4,8 @@
 //
 // SensoryController owns the senses input + LLM chunk-streaming output
 // boundary extracted from WillStem (R5-e):
-//   - input ingestion: senseText / senseSignal / injectEvent
+//   - input ingestion, as the inbound door applies it at a tick: senseSignal /
+//     injectEvent (RECORD_ANCHORING step 4 — the stem no longer calls these directly)
 //   - real-time chunk streaming: addChunkListener / addSensoryChunkListener
 //     and their sync helpers (syncChunkBroadcaster + the addChunkCallback fan-out)
 //
@@ -17,7 +18,7 @@
 // this is a pure extract-collaborator refactor.
 // ─────────────────────────────────────────────────────────────
 
-import type { TextMessage, SensoryInput } from '#senses/index'
+import type { SensoryInput } from '#senses/index'
 import type { WillInstance } from '#stem/index'
 
 export class SensoryController {
@@ -27,16 +28,6 @@ export class SensoryController {
   private readonly _eventSeq   = new WeakMap<WillInstance, number>()
 
   // ── Input ingestion ──────────────────────────────────────────
-
-  /**
-   * Route an external text message through the Will's AuditionEngine.
-   * The senses-aware AuditionEngine handles salience, thread digests,
-   * LanguagePercept publication, conversation-facet spawn/reuse, and LLM
-   * reply generation. Reply delivery is async via the outbox / SSE channel.
-   */
-  async senseText( instance: WillInstance, input: TextMessage ): Promise<void> {
-    await instance.cognition.auditionEngine.sense( input )
-  }
 
   /**
    * Route a raw SensoryInput to the appropriate sense engine by domain.

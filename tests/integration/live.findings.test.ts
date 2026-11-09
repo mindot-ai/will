@@ -84,8 +84,11 @@ describe('2 — an answer that arrives late is still taken in', () => {
       stem._effector.bufferInvocation( inst, { schema: 'list_pull_requests', intentId: 'agency-intent-16', parameters: {}, tick: 1 } )
       // No awaiting intent any more: the executor timed it out.
       will.stem.confirmEffectorExecution( will.id, 'agency-intent-16', { success: true, description: 'list_pull_requests ran.', observation: '[{"number":198}]' } )
-      // Laid down at once — read before the sweep (two ticks) takes it to working memory.
-      const percept = [ ...inst.simulation.stateManager.snapshot().entities.values() ].find( e => e.type === 'percept' && e.metadata?.['data'] === '[{"number":198}]')
+      // Laid down at the next tick, as every host input is — read before the
+      // sweep (two ticks later) takes it to working memory.
+      const find = () => [ ...inst.simulation.stateManager.snapshot().entities.values() ].find( e => e.type === 'percept' && e.metadata?.['data'] === '[{"number":198}]')
+      let percept = find()
+      for( const end = Date.now() + 3_000; !percept && Date.now() < end; percept = find() ) await new Promise( r => setTimeout( r, 1 ) )
       expect( percept?.metadata ).toMatchObject( { provenance: 'reafferent', sourceIntentId: 'agency-intent-16' } )
     }
     finally { await will.stop() }

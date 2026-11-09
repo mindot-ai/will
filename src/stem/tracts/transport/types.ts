@@ -162,17 +162,49 @@ export interface AckEnvelope extends BaseEnvelope {
   channel:  'ack'
   ackKind:  'delivery' | 'result'
   delivered?: boolean
-  result?: {
-    success:     boolean
-    description: string
-    metrics?:    Record<string, number>
-  }
+  /** The host's whole ack, `observation` included (SIGNAL_BOUNDARY P2). */
+  result?: import('#stem/tracts/effector/types').EffectorAck
+}
+
+// ── Host inputs (in-process, through the same door) ────────────
+//
+// A host calling the stem directly — the SDK's `sense()`, an effector ack, an
+// escalation answer, `injectEvent` — reaches the mind the way a transport peer
+// does: enqueued, applied at the next tick, recorded and chained there. One
+// door, so every input is on the replay tape and in the record chain at the
+// place it reached the mind (RECORD_ANCHORING step 4).
+
+/** A signal for one sense, as the sense takes it. */
+export interface SenseEnvelope extends BaseEnvelope {
+  channel: 'sense'
+  /** `audition`, `vision`, `somatosensation`, `olfaction` or `gustation`. */
+  domain:  string
+  input:   import('#senses/index').SensoryInput
+}
+
+/** An event laid down in the world as an entity, as `injectEvent` does. */
+export interface EventEnvelope extends BaseEnvelope {
+  channel: 'event'
+  type:    string
+  payload: Record<string, unknown>
+}
+
+/** A host's answer to an escalation (POLICY_REAFFERENCE P4). */
+export interface EscalationEnvelope extends BaseEnvelope {
+  channel:   'escalation'
+  /** The escalated act's `intentId`. */
+  intentId:  string
+  approved:  boolean
+  finality?: import('#stem/policy/arbiter').DenialFinality
 }
 
 export type InboundEnvelope =
   | InboundMessageEnvelope
   | InboundPerceptEnvelope
   | AckEnvelope
+  | SenseEnvelope
+  | EventEnvelope
+  | EscalationEnvelope
 
 export type Envelope = OutboundEnvelope | InboundEnvelope
 

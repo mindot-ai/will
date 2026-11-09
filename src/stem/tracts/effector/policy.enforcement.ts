@@ -69,6 +69,19 @@ export class PolicyEnforcement {
 
   constructor( private readonly _deps: PolicyDeps ){}
 
+  /** Verdicts an async arbiter has not yet answered, per Will. */
+  private readonly _out = new WeakMap<WillInstance, Set<Promise<void>>>()
+  private _outFor( instance: WillInstance ): Set<Promise<void>> {
+    let out = this._out.get( instance )
+    if( !out ){ out = new Set(); this._out.set( instance, out ) }
+    return out
+  }
+
+  /** Settles once every verdict still out for this Will has landed. Archiving waits on it. */
+  async awaitPending( instance: WillInstance ): Promise<void> {
+    await Promise.all( [ ...( this._out.get( instance ) ?? [] ) ] )
+  }
+
   /**
    * Install a Policy Decision Point (POLICY_REAFFERENCE P0). Passing null
    * restores the no-op default. The arbiter sees only the proposed act — never
@@ -102,8 +115,16 @@ export class PolicyEnforcement {
       const record     = source.verdictFor( invocation.tick, invocation.intentId )
       // A miss means the live run had no verdict here (null arbiter at record
       // time) — the invocation was simply buffered, so reproduce that.
-      if( record ) this._applyVerdict( instance, payload, invocation, recordToVerdict( record ) )
-      else         this._deps.buffer( instance, payload )
+      if( !record ){ this._deps.buffer( instance, payload ); return }
+      // Chained again exactly as recorded, where it reached the mind: now, or
+      // — for an async arbiter's — where the replay hands it over.
+      const apply = ( r: PolicyVerdictRecord ) => {
+        try { getRecordTap( willId )?.('verdicts', r ) }
+        catch { /* never let the record chain change what is enforced */ }
+        this._applyVerdict( instance, payload, invocation, recordToVerdict( r ) )
+      }
+      if( record instanceof Promise ) void record.then( apply, err => logger.error(`[policy] replayed verdict for "${invocation.schema}" failed:`, err ) )
+      else apply( record )
       return
     }
 
@@ -129,13 +150,27 @@ export class PolicyEnforcement {
       // An external PDP resolves out of tick. Safe by construction: the executor
       // holds the intent 'awaiting' for AWAIT_TIMEOUT (15 ticks), and the refusal
       // queue drains each tick, so a verdict landing a few ticks late still lands.
-      void verdict.then(
-        v => this._recordAndApply( instance, payload, invocation, v ),
+      //
+      // Unless the Will has stopped. Archiving waits for verdicts still out
+      // (`awaitPending`); one that outlives that wait is given up, never applied
+      // or chained after `session.end` — stopped means stopped.
+      const landed = ( v: Verdict ) => {
+        if( instance._settled ){
+          logger.warn(`[policy] verdict for "${invocation.schema}" arrived after ${instance.config.id} stopped — not applied`)
+          return
+        }
+        this._recordAndApply( instance, payload, invocation, v )
+      }
+      const pending = verdict.then(
+        landed,
         err => {
           logger.error(`[policy] arbiter "${this._arbiter.name}" rejected for "${invocation.schema}" — failing closed:`, err )
-          this._recordAndApply( instance, payload, invocation, ARBITER_FAULT_VERDICT )
+          landed( ARBITER_FAULT_VERDICT )
         },
       )
+      const out = this._outFor( instance )
+      out.add( pending )
+      void pending.finally( () => out.delete( pending ) )
       return
     }
 

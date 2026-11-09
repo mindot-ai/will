@@ -27,8 +27,22 @@ export interface LLMCompletionRecord {
   text: string
   inputTok: number
   outputTok: number
+  /**
+   * The rest of what the call returned, when it said: a replay hands the caller
+   * the whole answer, and a cut one or a cached one is not the same answer.
+   */
+  stopReason?:    string
+  truncated?:     boolean
+  cacheReadTok?:  number
+  cacheWriteTok?: number
   /** True when produced by the deterministic mock path (no API call). */
   mock: boolean
+  /**
+   * The call failed, and this is why: the caller saw this rejection rather than
+   * `text`. Chained like an answer, at the moment it arrived, so a replay fails
+   * the call at the same place (RECORD_ANCHORING step 4).
+   */
+  error?: string
   latencyMs: number
   timestamp: Timestamp
 }
@@ -66,7 +80,7 @@ export interface LLMCompletionSource {
     tick: number,
     systemPrompt: string,
     userMessage: string,
-  ): LLMCompletionRecord | undefined
+  ): LLMCompletionRecord | Promise<LLMCompletionRecord> | undefined
 }
 
 /**

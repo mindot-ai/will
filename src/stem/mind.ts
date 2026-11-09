@@ -934,7 +934,7 @@ function _constructCognition(
   const modelRoles = resolveModelRoles( config.llm?.model )
 
   const { embedder, vectorMemory } = _resolveVectorMemory( willId, randomSeed, config.vectorMemoryAdapter, config.disableVectorMemory, tokenTracker, config.testMode, modelRoles.embedding ?? undefined )
-  const episodicConsolidator = new EpisodicConsolidator( vectorMemory ? { vectorMemory, ...(embedder ? { embedder } : {}) } : {} )
+  const episodicConsolidator = new EpisodicConsolidator( { willId, ...( vectorMemory ? { vectorMemory, ...(embedder ? { embedder } : {}) } : {} ) } )
 
   const semanticIntegrator   = new SemanticIntegrator()
   const forgettingCurve      = new ForgettingCurve()

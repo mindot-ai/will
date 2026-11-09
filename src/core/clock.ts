@@ -21,6 +21,18 @@ export interface SimulationClock {
   // Driven externally by the Orchestrator
   tick(): void
 
+  /**
+   * Hear every step the clock takes, after it is taken. One listener; `null`
+   * removes it. The record chain uses this to chain each step at the moment it
+   * begins (RECORD_ANCHORING step 4).
+   */
+  onStep( listener: ClockStepListener | null ): void
+  /**
+   * Take each step from here instead of measuring one: a replay feeds the
+   * steps a live run chained. `null` returns the clock to its own time.
+   */
+  setStepSource( source: ClockStepSource | null ): void
+
   // Lifecycle
   pause(): void
   resume(): void
@@ -36,6 +48,14 @@ export interface SimulationClock {
   toWallMs( simMs: number ): number
   simSleep( simMs: number ): Promise<void>
 }
+
+/** One step of the clock: the sim time it reached and how far it moved. */
+export interface ClockStep {
+  readonly now:   Timestamp
+  readonly delta: Duration
+}
+export type ClockStepListener = ( step: ClockStep, tick: Tick ) => void
+export type ClockStepSource   = () => ClockStep
 
 export interface ClockConfig {
   startTime?: Timestamp
@@ -59,6 +79,9 @@ export class DefaultSimulationClock implements SimulationClock {
   private _startWallMs: Timestamp
   private _startSimMs: Timestamp
 
+  private _onStep:     ClockStepListener | null = null
+  private _stepSource: ClockStepSource   | null = null
+
   constructor( config: ClockConfig = {} ){
     this._now = config.startTime ?? wallClock()
     this._tick = config.startTick ?? 0
@@ -72,15 +95,19 @@ export class DefaultSimulationClock implements SimulationClock {
 
   // ── Getters ─────────────────────────────────────────────
 
-  get now(): Timestamp {
-    // Deterministic mode: time only advances inside tick(); never read wall
-    // time, so SimulationState.time reproduces exactly on replay (R2).
-    if( this._fixedDeltaMs !== null ) return this._now
+  /**
+   * The sim time of the current tick. It moves only when the clock steps, in
+   * either mode: between ticks it holds still. Read continuously, a wall-mode
+   * clock handed whatever ran between ticks — an LLM answer landing, a sense
+   * turn — a time no record carried, so no replay could hand it back
+   * (RECORD_ANCHORING step 4). Fixed mode always held still (R2).
+   */
+  get now(): Timestamp { return this._now }
 
+  /** Where wall time has carried sim time to, read now. Wall mode only. */
+  private _wallNow(): Timestamp {
     if( !this._isRunning ) return this._now
-
-    const wallElapsed = wallClock() - this._startWallMs
-    return this._startSimMs + wallElapsed * this._timeScale
+    return this._startSimMs + ( wallClock() - this._startWallMs ) * this._timeScale
   }
 
   get currentTick(): Tick { return this._tick }
@@ -97,25 +124,32 @@ export class DefaultSimulationClock implements SimulationClock {
   tick(): void {
     if( !this._isRunning ) return
 
-    // Deterministic mode: advance by a fixed sim delta, never reading wall
-    // time. This is what makes the tick→time mapping reproducible on replay (R2).
-    if( this._fixedDeltaMs !== null ){
+    if( this._stepSource ){
+      // Replay: the step a live run took, as it chained it.
+      const step = this._stepSource()
+      this._delta    = step.delta
+      this._now      = step.now
+      this._lastTick = wallClock()
+    }
+    else if( this._fixedDeltaMs !== null ){
+      // Deterministic mode: advance by a fixed sim delta, never reading wall
+      // time. This is what makes the tick→time mapping reproducible on replay (R2).
       this._delta = this._fixedDeltaMs * this._timeScale
       this._now  += this._delta
-      this._tick += 1
-      return
+    }
+    else {
+      const realNow = wallClock()
+      this._delta    = ( realNow - this._lastTick ) * this._timeScale
+      this._now      = this._wallNow()
+      this._lastTick = realNow
     }
 
-    const
-    realNow     = wallClock(),
-    realDelta   = realNow - this._lastTick,
-    scaledDelta = realDelta * this._timeScale
-
-    this._delta    = scaledDelta
-    this._now      = this.now
-    this._tick    += 1
-    this._lastTick = realNow
+    this._tick += 1
+    this._onStep?.( { now: this._now, delta: this._delta }, this._tick )
   }
+
+  onStep( listener: ClockStepListener | null ): void { this._onStep = listener }
+  setStepSource( source: ClockStepSource | null ): void { this._stepSource = source }
 
   // ── Lifecycle ───────────────────────────────────────────
 
@@ -172,7 +206,7 @@ export class DefaultSimulationClock implements SimulationClock {
       throw new Error('Multiplier must be positive')
 
     // Re-anchor current sim time to prevent jumps
-    const simNow = this.now
+    const simNow = this._fixedDeltaMs !== null ? this._now : this._wallNow()
 
     this._startSimMs   = simNow
     this._startWallMs  = wallClock()

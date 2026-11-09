@@ -137,6 +137,17 @@ export class ActionSelector implements CognitiveEngine {
   // ACP §2b: sense-channel percepts buffered off the bus for the next react's
   // rupture computation (they never become entities). Cross-tick ⇒ FN9.
   private _senseBuffer: Array<{ salience: number; text?: string }> = []
+  // Sent acts the Will stopped waiting on. Preempting an await frees the body,
+  // and for words not yet authored that is the whole act — the intent is
+  // deleted, nothing was said. But an act already SENT (a host running it, words
+  // handed over) cannot be unsent: deleting its intent made its answer a
+  // straggler, so its fate never reconciled — no record that she did it, nothing
+  // learned from it (found running her GitHub reads live: a message arrived
+  // while one was in flight). Released instead: still 'awaiting' for everyone
+  // who reconciles or times it out, no longer the incumbent here. Held in the
+  // engine, not written to the intent — a write here could resurrect an intent
+  // reafference or the executor deletes the same tick. Cross-tick ⇒ FN9.
+  private _released = new Set<string>()
 
   attachBus( bus: CognitiveBus ): void { this._bus = bus }
 
@@ -183,6 +194,7 @@ export class ActionSelector implements CognitiveEngine {
     return {
       lastEntropy: this._lastEntropy, lastDeliberate: this._lastDeliberate,
       lastRevoked: this._lastRevoked, senseBuffer: this._senseBuffer,
+      released: [ ...this._released ],
     }
   }
   /** FN9: `_lastRevoked` has behavioral effect (the Channel-B `revokedBy` stamp),
@@ -201,6 +213,8 @@ export class ActionSelector implements CognitiveEngine {
           .filter( it => it && typeof it.salience === 'number' )
           .map( it => ({ salience: it.salience as number, ...( typeof it.text === 'string' ? { text: it.text } : {} ) }) )
       : []
+    const rl = s['released']
+    this._released = new Set( Array.isArray( rl ) ? rl.filter( ( x ): x is string => typeof x === 'string') : [] )
   }
 
   async react(
@@ -216,8 +230,9 @@ export class ActionSelector implements CognitiveEngine {
     // short-lived 'selected' (one tick) or a mid-composite 'expanding' is left to
     // finish — they resolve within a tick or carry their own progress.
     const eligible: Affordance[] = []
-    const intents: Array<{ id: string; st: string; parentIntentId?: string; activation: number; schema: string; target: string; dispatchedAt: number }> = []
+    const intents: Array<{ id: string; st: string; parentIntentId?: string; activation: number; schema: string; target: string; dispatchedAt: number; sent: boolean }> = []
     const expandingParents = new Set<string>()
+    const stillOut = new Set<string>()
 
     for( const [ id, e ] of state.entities ){
       if( e.type === 'agency.intent'){
@@ -225,7 +240,9 @@ export class ActionSelector implements CognitiveEngine {
         const st = str( m['status'] ) ?? ''
 
         if( st === 'expanding') expandingParents.add( id )
-          
+        // Released: out in the world, no longer what the body waits on.
+        if( st === 'awaiting' && this._released.has( id ) ){ stillOut.add( id ); continue }
+
         intents.push({
           id, st,
           parentIntentId: str( m['parentIntentId'] ),
@@ -233,6 +250,7 @@ export class ActionSelector implements CognitiveEngine {
           schema:         str( m['schema'] )         ?? '',
           target:         str( m['targetEntityId'] ) ?? '',
           dispatchedAt:   num( m['dispatchedAt'], tick ),
+          sent:           m['sent'] === true,
         })
 
         continue
@@ -243,19 +261,21 @@ export class ActionSelector implements CognitiveEngine {
       const a = readAffordance( id, e.metadata )
       if( a.available ) eligible.push( a )
     }
+    // Answered, timed out or cleared: no longer out, no longer held.
+    for( const id of this._released ) if( !stillOut.has( id ) ) this._released.delete( id )
 
     // Classify in-flight: 'awaiting' and an 'expanding' composite are PREEMPTIBLE;
     // a standalone 'selected', an orphan macro sub (its parent already cancelled), and
     // 'deliberating' BLOCK — let them finish (race-safe).
     let blocking = false
-    let awaiting:  { id: string; activation: number; schema: string; target: string; dispatchedAt: number } | null = null
+    let awaiting:  { id: string; activation: number; schema: string; target: string; dispatchedAt: number; sent: boolean } | null = null
     let composite: { id: string; activation: number; schema: string } | null = null
     let deliberating: { id: string; schema: string } | null = null
 
     for( const it of intents ){
       if( it.st === 'deliberating'){ blocking = true; deliberating = { id: it.id, schema: it.schema } }
       else if( it.st === 'expanding') composite = { id: it.id, activation: it.activation, schema: it.schema }
-      else if( it.st === 'awaiting') awaiting = { id: it.id, activation: it.activation, schema: it.schema, target: it.target, dispatchedAt: it.dispatchedAt }
+      else if( it.st === 'awaiting') awaiting = { id: it.id, activation: it.activation, schema: it.schema, target: it.target, dispatchedAt: it.dispatchedAt, sent: it.sent }
       else if( it.st === 'selected'){
         const activeMacroSub = it.parentIntentId !== undefined && expandingParents.has( it.parentIntentId )
         if( !activeMacroSub ) blocking = true   // standalone or orphan sub → finish it
@@ -470,7 +490,8 @@ export class ActionSelector implements CognitiveEngine {
     // ── Preempt an awaiting action (commit the challenger) ────────
     // The incumbent carries a switch-cost bonus (hysteresis); a high-stakes challenger
     // faces almost none, so salient events interrupt. Deleting an 'awaiting' intent is
-    // race-free: the executor never enacts it (only times it out at 15 ticks).
+    // race-free: the executor never enacts it (only times it out at 15 ticks). One
+    // already sent is released, not deleted — see `_released`.
     let preemptDelete: string | undefined
     let preemptedFrom: string | undefined = compositeFrom
     // A composite preemption already claimed the body: its tombstone cancels the
@@ -512,7 +533,9 @@ export class ActionSelector implements CognitiveEngine {
         return busy( eligible.length )   // not worth interrupting — keep waiting
       }
 
-      preemptDelete = awaiting.id        // PREEMPT — fall through and commit the challenger
+      // PREEMPT — fall through and commit the challenger
+      if( awaiting.sent ) this._released.add( awaiting.id )
+      else preemptDelete = awaiting.id
       preemptedFrom = awaiting.schema
     }
 

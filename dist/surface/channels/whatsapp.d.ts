@@ -1,5 +1,5 @@
-import { cY as Will } from '../../will-B9JFZAdv.js';
-import { C as ChannelBridge } from '../../types-Bw1WHAAn.js';
+import { cY as Will } from '../../will-C1w7__t1.js';
+import { C as ChannelBridge } from '../../types-CZaUZ7Q3.js';
 
 interface WaLikeMessage {
     key: {

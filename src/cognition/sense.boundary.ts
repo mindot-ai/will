@@ -66,6 +66,7 @@ import { AVAILABILITY_ENTITY_TYPE } from '#agency/schemas/repertoire'
 import { REVOCATION_TYPE }  from '#agency/revocation'
 import { SETTLEMENT_TYPE }  from '#agency/settlement'
 import { ACTION_RECORD_TYPE } from '#faculties/executive.engine/action.record'
+import { PERSONA_PRIOR_TYPE } from '#cognition/persona.prior'
 
 /**
  * Entity types that ARE the mind — written by its own engines about its own
@@ -141,6 +142,10 @@ export const MIND_OWN_ENTITY_TYPES: ReadonlySet<string> = new Set([
   // Its configuration and its identity are constitutive of it, not events in
   // its world. It had been perceiving both.
   'engine.config', 'will.identity', 'effector.created',
+  // How the mind has tuned its own faculties. Perceived as the world, it arrived
+  // every consolidation as "New persona.prior: persona-prior" — 367 of the lines
+  // a live run's working memory held, crowding out every answer it had sought.
+  PERSONA_PRIOR_TYPE,
   'dream.activity',
 ])
 

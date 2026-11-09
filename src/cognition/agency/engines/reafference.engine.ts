@@ -230,7 +230,7 @@ export class ReafferenceEngine implements CognitiveEngine {
         const heldIntent = str( m['intentId'] )
         if( heldIntent ) del.push( heldIntent )
         const heldPlan = str( m['planId'] )
-        if( heldPlan ) this._emitPlanOutcome( heldPlan, str( m['stepId'] ), schema, false, 0, 0, tick )
+        if( heldPlan ) this._emitHostOutcome( heldPlan, str( m['stepId'] ), schema, false, 0, 0, tick )
         withheld++
         continue
       }
@@ -251,7 +251,7 @@ export class ReafferenceEngine implements CognitiveEngine {
         const refusedIntent = str( m['intentId'] )
         if( refusedIntent ) del.push( refusedIntent )
         const refusedPlan = str( m['planId'] )
-        if( refusedPlan ) this._emitPlanOutcome( refusedPlan, str( m['stepId'] ), schema, false, 0, 0, tick )
+        if( refusedPlan ) this._emitHostOutcome( refusedPlan, str( m['stepId'] ), schema, false, 0, 0, tick )
         refused++
         continue
       }
@@ -275,14 +275,16 @@ export class ReafferenceEngine implements CognitiveEngine {
       if( intentId ) del.push( intentId )
       updates++
 
-      // Plan advancement for the async path: a host-acked outcome that carries plan
-      // the plan link is the ONLY signal the PlanningEngine will get (the executor never
-      // saw the ack — the intent was 'awaiting'). Emit the action.outcome it advances
-      // on. Sync/timeout outcomes never carry planId here (the executor emitted their
-      // action.outcome already), so this never double-advances.
-      const planId = str( m['planId'] )
-      if( planId )
-        this._emitPlanOutcome( planId, str( m['stepId'] ), schema, m['success'] === true, num( m['outcomeQuality'], 0 ), num( m['surprise'], 0 ), tick, str( m['description'] ) )
+      // The async path's `action.outcome`. For a host-acked (or sensorily confirmed)
+      // act it is the ONLY one — the executor never saw the ack; the intent was
+      // 'awaiting' — so it is emitted for EVERY reconciled outcome, not only a plan
+      // step's. It was plan-only: every act she willed through a host outside a plan
+      // — each GitHub read — reached no action record, so "What Became Of What I Did"
+      // never showed it, and she could not remember having done it (found running
+      // her pipeline live). Sync/timeout outcomes are not reconciled (the executor
+      // emitted theirs already), so this never double-counts.
+      if( m['reconciled'] === true || str( m['planId'] ) )
+        this._emitHostOutcome( str( m['planId'] ), str( m['stepId'] ), schema, m['success'] === true, num( m['outcomeQuality'], 0 ), num( m['surprise'], 0 ), tick, str( m['description'] ), str( m['targetEntityId'] ) )
 
       // Discovery: the first time the Will enacts a schema, it becomes a known part
       // of its repertoire (the new model's "discovered" — earned by doing, not catalogued).
@@ -459,16 +461,17 @@ export class ReafferenceEngine implements CognitiveEngine {
   }
 
   /**
-   * Emit the `action.outcome{planId,stepId}` for an async (host-acked) plan-step
-   * enaction. Mirrors the executor's `_emitActionOutcome` payload so the
-   * PlanningEngine's consumer can't tell which path produced it.
+   * Emit the `action.outcome` for an async (host-acked) enaction — a plan step's
+   * carrying `{planId, stepId}`. Mirrors the executor's `_emitActionOutcome`
+   * payload so no consumer can tell which path produced it.
    */
-  private _emitPlanOutcome(
-    planId: string, stepId: string | undefined, schema: string,
+  private _emitHostOutcome(
+    planId: string | undefined, stepId: string | undefined, schema: string,
     success: boolean, outcomeQuality: number, surprise: number, tick: Tick,
     /** The host's own words for what happened. Absent on withheld/refused paths,
      *  where there was no host and nothing to say beyond the fate. */
     description?: string,
+    targetEntityId?: string,
   ): void {
     if( !this._bus ) return
     try {
@@ -485,13 +488,14 @@ export class ReafferenceEngine implements CognitiveEngine {
           // real description the whole time (`reconcile.learning.ts:89`); it was
           // read here as `m['description']` and dropped on the floor.
           description: description ?? ( success ? 'The world confirmed the action.' : 'The world rejected the action.'),
-          planId,
+          ...( planId ? { planId } : {} ),
           ...( stepId ? { stepId } : {} ),
+          ...( targetEntityId ? { targetEntityId } : {} ),
           tick,
         },
       })
     }
-    catch( err ){ logger.warn(`[reafference] plan outcome publish failed: ${ err instanceof Error ? err.message : String( err ) }`) }
+    catch( err ){ logger.warn(`[reafference] outcome publish failed: ${ err instanceof Error ? err.message : String( err ) }`) }
   }
 
   private _emitDiscovered( schema: string, tick: Tick ): void {

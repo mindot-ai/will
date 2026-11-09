@@ -1,6 +1,6 @@
 # FIELD_NOTES — what was seen in a mind that was actually running
 
-> **Standing:** OBSERVED · 2026-08-31 · four runs of one COO Will on Discord, the earliest recorded on or before 2026-08-21; each sighting is n=1 unless it says otherwise
+> **Standing:** OBSERVED · 2026-10-01 · four runs of one COO Will on Discord, the earliest recorded on or before 2026-08-21, and five runs of her pipeline with only the brain scripted; each sighting is n=1 unless it says otherwise
 
 A test proves the engine does what someone thought to ask it. A run shows what it
 does when nobody is asking. These are different claims and this file holds the
@@ -169,6 +169,56 @@ the first had already answered it.**
 → [#168](https://github.com/mindot-ai/will/pull/168). Confirmed on the next run:
 `composing outreach to ke:1sqlkux inside the open conversation (facet-5)` — a
 path that had never executed before.
+
+---
+
+## 2026-10-01 · her GitHub reads, with only the brain scripted
+
+**Watched for:** whether the LOSSLESS P5 pipeline holds when it is fed by the
+world rather than by fixtures. Every engine was real, as were her read-only
+GitHub tools over MCP (Docker) and Jina embeddings. Only the LLM was scripted,
+and it answered from what each prompt actually showed. Five runs of about 150
+ticks each, at a 100 ms tick, on a test mind (`lora-scenario`). It was never her
+artifact and never Discord. Not a run of Lora herself: her GLM subscription had
+lapsed that day, so she could not think.
+
+**Not one of her GitHub reads reached her record of what she did.** A
+host-acked act emitted `action.outcome` only when it was a plan step, and so
+did one that timed out. She read GitHub and `## What Became Of What I Did`
+showed nothing, so she had no memory of having read it. Once that was fixed, a
+second cause showed through. A message that arrived while a `list_commits` was
+in flight preempted it **5 ticks in**, and preemption *deleted* the awaiting
+intent, as if the read could be unsent. GitHub answered an act that no longer
+existed. The trace read `[ack] agency-intent-109 at tick 116 intent=gone`.
+Between them, 2 of her 3 GitHub reads left no record.
+→ #202: outcomes for every reconciled act. A sent act is *released* by
+preemption, not deleted. Confirmed on the next run: 3 of 3 recorded, the
+preempted read reconciled at tick 104.
+
+**A 220 KB answer that arrived was written off as never arriving.** The PR
+listing came back after the await timeout. The act was recorded as "the world
+never answered", and the answer, which had come, was dropped with the fate.
+→ #202: a late answer is still taken in as a reafferent percept tied to the
+act. *(The timeout itself is an artifact of the 100 ms tick. At Lora's 1 s tick
+the await is 15 s, and the listing took about 2 s.)*
+
+**Her GitHub tools were picked spontaneously, with no arguments.** Each one
+binds nothing, so it sat on the always-offered floor. The bridge refused every
+call ("needs owner, repo"), and each refusal was learned as a failure, round
+after round.
+→ #202: a tool that `requires` arguments is offered only when it is willed
+with them.
+
+**367 of the lines in working memory were her own `persona.prior`.**
+→ #202: it is declared hers, and a census test now runs a live mind and checks
+every type it writes.
+
+**Recall by meaning missed page 10 of a listing she had read.** Background
+indexing kept one promise, overwritten by each new batch, so the drain waited
+for the latest batch and not for the listing's ten pages still embedding before
+it. The same drain runs before the vector index is written at archive. A
+whole-store rebuild on restore was exposed the same way.
+→ #202. Confirmed on the next run: page 10, exactly.
 
 ---
 

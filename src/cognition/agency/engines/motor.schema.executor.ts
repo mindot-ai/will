@@ -411,9 +411,10 @@ export class MotorSchemaExecutor implements CognitiveEngine {
       set.push( outcomeEntity( tick, intent, timedOut, predicted ) )
       del.push( id )
       this._emitEnacted( intent, timedOut, predicted, tick )
-      if( intent.planId && intent.planStepId )
-        this._emitActionOutcome( intent, false, 0, 1, tick,
-          `No answer came back — I gave up waiting after ${ tick - dispatchedAt } ticks.` )
+      // Every act given up on — not only a plan step's. Outside a plan this was the
+      // only trace of a host act that never answered, and it went nowhere.
+      this._emitActionOutcome( intent, false, 0, 1, tick,
+        `No answer came back — I gave up waiting after ${ tick - dispatchedAt } ticks.` )
       logger.info(`[motor] ⏱ "${ intent.schema }" timed out after ${ tick - dispatchedAt } ticks`)
     }
 
@@ -473,17 +474,6 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         if( delivered ){
           enactedCount++
         } else {
-          // Async hold: persist the efference copy so reconciliation can score it.
-          set.push({
-            id, type: 'agency.intent',
-            metadata: {
-              ...( e.metadata as Record<string, unknown> ),
-              status:           'awaiting',
-              dispatchedAt:     tick,
-              predictedReward:  predicted.expectedReward,
-              predictedValence: predicted.expectedValence,
-            },
-          })
           // EXAFFERENCE P1 — the dispatched action's expected sensory footprint,
           // so the world's answer can be recognized as ours when it arrives
           // through the senses (P2). Host acks correlate by intent id already.
@@ -493,6 +483,22 @@ export class MotorSchemaExecutor implements CognitiveEngine {
           const awaitingText = enaction.mode === 'communicate'
             ? ( str( intent.parameters['content'] ) ?? firstMessage( intent.parameters['messages'] ) )
             : undefined
+          // Async hold: persist the efference copy so reconciliation can score it.
+          set.push({
+            id, type: 'agency.intent',
+            metadata: {
+              ...( e.metadata as Record<string, unknown> ),
+              status:           'awaiting',
+              dispatchedAt:     tick,
+              predictedReward:  predicted.expectedReward,
+              predictedValence: predicted.expectedValence,
+              // Out in the world: a host is doing it now, or holds the words to
+              // deliver. A communicate still waiting for its words is not — it has
+              // not happened yet. The selector may stop waiting on a sent act; it
+              // cannot unsend it (see ActionSelector `_released`).
+              ...( enaction.mode !== 'communicate' || awaitingText ? { sent: true } : {} ),
+            },
+          })
           set.push( consequenceEntity({
             intentId: id, schema: intent.schema,
             mode: enaction.mode === 'communicate' ? 'communicate' : 'external',

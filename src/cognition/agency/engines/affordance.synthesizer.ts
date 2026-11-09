@@ -191,7 +191,13 @@ export class AffordanceSynthesizer implements CognitiveEngine {
       if( e.type === 'affordance') del.push( id )
 
     // ── 1. innate floor — always emitted, never attention-capped ──
-    const floor = schemas.filter( s => s.binds === 'none')
+    // Not an ability that REQUIRES specifics: bound from nothing it would arrive at
+    // execution with empty arguments, which property 1 above forbids. It is
+    // reached by will, with them — the ideomotor leg below admits it from the full
+    // schema list. Offered here, every GitHub read she held was picked spontaneously,
+    // argument-less, refused by the bridge, and learned as a failure, over and over
+    // (found running her pipeline live).
+    const floor = schemas.filter( s => s.binds === 'none' && !s.requires?.length )
     for( const schema of floor )
       set.push( this._toEntity( this._build( schema, tick, state, valence, energyLow, skills, {} ) ) )
 

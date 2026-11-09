@@ -220,10 +220,6 @@ sketch, deliberately short — its design depends on decisions made in [[SIGNAL_
 
 52 of 57, opened 2026-08-21 as AFFERENCE_UNIFICATION and widened to cover efference; released in v0.10.0. The live-run sightings that shaped it are a different claim and live in [[FIELD_NOTES]] — OBSERVED, n=1, gated by nothing
 
-**2026-08-31 · OBSERVED** · [FIELD_NOTES — what was seen in a mind that was actually running](FIELD_NOTES.md)
-
-four runs of one COO Will on Discord, the earliest recorded on or before 2026-08-21; each sighting is n=1 unless it says otherwise
-
 **2026-08-31 · RELEASE v0.10.0** — *the mind knows its own doing from the world's*
 
 ## September 2026
@@ -233,6 +229,10 @@ four runs of one COO Will on Discord, the earliest recorded on or before 2026-08
 scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P5 landed (P5a–P5e), unreleased
 
 ## October 2026
+
+**2026-10-01 · OBSERVED** · [FIELD_NOTES — what was seen in a mind that was actually running](FIELD_NOTES.md)
+
+four runs of one COO Will on Discord, the earliest recorded on or before 2026-08-21, and five runs of her pipeline with only the brain scripted; each sighting is n=1 unless it says otherwise
 
 **2026-10-01 · DESIGNED** · [LOSSLESS P5 — every call fits its window, and nothing leaves a call silently](LOSSLESS_P5.md)
 

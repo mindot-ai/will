@@ -252,6 +252,11 @@ export interface EffectorSpec {
    * presses.
    */
   tags?: string[]
+  /**
+   * Args the ability cannot be done without. It is then not offered on its own —
+   * no situation supplies them — and is reached when the mind wills it with them.
+   */
+  requires?: string[]
   /** Your implementation. */
   handler: EffectorHandler
 }
@@ -576,7 +581,7 @@ export class Will {
     this._effectors.set( name, entry.handler )
     const hasMeta = entry.description !== undefined || entry.cost !== undefined
       || entry.valence !== undefined || entry.preconditions !== undefined
-      || entry.binds !== undefined || entry.tags !== undefined
+      || entry.binds !== undefined || entry.tags !== undefined || !!entry.requires?.length
     this._effectorDecls.set( name, hasMeta
       ? {
           name,
@@ -586,6 +591,7 @@ export class Will {
           ...( entry.preconditions !== undefined ? { preconditions: entry.preconditions } : {} ),
           ...( entry.binds         !== undefined ? { binds:         entry.binds         } : {} ),
           ...( entry.tags          !== undefined ? { tags:          entry.tags          } : {} ),
+          ...( entry.requires?.length ? { requires: entry.requires } : {} ),
         }
       : name )
   }

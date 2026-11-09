@@ -1,7 +1,90 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 — 2026-11-09 · the mind is given the whole, and can prove what it did with it
 
+A mind handed part of an answer, and not told it is part, is reasoning from
+someone else's conclusions. A live Will looked up the same member 65 times
+because every reply was cut to 120 characters before it reached her. Her record
+of what she had said was cut at 100, and the trace an operator read to judge her
+was cut again, so the analysis of her rested on the same cuts she did. This
+release closes two epochs. **Lossless**: every cut that lost data is gone, and
+what one model call is shown stays bounded but never silently. **Record
+anchoring**: everything that reaches a mind and everything it does is
+hash-chained in the order it happened, so anyone can check that the record is
+unaltered and raise the same mind from it.
+
+> **The pictures:** `docs/graphs/lossless-loop.svg` and
+> `docs/graphs/record-anchoring.svg` — each arc in one diagram.
+
+### Nothing she is given is cut
+
+- **What she said and heard is whole, and a second conversation is
+  remembered.** `conversation.sent` and `.received` carry `text`, every bubble;
+  readers fall back to `preview`, so an older history still reads. Episodes were
+  deduplicated on the first 100 characters of an item's JSON, which is the same
+  boilerplate for every exchange: only the first person she spoke with was ever
+  consolidated. Identity is now the item's id plus a hash of its content, and
+  conversation ids are deterministic (sim tick and a hash of the words).
+- **What she takes in is whole.** Exteroception dropped every change past the
+  50th in a tick and social perception every signal past the 20th, and marked
+  them seen. Both caps are gone. A host's own summary is no longer cut as if the
+  engine had written it. A file someone hands over is its own item, whole,
+  instead of 24,000 characters inlined into every place the message's words go.
+- **Her thought crosses between her own parts whole.** Reasoning reached the
+  facets at 400 characters and the master sync at 600; goals after the second,
+  and self-observations after the fifth, were dropped unread. A facet's account
+  of itself (introspection, narrative, skills, re-prioritised goals) now reaches
+  the mind, and identity updates apply once each, on the next tick.
+- **She keeps what she has, and forgets in days.** The forgetting rate was 0.02
+  per second, so an episode was gone in about twenty seconds, and a mind woken
+  from its artifact had a rate of 0.44–0.79 written in: a live Will held zero
+  episodes on every one of 2,095 ticks. Beliefs decayed per tick and were gone
+  in about sixteen minutes; they now decay per second of running time
+  (`beliefDecayPerSecond`; a saved per-tick rate is ignored, not reread), a weak
+  belief in about three days and a firm one in about thirteen. Count caps on
+  her stores dropped from memory but not from state, so a forgotten item came
+  back on the next boot; what she lets go of now stays gone. Her acts are
+  remembered beyond the last six. A model of another person fades in days and
+  is let go.
+- **Attention protects what she attends to.** The allocator named its focus
+  `entityId` and working memory read `targetEntityId`: since v0.1.0 no item
+  was ever marked attended, so attention protection and rehearsal never ran.
+- **Every call fits its window, and nothing leaves it silently.** The host
+  declares a context window per model (`llm.contextWindow`,
+  `providers.<name>.contextWindows`, matched like prices; undeclared is 128k),
+  resolved for the routed model before the prompt is built. An item larger than
+  a page becomes a document of fixed 8k-token pages. Each section shows the
+  most relevant few and says how many it holds. The mind asks for a page or a
+  section with `[RECALL]` and gets it on the same seat's next call, and over
+  budget the view tightens rather than cutting. Each call's record says what
+  its view was.
+- **What she read is recallable by meaning, a page at a time.** Every page of
+  an observation is embedded, split to the embedder's own limit
+  (`maxInputTokens`), never cut; a hit names the page it matched.
+- **The operator's record is whole.** The session log no longer cuts what it
+  records, so a trace is built from what she was actually shown.
+- **Every act leaves its record.** Found running her real GitHub tools: a host
+  ack outside a plan emitted no outcome; an answer arriving after its act was
+  given up on was dropped (it is now taken in, tied to the act); a preempted
+  act already sent to a host was deleted, so its answer reconciled against
+  nothing. Abilities declare `requires`, and the always-offered floor holds only
+  what needs no arguments.
+- **Transient provider failures are retried**: 500, 502, 503, 504 and 529, as
+  429 always was.
+
+### What she did can be proven
+
+- **What a mind did can be proven unaltered.** A Will created or woken with
+  `anchoring: { every, record, anchor, sign?, resume? }` hash-chains every
+  record it produces — session log, completions, inbound envelopes, policy
+  verdicts — into one chain, in the order produced, and hands the host each
+  entry to keep and, every `every` simulation ticks (and at the first tick, a
+  pause and the end), a digest of the chain's head to anchor where the operator
+  cannot rewrite it. The chain is VLX hash contract v2, so one verifier checks
+  both; it commits to each record's hash, so a shredded record still verifies.
+  `verifyChain(entries, from)` is exported. Anchoring is off the mind's path:
+  replay is byte-identical with it on, and a failing hook reaches the `error`
+  event, never the tick loop.
 - **`will verify`, and replay from the record chain.** `will verify <dir>
   [--key public.pem] [--replay]` checks the files `fileAnchoring(dir, { every,
   sign? })` keeps: the chain is unbroken, every digest names an entry in it, and
@@ -33,6 +116,9 @@
   in its `tick` field. A verdict an async arbiter returned after `stop()` was
   applied and chained after `session.end`. Archiving now waits for verdicts
   still out, and gives up any that arrive later.
+
+### Also
+
 - **Stopped means stopped.** Archiving a Will (`stop()`, `hibernate()`) used to
   sleep one tick interval and hope: a tick that ran longer finished after the
   archive snapshot was taken, and calls still in flight answered after the Will
@@ -49,17 +135,6 @@
   `./data`) — a test or a mock-model Will no longer leaves `./data/wills/*/debug`
   in whatever directory it ran from. `TokenTracker` takes `ledgerDir` in place of
   `willId` + `writeLedger`.
-- **What a mind did can be proven unaltered.** A Will created or woken with
-  `anchoring: { every, record, anchor, sign?, resume? }` hash-chains every
-  record it produces — session log, completions, inbound envelopes, policy
-  verdicts — into one chain, in the order produced, and hands the host each
-  entry to keep and, every `every` simulation ticks (and at the first tick, a
-  pause and the end), a digest of the chain's head to anchor where the operator
-  cannot rewrite it. The chain is VLX hash contract v2, so one verifier checks
-  both; it commits to each record's hash, so a shredded record still verifies.
-  `verifyChain(entries, from)` is exported. Anchoring is off the mind's path:
-  replay is byte-identical with it on, and a failing hook reaches the `error`
-  event, never the tick loop.
 - **An escalation is held as long as the world needs, and a person's no means
   "not this one".** `Verdict.holdTicks` lets an arbiter say how long its answer
   takes: a review step or a veto window outlasting the fixed 30-tick hold used
@@ -70,6 +145,15 @@
   ability; a host that means never passes `'class'`. `Will.resolveEscalation()`
   is on the facade, so a host can answer the asks its arbiter raises without
   reaching into `.stem`.
+
+Throughout: the quiet path is unchanged. Without `anchoring` nothing is
+chained, and with it replay is byte-identical, because anchoring is off the
+mind's path. A small item renders exactly as before; what changed is that a
+large one is paged and counted instead of cut. Determinism, replay equivalence
+and snapshot/restore hold. **Breaking, all deliberate:** host inputs take
+effect at the next tick, not at once; `TokenTracker` takes `ledgerDir` in place
+of `willId` and `writeLedger`; a denial defaults to `parameter` finality; and
+belief decay is per second, under a new name.
 
 ## 0.10.0 — 2026-08-31 · the mind knows its own doing from the world's
 

@@ -1,6 +1,6 @@
 # LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut
 
-> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P5 landed (P5a–P5e), unreleased
+> **Standing:** SHIPPED · 2026-10-01 · released in v0.11.0 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P5 landed (P5a–P5e)
 
 > **The picture:** `docs/graphs/lossless-loop.svg` — the whole arc in one diagram:
 > what she takes in, thinks and keeps is whole; what one call shows is bounded,

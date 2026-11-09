@@ -1,6 +1,6 @@
 # Record anchoring — tamper-evident decision records
 
-> **Standing:** DESIGNED · 2026-11-09 · built, unreleased — designed 2026-07-08 and settled against the engine 2026-11-09; all four steps landed (the chain, digests, the `anchor()` hook, and `will verify` with replay from the chain); SHIPPED at the next release
+> **Standing:** SHIPPED · 2026-11-09 · released in v0.11.0 · designed 2026-07-08 and settled against the engine 2026-11-09; all four steps landed (the chain, digests, the `anchor()` hook, and `will verify` with replay from the chain)
 >
 > **The picture:** `docs/graphs/record-anchoring.svg` — the whole arc in one
 > diagram: what reaches the mind and what it does, chained in order; the host keeps

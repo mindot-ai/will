@@ -119,8 +119,12 @@ discussion; additive never does.
 
 ## 4 · The release PR
 
-Branch `release/X.Y.Z` touching **exactly two files** — `CHANGELOG.md` and
-`package.json` — so release archaeology stays trivial. PR, green CI, merge.
+Branch `release/X.Y.Z` touching `CHANGELOG.md` and `package.json`, plus what
+the release itself makes true in the development record: each epoch it carries
+turns its Standing line to `SHIPPED · <landed> · released in vX.Y.Z`, and
+`.TODO/INDEX.md` is re-emitted (`bun .TODO/index.ts`), since it reads the
+release headers out of the changelog and CI fails on a stale one. Nothing else,
+so release archaeology stays trivial. PR, green CI, merge.
 
 ## 5 · The publish (the human gate)
 

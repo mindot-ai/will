@@ -4,12 +4,12 @@
 > document in this folder and the release headers in `CHANGELOG.md`.
 > Do not edit by hand — edit the document, then re-emit.
 
-Day zero is **2026-05-28**. 50 documents, 8 releases.
+Day zero is **2026-05-28**. 50 documents, 9 releases.
 What each level means, and what it may be cited for, is [STANDING.md](STANDING.md).
 
-- **SHIPPED** · 30 — in the engine, gated by CI, carried by a release
+- **SHIPPED** · 32 — in the engine, gated by CI, carried by a release
 - **OBSERVED** · 8 — true of the real system at a moment, established by looking
-- **DESIGNED** · 10 — reasoned to a plan of record — intent, not capability
+- **DESIGNED** · 8 — reasoned to a plan of record — intent, not capability
 - **SPECULATIVE** · 2 — a hypothesis the project is holding
 
 > Dates before 2026-07-02 predate this repository — `will` was split out and
@@ -218,13 +218,11 @@ sketch, deliberately short — its design depends on decisions made in [[SIGNAL_
 
 **2026-08-31 · RELEASE v0.10.0** — *the mind knows its own doing from the world's*
 
-## September 2026
-
-**2026-09-30 · DESIGNED** · [LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut](LOSSLESS.md)
-
-scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P5 landed (P5a–P5e), unreleased
-
 ## October 2026
+
+**2026-10-01 · SHIPPED** · [LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut](LOSSLESS.md)
+
+released in v0.11.0 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P5 landed (P5a–P5e)
 
 **2026-10-01 · OBSERVED** · [FIELD_NOTES — what was seen in a mind that was actually running](FIELD_NOTES.md)
 
@@ -248,7 +246,9 @@ no code; the gap is verified by reading it — the PEP is an in-process call at 
 
 a projection about a combination that does not exist — this engine fully realised, in a body of the class Meta shipped with Muse. The regime table is reasoning and nothing in it is measured; one claim it originally made about drives was wrong and is corrected inline against `selection.scoring.ts`, which is the only part of this document with code behind it
 
-**2026-11-09 · DESIGNED** · [Record anchoring — tamper-evident decision records](RECORD_ANCHORING.md)
+**2026-11-09 · SHIPPED** · [Record anchoring — tamper-evident decision records](RECORD_ANCHORING.md)
 
-built, unreleased — designed 2026-07-08 and settled against the engine 2026-11-09; all four steps landed (the chain, digests, the `anchor()` hook, and `will verify` with replay from the chain); SHIPPED at the next release
+released in v0.11.0 · designed 2026-07-08 and settled against the engine 2026-11-09; all four steps landed (the chain, digests, the `anchor()` hook, and `will verify` with replay from the chain)
+
+**2026-11-09 · RELEASE v0.11.0** — *the mind is given the whole, and can prove what it did with it*
 

@@ -25,7 +25,7 @@ import { canonical, RECORD_CHAIN, RecordChain, type ChainEntry, type ChainHead }
 import { clearRecordTap, setRecordTap } from '#core/record.tap'
 import type { WillInstance } from '#stem/index'
 
-/** What is anchored: VLX's `WillDigest` shape, with the one chain's head. */
+/** What is anchored: the shape VLX takes a Will digest in, with the one chain's head. */
 export interface RecordDigest {
   readonly willId:      string
   /** The simulation tick: everything chained up to the end of this tick's step is covered. */

@@ -1,6 +1,6 @@
 # Record anchoring — tamper-evident decision records
 
-> **Standing:** STEPS 1–3 BUILT · 2026-11-09 (designed 2026-07-08). Upgrades the audit story from operator-trusted logs to tamper-evident records — no blockchain, no new dependency
+> **Standing:** DESIGNED · 2026-11-09 · partial — designed 2026-07-08 and settled against the engine 2026-11-09; steps 1–3 (the chain, digests, the `anchor()` hook) landed, unreleased; step 4 (the verify CLI and its replay check) open
 >
 > **2026-11-09:** the engine was read end to end against this sketch, and the
 > design below settles each open choice. **Steps 1–3 (the chain, digests, the
@@ -182,7 +182,7 @@ The contract's details:
 
 **4. Digests on the simulation tick.**
 - A digest is `{ willId, tick, streamHeads: { records: <head hash> }, meta: { chain: 'will-record/1', seq } }`,
-  VLX's `WillDigest` shape.
+  the shape VLX takes a Will digest in.
 - It is emitted after the step:
   - at the first tick, so a mind is anchored before its first act;
   - every `every` ticks;

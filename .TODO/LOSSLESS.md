@@ -528,8 +528,8 @@ each says so is the next look.
 - [x] **Each read file is its own percept**, exafferent, from who shared it, its
       text the percept's data — so P5a pages it (a header and a page in a call,
       any page by `[RECALL]`), working memory holds it and an episode keeps it.
-- [x] **The words carry a reference, not the file**: `[Ada shared spec.md
-      (text/markdown, 412 KB) — doc:…; a document I was handed, not something said
+- [x] **The words carry a reference, not the file**: `[Ada shared notes.txt
+      (text/plain, 412 KB) — doc:…; a document I was handed, not something said
       to me]`. Inlined, a document rode everywhere the words go — the focus, the
       thread digest, every "they answered" line, conversation memory. Done per
       message before a burst is folded into one turn, so each keeps its files.

@@ -16,6 +16,14 @@
 >
 > **Status: complete.** §1–§5, §7, and §8 shipped; §6 base extraction shipped with
 > cross-modal binding deferred until a second sense produces percepts (seam in place).
+>
+> **The deferral's condition has since been met (noted 2026-11-02).**
+> Somatosensation produces percepts — system signals and webhooks, from the
+> SIGNAL_BOUNDARY epoch — so the trigger this document set for itself has fired
+> and nobody revisited it. The chokepoint is still exactly where §6 left it, at
+> `BaseSenseEngine.publishPercept()`, which is where a binder would observe
+> percepts sharing a `sourceEntityId` across domains. This line exists so the
+> trigger is not left waiting unwatched.
 
 ---
 

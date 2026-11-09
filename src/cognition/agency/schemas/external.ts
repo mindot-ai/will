@@ -15,10 +15,18 @@
 // which is governed by AccessGrants + the ProactiveCommunicator; and any name
 // that shadows an innate stance (the innate floor already provides it).
 //
-// Scope (Phase 1): objectless schemas — the Will chooses the act and the host
-// resolves the target. Entity-bound external effectors (e.g. attack a specific
-// perceived entity) are a follow-up; the synthesizer currently binds a single
-// entity schema. See CUSTOM_EFFECTOR_WIRING_TODO.md.
+// Binding: a declaration chooses. `binds: 'none'` (the default) is objectless —
+// the Will chooses the act and the host resolves the target. `binds: 'entity'`
+// binds the schema against each perceived SENTIENT known-entity, `'object'`
+// against each non-sentient one, and the bound target reaches the host as
+// `ctx.targetEntityId`; the synthesizer matches schema binding to entity kind
+// and never crosses them.
+//
+// What is still open is FIELD WIDTH, not binding: objectless schemas land on the
+// always-offered floor, so a host declaring a large catalog emits every one of
+// them every tick — and an ability that cannot run with empty arguments is
+// offered anyway, chosen without them, and learned as a failure. See
+// .TODO/CUSTOM_ABILITY_WIRING.md (Phase 2+, "Field width").
 // ─────────────────────────────────────────────────────────────
 
 import type { MotorSchema, EffectorDeclaration } from '#agency/types'

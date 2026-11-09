@@ -373,7 +373,7 @@ manager.addTickListener(willId, (snap, tick, outbox, invocations) => {
 })
 ```
 
-The acked outcome returns as an `action.outcome` the ReafferenceEngine reconciles against what the Will expected, and feeds the agency learning loop — so the Will gets *better* at your effectors over time, and that learned competence travels in the PMA. (Today external effectors are objectless: the host resolves the target. Per-effector cost/preconditions and entity-targeting are on the roadmap.)
+The acked outcome returns as an `action.outcome` the ReafferenceEngine reconciles against what the Will expected, and feeds the agency learning loop — so the Will gets *better* at your effectors over time, and that learned competence travels in the PMA. (A declaration may be a bare name, or carry the ability's meaning and intrinsic priors — `description`, `cost`, `valence`, `preconditions` — plus `binds: 'entity' | 'object'` to target a specific perceived person or thing, and routing `tags`. See [the `WillConfig` reference](#willconfig-reference). Still objectless by default: omit `binds` and the host resolves the target.)
 
 ### Senses
 
@@ -382,7 +382,8 @@ External input reaches the Will through sense engines, not raw prompt injection.
 | Sense | Status |
 |---|---|
 | **Audition** (hearing — text + speech) | **active** — per-entity conversation facets, salience scoring, word-level streaming |
-| Vision · Somatosensation · Olfaction · Gustation | scaffolded — shell engines with a stable seam (cross-modal binding lands when a second sense produces percepts) |
+| **Somatosensation** (body + host signals) | **active** — transduces host system signals and webhooks into percepts with their payload carried whole (SIGNAL_BOUNDARY) |
+| Vision · Olfaction · Gustation | scaffolded — shell engines with a stable seam. Cross-modal binding was deferred until a second sense produced percepts; somatosensation now does, so that condition is met and the binder is the open work |
 
 Audition is the live conversational path: each external entity gets an isolated conversation facet, messages are scored for salience, and percepts flow onto the cognitive bus → attention → working memory → consolidation → vector recall. Replies stream back token-by-token via the outbox / transport.
 

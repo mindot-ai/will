@@ -1,5 +1,5 @@
-import { cc as SimulationContext, bW as SeededPRNG, ce as SimulationEntity, cH as Timestamp, cf as SimulationEvent, cr as StateManager, cF as Tick, ci as SimulationState, bO as RestoreOptions, cq as StateCommands, bz as ReasoningFootprint, bx as ReadonlySimulationState, J as ConflictReport, L as ConflictStrategy, K as ConflictResolution, bc as OutboundEnvelope, a as AckResult, ar as ExternalTransport, aB as InboundEnvelope, cO as TransportStatus, bt as PolicyDecision, a0 as DenialFinality, br as PolicyArbiter, bu as PolicyInvocation, cV as Verdict } from './will-C1w7__t1.js';
-export { A as AckEnvelope, b as ActionRequest, c as ActionResult, d as ActionSelector, e as ActivityEnvelope, f as ActivityEvent, g as ActivityEventHandler, h as AestheticEvaluator, i as AestheticEvaluatorConfig, j as AffectiveBlender, k as AffectiveBlenderConfig, l as AffordanceSynthesizer, m as AsyncEngine, n as AsyncEngineConfig, o as AttachmentEvaluator, p as AttachmentEvaluatorConfig, q as AttentionAllocator, r as AttentionAllocatorConfig, s as AuditionEngine, t as AutobiographicalNarrator, u as AutobiographicalNarratorConfig, B as BACKGROUND_DEMAND, v as BehavioralProbeResult, w as BiasDetector, x as BiasDetectorConfig, y as BunStorageAdapter, C as ChunkEnvelope, z as CircadianConfig, D as CircadianOscillator, E as ClockConfig, F as Cognition, G as CognitiveHealth, H as ConfidenceCalibrator, I as ConfidenceCalibratorConfig, M as Coordinates, N as CreateWillOptions, O as DefaultEventBus, P as DefaultMetricCollector, Q as DefaultOrchestrator, R as DefaultReplayRecorder, S as DefaultReplaySession, T as DefaultScenario, U as DefaultSerializer, V as DefaultSimulation, W as DefaultSimulationClock, X as DefaultStateManager, Y as DefaultVectorMemoryAdapter, Z as DeliberationEngine, _ as DeltaEncoder, $ as DeltaSnapshot, a1 as DreamSimulator, a2 as DreamSimulatorConfig, a3 as Duration, a4 as ESCALATION_DEMAND, a5 as EffectorDeclaration, a6 as EffectorEntry, a7 as EffectorHandler, a8 as EffectorResult, a9 as EffectorSpec, aa as EmbeddingProvider, ab as EmpathySimulator, ac as EmpathySimulatorConfig, ad as EnergyRegulator, ae as EnergyRegulatorConfig, af as EngineRegistry, ag as EngineResult, ah as Envelope, ai as EpisodicConsolidator, aj as EpisodicConsolidatorConfig, ak as EventBus, al as EventBusConfig, am as EventFilter, an as EventHandler, ao as EventPayload, ap as ExecutiveEngine, aq as ExecutiveEngineConfig, as as Exteroception, at as ExteroceptionConfig, au as ForgettingCurve, av as ForgettingCurveConfig, aw as FrustrationEvaluator, ax as FrustrationEvaluatorConfig, ay as GoalManager, az as GoalManagerConfig, aA as GustationEngine, aC as InboundMessageEnvelope, aD as InboundPerceptEnvelope, aE as InhibitionController, aF as InhibitionControllerConfig, aG as Interoception, aH as InteroceptionConfig, aI as IntrospectionEngine, aJ as IntrospectionEngineConfig, aK as KNOWN_PROVIDERS, aL as KnownEntityTracker, aM as KnownEntityTrackerConfig, aN as KnownProvider, aO as LLMCallMeta, aP as LLMCompletionRecord, aQ as LLMCompletionSink, aR as LLMProvider, aS as LLMWire, aT as LossEvaluator, aU as LossEvaluatorConfig, aV as MessageEnvelope, aW as MetricCollector, aX as MetricPoint, aY as MinimalContext, aZ as MockEmbedder, a_ as ModelPrice, a$ as ModelRoute, b0 as ModelRouter, b1 as MoralEvaluator, b2 as MoralEvaluatorConfig, b3 as MotorSchemaExecutor, b4 as NULL_ARBITER, b5 as NULL_ROUTER, b6 as NoveltyDetector, b7 as NoveltyDetectorConfig, b8 as OlfactionEngine, b9 as OpenAICompatibleEmbedder, ba as Orchestrator, bb as OrchestratorConfig, bd as OutboxMessage, be as PMABehavioral, bf as PMABelief, bg as PMAEmotionalBaseline, bh as PMAEvalHarness, bi as PMAGoal, bj as PMAIdentity, bk as PMAProbe, bl as PMASnapshot, bm as PerceptEnvelope, bn as PersonaConsolidator, bo as PersonaConsolidatorConfig, bp as PlanningEngine, bq as PlanningEngineConfig, bs as PolicyCounterfactual, bv as PriceTable, bw as ProviderCredential, by as ReafferenceEngine, bA as ReconstructionFidelityReport, bB as ReconstructionFidelityScores, bC as RecordUsageInput, bD as ReplayComparison, bE as ReplayConfig, bF as ReplayDifference, bG as ReplayManager, bH as ReplayMetadata, bI as ReplayRecord, bJ as ReplayRecorder, bK as ReplaySession, bL as ReplyEnvelope, bM as ReputationTracker, bN as ReputationTrackerConfig, bP as RewardEvaluator, bQ as RewardEvaluatorConfig, bR as RoutingRule, bS as Scenario, bT as ScenarioConfig, bU as ScenarioValidationResult, bV as SchemaPrecondition, bX as SelfModelUpdater, bY as SelfModelUpdaterConfig, bZ as SemanticIntegrator, b_ as SemanticIntegratorConfig, b$ as SensoryInput, c0 as SensorySignal, c1 as SerializationConfig, c2 as SerializationFormat, c3 as SerializedEntity, c4 as SerializedState, c5 as Serializer, c6 as SessionLogEnvelope, c7 as SharedFile, c8 as SignalProvenance, c9 as Simulation, ca as SimulationClock, cb as SimulationConfig, cd as SimulationEngine, cg as SimulationEventBase, ch as SimulationEventListener, cj as SleepPressureConfig, ck as SleepPressureRegulator, cl as SocialPerception, cm as SocialPerceptionConfig, cn as SomatosensationEngine, co as SpacedRepetition, cp as SpacedRepetitionConfig, cs as StateSnapshot, ct as Stimulus, cu as StorageAdapter, cv as StressRegulator, cw as StressRegulatorConfig, cx as TableRouter, cy as TaskSwitcher, cz as TaskSwitcherConfig, cA as TextMessage, cB as TheoryOfMind, cC as TheoryOfMindConfig, cD as ThreatEvaluator, cE as ThreatEvaluatorConfig, cG as TickListener, cI as TokenLedgerRecord, cJ as TokenReportEnvelope, cK as TokenTracker, cL as TokenTrackerConfig, cM as TokenUsage, cN as Transduced, cP as VectorIndex, cQ as VectorMemoryAdapter, cR as VectorMemoryConfig, cS as VectorQueryFilter, cT as VectorQueryResult, cU as VectorRecord, cW as VisionEngine, cX as VoiceChunk, cY as Will, cZ as WillAffect, c_ as WillConfig, c$ as WillEffectorAct, d0 as WillInstance, d1 as WillMessage, d2 as WillStateSummary, d3 as WillStatus, d4 as WillStem, d5 as WillSummary, d6 as WorkingMemory, d7 as WorkingMemoryConfig, d8 as WorldEntity, d9 as WorldInterface, da as asFinality, db as asProvenance, dc as assembleMind, dd as chainRouters, de as clearCompletionRecorder, df as defaultBaseFor, dg as effectorInvocation, dh as effectorInvocationEnvelope, di as finalityOf, dj as getCompletionRecorder, dk as isNullArbiter, dl as isNullRouter, dm as knownWireFor, dn as resolvePricing, dp as setCompletionRecorder } from './will-C1w7__t1.js';
+import { cl as SimulationContext, c3 as SeededPRNG, cn as SimulationEntity, cQ as Timestamp, co as SimulationEvent, cA as StateManager, cO as Tick, cr as SimulationState, bX as RestoreOptions, cz as StateCommands, bF as ReasoningFootprint, bD as ReadonlySimulationState, N as ConflictReport, P as ConflictStrategy, O as ConflictResolution, bh as OutboundEnvelope, a as AckResult, av as ExternalTransport, aG as InboundEnvelope, cX as TransportStatus, E as ChainVerification, D as ChainHead, C as ChainEntry, bJ as RecordDigest, m as AnchoringOptions, by as PolicyDecision, a4 as DenialFinality, bw as PolicyArbiter, bz as PolicyInvocation, d2 as Verdict } from './will-C9Ege0jp.js';
+export { A as AckEnvelope, b as ActionRequest, c as ActionResult, d as ActionSelector, e as ActivityEnvelope, f as ActivityEvent, g as ActivityEventHandler, h as AestheticEvaluator, i as AestheticEvaluatorConfig, j as AffectiveBlender, k as AffectiveBlenderConfig, l as AffordanceSynthesizer, n as AsyncEngine, o as AsyncEngineConfig, p as AttachmentEvaluator, q as AttachmentEvaluatorConfig, r as AttentionAllocator, s as AttentionAllocatorConfig, t as AuditionEngine, u as AutobiographicalNarrator, v as AutobiographicalNarratorConfig, B as BACKGROUND_DEMAND, w as BehavioralProbeResult, x as BiasDetector, y as BiasDetectorConfig, z as BunStorageAdapter, F as ChunkEnvelope, G as CircadianConfig, H as CircadianOscillator, I as ClockConfig, J as Cognition, K as CognitiveHealth, L as ConfidenceCalibrator, M as ConfidenceCalibratorConfig, Q as Coordinates, R as CreateWillOptions, S as DefaultEventBus, T as DefaultMetricCollector, U as DefaultOrchestrator, V as DefaultReplayRecorder, W as DefaultReplaySession, X as DefaultScenario, Y as DefaultSerializer, Z as DefaultSimulation, _ as DefaultSimulationClock, $ as DefaultStateManager, a0 as DefaultVectorMemoryAdapter, a1 as DeliberationEngine, a2 as DeltaEncoder, a3 as DeltaSnapshot, a5 as DreamSimulator, a6 as DreamSimulatorConfig, a7 as Duration, a8 as ESCALATION_DEMAND, a9 as EffectorDeclaration, aa as EffectorEntry, ab as EffectorHandler, ac as EffectorResult, ad as EffectorSpec, ae as EmbeddingProvider, af as EmpathySimulator, ag as EmpathySimulatorConfig, ah as EnergyRegulator, ai as EnergyRegulatorConfig, aj as EngineRegistry, ak as EngineResult, al as Envelope, am as EpisodicConsolidator, an as EpisodicConsolidatorConfig, ao as EventBus, ap as EventBusConfig, aq as EventFilter, ar as EventHandler, as as EventPayload, at as ExecutiveEngine, au as ExecutiveEngineConfig, aw as Exteroception, ax as ExteroceptionConfig, ay as ForgettingCurve, az as ForgettingCurveConfig, aA as FrustrationEvaluator, aB as FrustrationEvaluatorConfig, aC as GENESIS_HASH, aD as GoalManager, aE as GoalManagerConfig, aF as GustationEngine, aH as InboundMessageEnvelope, aI as InboundPerceptEnvelope, aJ as InhibitionController, aK as InhibitionControllerConfig, aL as Interoception, aM as InteroceptionConfig, aN as IntrospectionEngine, aO as IntrospectionEngineConfig, aP as KNOWN_PROVIDERS, aQ as KnownEntityTracker, aR as KnownEntityTrackerConfig, aS as KnownProvider, aT as LLMCallMeta, aU as LLMCompletionRecord, aV as LLMCompletionSink, aW as LLMProvider, aX as LLMWire, aY as LossEvaluator, aZ as LossEvaluatorConfig, a_ as MessageEnvelope, a$ as MetricCollector, b0 as MetricPoint, b1 as MinimalContext, b2 as MockEmbedder, b3 as ModelPrice, b4 as ModelRoute, b5 as ModelRouter, b6 as MoralEvaluator, b7 as MoralEvaluatorConfig, b8 as MotorSchemaExecutor, b9 as NULL_ARBITER, ba as NULL_ROUTER, bb as NoveltyDetector, bc as NoveltyDetectorConfig, bd as OlfactionEngine, be as OpenAICompatibleEmbedder, bf as Orchestrator, bg as OrchestratorConfig, bi as OutboxMessage, bj as PMABehavioral, bk as PMABelief, bl as PMAEmotionalBaseline, bm as PMAEvalHarness, bn as PMAGoal, bo as PMAIdentity, bp as PMAProbe, bq as PMASnapshot, br as PerceptEnvelope, bs as PersonaConsolidator, bt as PersonaConsolidatorConfig, bu as PlanningEngine, bv as PlanningEngineConfig, bx as PolicyCounterfactual, bA as PriceTable, bB as ProviderCredential, bC as RECORD_CHAIN, bE as ReafferenceEngine, bG as ReconstructionFidelityReport, bH as ReconstructionFidelityScores, bI as RecordChain, bK as RecordStream, bL as RecordUsageInput, bM as ReplayComparison, bN as ReplayConfig, bO as ReplayDifference, bP as ReplayManager, bQ as ReplayMetadata, bR as ReplayRecord, bS as ReplayRecorder, bT as ReplaySession, bU as ReplyEnvelope, bV as ReputationTracker, bW as ReputationTrackerConfig, bY as RewardEvaluator, bZ as RewardEvaluatorConfig, b_ as RoutingRule, b$ as Scenario, c0 as ScenarioConfig, c1 as ScenarioValidationResult, c2 as SchemaPrecondition, c4 as SelfModelUpdater, c5 as SelfModelUpdaterConfig, c6 as SemanticIntegrator, c7 as SemanticIntegratorConfig, c8 as SensoryInput, c9 as SensorySignal, ca as SerializationConfig, cb as SerializationFormat, cc as SerializedEntity, cd as SerializedState, ce as Serializer, cf as SessionLogEnvelope, cg as SharedFile, ch as SignalProvenance, ci as Simulation, cj as SimulationClock, ck as SimulationConfig, cm as SimulationEngine, cp as SimulationEventBase, cq as SimulationEventListener, cs as SleepPressureConfig, ct as SleepPressureRegulator, cu as SocialPerception, cv as SocialPerceptionConfig, cw as SomatosensationEngine, cx as SpacedRepetition, cy as SpacedRepetitionConfig, cB as StateSnapshot, cC as Stimulus, cD as StorageAdapter, cE as StressRegulator, cF as StressRegulatorConfig, cG as TableRouter, cH as TaskSwitcher, cI as TaskSwitcherConfig, cJ as TextMessage, cK as TheoryOfMind, cL as TheoryOfMindConfig, cM as ThreatEvaluator, cN as ThreatEvaluatorConfig, cP as TickListener, cR as TokenLedgerRecord, cS as TokenReportEnvelope, cT as TokenTracker, cU as TokenTrackerConfig, cV as TokenUsage, cW as Transduced, cY as VectorIndex, cZ as VectorMemoryAdapter, c_ as VectorMemoryConfig, c$ as VectorQueryFilter, d0 as VectorQueryResult, d1 as VectorRecord, d3 as VisionEngine, d4 as VoiceChunk, d5 as Will, d6 as WillAffect, d7 as WillConfig, d8 as WillEffectorAct, d9 as WillInstance, da as WillMessage, db as WillStateSummary, dc as WillStatus, dd as WillStem, de as WillSummary, df as WorkingMemory, dg as WorkingMemoryConfig, dh as WorldEntity, di as WorldInterface, dj as asFinality, dk as asProvenance, dl as assembleMind, dm as canonical, dn as chainRouters, dp as clearCompletionRecorder, dq as defaultBaseFor, dr as effectorInvocation, ds as effectorInvocationEnvelope, dt as finalityOf, du as getCompletionRecorder, dv as isNullArbiter, dw as isNullRouter, dx as knownWireFor, dy as recordHash, dz as resolvePricing, dA as setCompletionRecorder, dB as verifyChain } from './will-C9Ege0jp.js';
 
 /**
  * Creates a Mulberry32 PRNG from the given seed.
@@ -416,6 +416,98 @@ declare function fileLoggingEnabled(): boolean;
  */
 declare const OUTBOX_TTL_TICKS: number;
 
+/** A digest as `anchor()` was handed it, with the signature if one was made. */
+interface AnchoredDigest {
+    readonly digest: {
+        readonly willId: string;
+        readonly tick: number;
+        readonly streamHeads: {
+            readonly records: string;
+        };
+        readonly meta: {
+            readonly chain: string;
+            readonly seq: number;
+        };
+    };
+    readonly signature?: string;
+}
+interface DigestCheck {
+    readonly tick: number;
+    readonly seq: number;
+    readonly ok: boolean;
+    readonly reason?: string;
+}
+interface RecordsReport {
+    /** The chain verified and every digest checked. */
+    readonly ok: boolean;
+    readonly entries: number;
+    readonly chain: ChainVerification;
+    readonly digests: readonly DigestCheck[];
+    /** The last entry a good digest covers; `null` when none does. */
+    readonly anchoredThrough: number | null;
+    /** Entries after it: what could still be rewritten without detection. */
+    readonly unanchored: number;
+}
+interface VerifyOptions {
+    /** Where a continued chain's records begin: the head before the first one kept. */
+    readonly from?: ChainHead;
+    readonly digests?: readonly AnchoredDigest[];
+    /**
+     * Checks a signature over `canonical(digest)`. When given, every digest must
+     * carry one that it accepts.
+     */
+    readonly verify?: (material: string, signature: string) => boolean;
+}
+declare function verifyRecords(entries: readonly ChainEntry[], opts?: VerifyOptions): RecordsReport;
+
+/** One JSON value per non-empty line. */
+declare function readJsonLines<T>(path: string): T[];
+interface FileAnchoringOptions {
+    readonly every: number;
+    readonly sign?: (material: string) => string;
+    /** Also publish each digest somewhere the operator cannot rewrite. Not awaited. */
+    readonly publish?: (digest: RecordDigest, signature?: string) => void | Promise<void>;
+}
+declare function fileAnchoring(dir: string, opts: FileAnchoringOptions): AnchoringOptions;
+/** Sign `canonical(digest)` with an Ed25519 private key (PEM). Base64 out. */
+declare function ed25519Signer(privateKeyPem: string): (material: string) => string;
+/** Check a base64 signature with an Ed25519 public key (PEM). */
+declare function ed25519Verifier(publicKeyPem: string): (material: string, signature: string) => boolean;
+
+interface ReplayDivergence {
+    readonly seq: number;
+    readonly reason: string;
+    readonly expected?: unknown;
+    readonly produced?: unknown;
+}
+interface ReplayReport {
+    /** Every entry of the original was reproduced. */
+    readonly reproduced: boolean;
+    /** The last entry reproduced. */
+    readonly through: number;
+    /** The original's last entry. */
+    readonly last: number;
+    readonly divergence?: ReplayDivergence;
+    /** Outputs whose record was shredded: compared by stream and tick only. */
+    readonly shredded: number;
+    /** Why the chain could not be replayed at all. */
+    readonly refused?: string;
+}
+interface ReplayOptions {
+    /** Longest a tick may run before the replay is called stalled. Default 30 s. */
+    readonly stallMs?: number;
+    /** Keep the engine's own logging. Off by default: a replay is a check, not a run. */
+    readonly verbose?: boolean;
+}
+/**
+ * Re-execute the mind whose chain `entries` is, and report the first place it
+ * does not reproduce. `entries` begins at a genesis: a chain's first entry, or
+ * the entry a woken Will continued it with. A chain a mind continued across
+ * processes holds one genesis per process; each is replayed from its own, in
+ * order, since each was a mind raised afresh from its starting state.
+ */
+declare function replayChain(entries: readonly ChainEntry[], opts?: ReplayOptions): Promise<ReplayReport>;
+
 interface WorldProfile {
     id: string;
     name: string;
@@ -480,4 +572,4 @@ declare class RuleTableArbiter implements PolicyArbiter {
     evaluate(invocation: PolicyInvocation): Verdict;
 }
 
-export { type AckPolicy, AckResult, ConflictDetector, ConflictReport, ConflictResolution, ConflictStrategy, ConsistentHashRouter, ConsoleLogger, type CrossShardQuery, type CrossShardResult, type CrossShardTransport, DefaultPartitionRouter, type DeliveryGuarantee, DenialFinality, type DistributedEvent, type DistributedNode, type DistributedNodeConfig, DistributedOrchestrator, DistributedStateManager, ExternalTransport, InboundEnvelope, LocalTransport, type Logger, LoopbackTransport, OUTBOX_TTL_TICKS, OutboundEnvelope, type OutboundListener, type ParamConstraint, type PartitionRouter, PolicyArbiter, PolicyDecision, PolicyInvocation, type PolicyRule, ReasoningFootprint, RestoreOptions, RuleTableArbiter, type RuleTableOptions, type ShardConfig, type ShardStrategy, SilentLogger, SimulationContext, SimulationEntity, SimulationEvent, SimulationState, SocketIoTransport, type SocketIoTransportOptions, type SocketLike, StateManager, type StreamChannel, StreamTransport, Tick, Timestamp, TransportStatus, Verdict, type WorldProfile, createContext, createPRNG, fileLoggingEnabled, getLogger, listProfiles, logger, resetLogger, resolveProfile, setLogger };
+export { type AckPolicy, AckResult, type AnchoredDigest, AnchoringOptions, ChainEntry, ChainHead, ChainVerification, ConflictDetector, ConflictReport, ConflictResolution, ConflictStrategy, ConsistentHashRouter, ConsoleLogger, type CrossShardQuery, type CrossShardResult, type CrossShardTransport, DefaultPartitionRouter, type DeliveryGuarantee, DenialFinality, type DigestCheck, type DistributedEvent, type DistributedNode, type DistributedNodeConfig, DistributedOrchestrator, DistributedStateManager, ExternalTransport, type FileAnchoringOptions, InboundEnvelope, LocalTransport, type Logger, LoopbackTransport, OUTBOX_TTL_TICKS, OutboundEnvelope, type OutboundListener, type ParamConstraint, type PartitionRouter, PolicyArbiter, PolicyDecision, PolicyInvocation, type PolicyRule, ReasoningFootprint, RecordDigest, type RecordsReport, type ReplayDivergence, type ReplayOptions, type ReplayReport, RestoreOptions, RuleTableArbiter, type RuleTableOptions, type ShardConfig, type ShardStrategy, SilentLogger, SimulationContext, SimulationEntity, SimulationEvent, SimulationState, SocketIoTransport, type SocketIoTransportOptions, type SocketLike, StateManager, type StreamChannel, StreamTransport, Tick, Timestamp, TransportStatus, Verdict, type VerifyOptions, type WorldProfile, createContext, createPRNG, ed25519Signer, ed25519Verifier, fileAnchoring, fileLoggingEnabled, getLogger, listProfiles, logger, readJsonLines, replayChain, resetLogger, resolveProfile, setLogger, verifyRecords };

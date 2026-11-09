@@ -1,5 +1,7 @@
-import { mkdirSync, appendFileSync, writeFileSync, existsSync, readFileSync, readdirSync, createWriteStream } from 'fs';
+import { mkdirSync, appendFileSync, existsSync, readFileSync, mkdtempSync, rmSync, writeFileSync, readdirSync, createWriteStream } from 'fs';
 import { join } from 'path';
+import { createPrivateKey, sign, createPublicKey, verify, createHash } from 'crypto';
+import { tmpdir } from 'os';
 
 // src/core/wall.clock.ts
 function wallClock() {
@@ -19,6 +21,8 @@ var DefaultSimulationClock = class {
   // Anchors for accurate now() under dynamic multiplier
   _startWallMs;
   _startSimMs;
+  _onStep = null;
+  _stepSource = null;
   constructor(config = {}) {
     this._now = config.startTime ?? wallClock();
     this._tick = config.startTick ?? 0;
@@ -29,11 +33,20 @@ var DefaultSimulationClock = class {
     this._startSimMs = this._now;
   }
   // ── Getters ─────────────────────────────────────────────
+  /**
+   * The sim time of the current tick. It moves only when the clock steps, in
+   * either mode: between ticks it holds still. Read continuously, a wall-mode
+   * clock handed whatever ran between ticks — an LLM answer landing, a sense
+   * turn — a time no record carried, so no replay could hand it back
+   * (RECORD_ANCHORING step 4). Fixed mode always held still (R2).
+   */
   get now() {
-    if (this._fixedDeltaMs !== null) return this._now;
+    return this._now;
+  }
+  /** Where wall time has carried sim time to, read now. Wall mode only. */
+  _wallNow() {
     if (!this._isRunning) return this._now;
-    const wallElapsed = wallClock() - this._startWallMs;
-    return this._startSimMs + wallElapsed * this._timeScale;
+    return this._startSimMs + (wallClock() - this._startWallMs) * this._timeScale;
   }
   get currentTick() {
     return this._tick;
@@ -54,17 +67,28 @@ var DefaultSimulationClock = class {
    */
   tick() {
     if (!this._isRunning) return;
-    if (this._fixedDeltaMs !== null) {
+    if (this._stepSource) {
+      const step = this._stepSource();
+      this._delta = step.delta;
+      this._now = step.now;
+      this._lastTick = wallClock();
+    } else if (this._fixedDeltaMs !== null) {
       this._delta = this._fixedDeltaMs * this._timeScale;
       this._now += this._delta;
-      this._tick += 1;
-      return;
+    } else {
+      const realNow = wallClock();
+      this._delta = (realNow - this._lastTick) * this._timeScale;
+      this._now = this._wallNow();
+      this._lastTick = realNow;
     }
-    const realNow = wallClock(), realDelta = realNow - this._lastTick, scaledDelta = realDelta * this._timeScale;
-    this._delta = scaledDelta;
-    this._now = this.now;
     this._tick += 1;
-    this._lastTick = realNow;
+    this._onStep?.({ now: this._now, delta: this._delta }, this._tick);
+  }
+  onStep(listener) {
+    this._onStep = listener;
+  }
+  setStepSource(source) {
+    this._stepSource = source;
   }
   // ── Lifecycle ───────────────────────────────────────────
   pause() {
@@ -106,7 +130,7 @@ var DefaultSimulationClock = class {
   setMultiplier(newMultiplier) {
     if (newMultiplier <= 0)
       throw new Error("Multiplier must be positive");
-    const simNow = this.now;
+    const simNow = this._fixedDeltaMs !== null ? this._now : this._wallNow();
     this._startSimMs = simNow;
     this._startWallMs = wallClock();
     this._timeScale = newMultiplier;
@@ -1080,8 +1104,8 @@ var BunStorageAdapter = class {
     await rm(path, { force: true });
   }
   async ensureDir(path) {
-    const { mkdirSync: mkdirSync6 } = await import('fs');
-    mkdirSync6(path, { recursive: true });
+    const { mkdirSync: mkdirSync7 } = await import('fs');
+    mkdirSync7(path, { recursive: true });
   }
 };
 
@@ -2439,6 +2463,12 @@ function getCompletionRecorder(willId) {
   return _sinks.get(willId);
 }
 var _sources = /* @__PURE__ */ new Map();
+function setCompletionSource(willId, source) {
+  _sources.set(willId, source);
+}
+function clearCompletionSource(willId) {
+  _sources.delete(willId);
+}
 function getCompletionSource(willId) {
   return _sources.get(willId);
 }
@@ -2900,7 +2930,7 @@ var TokenTracker = class {
     this._emitCostEvents = config.emitCostEvents ?? true;
     this._costWarningThreshold = config.costWarningThresholdUsd ?? 0.05;
     this._prices = config.prices;
-    this._ledgerPath = config.writeLedger && config.willId ? `./data/wills/${config.willId}/debug/token-report.jsonl` : null;
+    this._ledgerPath = config.ledgerDir ? `${config.ledgerDir}/token-report.jsonl` : null;
   }
   // ── Public API: record usage ──────────────────────────────
   /**
@@ -5980,7 +6010,7 @@ function handlesOf(entities, referentId) {
 }
 function addressesOf(entities, referentId) {
   const aliases = readAliases(entities);
-  return [...aliases.entries()].filter(([, canonical]) => canonical === referentId).map(([alias]) => alias).sort();
+  return [...aliases.entries()].filter(([, canonical2]) => canonical2 === referentId).map(([alias]) => alias).sort();
 }
 function defaultHandle(handles) {
   if (handles.length === 0) return void 0;
@@ -8428,6 +8458,30 @@ var WorkingMemory = class {
   }
 };
 
+// src/core/record.tap.ts
+var _taps = /* @__PURE__ */ new Map();
+function setRecordTap(willId, tap) {
+  _taps.set(willId, tap);
+}
+function clearRecordTap(willId) {
+  _taps.delete(willId);
+}
+function getRecordTap(willId) {
+  return _taps.get(willId);
+}
+
+// src/core/recall.source.ts
+var _sources2 = /* @__PURE__ */ new Map();
+function setRecallSource(willId, source) {
+  _sources2.set(willId, source);
+}
+function clearRecallSource(willId) {
+  _sources2.delete(willId);
+}
+function getRecallSource(willId) {
+  return _sources2.get(willId);
+}
+
 // src/cognition/faculties/episodic.consolidator.ts
 function sourceIdentity(id) {
   return id;
@@ -8470,6 +8524,8 @@ var EpisodicConsolidator = class {
   }
   _embedder = null;
   _autoIndex;
+  /** Whose recalls these are: the record chain and a replay's source are keyed by it. */
+  _willId;
   _model = new GenerativeModel();
   constructor(config = {}) {
     this._bus = config.bus ?? null;
@@ -8478,6 +8534,7 @@ var EpisodicConsolidator = class {
     this._vectorMemory = config.vectorMemory ?? null;
     this._embedder = config.embedder ?? null;
     this._autoIndex = config.autoIndex ?? true;
+    this._willId = config.willId ?? null;
   }
   attachBus(bus) {
     this._bus = bus;
@@ -8660,6 +8717,47 @@ var EpisodicConsolidator = class {
    * Other metadata narrowing (sourceType / tags) remains the caller's job on the
    * returned episodes (which carry all metadata).
    */
+  /**
+   * Search, and chain what came back where it came back (RECORD_ANCHORING step 4).
+   * `null` when the recall timed out. In a replay the recorded answer is handed
+   * back instead, at its place in the chain, and chained again as recorded.
+   */
+  async _recall(query, limit, minSimilarity) {
+    const tap = this._willId ? getRecordTap(this._willId) : void 0;
+    const source = this._willId ? getRecallSource(this._willId) : void 0;
+    const chain = (record) => {
+      try {
+        tap?.("recall", record);
+      } catch {
+      }
+    };
+    if (source) {
+      const record = await source.nextRecall(query);
+      chain(record);
+      return record.timedOut ? null : record.hits;
+    }
+    const timeoutMs = parseInt(process.env.WILL_RECALL_TIMEOUT_MS ?? "5000");
+    let timer;
+    const timedOut = /* @__PURE__ */ Symbol("recall-timeout");
+    const results = await Promise.race([
+      this._vectorMemory.search(query, { maxResults: limit, minSimilarity }).catch((err) => {
+        logger.warn(`[EpisodicConsolidator] recall search failed \u2014 ${err instanceof Error ? err.message : String(err)}`);
+        return [];
+      }),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(timedOut), timeoutMs);
+      })
+    ]).finally(() => clearTimeout(timer));
+    const base = { query, limit, ...minSimilarity !== void 0 ? { minSimilarity } : {} };
+    if (results === timedOut) {
+      logger.warn(`[EpisodicConsolidator] semanticQuery timed out after ${timeoutMs}ms \u2014 returning no recall (embedder slow/unreachable?)`);
+      chain({ ...base, hits: [], timedOut: true });
+      return null;
+    }
+    const hits = results.map((r) => ({ episodeId: r.episodeId, similarity: r.similarity, ...r.page ? { page: r.page } : {} }));
+    chain({ ...base, hits });
+    return hits;
+  }
   /** Await any background indexing still in flight. Shutdown and tests only. */
   async flushIndexing() {
     while (this._indexing.size > 0) await Promise.all(this._indexing);
@@ -8673,25 +8771,8 @@ var EpisodicConsolidator = class {
     const bias = filters?.affectiveBias;
     const useAffect = !!bias && bias.weight > 0;
     const fetch2 = useAffect ? Math.min(limit * 3, 50) : limit;
-    const timeoutMs = parseInt(process.env.WILL_RECALL_TIMEOUT_MS ?? "5000");
-    let timer;
-    const timedOut = /* @__PURE__ */ Symbol("recall-timeout");
-    const results = await Promise.race([
-      this._vectorMemory.search(query, {
-        maxResults: fetch2,
-        minSimilarity: filters?.minSimilarity
-      }).catch((err) => {
-        logger.warn(`[EpisodicConsolidator] recall search failed \u2014 ${err instanceof Error ? err.message : String(err)}`);
-        return [];
-      }),
-      new Promise((resolve) => {
-        timer = setTimeout(() => resolve(timedOut), timeoutMs);
-      })
-    ]).finally(() => clearTimeout(timer));
-    if (results === timedOut) {
-      logger.warn(`[EpisodicConsolidator] semanticQuery timed out after ${timeoutMs}ms \u2014 returning no recall (embedder slow/unreachable?)`);
-      return [];
-    }
+    const results = await this._recall(query, fetch2, filters?.minSimilarity);
+    if (results === null) return [];
     const resolved = [];
     for (const r of results) {
       const episode = this._storeMap.get(r.episodeId);
@@ -13953,6 +14034,17 @@ function stopped(reason, ceiling) {
   if (!reason) return {};
   return reason === ceiling ? { stopReason: reason, truncated: true } : { stopReason: reason };
 }
+function resultOf(r) {
+  return {
+    text: r.text,
+    inputTok: r.inputTok,
+    outputTok: r.outputTok,
+    ...r.stopReason !== void 0 ? { stopReason: r.stopReason } : {},
+    ...r.truncated !== void 0 ? { truncated: r.truncated } : {},
+    ...r.cacheReadTok !== void 0 ? { cacheReadTok: r.cacheReadTok } : {},
+    ...r.cacheWriteTok !== void 0 ? { cacheWriteTok: r.cacheWriteTok } : {}
+  };
+}
 function foldStreamUsage(acc, u) {
   if (u.input_tokens) acc.inputTok = u.input_tokens;
   if (u.output_tokens) acc.outputTok = u.output_tokens;
@@ -13995,6 +14087,7 @@ var LLMDirector = class {
   _mock;
   _baseUrl;
   _timeoutMs;
+  _debugDir;
   _tokenTracker;
   _router;
   _credentials;
@@ -14014,6 +14107,7 @@ var LLMDirector = class {
     this._mock = config.mock ?? false;
     this._baseUrl = config.baseUrl ?? null;
     this._timeoutMs = config.timeoutMs ?? 9e4;
+    this._debugDir = config.debugDir ?? null;
     this._tokenTracker = config.tokenTracker ?? null;
     this._router = config.router ?? null;
     this._credentials = config.credentials ?? {};
@@ -14159,8 +14253,10 @@ var LLMDirector = class {
     const start = Date.now();
     const replay = this._replayCompletion(systemPrompt, userMessage, tick);
     if (replay) {
-      if (!replay.mock) onChunk(replay.text);
-      return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok };
+      const answer = this._answerFromTape(replay, meta3, systemPrompt, userMessage);
+      const record = answer instanceof Promise ? await answer : answer;
+      if (!record.mock) onChunk(record.text);
+      return resultOf(record);
     }
     const ep = this._resolveEndpoint(meta3);
     if (this._mock) {
@@ -14168,11 +14264,11 @@ var LLMDirector = class {
       this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - start, true, ep);
       return result2;
     }
-    const result = ep.wire === "anthropic" ? await this._callAnthropicStream(ep, systemPrompt, userMessage, onChunk, temperature) : await (async () => {
+    const result = await this._chainingFailure(systemPrompt, userMessage, tick, start, ep, () => ep.wire === "anthropic" ? this._callAnthropicStream(ep, systemPrompt, userMessage, onChunk, temperature) : (async () => {
       const r = await this._callProvider(ep, systemPrompt, userMessage, temperature);
       onChunk(r.text);
       return r;
-    })();
+    })());
     this._track(result, meta3, tick, Date.now() - start, this._estPromptTokens(systemPrompt, userMessage), ep);
     this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - start, false, ep);
     return result;
@@ -14226,26 +14322,99 @@ var LLMDirector = class {
    * prerequisite for deterministic re-execution (REORIENT R2, deferred).
    */
   _recordCompletion(systemPrompt, userMessage, tick, result, latencyMs, mock, ep = this._defaultEndpoint) {
+    const sink = getCompletionRecorder(this._willId);
+    const tap = getRecordTap(this._willId);
+    if (!sink && !tap) return;
+    const record = {
+      tick,
+      willId: this._willId,
+      // Record the endpoint that actually served the call: the tape is what
+      // replay re-feeds, so it must say which model produced this text.
+      provider: ep.provider,
+      model: ep.model,
+      maxOutputTokens: ep.maxOutputTokens,
+      systemPrompt,
+      userMessage,
+      text: result.text,
+      inputTok: result.inputTok,
+      outputTok: result.outputTok,
+      ...result.stopReason !== void 0 ? { stopReason: result.stopReason } : {},
+      ...result.truncated !== void 0 ? { truncated: result.truncated } : {},
+      ...result.cacheReadTok !== void 0 ? { cacheReadTok: result.cacheReadTok } : {},
+      ...result.cacheWriteTok !== void 0 ? { cacheWriteTok: result.cacheWriteTok } : {},
+      mock,
+      latencyMs,
+      timestamp: Date.now()
+    };
     try {
-      getCompletionRecorder(this._willId)?.recordCompletion({
-        tick,
-        willId: this._willId,
-        // Record the endpoint that actually served the call: the tape is what
-        // replay re-feeds, so it must say which model produced this text.
-        provider: ep.provider,
-        model: ep.model,
-        maxOutputTokens: ep.maxOutputTokens,
-        systemPrompt,
-        userMessage,
-        text: result.text,
-        inputTok: result.inputTok,
-        outputTok: result.outputTok,
-        mock,
-        latencyMs,
-        timestamp: Date.now()
-      });
+      sink?.recordCompletion(record);
     } catch {
     }
+    try {
+      tap?.("completions", record);
+    } catch {
+    }
+  }
+  /**
+   * A live call whose failure is chained like an answer: the caller sees a
+   * rejection, and a replay must hand it the same one at the same place
+   * (RECORD_ANCHORING step 4). Only the record chain takes it — the replay
+   * tape's sources have always treated a missing answer as the miss.
+   */
+  async _chainingFailure(systemPrompt, userMessage, tick, start, ep, call) {
+    try {
+      return await call();
+    } catch (err) {
+      const tap = getRecordTap(this._willId);
+      if (tap) {
+        const record = {
+          tick,
+          willId: this._willId,
+          provider: ep.provider,
+          model: ep.model,
+          maxOutputTokens: ep.maxOutputTokens,
+          systemPrompt,
+          userMessage,
+          text: "",
+          inputTok: 0,
+          outputTok: 0,
+          mock: false,
+          latencyMs: Date.now() - start,
+          timestamp: Date.now(),
+          error: err instanceof Error ? err.message : String(err)
+        };
+        try {
+          tap("completions", record);
+        } catch {
+        }
+      }
+      throw err;
+    }
+  }
+  /**
+   * A recorded answer, when the replay hands it over. In a replay from the
+   * record chain it is chained again exactly as recorded, so the replay's
+   * completion entries match hash for hash; a recorded failure is thrown.
+   * One handed over at once is chained at once — a mock answer was chained
+   * inside the call, before anything after it ran.
+   */
+  _answerFromTape(replay, meta3, systemPrompt, userMessage) {
+    const take = (record) => {
+      try {
+        getRecordTap(this._willId)?.("completions", record);
+      } catch {
+      }
+      if (record.error !== void 0) throw new Error(record.error);
+      if (!record.mock && this._tokenTracker)
+        this._track(resultOf(record), meta3, record.tick, record.latencyMs, this._estPromptTokens(systemPrompt, userMessage), {
+          ...this._defaultEndpoint,
+          provider: record.provider,
+          model: record.model,
+          maxOutputTokens: record.maxOutputTokens
+        });
+      return record;
+    };
+    return replay instanceof Promise ? replay.then(take) : take(replay);
   }
   /**
    * Replay re-feed (REORIENT R2-c). When a completion source is registered for
@@ -14344,22 +14513,25 @@ var LLMDirector = class {
   async call(systemPrompt, userMessage, tick, temperature, meta3 = DEFAULT_CALL_META) {
     const llmStart = Date.now();
     const replay = this._replayCompletion(systemPrompt, userMessage, tick);
-    if (replay)
-      return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok };
+    if (replay) {
+      const answer = this._answerFromTape(replay, meta3, systemPrompt, userMessage);
+      const record = answer instanceof Promise ? await answer : answer;
+      return resultOf(record);
+    }
     const ep = this._resolveEndpoint(meta3);
     if (this._mock) {
       const result2 = this._mockResponse(tick, userMessage);
       this._recordCompletion(systemPrompt, userMessage, tick, result2, Date.now() - llmStart, true, ep);
       return result2;
     }
-    const result = await withGate(
+    const result = await this._chainingFailure(systemPrompt, userMessage, tick, llmStart, ep, () => withGate(
       () => ep.wire === "anthropic" ? this._callAnthropicStream(ep, systemPrompt, userMessage, () => {
       }, temperature) : this._callProvider(ep, systemPrompt, userMessage, temperature),
       `executive/direct:${meta3.function}`,
       // A reply to a waiting person takes the reserved lane; everything the
       // mind is doing for itself shares the general one. See `gateFor`.
       gateFor(meta3.function)
-    );
+    ));
     this._track(result, meta3, tick, Date.now() - llmStart, this._estPromptTokens(systemPrompt, userMessage), ep);
     this._recordCompletion(systemPrompt, userMessage, tick, result, Date.now() - llmStart, false, ep);
     return result;
@@ -14489,12 +14661,13 @@ var LLMDirector = class {
     };
   }
   /**
-   * Write the full prompt to a debug file for inspection.
-   * Mirrors the original _writeDebugPrompt behavior.
+   * Write the full prompt to a debug file for inspection. Returns the path, or
+   * '' when nothing was written (no `debugDir`, or the write failed).
    */
   writeDebugPrompt(tick, systemPrompt, userMessage) {
+    const debugDir = this._debugDir;
+    if (!debugDir) return "";
     try {
-      const debugDir = `./data/wills/${this._willId}/debug`;
       mkdirSync(debugDir, { recursive: true });
       const totalChars = systemPrompt.length + userMessage.length;
       const estimatedTokens = Math.round(totalChars / 4);
@@ -14526,10 +14699,12 @@ var LLMDirector = class {
    * Write the full LLM response text to `response-tick-N.txt` alongside the
    * corresponding `prompt-tick-N.txt`. This gives developers the complete
    * reasoning trace without truncation — useful for debugging planning failures.
+   * Returns the path, or '' when nothing was written.
    */
   writeDebugResponse(tick, responseText, inputTok, outputTok, latencyMs) {
+    const debugDir = this._debugDir;
+    if (!debugDir) return "";
     try {
-      const debugDir = `./data/wills/${this._willId}/debug`;
       mkdirSync(debugDir, { recursive: true });
       const content = [
         "=".repeat(80),
@@ -14543,7 +14718,9 @@ var LLMDirector = class {
       ].join("\n");
       const filepath = `${debugDir}/response-tick-${String(tick).padStart(6, "0")}.txt`;
       writeFileSync(filepath, content);
+      return filepath;
     } catch {
+      return "";
     }
   }
 };
@@ -15130,6 +15307,8 @@ var ExecutiveFacet = class {
   }
   /** _reason() calls currently in flight — a real LLM call spans many ticks. */
   _inflight = 0;
+  /** The reasoning in flight, so a Will being archived can wait for it. */
+  _running = /* @__PURE__ */ new Set();
   /**
    * True while the facet has work the reaper must not discard: queued reports
    * awaiting the pump, or an in-flight _reason() whose decision hasn't landed.
@@ -15204,10 +15383,16 @@ var ExecutiveFacet = class {
    */
   _launchReason(report) {
     this._inflight++;
-    this._reason(report).catch((err) => logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err)).finally(() => {
+    const run = this._reason(report).catch((err) => logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err)).finally(() => {
       this._inflight--;
+      this._running.delete(run);
       this.markActive(this._currentStateRef?.tick ?? this._lastActiveTick);
     });
+    this._running.add(run);
+  }
+  /** Settles once no reasoning this facet launched is still running. */
+  async awaitPending() {
+    await Promise.all([...this._running]);
   }
   /**
    * Per-tick pump — called by the FacetSupervisor from the ExecutiveEngine's
@@ -15666,6 +15851,10 @@ var FacetSupervisor = class {
    * Subsumes broadcastStateRef for the per-tick path; broadcastStateRef remains
    * for the master's mid-reasonAsync refresh.
    */
+  /** Every live facet's reasoning in flight. Facets launch only from `pump`, so this starts nothing. */
+  async awaitPending() {
+    await Promise.all([...this._facets.values()].map((f) => f.awaitPending()));
+  }
   pump(state) {
     this._lastStateRef = state;
     for (const facet of this._facets.values())
@@ -15873,6 +16062,7 @@ var ExecutiveEngine = class extends AsyncEngine {
   // ── LLM director ───────────────────────────────────────────
   _llmDirector = null;
   _testMode = false;
+  _debugDir;
   // ── Message queue ──────────────────────────────────────────
   // ── Action diversity tracking ──────────────────────────────
   _recentActionTypes = [];
@@ -16022,6 +16212,7 @@ var ExecutiveEngine = class extends AsyncEngine {
     this._executiveInterval = config.executiveInterval ?? DEFAULT_EXECUTIVE_INTERVAL;
     this._cooldownTicks = config.cooldownTicks ?? DEFAULT_COOLDOWN_TICKS;
     this._bus = config.bus ?? null;
+    this._debugDir = config.debugDir ?? null;
     this._gatingState = {
       executiveInterval: this._executiveInterval,
       cooldownTicks: this._cooldownTicks,
@@ -16060,6 +16251,15 @@ var ExecutiveEngine = class extends AsyncEngine {
   /** Enable test mode — all LLM calls return canned mock responses at zero cost. */
   setTestMode(enabled) {
     this._testMode = enabled;
+  }
+  /**
+   * Its own reasoning, then what that reasoning sets going: the facets' and the
+   * rolling summariser's calls. Nothing it started is still running after this.
+   */
+  async awaitPending() {
+    await super.awaitPending();
+    await this._facetSupervisor.awaitPending();
+    await this._summarizer?.awaitPending();
   }
   /** Called by CognitiveOrchestrator.addEngine() — injects the shared bus. */
   attachBus(bus) {
@@ -16165,6 +16365,7 @@ var ExecutiveEngine = class extends AsyncEngine {
       timeoutMs: this._llm?.timeoutMs ?? (process.env.WILL_LLM_TIMEOUT_MS ? parseInt(process.env.WILL_LLM_TIMEOUT_MS) : void 0),
       sessionLogger: this._sessionLogger,
       mock: this._testMode,
+      debugDir: this._debugDir,
       // Inject the per-Will tracker (R4) so live calls record usage here, not
       // through a process global. null is fine — the director skips recording.
       tokenTracker: this._tokenTracker,
@@ -16660,14 +16861,13 @@ var ExecutiveEngine = class extends AsyncEngine {
       logger.info(
         `[executive] \u2713 tick=${state.tick}  in=${result.inputTok} tok  out=${result.outputTok} tok  latency=${wallClock() - llmStart}ms`
       );
-      this._llmDirector.writeDebugResponse(
+      const responsePath = this._llmDirector.writeDebugResponse(
         state.tick,
         result.text,
         result.inputTok,
         result.outputTok,
         wallClock() - llmStart
       );
-      const responsePath = this._willId ? `./data/wills/${this._willId}/debug/response-tick-${String(state.tick).padStart(6, "0")}.txt` : "";
       this._sessionLogger?.write({
         type: "executive.response",
         tick: state.tick,
@@ -16675,7 +16875,7 @@ var ExecutiveEngine = class extends AsyncEngine {
         responseChars: result.text.length,
         promptTokens: result.inputTok,
         completionTokens: result.outputTok,
-        // A preview beside the whole: `responsePath` is written on every call.
+        // A preview beside the whole, at `responsePath` — '' when no debug dump was written.
         responseExcerpt: result.text.slice(0, 600),
         responsePath
       });
@@ -21367,11 +21567,11 @@ var KnownEntityTracker = class {
         this._dossiers.delete(d.keid);
         commands.delete.push(`ke-${d.keid}`);
       }
-    for (const { alias, canonical } of this._mintedAliases.splice(0))
+    for (const { alias, canonical: canonical2 } of this._mintedAliases.splice(0))
       commands.set.push({
         id: `kea-${alias}`,
         type: "known-entity-alias",
-        metadata: { aliasKeid: alias, canonicalKeid: canonical }
+        metadata: { aliasKeid: alias, canonicalKeid: canonical2 }
       });
     for (const d of this._dossiers.values()) {
       if (d.encounterCount === 0 && !d.name) continue;
@@ -21980,6 +22180,38 @@ var AuditionEngine = class extends BaseSenseEngine {
    * stream state, the facet's reasoning history, or the chunk stream.
    */
   _entityTail = /* @__PURE__ */ new Map();
+  /** Set when the mind stops: no turn waits on a decision, and no queued turn starts. */
+  _detached = false;
+  /** Outreach being authored, each waiting on its facet's decision: what detaching releases. */
+  _outreachWaits = /* @__PURE__ */ new Set();
+  /**
+   * The mind has stopped. A turn waiting on its decision will never get one —
+   * the facet that would decide is pumped by the tick — so it is released now
+   * rather than at its safety timeout, and a turn still queued starts nothing:
+   * the same rule as the inbound the stem discards on archive, one layer in.
+   * Outreach being authored waits on a facet decision the same way, and comes
+   * back with no words, as at its own timeout.
+   */
+  async onDetach() {
+    this._detached = true;
+    for (const release of [...this._turnDone.values()]) release();
+    for (const release of [...this._outreachWaits]) release({ bubbles: [] });
+  }
+  /**
+   * Every queued turn, to the end of each entity's chain — including turns a
+   * running turn enqueues behind itself. Tails never reject. A turn waiting on
+   * the mind's decision holds this until it lands, so a stopping Will detaches
+   * first (`onDetach`).
+   */
+  async awaitPending() {
+    const awaited = /* @__PURE__ */ new Set();
+    for (; ; ) {
+      const next = [...this._entityTail.values()].filter((t) => !awaited.has(t));
+      if (next.length === 0) return;
+      for (const t of next) awaited.add(t);
+      await Promise.all(next);
+    }
+  }
   /** Resolver for the in-flight turn per entity — fired by _onFacetDecision. */
   _turnDone = /* @__PURE__ */ new Map();
   /** Safety valve: release the entity queue if a reasoning cycle emits no decision. */
@@ -22156,7 +22388,7 @@ var AuditionEngine = class extends BaseSenseEngine {
    * Each read file is laid down as an exafferent percept whose data is the file
    * whole — so P5a's view pages it, working memory and recall keep it, and
    * `[RECALL]` reaches any page of it by its handle. The words carry only a
-   * reference, `[Ada shared spec.md (412 KB) — doc:…]`: inlined, a document rode
+   * reference, `[Ada shared notes.txt (412 KB) — doc:…]`: inlined, a document rode
    * everywhere the words go — the focus, the thread digest, every "they answered"
    * line, conversation memory — and was cut to fit (24,000 characters, four
    * files). Done per message, before a burst is folded into one turn, so each
@@ -22205,6 +22437,10 @@ var AuditionEngine = class extends BaseSenseEngine {
   async _runCoalesced(entityId, entry) {
     entry.started = true;
     if (this._coalesce.get(entityId) === entry) this._coalesce.delete(entityId);
+    if (this._detached) {
+      entry.resolve();
+      return;
+    }
     const merged2 = entry.parts.length === 1 ? entry.base : entry.base.kind === "text" ? { ...entry.base, content: entry.parts.join("\n") } : { ...entry.base, transcription: entry.parts.join("\n") };
     try {
       await this._processMessage(merged2);
@@ -22291,6 +22527,7 @@ var AuditionEngine = class extends BaseSenseEngine {
    * fires — guaranteeing the per-entity queue can never deadlock.
    */
   _beginTurn(entityId) {
+    if (this._detached) return Promise.resolve();
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         logger.warn(
@@ -22467,7 +22704,7 @@ var AuditionEngine = class extends BaseSenseEngine {
    * when no executive is attached or the facet budget is full (caller then awaits).
    */
   async authorOutreach(entityId, entityName, gist) {
-    if (!this._executiveEngine) return { bubbles: [] };
+    if (!this._executiveEngine || this._detached) return { bubbles: [] };
     if (this._outreachInFlight.has(entityId)) {
       logger.info(`[audition-engine] already composing an outreach to ${entityId} \u2014 not opening a second`);
       return { bubbles: [] };
@@ -22530,8 +22767,10 @@ var AuditionEngine = class extends BaseSenseEngine {
           settled = true;
           clearTimeout(timer);
           unsub();
+          this._outreachWaits.delete(done);
           resolve(r);
         };
+        this._outreachWaits.add(done);
         timer = setTimeout(
           () => {
             logger.warn(`[audition-engine] outreach authoring timed out for ${entityId}`);
@@ -22696,8 +22935,10 @@ var AuditionEngine = class extends BaseSenseEngine {
             // actual display name resolved by facet
             bubbles: d.replyBubbles,
             threadId,
-            tick: wallClock(),
-            // wall-clock tick for session log (telemetry, R2)
+            // The simulation tick, as every other session record's \`tick\` is. This
+            // was the wall clock — a "tick" of 1.79 trillion that no reader could
+            // place beside anything else, and that no replay could reproduce.
+            tick: this._now?.() ?? 0,
             pushToOutbox: !viaTransport
           });
           this._writeSent(entityId, d.targetEntityId, d.replyBubbles, ids);
@@ -24207,6 +24448,12 @@ var MotorSchemaExecutor = class {
    * simply re-request.
    */
   _authoring = /* @__PURE__ */ new Set();
+  /** The authoring passes in flight, so a Will being archived can wait for them. */
+  _authorRuns = /* @__PURE__ */ new Set();
+  /** Settles once no outreach authoring this executor asked for is still running. */
+  async awaitPending() {
+    await Promise.all([...this._authorRuns]);
+  }
   _authored = /* @__PURE__ */ new Map();
   /**
    * Intents whose facet considered speaking and chose NOT to.
@@ -24707,7 +24954,7 @@ var MotorSchemaExecutor = class {
     const name = str7(intent.parameters["targetEntityName"]) ?? intent.targetEntityId ?? "them";
     this._authoring.add(id);
     this._composedAt.set(id, tick);
-    void this._author.authorOutreach(intent.targetEntityId ?? "", name, str7(intent.parameters["gist"])).then((result) => {
+    const run = this._author.authorOutreach(intent.targetEntityId ?? "", name, str7(intent.parameters["gist"])).then((result) => {
       const bubbles = Array.isArray(result) ? result : result.bubbles;
       const declared = !Array.isArray(result) && result.withheld === true;
       const answered = !Array.isArray(result) && result.answered === true;
@@ -24730,7 +24977,9 @@ var MotorSchemaExecutor = class {
       logger.warn(`[motor] outreach authoring failed: ${errMsg(err)}`);
     }).finally(() => {
       this._authoring.delete(id);
+      this._authorRuns.delete(run);
     });
+    this._authorRuns.add(run);
   }
   // ── bus emission ─────────────────────────────────────────────
   _emitEnacted(intent, enaction, predicted, tick) {
@@ -26235,6 +26484,7 @@ var ExecutiveSummarizer = class {
   _summary = "";
   _callCount = 0;
   _summarizing = false;
+  _running = null;
   _llmDirector = null;
   _interval;
   _bufferSize;
@@ -26259,7 +26509,7 @@ var ExecutiveSummarizer = class {
     if (this._buffer.length > this._bufferSize) this._buffer.shift();
     this._callCount++;
     if (this._callCount % this._interval === 0 && !this._summarizing)
-      this._run().catch((err) => logger.warn("[summarizer] error:", err instanceof Error ? err.message : err));
+      this._running = this._run().catch((err) => logger.warn("[summarizer] error:", err instanceof Error ? err.message : err));
   }
   /**
    * The current rolling summary, ready to embed in a system prompt.
@@ -26275,6 +26525,10 @@ var ExecutiveSummarizer = class {
   /** Whether a summarization is currently running. */
   get isBusy() {
     return this._summarizing;
+  }
+  /** Settles once the summarisation in flight, if any, has finished. */
+  async awaitPending() {
+    await this._running;
   }
   /**
    * Restore state from a persisted snapshot (called by ExecutiveEngine on first tick
@@ -28127,9 +28381,9 @@ function assembleMind(willId, config) {
   const simulation = _buildSimulation(willId, config, randomSeed);
   const { cognition, outbox } = _constructCognition({ simulation, willId, config, randomSeed, executiveInterval, profile });
   _registerEngines(simulation, cognition, anatomy);
-  for (const rec of auditAssemblyWiring(simulation.orchestrator.engines))
-    if (rec.status === "unwired")
-      logger.debug(`[assembly] ${willId}: ${rec.engine}.${rec.method} unwired at assembly (anatomy=${anatomy})`);
+  for (const rec2 of auditAssemblyWiring(simulation.orchestrator.engines))
+    if (rec2.status === "unwired")
+      logger.debug(`[assembly] ${willId}: ${rec2.engine}.${rec2.method} unwired at assembly (anatomy=${anatomy})`);
   _seedIdentity(simulation, config, profile);
   _seedInitialGoals(simulation, config);
   _seedEngineConfigs(simulation, buildEngineConfigEntities(config, executiveInterval));
@@ -28154,6 +28408,7 @@ function _buildSimulation(willId, config, randomSeed) {
 }
 function _constructCognition({ simulation, willId, config, randomSeed, executiveInterval, profile }) {
   const anatomy = config.anatomy ?? "mind";
+  const debugDir = fileLoggingEnabled() && !config.testMode ? `${process.env.WILL_DATA_DIR ?? "./data"}/wills/${willId}/debug` : null;
   const tokenTracker = new TokenTracker({
     // Host prices, flattened from the per-provider map. Cost is telemetry only
     // (it never enters state), so this can differ run to run without touching
@@ -28161,11 +28416,10 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
     prices: mergeProviderPrices(config.llm?.providers),
     emitCostEvents: true,
     costWarningThresholdUsd: 0.02,
-    willId,
     // Records reach the consumer via TokenTracker.onRecord → the stem bridges
     // them onto the transport as `token_report` envelopes. The token-report.jsonl
-    // file is a dev-only mirror; off in test/replay.
-    writeLedger: fileLoggingEnabled() && !config.testMode
+    // file is a dev-only mirror beside the prompt dumps; off in test/replay.
+    ledgerDir: debugDir
   });
   const energyRegulator = new EnergyRegulator();
   const sleepPressureRegulator = new SleepPressureRegulator();
@@ -28192,7 +28446,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   const workingMemory = new WorkingMemory();
   const modelRoles = resolveModelRoles(config.llm?.model);
   const { embedder, vectorMemory } = _resolveVectorMemory(willId, randomSeed, config.vectorMemoryAdapter, config.disableVectorMemory, tokenTracker, config.testMode, modelRoles.embedding ?? void 0);
-  const episodicConsolidator = new EpisodicConsolidator(vectorMemory ? { vectorMemory, ...embedder ? { embedder } : {} } : {});
+  const episodicConsolidator = new EpisodicConsolidator({ willId, ...vectorMemory ? { vectorMemory, ...embedder ? { embedder } : {} } : {} });
   const semanticIntegrator = new SemanticIntegrator();
   const forgettingCurve = new ForgettingCurve();
   const dreamSimulator = new DreamSimulator();
@@ -28203,7 +28457,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
   const resolvedEffectors = Array.isArray(config.allowedGenericEffectors) ? config.allowedGenericEffectors : profile?.effectors ?? null;
   const resolvedEffectorNames = resolvedEffectors?.map(effectorName) ?? null;
   const accessGrants = new AccessGrants(resolvedEffectorNames);
-  const executiveEngine = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5 });
+  const executiveEngine = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5, debugDir });
   executiveEngine.willId = willId;
   const roleRouter = compileRoleRouter(modelRoles);
   executiveEngine.llm = config.llm ? {
@@ -28289,7 +28543,7 @@ function _constructCognition({ simulation, willId, config, randomSeed, executive
     );
     const aliases = readAliases(entities);
     const scheme = chosenThread?.split(":")[0];
-    const addresses = [...aliases.entries()].filter(([, canonical]) => canonical === targetEntityId).map(([alias]) => alias).sort();
+    const addresses = [...aliases.entries()].filter(([, canonical2]) => canonical2 === targetEntityId).map(([alias]) => alias).sort();
     const address = addresses.find((a) => scheme && a.startsWith(`${scheme}:`)) ?? addresses[0];
     if (!address) return null;
     const room = defaultHandle(handlesOf(entities, targetEntityId));
@@ -28673,9 +28927,15 @@ function clearInboundRecorder(willId) {
 function getInboundRecorder(willId) {
   return _sinks2.get(willId);
 }
-var _sources2 = /* @__PURE__ */ new Map();
+var _sources3 = /* @__PURE__ */ new Map();
+function setInboundSource(willId, source) {
+  _sources3.set(willId, source);
+}
+function clearInboundSource(willId) {
+  _sources3.delete(willId);
+}
 function getInboundSource(willId) {
-  return _sources2.get(willId);
+  return _sources3.get(willId);
 }
 
 // src/stem/tracts/replay.controller.ts
@@ -30232,19 +30492,23 @@ var TransportController = class {
   applyInbound(instance, tick, deps) {
     const willId = instance.config.id;
     const source = getInboundSource(willId);
-    const envelopes = source ? source.envelopesAt(tick) : instance.inbound.drain(tick).map((s) => s.envelope);
-    if (envelopes.length === 0) return;
-    if (!source) {
-      const recorder = getInboundRecorder(willId);
-      if (recorder)
-        for (const envelope of envelopes)
-          recorder.recordInbound({ tick, willId, envelope, timestamp: wallClock() });
-    }
-    for (const envelope of envelopes) {
+    const tap = getRecordTap(willId);
+    const records = source ? source.recordsAt(tick) : instance.inbound.drain(tick).map((s) => ({ tick, willId, envelope: s.envelope, timestamp: wallClock() }));
+    if (records.length === 0) return;
+    const recorder = source ? void 0 : getInboundRecorder(willId);
+    for (const record of records) {
+      recorder?.recordInbound(record);
       try {
-        this._dispatch(instance, envelope, deps);
+        tap?.("inbound", record);
+      } catch {
+      }
+    }
+    for (const { envelope } of records) {
+      const env = envelope;
+      try {
+        this._dispatch(instance, env, deps);
       } catch (err) {
-        logger.error(`[transport] inbound dispatch failed (${envelope.channel}):`, err);
+        logger.error(`[transport] inbound dispatch failed (${env.channel}):`, err);
       }
     }
   }
@@ -30270,6 +30534,18 @@ var TransportController = class {
       }
       case "inbound_percept":
         deps.sensory.injectEvent(instance, { type: `senses.${env.domain}`, payload: env.payload });
+        break;
+      case "sense": {
+        const done = deps.sensory.senseSignal(instance, env.domain, env.input);
+        void done.catch((err) => logger.error(`[transport] ${env.domain} sense failed:`, err));
+        deps.applied?.(instance, env.correlationId, done);
+        break;
+      }
+      case "event":
+        deps.sensory.injectEvent(instance, { type: env.type, payload: env.payload });
+        break;
+      case "escalation":
+        deps.effector.resolveEscalation(instance, env.intentId, env.approved, env.finality);
         break;
       case "ack": {
         if (!this._reconciler(instance.config.id).shouldApply(env.correlationId)) break;
@@ -30351,10 +30627,19 @@ var _sinks3 = /* @__PURE__ */ new Map();
 function getVerdictRecorder(willId) {
   return _sinks3.get(willId);
 }
-var _sources3 = /* @__PURE__ */ new Map();
-function getVerdictSource(willId) {
-  return _sources3.get(willId);
+var _sources4 = /* @__PURE__ */ new Map();
+function setVerdictSource(willId, source) {
+  _sources4.set(willId, source);
 }
+function clearVerdictSource(willId) {
+  _sources4.delete(willId);
+}
+function getVerdictSource(willId) {
+  return _sources4.get(willId);
+}
+
+// src/stem/tracts/effector/types.ts
+var ESCALATION_TTL_TICKS = 30;
 
 // src/stem/tracts/effector/policy.enforcement.ts
 var ARBITER_FAULT_VERDICT = Object.freeze({
@@ -30377,6 +30662,20 @@ var PolicyEnforcement = class {
    * `simulation.step` determinism and is regenerated on any re-execution.
    */
   _pendingRefusals = /* @__PURE__ */ new Map();
+  /** Verdicts an async arbiter has not yet answered, per Will. */
+  _out = /* @__PURE__ */ new WeakMap();
+  _outFor(instance) {
+    let out = this._out.get(instance);
+    if (!out) {
+      out = /* @__PURE__ */ new Set();
+      this._out.set(instance, out);
+    }
+    return out;
+  }
+  /** Settles once every verdict still out for this Will has landed. Archiving waits on it. */
+  async awaitPending(instance) {
+    await Promise.all([...this._out.get(instance) ?? []]);
+  }
   /**
    * Install a Policy Decision Point (POLICY_REAFFERENCE P0). Passing null
    * restores the no-op default. The arbiter sees only the proposed act — never
@@ -30399,8 +30698,19 @@ var PolicyEnforcement = class {
     if (source) {
       const invocation2 = project(instance, payload);
       const record = source.verdictFor(invocation2.tick, invocation2.intentId);
-      if (record) this._applyVerdict(instance, payload, invocation2, recordToVerdict(record));
-      else this._deps.buffer(instance, payload);
+      if (!record) {
+        this._deps.buffer(instance, payload);
+        return;
+      }
+      const apply = (r) => {
+        try {
+          getRecordTap(willId)?.("verdicts", r);
+        } catch {
+        }
+        this._applyVerdict(instance, payload, invocation2, recordToVerdict(r));
+      };
+      if (record instanceof Promise) void record.then(apply, (err) => logger.error(`[policy] replayed verdict for "${invocation2.schema}" failed:`, err));
+      else apply(record);
       return;
     }
     if (isNullArbiter(this._arbiter)) {
@@ -30417,13 +30727,23 @@ var PolicyEnforcement = class {
       return;
     }
     if (verdict instanceof Promise) {
-      void verdict.then(
-        (v) => this._recordAndApply(instance, payload, invocation, v),
+      const landed = (v) => {
+        if (instance._settled) {
+          logger.warn(`[policy] verdict for "${invocation.schema}" arrived after ${instance.config.id} stopped \u2014 not applied`);
+          return;
+        }
+        this._recordAndApply(instance, payload, invocation, v);
+      };
+      const pending = verdict.then(
+        landed,
         (err) => {
           logger.error(`[policy] arbiter "${this._arbiter.name}" rejected for "${invocation.schema}" \u2014 failing closed:`, err);
-          this._recordAndApply(instance, payload, invocation, ARBITER_FAULT_VERDICT);
+          landed(ARBITER_FAULT_VERDICT);
         }
       );
+      const out = this._outFor(instance);
+      out.add(pending);
+      void pending.finally(() => out.delete(pending));
       return;
     }
     this._recordAndApply(instance, payload, invocation, verdict);
@@ -30431,7 +30751,8 @@ var PolicyEnforcement = class {
   /** Capture the verdict on the tape (if a recorder is attached), then enforce it. */
   _recordAndApply(instance, payload, invocation, verdict) {
     const sink = getVerdictRecorder(instance.config.id);
-    sink?.recordVerdict({
+    const tap = getRecordTap(instance.config.id);
+    const record = !sink && !tap ? null : {
       tick: invocation.tick,
       willId: instance.config.id,
       intentId: invocation.intentId,
@@ -30441,8 +30762,16 @@ var PolicyEnforcement = class {
       ...verdict.reasonCode ? { reasonCode: verdict.reasonCode } : {},
       ...verdict.finality ? { finality: verdict.finality } : {},
       ...verdict.counterfactual ? { counterfactual: verdict.counterfactual } : {},
+      ...verdict.holdTicks !== void 0 ? { holdTicks: verdict.holdTicks } : {},
       timestamp: Date.now()
-    });
+    };
+    if (record) {
+      sink?.recordVerdict(record);
+      try {
+        tap?.("verdicts", record);
+      } catch {
+      }
+    }
     this._applyVerdict(instance, payload, invocation, verdict);
   }
   /**
@@ -30489,6 +30818,7 @@ var PolicyEnforcement = class {
       schema: invocation.schema,
       reasonCode: verdict.reasonCode ?? "APPROVAL_REQUIRED",
       payload,
+      holdTicks: holdOf(verdict),
       expiresAt: 0
       // stamped when applied (we don't have the current tick here)
     });
@@ -30519,12 +30849,14 @@ function recordToVerdict(record) {
     decision: record.decision,
     ...record.reasonCode ? { reasonCode: record.reasonCode } : {},
     ...record.finality ? { finality: record.finality } : {},
-    ...record.counterfactual ? { counterfactual: record.counterfactual } : {}
+    ...record.counterfactual ? { counterfactual: record.counterfactual } : {},
+    ...record.holdTicks !== void 0 ? { holdTicks: record.holdTicks } : {}
   };
 }
-
-// src/stem/tracts/effector/types.ts
-var ESCALATION_TTL_TICKS = 30;
+function holdOf(verdict) {
+  const h = verdict.holdTicks;
+  return typeof h === "number" && Number.isInteger(h) && h > 0 ? h : ESCALATION_TTL_TICKS;
+}
 
 // src/stem/tracts/effector/escalation.lifecycle.ts
 var EscalationLifecycle = class {
@@ -30551,9 +30883,9 @@ var EscalationLifecycle = class {
    * approve dispatches the held invocation to the world; deny refuses it. A
    * no-op if the intent id is not (or no longer) an active escalation.
    */
-  resolve(instance, intentId, approved) {
+  resolve(instance, intentId, approved, finality = "parameter") {
     const queue = this._pendingResolutions.get(instance.config.id) ?? [];
-    queue.push({ intentId, approved });
+    queue.push({ intentId, approved, finality });
     this._pendingResolutions.set(instance.config.id, queue);
   }
   /** Apply host answers to active escalations (POLICY_REAFFERENCE P4). */
@@ -30562,7 +30894,7 @@ var EscalationLifecycle = class {
     if (!queue || queue.length === 0) return;
     this._pendingResolutions.set(instance.config.id, []);
     const active = this._activeEscalations.get(instance.config.id);
-    for (const { intentId, approved } of queue) {
+    for (const { intentId, approved, finality } of queue) {
       const esc = active?.get(intentId);
       if (!esc) continue;
       active.delete(intentId);
@@ -30571,7 +30903,7 @@ var EscalationLifecycle = class {
         this._deps.buffer(instance, esc.payload);
         logger.info(`[policy] escalation APPROVED \u2192 dispatching "${esc.schema}" intent "${intentId}"`);
       } else {
-        this._deps.queueRefusal(instance, esc.intentId, esc.schema, esc.reasonCode, "class");
+        this._deps.queueRefusal(instance, esc.intentId, esc.schema, esc.reasonCode, finality);
         logger.info(`[policy] escalation DENIED \u2192 refusing "${esc.schema}" intent "${intentId}"`);
       }
     }
@@ -30605,7 +30937,7 @@ var EscalationLifecycle = class {
     this._newEscalations.set(instance.config.id, []);
     const active = this._activeEscalations.get(instance.config.id) ?? /* @__PURE__ */ new Map();
     for (const esc of pending) {
-      esc.expiresAt = tick + ESCALATION_TTL_TICKS;
+      esc.expiresAt = tick + esc.holdTicks;
       this._markEscalated(instance, esc.intentId, esc.expiresAt);
       this._voiceEscalation(instance, esc);
       active.set(esc.intentId, esc);
@@ -30737,10 +31069,11 @@ var effectorController = class {
   /**
    * Record a host's answer to an escalation (POLICY_REAFFERENCE P4). Applied at
    * the next tick boundary. A no-op if the intent id is not (or no longer) an
-   * active escalation.
+   * active escalation. A denial's `finality` defaults to `'parameter'`: a no to
+   * this ask, not to the ability.
    */
-  resolveEscalation(instance, intentId, approved) {
-    this._escalations.resolve(instance, intentId, approved);
+  resolveEscalation(instance, intentId, approved, finality) {
+    this._escalations.resolve(instance, intentId, approved, finality);
   }
   /**
    * The tick-boundary ordering both collaborators depend on, and the reason this
@@ -30749,6 +31082,10 @@ var effectorController = class {
    * BEFORE the step, stamped to this tick — so a denial reconciled here has the
    * exact lifecycle of a host rejection that arrived between ticks.
    */
+  /** Settles once every verdict an async arbiter still owes this Will has landed. */
+  awaitVerdicts(instance) {
+    return this._policy.awaitPending(instance);
+  }
   applyPolicyOutcomes(instance) {
     const tick = instance.tickCount;
     this._escalations.applyResolutions(instance);
@@ -30912,15 +31249,6 @@ var SensoryController = class {
   /** Per-Will monotonic counter for deterministic injected-event ids (replay). */
   _eventSeq = /* @__PURE__ */ new WeakMap();
   // ── Input ingestion ──────────────────────────────────────────
-  /**
-   * Route an external text message through the Will's AuditionEngine.
-   * The senses-aware AuditionEngine handles salience, thread digests,
-   * LanguagePercept publication, conversation-facet spawn/reuse, and LLM
-   * reply generation. Reply delivery is async via the outbox / SSE channel.
-   */
-  async senseText(instance, input) {
-    await instance.cognition.auditionEngine.sense(input);
-  }
   /**
    * Route a raw SensoryInput to the appropriate sense engine by domain.
    * Used by the debug `POST /senses/:domain/ingest` route.
@@ -31207,8 +31535,185 @@ var HealthReporter = class {
     };
   }
 };
+var RECORD_CHAIN = "will-record/1";
+var GENESIS_HASH = "0".repeat(64);
+function canonical(value) {
+  if (value === void 0 || value === null) return "null";
+  if (typeof value === "bigint") return `"$bigint:${value.toString()}"`;
+  if (typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  const obj = value;
+  const wire = obj.$bigint;
+  if (typeof wire === "string" && Object.keys(obj).length === 1) return `"$bigint:${wire}"`;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonical(obj[k])}`).join(",")}}`;
+}
+var sha256 = (s) => createHash("sha256").update(s, "utf8").digest("hex");
+function jsonForm(record) {
+  try {
+    const text = JSON.stringify(record);
+    return text === void 0 ? null : JSON.parse(text);
+  } catch (err) {
+    return { unserializable: err?.message ?? String(err) };
+  }
+}
+var recordHash = (record) => sha256(canonical(record));
+function entryHash(prev, body) {
+  return sha256(`${prev}:${canonical({ stream: body.stream, seq: body.seq, tick: body.tick, recordHash: body.recordHash })}`);
+}
+var RecordChain = class {
+  _head;
+  constructor(from = { seq: 0, hash: GENESIS_HASH }) {
+    this._head = from;
+  }
+  get head() {
+    return this._head;
+  }
+  append(stream, tick, record) {
+    const json = jsonForm(record);
+    const body = { stream, seq: this._head.seq + 1, tick, recordHash: recordHash(json) };
+    const hash = entryHash(this._head.hash, body);
+    const entry = { ...body, prev: this._head.hash, hash, record: json };
+    this._head = { seq: body.seq, hash };
+    return entry;
+  }
+};
+function verifyChain(entries, from = { seq: 0, hash: GENESIS_HASH }) {
+  let head = from;
+  for (const e of entries) {
+    const broken = (reason) => ({ valid: false, breakpoint: e.seq, reason });
+    if (e.seq !== head.seq + 1) return broken(`expected seq ${head.seq + 1}, found ${e.seq}`);
+    if (e.prev !== head.hash) return broken("prev is not the hash of the entry before it");
+    if (e.record !== void 0 && recordHash(e.record) !== e.recordHash) return broken("the record does not match its recordHash");
+    if (entryHash(e.prev, e) !== e.hash) return broken("the entry does not match its hash");
+    head = { seq: e.seq, hash: e.hash };
+  }
+  return { valid: true, head };
+}
+
+// src/stem/tracts/anchor.controller.ts
+function stateHash(state) {
+  const entities = [...state.entities.values()].map(jsonForm).sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  return recordHash({ tick: state.tick, entities });
+}
+var SECRET = /api[-_]?key|secret|token|password|authori[sz]ation|credential/i;
+function withoutSecrets(value) {
+  if (Array.isArray(value)) return value.map(withoutSecrets);
+  if (!value || typeof value !== "object") return value;
+  const out = {};
+  for (const [k, v] of Object.entries(value)) if (!SECRET.test(k)) out[k] = withoutSecrets(v);
+  return out;
+}
+function startingConfig(config) {
+  const { anchoring: _a, transport: _t, snapshotStorage: _s, vectorMemoryAdapter: _v, ...settings } = config;
+  return withoutSecrets(jsonForm(settings));
+}
+function startingEnv(env = process.env) {
+  const out = {};
+  for (const k of Object.keys(env).sort())
+    if (k.startsWith("WILL_") && !SECRET.test(k) && env[k] !== void 0) out[k] = env[k];
+  return out;
+}
+var isHash = (v) => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
+function checkAnchoring(o) {
+  if (!Number.isInteger(o.every) || o.every < 1) throw new Error("anchoring.every is a positive whole number of ticks");
+  if (typeof o.record !== "function") throw new Error("anchoring.record persists every entry; a digest proves nothing without them");
+  if (typeof o.anchor !== "function") throw new Error("anchoring.anchor publishes the digests");
+  if (o.sign !== void 0 && typeof o.sign !== "function") throw new Error("anchoring.sign is a function of the material");
+  if (o.resume !== void 0 && !(Number.isInteger(o.resume.seq) && o.resume.seq >= 0 && isHash(o.resume.hash)))
+    throw new Error("anchoring.resume is the head a chain reached: { seq, hash }");
+  return o;
+}
+var AnchorController = class {
+  _anchored = /* @__PURE__ */ new Map();
+  /**
+   * Begin (or continue) this Will's chain, before anything is logged. A no-op
+   * for a Will without `anchoring`.
+   */
+  attach(instance, restored = null) {
+    const o = instance.config.anchoring;
+    if (!o) return;
+    const id = instance.config.id;
+    const chain = new RecordChain(o.resume);
+    const a = { chain, opts: o, lastDigestTick: null };
+    this._anchored.set(id, a);
+    this._append(instance, a, "chain", {
+      chain: RECORD_CHAIN,
+      willId: id,
+      seed: instance.config.randomSeed ?? null,
+      startTick: this._tick(instance),
+      ...o.resume ? { resumed: true } : {},
+      config: startingConfig(instance.config),
+      env: startingEnv(),
+      recall: !!instance.cognition.vectorMemory,
+      restored
+    });
+    setRecordTap(id, (stream, record) => this._append(instance, a, stream, record));
+    instance.simulation.clock.onStep((step) => this._append(instance, a, "clock", step));
+  }
+  /** A host's act on the mind. */
+  lifecycle(instance, act) {
+    const a = this._anchored.get(instance.config.id);
+    if (a) this._append(instance, a, "chain", { lifecycle: act });
+  }
+  /** The artifact a woken mind was loaded from, whole. */
+  loaded(instance, pma) {
+    const a = this._anchored.get(instance.config.id);
+    if (a) this._append(instance, a, "chain", { loaded: "pma", pma });
+  }
+  /**
+   * After a tick: a digest on the first one, so the mind is anchored before
+   * its first act, then every `every` ticks.
+   */
+  afterTick(instance) {
+    const a = this._anchored.get(instance.config.id);
+    if (!a) return;
+    const tick = this._tick(instance);
+    if (a.lastDigestTick === null || tick - a.lastDigestTick >= a.opts.every) this._digest(instance, a, tick);
+  }
+  /** A digest now: at a pause, and at the end, after the session's last entry. */
+  seal(instance) {
+    const a = this._anchored.get(instance.config.id);
+    if (a) this._digest(instance, a, this._tick(instance));
+  }
+  /** Stop chaining: the Will is gone. */
+  detach(instance) {
+    clearRecordTap(instance.config.id);
+    if (this._anchored.has(instance.config.id)) instance.simulation.clock.onStep(null);
+    this._anchored.delete(instance.config.id);
+  }
+  _tick(instance) {
+    return instance.simulation.clock.currentTick;
+  }
+  _append(instance, a, stream, record) {
+    const entry = a.chain.append(stream, this._tick(instance), record);
+    try {
+      a.opts.record(entry);
+    } catch (err) {
+      logger.error(`[anchor] record() threw for ${instance.config.id} at seq ${entry.seq}:`, err);
+    }
+  }
+  _digest(instance, a, tick) {
+    a.lastDigestTick = tick;
+    const head = a.chain.head;
+    const digest = {
+      willId: instance.config.id,
+      tick,
+      streamHeads: { records: head.hash },
+      meta: { chain: RECORD_CHAIN, seq: head.seq }
+    };
+    let signature;
+    try {
+      signature = a.opts.sign?.(canonical(digest));
+    } catch (err) {
+      logger.error(`[anchor] sign() threw for ${instance.config.id} at tick ${tick}:`, err);
+    }
+    void Promise.resolve().then(() => a.opts.anchor(digest, signature)).catch((err) => logger.error(`[anchor] anchor() failed for ${instance.config.id} at tick ${tick}:`, err));
+  }
+};
 
 // src/stem/index.ts
+var SENSE_DOMAINS = /* @__PURE__ */ new Set(["audition", "vision", "somatosensation", "olfaction", "gustation"]);
 var WillStem = class {
   _wills = /* @__PURE__ */ new Map();
   // Subsystems extracted to their own collaborators (R5).
@@ -31228,27 +31733,33 @@ var WillStem = class {
   // R5-f: session-biography writers
   _health = new HealthReporter();
   // R5-f2: cognitive-health view
+  _anchor = new AnchorController();
+  // RECORD_ANCHORING: record chain + digests
   // ── Create ─────────────────────────────────────────────────
   /**
    * Assemble a new Will and start its autonomous tick loop.
    * Returns the Will ID (same as config.id) once the loop is running.
    */
-  async createWill(config, startPaused = false) {
+  async createWill(config, startPaused = false, opts = {}) {
     if (this._wills.has(config.id))
       throw new Error(`Will already exists: ${config.id}`);
+    if (config.anchoring) checkAnchoring(config.anchoring);
     const { simulation, cognition, outbox } = assembleMind(config.id, config);
+    if (opts.steps) simulation.clock.setStepSource(opts.steps);
+    let restored = null;
     if (config.persistentMemory || config.snapshotStorage)
       try {
         const previousState = await simulation.snapshotManager.loadLatestFromStorage();
         if (previousState) {
+          restored = { tick: previousState.tick, entities: previousState.entities.size, hash: stateHash(previousState) };
           const inFlight = inFlightOnRestore(previousState.entities);
           for (const id of inFlight) previousState.entities.delete(id);
           simulation.stateManager.restore(previousState, { entities: true, metrics: false });
           simulation.clock.setTick(previousState.tick);
           backfillEngineConfigs(simulation, buildEngineConfigEntities(config, resolveExecutiveInterval(config)));
           if (config.name) {
-            const restored = mergeIdentity(simulation.stateManager, { name: config.name });
-            if (restored.length)
+            const restored2 = mergeIdentity(simulation.stateManager, { name: config.name });
+            if (restored2.length)
               logger.info(`[WillStem] identity-self: re-asserted name '${config.name}' after restore`);
           }
           logger.info(
@@ -31278,6 +31789,11 @@ var WillStem = class {
       _transportUnsub: null,
       sessionLogger,
       _tickWakeFn: null,
+      _loop: null,
+      _manual: opts.manual ?? false,
+      _hostWaits: /* @__PURE__ */ new Map(),
+      _hostSeq: 0,
+      _settled: false,
       pausedAt: null,
       chunkListeners: /* @__PURE__ */ new Set(),
       sensoryChunkListeners: /* @__PURE__ */ new Map(),
@@ -31311,7 +31827,8 @@ var WillStem = class {
     cognition.outboxWriter.attachSessionLogger(sessionLogger);
     cognition.planningEngine.attachSessionLogger(sessionLogger);
     cognition.goalManager.attachSessionLogger(sessionLogger);
-    sessionLogger.attachEmit((record) => this._transport.emitSessionLog(instance, record));
+    this._anchor.attach(instance, restored);
+    this._bridgeSessionLog(instance, sessionLogger);
     cognition.tokenTracker.onRecord((record) => this._transport.emitTokenReport(instance, record));
     sessionLogger.write({
       type: "session.start",
@@ -31343,7 +31860,7 @@ var WillStem = class {
     this._wills.set(config.id, instance);
     this._transport.attach(instance);
     instance.status = startPaused ? "paused" : "active";
-    this._runTickLoop(config.id).catch((err) => {
+    instance._loop = this._runTickLoop(config.id).catch((err) => {
       logger.error(`[WillStem] tick loop crashed (${config.id}):`, err);
       const inst = this._wills.get(config.id);
       if (inst) inst.status = "archived";
@@ -31438,6 +31955,7 @@ var WillStem = class {
     const instance = this._get(id);
     if (instance.status !== "active")
       throw new Error(`Cannot pause Will with status '${instance.status}': ${id}`);
+    this._anchor.lifecycle(instance, "pause");
     const flushCmds = instance.cognition.episodicConsolidator.flushToState();
     if (flushCmds.set?.length)
       instance.simulation.stateManager.applyCommands(flushCmds);
@@ -31450,16 +31968,33 @@ var WillStem = class {
     instance.sessionLogger = null;
     instance.pausedAt = /* @__PURE__ */ new Date();
     instance.status = "paused";
+    this._anchor.seal(instance);
+  }
+  /**
+   * Where every session-log entry goes: the record chain, when the Will is
+   * anchored, then the transport. One bridge for both places a logger is
+   * opened (create, resume), so the two cannot drift.
+   */
+  _bridgeSessionLog(instance, sessionLogger) {
+    sessionLogger.attachEmit((record) => {
+      try {
+        getRecordTap(instance.config.id)?.("session", record);
+      } catch (err) {
+        logger.error(`[WillStem] record chain refused a session entry (${instance.config.id}):`, err);
+      }
+      this._transport.emitSessionLog(instance, record);
+    });
   }
   resumeWill(id) {
     const instance = this._get(id);
     if (instance.status !== "paused")
       throw new Error(`Cannot resume Will with status '${instance.status}': ${id}`);
+    this._anchor.lifecycle(instance, "resume");
     const dataDir = process.env.WILL_DATA_DIR ?? "./data";
     const newLogger = new SessionLogger(id, dataDir, {
       fileLogging: fileLoggingEnabled() && !instance.config.testMode
     });
-    newLogger.attachEmit((record) => this._transport.emitSessionLog(instance, record));
+    this._bridgeSessionLog(instance, newLogger);
     instance.sessionLogger = newLogger;
     instance.cognition.executiveEngine.attachSessionLogger(newLogger);
     instance.cognition.semanticIntegrator.attachSessionLogger(newLogger);
@@ -31478,14 +32013,19 @@ var WillStem = class {
       const offlineMs = Date.now() - instance.pausedAt.getTime();
       const offlineMins = Math.round(offlineMs / 6e4);
       const duration = offlineMins < 2 ? "a moment" : offlineMins < 60 ? `${offlineMins} minutes` : `${Math.round(offlineMins / 60)} hours`;
-      void instance.cognition.somatosensationEngine.sense({
-        kind: "system",
-        signal: "WAKE",
-        provenance: "exafferent",
-        // time passed; nothing I did caused it
-        data: {
-          summary: `I was offline for ${duration}. I am now online again.`,
-          offlineMs
+      void this._hostInput(instance, {
+        channel: "sense",
+        correlationId: `sense-${instance._hostSeq + 1}`,
+        domain: "somatosensation",
+        input: {
+          kind: "system",
+          signal: "WAKE",
+          provenance: "exafferent",
+          // time passed; nothing I did caused it
+          data: {
+            summary: `I was offline for ${duration}. I am now online again.`,
+            offlineMs
+          }
         }
       });
       instance.pausedAt = null;
@@ -31521,23 +32061,64 @@ var WillStem = class {
    */
   async archiveWill(id) {
     const instance = this._get(id);
+    this._anchor.lifecycle(instance, "archive");
+    instance.status = "archived";
+    this._transport.detach(instance);
+    for (const resolve of instance._hostWaits.values()) resolve();
+    instance._hostWaits.clear();
+    await this._settle(instance);
     this._biography.writeSessionSummary(instance);
     this._biography.writeEmotionalBiographySummary(instance);
     instance.sessionLogger?.close();
     instance.sessionLogger = null;
-    instance.status = "archived";
     instance._eventBusUnsub?.();
     instance._eventBusUnsub = null;
-    this._transport.detach(instance);
-    const wait = instance.config.tickIntervalMs ?? 1e3;
-    await _sleep(wait + 200);
-    const flushCmds = instance.cognition.episodicConsolidator.flushToState();
-    if (flushCmds.set?.length)
-      instance.simulation.stateManager.applyCommands(flushCmds);
-    const archiveState = instance.simulation.stateManager.snapshot();
-    await instance.simulation.snapshotManager.persistNow(archiveState);
-    await instance.cognition.episodicConsolidator.flushIndexing();
-    await instance.cognition.vectorMemory?.persist();
+    try {
+      const flushCmds = instance.cognition.episodicConsolidator.flushToState();
+      if (flushCmds.set?.length)
+        instance.simulation.stateManager.applyCommands(flushCmds);
+      const archiveState = instance.simulation.stateManager.snapshot();
+      await instance.simulation.snapshotManager.persistNow(archiveState);
+      await instance.cognition.episodicConsolidator.flushIndexing();
+      await instance.cognition.vectorMemory?.persist();
+    } finally {
+      this._anchor.seal(instance);
+      this._anchor.detach(instance);
+    }
+  }
+  /**
+   * Wait for the tick loop to exit, detach every engine (ending what waits on
+   * the mind), then wait for every engine's work in flight, within
+   * `stopTimeoutMs`. Work that outlasts it is given up and logged by
+   * name — a shutdown must not hang on one stuck call.
+   */
+  async _settle(instance) {
+    const id = instance.config.id;
+    let timer;
+    const late = new Promise((r) => {
+      timer = setTimeout(() => r("late"), instance.config.stopTimeoutMs ?? 3e4);
+    });
+    const within = async (what, work) => {
+      const settled = work.then(() => "done", () => "done");
+      if (await Promise.race([settled, late]) === "late")
+        logger.warn(`[WillStem] archived ${id} with ${what} still running \u2014 given up`);
+    };
+    try {
+      instance._tickWakeFn?.();
+      if (instance._loop) await within("the tick in progress", instance._loop);
+      const { orchestrator, stateManager, context } = instance.simulation;
+      for (const e of orchestrator.engines)
+        if (e.onDetach) await within(`${e.name} detaching`, e.onDetach(stateManager, context));
+      const working = orchestrator.engines.filter((e) => e.awaitPending);
+      await Promise.all([
+        ...working.map((e) => within(`${e.name}'s work in flight`, e.awaitPending())),
+        // A verdict an async arbiter still owes lands before the session ends.
+        within("verdicts still out", this._effector.awaitVerdicts(instance))
+      ]);
+    } finally {
+      clearTimeout(timer);
+      instance._settled = true;
+    }
   }
   // Session-biography writers (behavioral + emotional) extracted to
   // BiographyWriter (R5-f); WillStem calls them from pause/archive and the
@@ -31548,7 +32129,26 @@ var WillStem = class {
    * The event is picked up by perceptual engines on the next tick.
    */
   injectEvent(id, event) {
-    this._sensory.injectEvent(this._get(id), event);
+    const instance = this._get(id);
+    void this._hostInput(instance, { channel: "event", correlationId: `event-${instance._hostSeq + 1}`, type: event.type, payload: event.payload });
+  }
+  /**
+   * Every input a host hands the stem directly reaches the mind the way a
+   * transport peer's does: enqueued now, applied at the next tick, recorded and
+   * chained there. Applied between ticks it was already first seen at the next
+   * step, so only the door changes — and with one door, every input is on the
+   * replay tape and in the record chain at the place it reached the mind
+   * (RECORD_ANCHORING step 4). `wait` returns a promise of the input's work,
+   * which for a sense is its turn; it resolves too if the Will stops first.
+   */
+  _hostInput(instance, env, wait = false) {
+    if (instance.status === "archived") return Promise.resolve();
+    const seq = ++instance._hostSeq;
+    const done = wait ? new Promise((resolve) => {
+      instance._hostWaits.set(env.correlationId, resolve);
+    }) : Promise.resolve();
+    instance.inbound.enqueue({ ...env, willId: instance.config.id, seq, wallTime: Date.now() });
+    return done;
   }
   // ── State inspection ───────────────────────────────────────
   getWillState(id) {
@@ -31604,6 +32204,7 @@ var WillStem = class {
    */
   loadPMA(id, pma) {
     const instance = this._get(id);
+    this._anchor.loaded(instance, pma);
     this._pma.load(id, instance, pma);
     const distilled = pma.distilledAt;
     if (typeof distilled === "number" && Number.isFinite(distilled) && distilled > 0 && distilled <= Date.now())
@@ -31728,16 +32329,28 @@ var WillStem = class {
    * as a comment that outlives its claim, with a compiler enforcing it.
    */
   confirmEffectorExecution(id, invocationId, result) {
-    this._effector.confirmExecution(this._get(id), invocationId, result);
+    void this._hostInput(this._get(id), { channel: "ack", ackKind: "result", correlationId: invocationId, result });
   }
   /**
    * Resolve a policy escalation the Will raised (POLICY_REAFFERENCE P4).
    * `approved` dispatches the held invocation to the world; otherwise it is
    * refused. Applied at the next tick boundary. `invocationId` is the awaiting
    * `agency.intent` id the escalation ask referenced.
+   *
+   * A refusal's `finality` is the host's to state, and defaults to
+   * `'parameter'` — no to this ask, which narrows what the Will reaches for and
+   * leaves the ability standing. Pass `'class'` only when the person meant
+   * never: that suppresses the affordance outright.
    */
-  resolveEscalation(id, invocationId, approved) {
-    this._effector.resolveEscalation(this._get(id), invocationId, approved);
+  resolveEscalation(id, invocationId, approved, finality) {
+    const instance = this._get(id);
+    void this._hostInput(instance, {
+      channel: "escalation",
+      correlationId: `escalation-${invocationId}`,
+      intentId: invocationId,
+      approved,
+      ...finality ? { finality } : {}
+    });
   }
   /**
    * Install the Policy Decision Point consulted before every host-owned
@@ -31768,7 +32381,7 @@ var WillStem = class {
    * conversation.sent entity that tracks the outbox message.
    */
   confirmMessageDelivery(id, messageId, delivered) {
-    this._outbox.confirmDelivery(this._get(id), messageId, delivered);
+    void this._hostInput(this._get(id), { channel: "ack", ackKind: "delivery", correlationId: messageId, delivered });
   }
   /**
    * Drain all queued outbound messages from the Will's outbox.
@@ -31811,7 +32424,8 @@ var WillStem = class {
    * @param input  TextMessage — `{ kind: 'text', entityId, threadId, content, speakerName? }`
    */
   async senseText(id, input) {
-    await this._sensory.senseText(this._get(id), input);
+    const instance = this._get(id);
+    await this._hostInput(instance, { channel: "sense", correlationId: `sense-${instance._hostSeq + 1}`, domain: "audition", input }, true);
   }
   /**
    * Terminate the conversation session for an entity.
@@ -31862,7 +32476,9 @@ var WillStem = class {
    * Audition inputs are gated by the 'listen' effector like senseText().
    */
   async senseSignal(id, domain, input) {
-    await this._sensory.senseSignal(this._get(id), domain, input);
+    const instance = this._get(id);
+    if (!SENSE_DOMAINS.has(domain)) throw Object.assign(new Error(`Unknown sense domain: ${domain}`), { code: 400 });
+    await this._hostInput(instance, { channel: "sense", correlationId: `sense-${instance._hostSeq + 1}`, domain, input }, true);
   }
   listWills() {
     return Array.from(this._wills.entries()).map(([id, inst]) => ({
@@ -31879,119 +32495,12 @@ var WillStem = class {
   async _runTickLoop(id) {
     const instance = this._wills.get(id), tickMs = instance.config.tickIntervalMs ?? 1e3, maxTicks = instance.config.maxTicks ?? 0;
     while (instance.status !== "archived") {
-      if (instance.status === "paused") {
+      if (instance.status === "paused" || instance._manual) {
         await _sleep(100);
         continue;
       }
       const start = Date.now();
-      this._transport.applyInbound(instance, instance.tickCount, {
-        effector: this._effector,
-        outbox: this._outbox,
-        sensory: this._sensory
-      });
-      this._effector.applyPolicyOutcomes(instance);
-      await instance.simulation.step(1);
-      instance.tickCount++;
-      instance.lastTickAt = /* @__PURE__ */ new Date();
-      const snapshot = instance.simulation.stateManager.snapshot(), outboxSnapshot = instance.outbox.splice(0), invocationsSnapshot = instance.pendingEffectorInvocations.splice(0);
-      for (const msg of outboxSnapshot)
-        if (msg.createdAtTick === 0) msg.createdAtTick = instance.tickCount;
-      this._transport.emitOutbox(instance, outboxSnapshot);
-      this._transport.emitInvocations(instance, invocationsSnapshot);
-      if (instance.tickListeners.size > 0)
-        for (const fn of instance.tickListeners) {
-          try {
-            fn(snapshot, instance.tickCount, outboxSnapshot, invocationsSnapshot);
-          } catch (err) {
-            logger.error(`[WillStem] tick listener error (${id}):`, err);
-          }
-        }
-      if (instance.sessionLogger) {
-        const metrics = {};
-        for (const [k, v] of snapshot.metrics) metrics[k] = v;
-        const entityCounts = {};
-        for (const e of snapshot.entities.values())
-          entityCounts[e.type] = (entityCounts[e.type] ?? 0) + 1;
-        instance.sessionLogger.write({
-          type: "tick",
-          tick: instance.tickCount,
-          durationMs: instance.lastTickAt ? Date.now() - instance.lastTickAt.getTime() : 0,
-          outboxSize: instance.outbox.length,
-          entityCounts,
-          metrics
-        });
-      }
-      if (instance._sessionBehavior) {
-        const sb = instance._sessionBehavior;
-        const v = snapshot.metrics.get("affect.valence") ?? 0;
-        const a = snapshot.metrics.get("affect.arousal") ?? 0;
-        const c = snapshot.metrics.get("executive.confidence");
-        if (v < sb.valenceMin) sb.valenceMin = v;
-        if (v > sb.valenceMax) sb.valenceMax = v;
-        if (a < sb.arousalMin) sb.arousalMin = a;
-        if (a > sb.arousalMax) sb.arousalMax = a;
-        if (c !== void 0) {
-          sb.confidenceSum += c;
-          sb.confidenceCount++;
-        }
-        const gt = snapshot.metrics.get("goals.total");
-        const gc = snapshot.metrics.get("goals.completed_total");
-        if (gt !== void 0) sb.goalsTotal = gt;
-        if (gc !== void 0) sb.goalsCompleted = gc;
-        if (sb.avgValenceCount === 0) {
-          sb.valenceStart = v;
-          sb.arousalStart = a;
-          sb.prevValence = v;
-          sb.prevArousal = a;
-        }
-        sb.avgValenceSum += v;
-        sb.avgValenceCount++;
-        sb.valenceEnd = v;
-        sb.arousalEnd = a;
-        const dv = v - sb.prevValence;
-        const da = a - sb.prevArousal;
-        if (Math.abs(dv) >= 0.12) {
-          sb.spikeCount++;
-          this._biography.writeEmotionalEvent(instance, "spike", {
-            dimension: "valence",
-            from: sb.prevValence,
-            to: v,
-            delta: dv,
-            tick: instance.tickCount
-          });
-        }
-        if (Math.abs(da) >= 0.18) {
-          sb.spikeCount++;
-          this._biography.writeEmotionalEvent(instance, "spike", {
-            dimension: "arousal",
-            from: sb.prevArousal,
-            to: a,
-            delta: da,
-            tick: instance.tickCount
-          });
-        }
-        if (a > 0.7) {
-          sb.highArousalStreak++;
-        } else {
-          if (sb.highArousalStreak >= 10) {
-            sb.sustainedEpisodes++;
-            this._biography.writeEmotionalEvent(instance, "sustained_high_arousal", {
-              startTick: instance.tickCount - sb.highArousalStreak,
-              durationTicks: sb.highArousalStreak,
-              tick: instance.tickCount
-            });
-          }
-          sb.highArousalStreak = 0;
-        }
-        sb.prevValence = v;
-        sb.prevArousal = a;
-        const conf = snapshot.metrics.get("executive.confidence");
-        const actCount = Math.round(snapshot.metrics.get("executive.action_count") ?? 0);
-        if (conf !== void 0 && conf < 0.35 && actCount > 0)
-          sb.impulsiveActionCount += actCount;
-      }
-      this._outbox.expireStale(instance);
-      this._transport.expireStale(instance, this._outbox);
+      await this._tick(instance);
       if (maxTicks > 0 && instance.tickCount >= maxTicks) {
         instance.status = "paused";
       }
@@ -32007,6 +32516,135 @@ var WillStem = class {
       }
     }
   }
+  /**
+   * Run one tick of a Will created `manual`, now. A replay drives a mind this
+   * way, so it decides what happens between ticks (RECORD_ANCHORING step 4).
+   */
+  async runTick(id) {
+    const instance = this._get(id);
+    if (!instance._manual) throw new Error(`Will ${id} is driven by its own loop; runTick() is for a Will created manual`);
+    if (instance.status === "archived") throw new Error(`Will ${id} is archived`);
+    await this._tick(instance);
+  }
+  /** One tick: everything the loop does between two sleeps. */
+  async _tick(instance) {
+    const id = instance.config.id;
+    this._transport.applyInbound(instance, instance.simulation.clock.currentTick, {
+      effector: this._effector,
+      outbox: this._outbox,
+      sensory: this._sensory,
+      applied: (inst, correlationId, done) => {
+        const resolve = inst._hostWaits.get(correlationId);
+        if (!resolve) return;
+        inst._hostWaits.delete(correlationId);
+        void done.then(resolve, resolve);
+      }
+    });
+    this._effector.applyPolicyOutcomes(instance);
+    await instance.simulation.step(1);
+    instance.tickCount++;
+    instance.lastTickAt = /* @__PURE__ */ new Date();
+    const snapshot = instance.simulation.stateManager.snapshot(), outboxSnapshot = instance.outbox.splice(0), invocationsSnapshot = instance.pendingEffectorInvocations.splice(0);
+    for (const msg of outboxSnapshot)
+      if (msg.createdAtTick === 0) msg.createdAtTick = instance.tickCount;
+    this._transport.emitOutbox(instance, outboxSnapshot);
+    this._transport.emitInvocations(instance, invocationsSnapshot);
+    if (instance.tickListeners.size > 0)
+      for (const fn of instance.tickListeners) {
+        try {
+          fn(snapshot, instance.tickCount, outboxSnapshot, invocationsSnapshot);
+        } catch (err) {
+          logger.error(`[WillStem] tick listener error (${id}):`, err);
+        }
+      }
+    if (instance.sessionLogger) {
+      const metrics = {};
+      for (const [k, v] of snapshot.metrics) metrics[k] = v;
+      const entityCounts = {};
+      for (const e of snapshot.entities.values())
+        entityCounts[e.type] = (entityCounts[e.type] ?? 0) + 1;
+      instance.sessionLogger.write({
+        type: "tick",
+        tick: instance.tickCount,
+        durationMs: instance.lastTickAt ? Date.now() - instance.lastTickAt.getTime() : 0,
+        outboxSize: instance.outbox.length,
+        entityCounts,
+        metrics
+      });
+    }
+    if (instance._sessionBehavior) {
+      const sb = instance._sessionBehavior;
+      const v = snapshot.metrics.get("affect.valence") ?? 0;
+      const a = snapshot.metrics.get("affect.arousal") ?? 0;
+      const c = snapshot.metrics.get("executive.confidence");
+      if (v < sb.valenceMin) sb.valenceMin = v;
+      if (v > sb.valenceMax) sb.valenceMax = v;
+      if (a < sb.arousalMin) sb.arousalMin = a;
+      if (a > sb.arousalMax) sb.arousalMax = a;
+      if (c !== void 0) {
+        sb.confidenceSum += c;
+        sb.confidenceCount++;
+      }
+      const gt = snapshot.metrics.get("goals.total");
+      const gc = snapshot.metrics.get("goals.completed_total");
+      if (gt !== void 0) sb.goalsTotal = gt;
+      if (gc !== void 0) sb.goalsCompleted = gc;
+      if (sb.avgValenceCount === 0) {
+        sb.valenceStart = v;
+        sb.arousalStart = a;
+        sb.prevValence = v;
+        sb.prevArousal = a;
+      }
+      sb.avgValenceSum += v;
+      sb.avgValenceCount++;
+      sb.valenceEnd = v;
+      sb.arousalEnd = a;
+      const dv = v - sb.prevValence;
+      const da = a - sb.prevArousal;
+      if (Math.abs(dv) >= 0.12) {
+        sb.spikeCount++;
+        this._biography.writeEmotionalEvent(instance, "spike", {
+          dimension: "valence",
+          from: sb.prevValence,
+          to: v,
+          delta: dv,
+          tick: instance.tickCount
+        });
+      }
+      if (Math.abs(da) >= 0.18) {
+        sb.spikeCount++;
+        this._biography.writeEmotionalEvent(instance, "spike", {
+          dimension: "arousal",
+          from: sb.prevArousal,
+          to: a,
+          delta: da,
+          tick: instance.tickCount
+        });
+      }
+      if (a > 0.7) {
+        sb.highArousalStreak++;
+      } else {
+        if (sb.highArousalStreak >= 10) {
+          sb.sustainedEpisodes++;
+          this._biography.writeEmotionalEvent(instance, "sustained_high_arousal", {
+            startTick: instance.tickCount - sb.highArousalStreak,
+            durationTicks: sb.highArousalStreak,
+            tick: instance.tickCount
+          });
+        }
+        sb.highArousalStreak = 0;
+      }
+      sb.prevValence = v;
+      sb.prevArousal = a;
+      const conf = snapshot.metrics.get("executive.confidence");
+      const actCount = Math.round(snapshot.metrics.get("executive.action_count") ?? 0);
+      if (conf !== void 0 && conf < 0.35 && actCount > 0)
+        sb.impulsiveActionCount += actCount;
+    }
+    this._outbox.expireStale(instance);
+    this._transport.expireStale(instance, this._outbox);
+    this._anchor.afterTick(instance);
+  }
   // ── Helpers ────────────────────────────────────────────────
   _get(id) {
     const instance = this._wills.get(id);
@@ -32017,6 +32655,363 @@ var WillStem = class {
 function _sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
+
+// src/core/record.verify.ts
+function verifyRecords(entries, opts = {}) {
+  const chain = verifyChain(entries, opts.from ?? { seq: 0, hash: GENESIS_HASH });
+  const goodThrough = chain.valid ? chain.head.seq : chain.breakpoint - 1;
+  const bySeq = new Map(entries.map((e) => [e.seq, e]));
+  const willId = willIdOf(entries);
+  const digests = (opts.digests ?? []).map(({ digest, signature }) => {
+    const tick = digest?.tick, seq = digest?.meta?.seq;
+    const bad = (reason) => ({ tick, seq, ok: false, reason });
+    if (digest?.meta?.chain !== RECORD_CHAIN) return bad(`not a ${RECORD_CHAIN} digest`);
+    if (willId !== null && digest.willId !== willId) return bad(`for Will ${digest.willId}, not ${willId}`);
+    const entry = bySeq.get(seq);
+    if (!entry) return bad(`names entry ${seq}, which is not in the records`);
+    if (seq > goodThrough) return bad(`names entry ${seq}, past where the chain breaks`);
+    if (entry.hash !== digest.streamHeads?.records) return bad(`its head is not entry ${seq}'s hash`);
+    if (entry.tick > tick) return bad(`covers tick ${tick}, but entry ${seq} was chained at tick ${entry.tick}`);
+    if (opts.verify) {
+      if (!signature) return bad("unsigned");
+      let valid = false;
+      try {
+        valid = opts.verify(canonical(digest), signature);
+      } catch {
+        valid = false;
+      }
+      if (!valid) return bad("the signature does not verify");
+    }
+    return { tick, seq, ok: true };
+  });
+  const anchoredThrough = digests.reduce((max, d) => d.ok && (max === null || d.seq > max) ? d.seq : max, null);
+  const last = entries.at(-1)?.seq ?? opts.from?.seq ?? 0;
+  return {
+    ok: chain.valid && digests.every((d) => d.ok),
+    entries: entries.length,
+    chain,
+    digests,
+    anchoredThrough,
+    unanchored: last - (anchoredThrough ?? opts.from?.seq ?? 0)
+  };
+}
+function willIdOf(entries) {
+  for (const e of entries) {
+    const id = e.stream === "chain" ? e.record?.willId : void 0;
+    if (typeof id === "string") return id;
+  }
+  return null;
+}
+var RECORDS_FILE = "records.jsonl";
+var DIGESTS_FILE = "digests.jsonl";
+function readJsonLines(path) {
+  if (!existsSync(path)) return [];
+  return readFileSync(path, "utf8").split("\n").filter((l) => l.trim()).map((l, i) => {
+    try {
+      return JSON.parse(l);
+    } catch {
+      throw new Error(`${path}:${i + 1} is not JSON`);
+    }
+  });
+}
+function fileAnchoring(dir, opts) {
+  mkdirSync(dir, { recursive: true });
+  const records = join(dir, RECORDS_FILE);
+  const digests = join(dir, DIGESTS_FILE);
+  const last = readJsonLines(records).at(-1);
+  const resume = last ? { seq: last.seq, hash: last.hash } : void 0;
+  return {
+    every: opts.every,
+    ...opts.sign ? { sign: opts.sign } : {},
+    ...resume ? { resume } : {},
+    record: (entry) => {
+      appendFileSync(records, JSON.stringify(entry) + "\n");
+    },
+    anchor: (digest, signature) => {
+      const line = signature === void 0 ? { digest } : { digest, signature };
+      appendFileSync(digests, JSON.stringify(line) + "\n");
+      return opts.publish?.(digest, signature);
+    }
+  };
+}
+function ed25519Signer(privateKeyPem) {
+  const key = createPrivateKey(privateKeyPem);
+  return (material) => sign(null, Buffer.from(material, "utf8"), key).toString("base64");
+}
+function ed25519Verifier(publicKeyPem) {
+  const key = createPublicKey(publicKeyPem);
+  return (material, signature) => verify(null, Buffer.from(material, "utf8"), key, Buffer.from(signature, "base64"));
+}
+var WALL_FIELDS = ["wallTime", "startedAt", "resumedAt", "durationMs", "latencyMs"];
+var INPUTS = /* @__PURE__ */ new Set(["chain", "completions", "inbound", "verdicts", "recall", "clock"]);
+var rec = (e) => e?.record ?? {};
+function steady(record) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) return canonical(record);
+  const out = {};
+  for (const [k, v] of Object.entries(record)) if (!WALL_FIELDS.includes(k)) out[k] = v;
+  return canonical(out);
+}
+function arrivedBetweenTicks(entries) {
+  const between = /* @__PURE__ */ new Map();
+  let inStep = false;
+  for (const e of entries) {
+    if (e.stream === "clock") inStep = true;
+    else if (e.stream === "session" && rec(e).type === "tick") inStep = false;
+    else if (e.stream === "chain") inStep = false;
+    between.set(e.seq, !inStep && rec(e).mock !== true);
+  }
+  return between;
+}
+var Schedule = class {
+  through;
+  _held = [];
+  constructor(start) {
+    this.through = start;
+  }
+  due(seq) {
+    return this.through >= seq - 1;
+  }
+  /** Now if it may be, else a promise settled when its place comes. */
+  hold(entry, between, value) {
+    if (this.due(entry.seq) && !between) return value;
+    return new Promise((resolve) => this._held.push({ seq: entry.seq, between, release: () => resolve(value) }));
+  }
+  /** The replay reproduced one more entry: hand over what that makes due inside a step. */
+  advance(seq) {
+    this.through = seq;
+    for (const h of [...this._held])
+      if (!h.between && this.due(h.seq)) {
+        this._held.splice(this._held.indexOf(h), 1);
+        h.release();
+      }
+  }
+  /**
+   * Between ticks: hand over the answer that arrived here next, if it is due.
+   * Only the next entry can be due, so there is at most one.
+   */
+  releaseBetween() {
+    const h = this._held.find((x) => x.between && this.due(x.seq));
+    if (!h) return false;
+    this._held.splice(this._held.indexOf(h), 1);
+    h.release();
+    return true;
+  }
+};
+async function replayChain(entries, opts = {}) {
+  const starts = entries.flatMap((e, i) => e.stream === "chain" && rec(e).chain === RECORD_CHAIN ? [i] : []);
+  if (starts[0] !== 0) return replaySegment(entries, opts);
+  let shredded = 0;
+  let report;
+  for (const [n, at] of starts.entries()) {
+    report = await replaySegment(entries.slice(at, starts[n + 1]), opts);
+    shredded += report.shredded;
+    if (!report.reproduced) break;
+  }
+  return { ...report, last: entries.at(-1).seq, shredded };
+}
+async function replaySegment(entries, opts) {
+  const first = entries[0];
+  const last = entries.at(-1)?.seq ?? 0;
+  const refuse = (refused) => ({ reproduced: false, through: (first?.seq ?? 1) - 1, last, shredded: 0, refused });
+  if (!first) return refuse("there are no records");
+  const verified = verifyChain(entries, { seq: first.seq - 1, hash: first.prev });
+  if (!verified.valid) return refuse(`the chain breaks at entry ${verified.breakpoint}: ${verified.reason}`);
+  const genesis = rec(first);
+  if (first.stream !== "chain" || genesis.chain !== RECORD_CHAIN) return refuse(`entry ${first.seq} does not begin a ${RECORD_CHAIN} chain`);
+  if (!genesis.config || typeof genesis.config !== "object") return refuse("the genesis does not carry the starting config; it was chained before replay could read one");
+  const restored = genesis.restored;
+  if (restored) return refuse(`the mind began from a stored snapshot at tick ${restored.tick}; the chain holds its hash, not the snapshot`);
+  const bySeq = new Map(entries.map((e) => [e.seq, e]));
+  const between = arrivedBetweenTicks(entries);
+  const unused = (stream) => entries.filter((e) => e.stream === stream);
+  const schedule = new Schedule(first.seq - 1);
+  let divergence;
+  let shredded = 0, activity = 0;
+  const diverge = (d) => {
+    divergence ??= d;
+  };
+  const onEntry = (e) => {
+    activity++;
+    if (divergence || schedule.through >= last) return;
+    const want = bySeq.get(e.seq);
+    if (!want) return diverge({ seq: e.seq, reason: "the replay produced an entry the original does not have" });
+    if (e.stream !== want.stream) return diverge({ seq: e.seq, reason: `the original has a ${want.stream} entry here; the replay produced ${e.stream}`, expected: want.record, produced: e.record });
+    if (e.tick !== want.tick) return diverge({ seq: e.seq, reason: `chained at tick ${e.tick}, not ${want.tick}`, expected: want.record, produced: e.record });
+    if (e.seq === first.seq) {
+      const g = rec(e);
+      if (g.willId !== genesis.willId || g.seed !== genesis.seed || g.startTick !== genesis.startTick || !!g.resumed !== !!genesis.resumed)
+        return diverge({ seq: e.seq, reason: "the replay began a different chain", expected: want.record, produced: e.record });
+    } else if (INPUTS.has(e.stream)) {
+      if (e.recordHash !== want.recordHash) return diverge({ seq: e.seq, reason: `the ${e.stream} input differs`, expected: want.record, produced: e.record });
+    } else if (want.record === void 0) shredded++;
+    else if (steady(e.record) !== steady(want.record))
+      return diverge({ seq: e.seq, reason: `the mind produced a different ${e.stream} record`, expected: want.record, produced: e.record });
+    schedule.advance(e.seq);
+  };
+  const willId = String(genesis.willId);
+  const taken = /* @__PURE__ */ new Set();
+  const take = (stream, match) => {
+    const e = unused(stream).find((x) => !taken.has(x.seq) && match(rec(x)));
+    if (e) taken.add(e.seq);
+    return e;
+  };
+  const noAnswer = (what) => {
+    diverge({ seq: schedule.through + 1, reason: `the replay asked for ${what}, which the original never answered` });
+    return Promise.reject(new Error("replay diverged"));
+  };
+  setCompletionSource(willId, {
+    nextCompletion: (tick, systemPrompt, userMessage) => {
+      activity++;
+      const e = take("completions", (r) => r.tick === tick && r.systemPrompt === systemPrompt && r.userMessage === userMessage);
+      if (!e) return noAnswer(`a model completion at tick ${tick}`);
+      return schedule.hold(e, between.get(e.seq), e.record);
+    }
+  });
+  setRecallSource(willId, {
+    nextRecall: (query) => {
+      activity++;
+      const asked = canonical(jsonForm(query));
+      const e = take("recall", (r) => canonical(r.query) === asked);
+      if (!e) return noAnswer("a recall");
+      return Promise.resolve(schedule.hold(e, between.get(e.seq), e.record));
+    }
+  });
+  setVerdictSource(willId, {
+    verdictFor: (tick, intentId) => {
+      activity++;
+      const e = take("verdicts", (r) => r.tick === tick && r.intentId === intentId);
+      return e ? schedule.hold(e, between.get(e.seq), e.record) : void 0;
+    }
+  });
+  setInboundSource(willId, {
+    recordsAt: (tick) => unused("inbound").filter((e) => !taken.has(e.seq) && rec(e).tick === tick).map((e) => {
+      taken.add(e.seq);
+      return e.record;
+    })
+  });
+  const steps = () => {
+    const e = take("clock", () => true);
+    if (!e) {
+      diverge({ seq: schedule.through + 1, reason: "the replay took a step the original did not" });
+      return { now: 0, delta: 0 };
+    }
+    return e.record;
+  };
+  const savedEnv = { ...process.env };
+  const dataDir = mkdtempSync(join(tmpdir(), "will-replay-"));
+  for (const k of Object.keys(process.env)) if (k.startsWith("WILL_")) delete process.env[k];
+  Object.assign(process.env, genesis.env ?? {}, {
+    WILL_DATA_DIR: dataDir,
+    WILL_FILE_LOGS: "false",
+    ...genesis.recall ? { WILL_VECTOR_MEMORY: "mock" } : { WILL_SEMANTIC_RECALL: "false", WILL_EMBEDDING_MODEL: "none", WILL_VECTOR_MEMORY: "" }
+  });
+  if (!opts.verbose) setLogger(quiet);
+  const config = {
+    ...genesis.config,
+    persistentMemory: false,
+    snapshotStorage: void 0,
+    stopTimeoutMs: 2e3,
+    anchoring: {
+      every: Number.MAX_SAFE_INTEGER,
+      record: onEntry,
+      anchor: () => {
+      },
+      ...first.seq > 1 ? { resume: { seq: first.seq - 1, hash: first.prev } } : {}
+    }
+  };
+  const firstTick = entries.findIndex((e) => e.stream === "clock");
+  const startsPaused = entries.slice(1, firstTick < 0 ? void 0 : firstTick).some((e) => rec(e).lifecycle === "resume");
+  const stem = new WillStem();
+  let archived = false;
+  const settle = async () => {
+    let seen = -1, still = 0;
+    for (let i = 0; i < 200 && still < 3; i++) {
+      await new Promise((r) => setImmediate(r));
+      still = activity === seen ? still + 1 : 0;
+      seen = activity;
+    }
+  };
+  const within = async (work, what) => {
+    let timer;
+    const stalled = new Promise((r) => {
+      timer = setTimeout(() => r("stalled"), opts.stallMs ?? 3e4);
+    });
+    try {
+      if (await Promise.race([work.then(() => "done"), stalled]) === "stalled")
+        diverge({ seq: schedule.through + 1, reason: `${what} never finished: the replay is waiting on an input the original does not hand it here` });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  try {
+    await stem.createWill(config, startsPaused, { manual: true, steps });
+    while (!divergence && schedule.through < last) {
+      if (schedule.releaseBetween()) {
+        await settle();
+        continue;
+      }
+      const next = bySeq.get(schedule.through + 1);
+      const r = rec(next);
+      if (next.stream === "chain" && r.loaded === "pma") {
+        stem.loadPMA(willId, r.pma);
+        await settle();
+        continue;
+      }
+      if (next.stream === "chain" && r.lifecycle === "pause") {
+        stem.pauseWill(willId);
+        await settle();
+        continue;
+      }
+      if (next.stream === "chain" && r.lifecycle === "resume") {
+        stem.resumeWill(willId);
+        await settle();
+        continue;
+      }
+      if (next.stream === "chain" && r.lifecycle === "archive") {
+        const done = stem.archiveWill(willId).then(() => {
+          archived = true;
+        });
+        while (!archived && !divergence) {
+          if (!schedule.releaseBetween()) await new Promise((r2) => setImmediate(r2));
+          else await settle();
+        }
+        await within(done, "the archive");
+        continue;
+      }
+      if (next.stream === "clock" || next.stream === "inbound") {
+        await within(stem.runTick(willId), `the tick at ${next.tick}`);
+        await settle();
+        continue;
+      }
+      const before = schedule.through;
+      await settle();
+      if (schedule.through === before && !schedule.releaseBetween())
+        diverge({ seq: next.seq, reason: `the original has a ${next.stream} entry here; the replay produced nothing`, expected: next.record });
+    }
+  } catch (err) {
+    diverge({ seq: schedule.through + 1, reason: `the replay failed: ${err instanceof Error ? err.message : String(err)}` });
+  } finally {
+    if (!archived) await stem.archiveWill(willId).catch(() => {
+    });
+    for (const clear of [clearCompletionSource, clearRecallSource, clearVerdictSource, clearInboundSource]) clear(willId);
+    if (!opts.verbose) resetLogger();
+    for (const k of Object.keys(process.env)) if (!(k in savedEnv)) delete process.env[k];
+    Object.assign(process.env, savedEnv);
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+  return {
+    reproduced: !divergence && schedule.through >= last,
+    through: schedule.through,
+    last,
+    ...divergence ? { divergence } : {},
+    shredded
+  };
+}
+var quiet = { debug: () => {
+}, info: () => {
+}, warn: () => {
+}, error: () => {
+} };
 
 // src/stem/tracts/transport/loopback.transport.ts
 var DEFAULT_ACK = () => ({ acked: true, via: "callback" });
@@ -32452,6 +33447,20 @@ var Will = class _Will {
     return this;
   }
   /**
+   * Answer an ask the arbiter escalated (POLICY_REAFFERENCE P4): `true` sends
+   * the held act to the world, `false` refuses it. `intentId` is the one the
+   * arbiter saw on `PolicyInvocation`. A refusal's `finality` defaults to
+   * `'parameter'` — no to this ask — and `'class'` is for a person who meant
+   * never. Applied at the next tick; a no-op for an ask no longer held.
+   *
+   * It was reachable only as `will.stem.resolveEscalation(will.id, …)`, so a
+   * host on the facade could raise an escalation and had no way to answer it.
+   */
+  resolveEscalation(intentId, approved, finality) {
+    this.stem.resolveEscalation(this.id, intentId, approved, finality);
+    return this;
+  }
+  /**
    * Checkpoint the living mind into a portable PMA artifact — NON-destructive.
    * The Will keeps ticking; the snapshot is a point-in-time copy you can archive
    * or wake elsewhere. Use this for periodic saves; use `hibernate()` to sleep.
@@ -32506,7 +33515,24 @@ var Will = class _Will {
       tickIntervalMs: opts.tickMs ?? 1e3,
       allowedGenericEffectors: [...COMMUNICATION, ...this._effectorDecls.values()],
       initialGoals: opts.initialGoals ?? [],
-      ...opts.seed !== void 0 ? { randomSeed: opts.seed, clock: { fixedDeltaMs: 1e3, startTime: 0 } } : {}
+      ...opts.seed !== void 0 ? { randomSeed: opts.seed, clock: { fixedDeltaMs: 1e3, startTime: 0 } } : {},
+      ...opts.anchoring ? { anchoring: this._anchoring(opts.anchoring) } : {}
+    };
+  }
+  /** The host's hooks, with their failures reported where a host listens. */
+  _anchoring(o) {
+    checkAnchoring(o);
+    const fail = (what, err) => this._emitError(new Error(`anchoring.${what} failed: ${err?.message ?? String(err)}`));
+    return {
+      ...o,
+      record: (entry) => {
+        try {
+          o.record(entry);
+        } catch (err) {
+          fail("record", err);
+        }
+      },
+      anchor: (digest, signature) => Promise.resolve().then(() => o.anchor(digest, signature)).catch((err) => fail("anchor", err))
     };
   }
   /** Wire the single tick listener that drives messages + the effector ack loop. */
@@ -32689,6 +33715,6 @@ function describe(c) {
   return null;
 }
 
-export { ActionSelector, AestheticEvaluator, AffectiveBlender, AffordanceSynthesizer, AsyncEngine, AttachmentEvaluator, AttentionAllocator, AuditionEngine, AutobiographicalNarrator, BACKGROUND_DEMAND, BiasDetector, BunStorageAdapter, CircadianOscillator, ConfidenceCalibrator, ConflictDetector, ConsistentHashRouter, ConsoleLogger, DefaultEventBus, DefaultMetricCollector, DefaultOrchestrator, DefaultPartitionRouter, DefaultReplayRecorder, DefaultReplaySession, DefaultScenario, DefaultSerializer, DefaultSimulation, DefaultSimulationClock, DefaultStateManager, DefaultVectorMemoryAdapter, DeliberationEngine, DeltaEncoder, DistributedOrchestrator, DistributedStateManager, DreamSimulator, ESCALATION_DEMAND, EmpathySimulator, EnergyRegulator, EpisodicConsolidator, ExecutiveEngine, Exteroception, ForgettingCurve, FrustrationEvaluator, GoalManager, GustationEngine, InhibitionController, Interoception, IntrospectionEngine, KNOWN_PROVIDERS, KnownEntityTracker, LocalTransport, LoopbackTransport, LossEvaluator, MockEmbedder, MoralEvaluator, MotorSchemaExecutor, NULL_ARBITER, NULL_ROUTER, NoveltyDetector, OUTBOX_TTL_TICKS, OlfactionEngine, OpenAICompatibleEmbedder, PMAEvalHarness, PersonaConsolidator, PlanningEngine, ReafferenceEngine, ReplayManager, ReputationTracker, RewardEvaluator, RuleTableArbiter, SelfModelUpdater, SemanticIntegrator, SilentLogger, SleepPressureRegulator, SocialPerception, SocketIoTransport, SomatosensationEngine, SpacedRepetition, StreamTransport, StressRegulator, TableRouter, TaskSwitcher, TheoryOfMind, ThreatEvaluator, TokenTracker, VisionEngine, Will, WillStem, WorkingMemory, asFinality, asProvenance, assembleMind, chainRouters, clearCompletionRecorder, createContext, createPRNG, defaultBaseFor, fileLoggingEnabled, finalityOf, getCompletionRecorder, getLogger, isNullArbiter, isNullRouter, knownWireFor, listProfiles, logger, resetLogger, resolvePricing, resolveProfile, setCompletionRecorder, setLogger };
+export { ActionSelector, AestheticEvaluator, AffectiveBlender, AffordanceSynthesizer, AsyncEngine, AttachmentEvaluator, AttentionAllocator, AuditionEngine, AutobiographicalNarrator, BACKGROUND_DEMAND, BiasDetector, BunStorageAdapter, CircadianOscillator, ConfidenceCalibrator, ConflictDetector, ConsistentHashRouter, ConsoleLogger, DefaultEventBus, DefaultMetricCollector, DefaultOrchestrator, DefaultPartitionRouter, DefaultReplayRecorder, DefaultReplaySession, DefaultScenario, DefaultSerializer, DefaultSimulation, DefaultSimulationClock, DefaultStateManager, DefaultVectorMemoryAdapter, DeliberationEngine, DeltaEncoder, DistributedOrchestrator, DistributedStateManager, DreamSimulator, ESCALATION_DEMAND, EmpathySimulator, EnergyRegulator, EpisodicConsolidator, ExecutiveEngine, Exteroception, ForgettingCurve, FrustrationEvaluator, GENESIS_HASH, GoalManager, GustationEngine, InhibitionController, Interoception, IntrospectionEngine, KNOWN_PROVIDERS, KnownEntityTracker, LocalTransport, LoopbackTransport, LossEvaluator, MockEmbedder, MoralEvaluator, MotorSchemaExecutor, NULL_ARBITER, NULL_ROUTER, NoveltyDetector, OUTBOX_TTL_TICKS, OlfactionEngine, OpenAICompatibleEmbedder, PMAEvalHarness, PersonaConsolidator, PlanningEngine, RECORD_CHAIN, ReafferenceEngine, RecordChain, ReplayManager, ReputationTracker, RewardEvaluator, RuleTableArbiter, SelfModelUpdater, SemanticIntegrator, SilentLogger, SleepPressureRegulator, SocialPerception, SocketIoTransport, SomatosensationEngine, SpacedRepetition, StreamTransport, StressRegulator, TableRouter, TaskSwitcher, TheoryOfMind, ThreatEvaluator, TokenTracker, VisionEngine, Will, WillStem, WorkingMemory, asFinality, asProvenance, assembleMind, canonical, chainRouters, clearCompletionRecorder, createContext, createPRNG, defaultBaseFor, ed25519Signer, ed25519Verifier, fileAnchoring, fileLoggingEnabled, finalityOf, getCompletionRecorder, getLogger, isNullArbiter, isNullRouter, knownWireFor, listProfiles, logger, readJsonLines, recordHash, replayChain, resetLogger, resolvePricing, resolveProfile, setCompletionRecorder, setLogger, verifyChain, verifyRecords };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

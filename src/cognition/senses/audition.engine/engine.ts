@@ -288,8 +288,11 @@ For simple, single-exchange requests (questions, opinions, short tasks) — do N
 export class ThreadDigestManager {
   static readonly MAX_TURNS = 5
   private _threads = new Map<string, string[]>()
+  /** Every turn appended to a thread, so the digest can say how many it is not showing. */
+  private _turns = new Map<string, number>()
 
   append( threadId: string, role: 'user' | 'will', content: string ): void {
+    this._turns.set( threadId, ( this._turns.get( threadId ) ?? 0 ) + 1 )
     const lines = this._threads.get( threadId ) ?? []
     // Each turn whole. How MANY turns a facet sees is a per-call question
     // (LOSSLESS P5); what a turn said is not up for cutting (P0).
@@ -316,11 +319,18 @@ export class ThreadDigestManager {
     const lines = this._threads.get( threadId )
     if( !lines || lines.length === 0 ) return ''
 
-    return `[Thread — last ${lines.length} turn${lines.length === 1 ? '' : 's'}]\n${lines.join('\n')}`
+    // How many earlier turns this is not showing, and where they are: each exchange
+    // is a memory, reachable by a search of them (LOSSLESS P5c).
+    const earlier = ( this._turns.get( threadId ) ?? 0 ) - lines.length
+    const more = earlier > 0
+      ? `; ${ earlier } earlier turn${ earlier === 1 ? ' is' : 's are' } in my memories — {"recall": [{"section": "memories", "query": "…"}]}`
+      : ''
+    return `[Thread — last ${lines.length} turn${lines.length === 1 ? '' : 's'}${ more }]\n${lines.join('\n')}`
   }
 
   clear( threadId: string ): void {
     this._threads.delete( threadId )
+    this._turns.delete( threadId )
   }
 }
 

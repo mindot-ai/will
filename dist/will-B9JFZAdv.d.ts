@@ -1724,6 +1724,12 @@ type EmbedFunction = Extract<LLMCallFunction, 'recall' | 'index'>;
 interface EmbeddingProvider {
     readonly modelName: string;
     readonly dimensions: number;
+    /**
+     * The most tokens one input may carry. What the mind read is embedded a page at
+     * a time (LOSSLESS P5e), and a page longer than this is split before embedding —
+     * never cut. Undefined: a conservative 2,048.
+     */
+    readonly maxInputTokens?: number;
     /** Generate embedding for a single piece of content. `fn` tags the call for
      *  cost attribution: 'recall' (query) vs 'index' (write). */
     embed(content: unknown, fn?: string): Promise<number[]>;
@@ -1732,12 +1738,10 @@ interface EmbeddingProvider {
     /** Check if two embeddings are semantically equivalent (for replay validation) */
     areEquivalent(embedding1: number[], embedding2: number[], tolerance?: number): boolean;
 }
-/**
- * OpenAI-compatible embedder (works with OpenAI, Azure, LocalAI, Ollama)
- */
 declare class OpenAICompatibleEmbedder implements EmbeddingProvider {
     readonly modelName: string;
     readonly dimensions: number;
+    readonly maxInputTokens?: number;
     private _apiUrl;
     private _apiKey;
     private _maxConcurrency;
@@ -1766,6 +1770,8 @@ declare class OpenAICompatibleEmbedder implements EmbeddingProvider {
         maxConcurrency?: number;
         /** Per-request timeout in ms before the connection is aborted. Default 30s. */
         timeoutMs?: number;
+        /** The model's input limit in tokens, when the host knows it better than the table above. */
+        maxInputTokens?: number;
         /**
          * Per-Will token tracker. When provided, each embedding call records its
          * input-token usage under the 'embedding' category so memory-vector spend is
@@ -1845,6 +1851,12 @@ interface EpisodicMemory {
      * on episodes written before it existed, which simply never block anything.
      */
     sourceId?: string;
+    /**
+     * Set on what a semantic query returns, never stored: the page of what this
+     * episode held that matched the query (LOSSLESS P5e) — so recall can say which
+     * part of a long read brought it to mind.
+     */
+    matchedPage?: number;
 }
 declare class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
     readonly name = "episodic-consolidator";
@@ -2039,6 +2051,11 @@ interface VectorRecord {
 interface VectorQueryResult {
     episodeId: string;
     similarity: number;
+    /**
+     * The page of what the episode held that matched, when it was a page that did
+     * (LOSSLESS P5e) — the page `[RECALL]` names, as the prompt pages it.
+     */
+    page?: number;
 }
 /**
  * Query knobs for vector search.
@@ -2134,6 +2151,8 @@ declare class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
      */
     private _inFlight;
     private _cancelled;
+    /** Each episode's page vectors — what it held, embedded a page at a time (LOSSLESS P5e). */
+    private _pageIds;
     constructor(embedder: EmbeddingProvider, config?: VectorMemoryConfig & {
         persistPath?: string;
     }, storage?: StorageAdapter, indexImpl?: VectorIndex);
@@ -2142,6 +2161,14 @@ declare class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
     private _touch;
     get size(): number;
     index(episode: EpisodicMemory, content: unknown): Promise<void>;
+    /**
+     * What one episode is embedded as: its label, and — for an observation — every
+     * page of what it held (LOSSLESS P5e). An observation was embedded by its label
+     * alone, at most a hundred characters, so recall could find that she had read a
+     * listing and never the part of it that answered. A page longer than the
+     * embedder takes is split into pieces, never cut.
+     */
+    private _texts;
     indexBatch(episodes: Array<{
         episode: EpisodicMemory;
         content: unknown;
@@ -2151,6 +2178,8 @@ declare class DefaultVectorMemoryAdapter implements VectorMemoryAdapter {
     search(query: unknown, filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
     searchWithVector(embedding: number[], filter?: VectorQueryFilter): Promise<VectorQueryResult[]>;
     delete(episodeId: string): Promise<void>;
+    /** An episode's vector and every page's. True when there was any. */
+    private _deleteVectors;
     rebuildFromStore(store: EpisodicMemory[]): Promise<void>;
     persist(): Promise<void>;
     load(): Promise<void>;

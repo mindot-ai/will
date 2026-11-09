@@ -1,4 +1,4 @@
-import './will-eDdJkyin.js';
+import './will-B9JFZAdv.js';
 
 /** A running connection between one Will and one platform. */
 interface ChannelBridge {

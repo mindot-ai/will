@@ -91,8 +91,19 @@ export type EffectorDeclaration =
       binds?:         'none' | 'entity' | 'object'
       /**
        * Routing tags folded into the schema (merged with 'external'/'host').
-       * A tag the drive system recognises (e.g. 'social', 'nourishment') lets a
-       * homeostatic drive lift this ability in the competition when pressing.
+       * A tag the drive system recognises lets a homeostatic drive lift this
+       * ability in the competition when pressing. `driveUrgency`
+       * (agency/selection.scoring.ts) recognises exactly three families, and
+       * ANY OTHER TAG CONTRIBUTES ZERO to the drive term:
+       *
+       *   • 'regulatory' | 'self-care' | 'rest' → max(energy, sleep)
+       *   • 'social'                            → the social drive
+       *   • 'self-protection'                   → max(stress, threat)
+       *
+       * There is no epistemic or curiosity drive, so an ability whose purpose is
+       * knowing routes to nothing here and competes on goal relevance, reward
+       * and `novelty` instead. Tags outside these families are still useful as
+       * routing/provenance markers — they just do not reach a drive.
        */
       tags?:          string[]
     }

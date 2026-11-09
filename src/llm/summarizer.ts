@@ -45,6 +45,7 @@ export class ExecutiveSummarizer {
   private _summary:      string    = ''
   private _callCount     = 0
   private _summarizing   = false
+  private _running: Promise<void> | null = null
   private _llmDirector:  LLMDirector | null = null
 
   private readonly _interval:         number
@@ -79,7 +80,7 @@ export class ExecutiveSummarizer {
     this._callCount++
 
     if( this._callCount % this._interval === 0 && !this._summarizing )
-      this._run().catch( err => logger.warn('[summarizer] error:', err instanceof Error ? err.message : err ) )
+      this._running = this._run().catch( err => logger.warn('[summarizer] error:', err instanceof Error ? err.message : err ) )
   }
 
   /**
@@ -93,6 +94,11 @@ export class ExecutiveSummarizer {
 
   /** Whether a summarization is currently running. */
   get isBusy(): boolean { return this._summarizing }
+
+  /** Settles once the summarisation in flight, if any, has finished. */
+  async awaitPending(): Promise<void> {
+    await this._running
+  }
 
   /**
    * Restore state from a persisted snapshot (called by ExecutiveEngine on first tick

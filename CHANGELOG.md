@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Stopped means stopped.** Archiving a Will (`stop()`, `hibernate()`) used to
+  sleep one tick interval and hope: a tick that ran longer finished after the
+  archive snapshot was taken, and calls still in flight answered after the Will
+  was gone — billed, written to disk, chained after `session.end`. It now wakes
+  the loop and waits for it to leave, detaches every engine — audition releases
+  the turns and the outreach authoring that wait on a facet decision a stopped
+  mind will not make — and then waits for every engine's work in flight
+  (`awaitPending`, now part of the engine contract), within `stopTimeoutMs`
+  (default 30s; work past it is given up and logged by name). `session.end` is
+  the session's last record.
+- **Debug dumps follow the rule every other file a Will writes follows.** Full
+  prompts, responses and `token-report.jsonl` are written only when file logging
+  is on and the Will is not in test mode, under `WILL_DATA_DIR` (default
+  `./data`) — a test or a mock-model Will no longer leaves `./data/wills/*/debug`
+  in whatever directory it ran from. `TokenTracker` takes `ledgerDir` in place of
+  `willId` + `writeLedger`.
 - **What a mind did can be proven unaltered.** A Will created or woken with
   `anchoring: { every, record, anchor, sign?, resume? }` hash-chains every
   record it produces — session log, completions, inbound envelopes, policy

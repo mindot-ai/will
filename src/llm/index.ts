@@ -205,6 +205,12 @@ export interface LLMDirectorConfig {
    */
   timeoutMs?: number
   /**
+   * Where `writeDebugPrompt` / `writeDebugResponse` put each call whole. Unset
+   * or null writes nothing: the stem passes one only when file logging is on and
+   * the Will is not in test mode, the gate every other file it writes obeys.
+   */
+  debugDir?: string | null
+  /**
    * Per-Will token tracker (R4). When provided, completed live calls record
    * their usage/cost here. Omitted/null → recording is skipped (e.g. mock or
    * replay runs). This replaces the former process-global getTokenTracker().
@@ -449,6 +455,7 @@ export class LLMDirector {
   private _mock: boolean
   private _baseUrl: string | null
   private _timeoutMs: number
+  private _debugDir: string | null
   private _tokenTracker: TokenTracker | null
   private _router: ModelRouter | null
   private _credentials: Partial<Record<string, ProviderCredential>>
@@ -469,6 +476,7 @@ export class LLMDirector {
     this._mock = config.mock ?? false
     this._baseUrl = config.baseUrl ?? null
     this._timeoutMs = config.timeoutMs ?? 90_000
+    this._debugDir = config.debugDir ?? null
     this._tokenTracker = config.tokenTracker ?? null
     this._router = config.router ?? null
     this._credentials = config.credentials ?? {}
@@ -1147,16 +1155,17 @@ export class LLMDirector {
   }
 
   /**
-   * Write the full prompt to a debug file for inspection.
-   * Mirrors the original _writeDebugPrompt behavior.
+   * Write the full prompt to a debug file for inspection. Returns the path, or
+   * '' when nothing was written (no `debugDir`, or the write failed).
    */
   writeDebugPrompt(
     tick: Tick,
     systemPrompt: string,
     userMessage: string,
   ): string {
+    const debugDir = this._debugDir
+    if( !debugDir ) return ''
     try {
-      const debugDir = `./data/wills/${this._willId}/debug`
       mkdirSync( debugDir, { recursive: true })
 
       const totalChars = systemPrompt.length + userMessage.length
@@ -1195,6 +1204,7 @@ export class LLMDirector {
    * Write the full LLM response text to `response-tick-N.txt` alongside the
    * corresponding `prompt-tick-N.txt`. This gives developers the complete
    * reasoning trace without truncation — useful for debugging planning failures.
+   * Returns the path, or '' when nothing was written.
    */
   writeDebugResponse(
     tick: Tick,
@@ -1202,9 +1212,10 @@ export class LLMDirector {
     inputTok: number,
     outputTok: number,
     latencyMs: number,
-  ): void {
+  ): string {
+    const debugDir = this._debugDir
+    if( !debugDir ) return ''
     try {
-      const debugDir = `./data/wills/${this._willId}/debug`
       mkdirSync( debugDir, { recursive: true })
 
       const content = [
@@ -1220,9 +1231,10 @@ export class LLMDirector {
 
       const filepath = `${debugDir}/response-tick-${String( tick ).padStart( 6, '0')}.txt`
       writeFileSync( filepath, content )
+      return filepath
     }
     catch {
-      /* non-critical */
+      return ''   // non-critical
     }
   }
 

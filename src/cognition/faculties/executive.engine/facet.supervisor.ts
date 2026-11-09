@@ -286,6 +286,11 @@ export class FacetSupervisor {
    * Subsumes broadcastStateRef for the per-tick path; broadcastStateRef remains
    * for the master's mid-reasonAsync refresh.
    */
+  /** Every live facet's reasoning in flight. Facets launch only from `pump`, so this starts nothing. */
+  async awaitPending(): Promise<void> {
+    await Promise.all( [ ...this._facets.values() ].map( f => f.awaitPending() ) )
+  }
+
   pump( state: ReadonlySimulationState ): void {
     this._lastStateRef = state
     for( const facet of this._facets.values() )

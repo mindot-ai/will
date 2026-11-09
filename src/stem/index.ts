@@ -144,6 +144,8 @@ export interface WillInstance {
   sessionLogger:             SessionLogger | null
   /** Resolver that interrupts the tick-sleep when a high-priority event (e.g. incoming message) arrives. */
   _tickWakeFn:               (() => void) | null
+  /** The tick loop itself; settles once the loop has exited. Archiving waits on it. */
+  _loop:                     Promise<void> | null
   /** Timestamp when the Will was last paused — used to compute offline duration for the wake percept on resume. */
   pausedAt:                  Date | null
   /** Set of active LLM-chunk listeners (one per SSE connection). F3 word-level streaming. */
@@ -320,6 +322,7 @@ export class WillStem {
       _transportUnsub:           null,
       sessionLogger,
       _tickWakeFn:               null,
+      _loop:                     null,
       pausedAt:                  null,
       chunkListeners:            new Set(),
       sensoryChunkListeners:      new Map(),
@@ -401,7 +404,7 @@ export class WillStem {
     // iteration sees the correct state and skips ticking if paused.
     instance.status = startPaused ? 'paused' : 'active'
     
-    this._runTickLoop( config.id ).catch( err => {
+    instance._loop = this._runTickLoop( config.id ).catch( err => {
       logger.error(`[WillStem] tick loop crashed (${config.id}):`, err )
 
       const inst = this._wills.get( config.id )
@@ -653,23 +656,26 @@ export class WillStem {
    */
   async archiveWill( id: string ): Promise<void> {
     const instance = this._get( id )
+    instance.status = 'archived'
 
+    // Nothing new comes in: tear down the external transport + discard
+    // un-applied inbound.
+    this._transport.detach( instance )
+
+    // Stopped means stopped. Wake the loop from its sleep and wait for it to
+    // leave, then for every call the mind already started. This used to sleep
+    // one tick interval and hope: a tick that ran longer finished after the
+    // snapshot below was taken, and a call still in flight answered after the
+    // Will was gone — billed, written to disk, chained after `session.end`.
+    await this._settle( instance )
+
+    // The session ends after its last record, so `session.end` is the last.
     this._biography.writeSessionSummary( instance )
     this._biography.writeEmotionalBiographySummary( instance )
     instance.sessionLogger?.close()
     instance.sessionLogger = null
-    instance.status = 'archived'
-
-    // Clean up the eventBus subscription
     instance._eventBusUnsub?.()
     instance._eventBusUnsub = null
-
-    // Tear down the external transport + discard un-applied inbound.
-    this._transport.detach( instance )
-
-    // Give the tick loop one tick length to exit cleanly
-    const wait = instance.config.tickIntervalMs ?? 1000
-    await _sleep( wait + 200 )
 
     try {
       // Flush all in-memory episode mutations to state entities, then await a
@@ -697,6 +703,36 @@ export class WillStem {
       this._anchor.seal( instance )
       this._anchor.detach( instance )
     }
+  }
+
+  /**
+   * Wait for the tick loop to exit, detach every engine (ending what waits on
+   * the mind), then wait for every engine's work in flight, within
+   * `stopTimeoutMs`. Work that outlasts it is given up and logged by
+   * name — a shutdown must not hang on one stuck call.
+   */
+  private async _settle( instance: WillInstance ): Promise<void> {
+    const id = instance.config.id
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const late = new Promise<'late'>( r => { timer = setTimeout( () => r('late'), instance.config.stopTimeoutMs ?? 30_000 ) } )
+    const within = async ( what: string, work: Promise<unknown> ): Promise<void> => {
+      const settled = work.then( () => 'done' as const, () => 'done' as const )
+      if( await Promise.race( [ settled, late ] ) === 'late' )
+        logger.warn(`[WillStem] archived ${id} with ${what} still running — given up`)
+    }
+    try {
+      instance._tickWakeFn?.()
+      if( instance._loop ) await within('the tick in progress', instance._loop )
+      // First end what waits on the mind — it will not now decide — then wait
+      // for what is in flight. In the other order, a turn waiting on a decision
+      // holds the drain until its own safety timeout.
+      const { orchestrator, stateManager, context } = instance.simulation
+      for( const e of orchestrator.engines )
+        if( e.onDetach ) await within(`${e.name} detaching`, e.onDetach( stateManager, context ) )
+      const working = orchestrator.engines.filter( e => e.awaitPending )
+      await Promise.all( working.map( e => within(`${e.name}'s work in flight`, e.awaitPending!() ) ) )
+    }
+    finally { clearTimeout( timer ) }
   }
 
   // Session-biography writers (behavioral + emotional) extracted to

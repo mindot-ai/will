@@ -72,6 +72,16 @@ export interface SimulationEngine {
 
   onAttach?( state: StateManager, context: SimulationContext ): Promise<void>
   onDetach?( state: StateManager, context: SimulationContext ): Promise<void>
+
+  /**
+   * Settles once nothing this engine started outside a tick — an LLM call, a
+   * queued turn, a background job — is still running. An engine that starts
+   * such work implements it: archiving a Will waits on it, so nothing a mind
+   * began answers after the mind is gone. Starts nothing new and changes
+   * nothing — work that waits on the mind's next decision is `onDetach`'s to
+   * end, and a stopping Will detaches first.
+   */
+  awaitPending?(): Promise<void>
 }
 
 

@@ -115,7 +115,7 @@ describe('Producers — neutral sinks (no transport import, no files)', () => {
   afterEach( () => rmSync(`./data/wills/${willId}`, { recursive: true, force: true } ) )
 
   it('TokenTracker.onRecord receives the attributed record and writes no file', () => {
-    const t = new TokenTracker({ willId, writeLedger: false })
+    const t = new TokenTracker({ ledgerDir: null })
     const recs: Record<string, unknown>[] = []
     t.onRecord( r => recs.push( r ) )
 

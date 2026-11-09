@@ -150,6 +150,13 @@ export class MotorSchemaExecutor implements CognitiveEngine {
    * simply re-request.
    */
   private _authoring = new Set<string>()
+  /** The authoring passes in flight, so a Will being archived can wait for them. */
+  private readonly _authorRuns = new Set<Promise<void>>()
+
+  /** Settles once no outreach authoring this executor asked for is still running. */
+  async awaitPending(): Promise<void> {
+    await Promise.all( [ ...this._authorRuns ] )
+  }
   private _authored  = new Map<string, string[]>()
   /**
    * Intents whose facet considered speaking and chose NOT to.
@@ -790,7 +797,7 @@ export class MotorSchemaExecutor implements CognitiveEngine {
     const name = str( intent.parameters['targetEntityName'] ) ?? intent.targetEntityId ?? 'them'
     this._authoring.add( id )
     this._composedAt.set( id, tick )
-    void this._author
+    const run: Promise<void> = this._author
       .authorOutreach( intent.targetEntityId ?? '', name, str( intent.parameters['gist'] ) )
       .then( result => {
         const bubbles  = Array.isArray( result ) ? result : result.bubbles
@@ -826,7 +833,8 @@ export class MotorSchemaExecutor implements CognitiveEngine {
         logger.warn(`[motor] outreach authoring never ran for "${ intent.schema }"`)
       } )
       .catch( err => { logger.warn(`[motor] outreach authoring failed: ${ errMsg( err ) }`) } )
-      .finally( () => { this._authoring.delete( id ) } )
+      .finally( () => { this._authoring.delete( id ); this._authorRuns.delete( run ) } )
+    this._authorRuns.add( run )
   }
 
   // ── bus emission ─────────────────────────────────────────────

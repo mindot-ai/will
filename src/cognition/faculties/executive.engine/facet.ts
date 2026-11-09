@@ -214,6 +214,8 @@ export class ExecutiveFacet {
 
   /** _reason() calls currently in flight — a real LLM call spans many ticks. */
   private _inflight = 0
+  /** The reasoning in flight, so a Will being archived can wait for it. */
+  private readonly _running = new Set<Promise<void>>()
   /**
    * True while the facet has work the reaper must not discard: queued reports
    * awaiting the pump, or an in-flight _reason() whose decision hasn't landed.
@@ -322,12 +324,19 @@ export class ExecutiveFacet {
    */
   private _launchReason( report: FacetReport ): void {
     this._inflight++
-    this._reason( report )
+    const run = this._reason( report )
       .catch( err => logger.error(`[executive.facet] ${this.facetId} reasoning error:`, err ) )
       .finally( () => {
         this._inflight--
+        this._running.delete( run )
         this.markActive( ( this._currentStateRef?.tick as number ) ?? this._lastActiveTick )
       })
+    this._running.add( run )
+  }
+
+  /** Settles once no reasoning this facet launched is still running. */
+  async awaitPending(): Promise<void> {
+    await Promise.all( [ ...this._running ] )
   }
 
   /**

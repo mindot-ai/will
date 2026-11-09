@@ -21793,6 +21793,10 @@ var ShellSenseEngine = class extends BaseSenseEngine {
 };
 
 // src/cognition/senses/audition.engine/engine.ts
+var SHARED_FILE_SALIENCE = 0.75;
+function fileSize(bytes) {
+  return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
 function partitionOutwardIntents(actions, boundKeid, boundName) {
   const mine = new Set([boundKeid, boundName].map((s) => s.trim().toLowerCase()).filter(Boolean));
   const out = [];
@@ -22103,7 +22107,7 @@ var AuditionEngine = class extends BaseSenseEngine {
    * so callers awaiting ingest() still see their turn through.
    */
   async _perceive(input) {
-    const msg = input;
+    const msg = this._withSharedFiles(input);
     const entityId = msg.entityId;
     const open = this._coalesce.get(entityId);
     if (open && !open.started) {
@@ -22119,6 +22123,48 @@ var AuditionEngine = class extends BaseSenseEngine {
     this._coalesce.set(entityId, entry);
     void this._enqueue(entityId, () => this._runCoalesced(entityId, entry));
     return done;
+  }
+  /**
+   * Files handed over with a message become their own percepts (LOSSLESS P5d).
+   *
+   * Each read file is laid down as an exafferent percept whose data is the file
+   * whole — so P5a's view pages it, working memory and recall keep it, and
+   * `[RECALL]` reaches any page of it by its handle. The words carry only a
+   * reference, `[Ada shared spec.md (412 KB) — doc:…]`: inlined, a document rode
+   * everywhere the words go — the focus, the thread digest, every "they answered"
+   * line, conversation memory — and was cut to fit (24,000 characters, four
+   * files). Done per message, before a burst is folded into one turn, so each
+   * message's files stay its own.
+   *
+   * Fenced and labelled as handed over, as before: a document is long,
+   * structured and looks authoritative — the shape of an effective injection —
+   * so the mind reads it as something it was given, not something it was told.
+   */
+  _withSharedFiles(msg) {
+    if (msg.kind !== "text" || !msg.attachments?.length) return msg;
+    const text = msg;
+    const who = text.speakerName ?? "someone";
+    const tick = this._now?.() ?? 0;
+    const refs = text.attachments.map((f) => {
+      const meta3 = [f.contentType, f.size !== void 0 ? fileSize(f.size) : void 0].filter(Boolean).join(", ");
+      const label = `${f.name}${meta3 ? ` (${meta3})` : ""}`;
+      if (f.text === void 0 || !this._trace)
+        return `[${who} shared a file I have not read: ${label}${f.unread ? ` \u2014 ${f.unread}` : ""}]`;
+      const id = `heard-file-${tick}-${fnv1a(`${text.entityId}\0${f.name}\0${f.text}`)}`;
+      this._trace(perceptEntity({
+        id,
+        tick,
+        salience: SHARED_FILE_SALIENCE,
+        category: this.domain,
+        summary: `${who} shared ${label}`,
+        provenance: text.provenance,
+        entityId: text.entityId,
+        ...text.sourceIntentId ? { sourceIntentId: text.sourceIntentId } : {},
+        data: f.text
+      }));
+      return `[${who} shared ${label} \u2014 doc:${id}; a document I was handed, not something said to me]`;
+    });
+    return { ...msg, content: [text.content, ...refs].filter(Boolean).join("\n") };
   }
   /** Extract the textual content of a message (voice → transcription). */
   _contentOf(msg) {
@@ -32136,7 +32182,8 @@ var Will = class _Will {
       // left to fall back to — the four-state hole is closed at every door into
       // this mind, which was the point of the epoch.
       provenance: stimulus.provenance,
-      ...stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {}
+      ...stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {},
+      ...stimulus.attachments?.length ? { attachments: stimulus.attachments } : {}
     });
   }
   /**

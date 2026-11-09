@@ -1,5 +1,5 @@
-import { cX as Will } from '../../will-f0eGKuAD.js';
-import { C as ChannelBridge } from '../../types-E9-HV-SW.js';
+import { cY as Will } from '../../will-eDdJkyin.js';
+import { C as ChannelBridge } from '../../types-DSMHZBiX.js';
 
 interface DiscordLikeChannel {
     send(content: string): Promise<unknown>;
@@ -134,10 +134,11 @@ interface DiscordBridgeOptions {
     /** Roster path (default: ./.will/<willId>.discord.json). */
     rosterPath?: string;
     /**
-     * Read the contents of text-like attachments (.md, .txt, .json, …) into the
-     * percept, rather than only naming them. Default true.
+     * Read text-like attachments (.md, .txt, .json, …) WHOLE, each its own percept,
+     * rather than only naming them. Default true.
      *
-     * Only Discord's own CDN is ever fetched, and only up to a size cap. Set false
+     * Only Discord's own CDN is ever fetched; above `ATTACHMENT_READ_CEILING` a file
+     * is named, not read, and the mind is told why. Set false
      * for a bridge that should never pull remote bytes — the Will still perceives
      * that a file arrived and can ask about it.
      */

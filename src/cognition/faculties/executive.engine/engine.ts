@@ -116,6 +116,8 @@ export interface ExecutiveEngineConfig {
   executiveInterval?: number
   cooldownTicks?: number
   bus?: CognitiveBus
+  /** Where each call's full prompt and response are written; null writes none. */
+  debugDir?: string | null
 }
 
 /**
@@ -155,6 +157,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
   // ── LLM director ───────────────────────────────────────────
   private _llmDirector: LLMDirector | null = null
   private _testMode = false
+  private readonly _debugDir: string | null
 
   // ── Message queue ──────────────────────────────────────────
 
@@ -334,6 +337,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     this._executiveInterval = config.executiveInterval ?? DEFAULT_EXECUTIVE_INTERVAL
     this._cooldownTicks = config.cooldownTicks ?? DEFAULT_COOLDOWN_TICKS
     this._bus = config.bus ?? null
+    this._debugDir = config.debugDir ?? null
 
     this._gatingState = {
       executiveInterval: this._executiveInterval,
@@ -361,6 +365,16 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
 
   /** Enable test mode — all LLM calls return canned mock responses at zero cost. */
   setTestMode( enabled: boolean ): void { this._testMode = enabled }
+
+  /**
+   * Its own reasoning, then what that reasoning sets going: the facets' and the
+   * rolling summariser's calls. Nothing it started is still running after this.
+   */
+  override async awaitPending(): Promise<void> {
+    await super.awaitPending()
+    await this._facetSupervisor.awaitPending()
+    await this._summarizer?.awaitPending()
+  }
 
 
   /** Called by CognitiveOrchestrator.addEngine() — injects the shared bus. */
@@ -476,6 +490,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       timeoutMs: this._llm?.timeoutMs ?? ( process.env.WILL_LLM_TIMEOUT_MS ? parseInt( process.env.WILL_LLM_TIMEOUT_MS ) : undefined ),
       sessionLogger: this._sessionLogger,
       mock: this._testMode,
+      debugDir: this._debugDir,
       // Inject the per-Will tracker (R4) so live calls record usage here, not
       // through a process global. null is fine — the director skips recording.
       tokenTracker: this._tokenTracker,
@@ -1194,14 +1209,10 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       // no longer the master-only writeTokenReport().
 
       // C2: persist full response text for session auditing
-      this._llmDirector.writeDebugResponse(
+      const responsePath = this._llmDirector.writeDebugResponse(
         state.tick, result.text,
         result.inputTok, result.outputTok, wallClock() - llmStart
       )
-
-      const responsePath = this._willId
-        ? `./data/wills/${this._willId}/debug/response-tick-${String( state.tick ).padStart( 6, '0')}.txt`
-        : ''
       this._sessionLogger?.write( {
         type: 'executive.response',
         tick: state.tick,
@@ -1209,7 +1220,7 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
         responseChars: result.text.length,
         promptTokens: result.inputTok,
         completionTokens: result.outputTok,
-        // A preview beside the whole: `responsePath` is written on every call.
+        // A preview beside the whole, at `responsePath` — '' when no debug dump was written.
         responseExcerpt: result.text.slice( 0, 600 ),
         responsePath,
       } )

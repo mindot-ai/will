@@ -182,7 +182,7 @@ describe('TokenTracker — attributed on-disk ledger (token-report.jsonl)', () =
   afterEach( () => rmSync(`./data/wills/${willId}`, { recursive: true, force: true } ) )
 
   it('appends a fully-attributed, costed line per call when enabled', () => {
-    const t = priced({ willId, writeLedger: true })
+    const t = priced({ ledgerDir: `./data/wills/${willId}/debug` })
     t.recordUsage( usage( { category: 'executive', attribute: 'facet', function: 'conversation', scope: 'facet-7', model: 'claude-sonnet-4-5', promptTokens: 100, completionTokens: 200 } ) )
     t.recordUsage( usage( { category: 'embedding', attribute: 'memory', function: 'index', model: 'text-embedding-3-small', promptTokens: 500 } ) )
 
@@ -197,7 +197,7 @@ describe('TokenTracker — attributed on-disk ledger (token-report.jsonl)', () =
   } )
 
   it('writes nothing when the ledger is disabled (default)', () => {
-    const t = priced({ willId })   // writeLedger omitted → off
+    const t = priced()   // no ledgerDir → off
     t.recordUsage( usage( { promptTokens: 10 } ) )
     expect( existsSync( path ) ).toBe( false )
   } )

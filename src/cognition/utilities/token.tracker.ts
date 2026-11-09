@@ -275,14 +275,13 @@ export interface TokenTrackerConfig {
   /** Cost threshold for warning events */
   costWarningThresholdUsd?: number
   /**
-   * When set together with `writeLedger`, every recorded call is appended (with
-   * full 5-axis attribution + cost) to `./data/wills/<willId>/debug/token-report.jsonl`
-   * — the complete, billable per-Will usage ledger (master, facets, summarizer,
-   * embedding, guard — not just the master path).
+   * When set, every recorded call is appended (with full 5-axis attribution +
+   * cost) to `<ledgerDir>/token-report.jsonl` — the complete, billable per-Will
+   * usage ledger (master, facets, summarizer, embedding, guard — not just the
+   * master path). A dev convenience: the stem passes the Will's debug directory
+   * only when file logging is on and the Will is not in test mode.
    */
-  willId?: string
-  /** Append the attributed ledger to disk (dev convenience). Off in prod/tests/replay. */
-  writeLedger?: boolean
+  ledgerDir?: string | null
 }
 
 export class TokenTracker implements SimulationEngine {
@@ -336,9 +335,7 @@ export class TokenTracker implements SimulationEngine {
     this._emitCostEvents        = config.emitCostEvents        ?? true
     this._costWarningThreshold  = config.costWarningThresholdUsd ?? 0.05
     this._prices                = config.prices
-    this._ledgerPath = ( config.writeLedger && config.willId )
-      ? `./data/wills/${config.willId}/debug/token-report.jsonl`
-      : null
+    this._ledgerPath = config.ledgerDir ? `${config.ledgerDir}/token-report.jsonl` : null
   }
 
   // ── Public API: record usage ──────────────────────────────

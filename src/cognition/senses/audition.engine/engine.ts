@@ -377,6 +377,40 @@ export class AuditionEngine extends BaseSenseEngine {
    * stream state, the facet's reasoning history, or the chunk stream.
    */
   private _entityTail = new Map<string, Promise<void>>()
+  /** Set when the mind stops: no turn waits on a decision, and no queued turn starts. */
+  private _detached = false
+  /** Outreach being authored, each waiting on its facet's decision: what detaching releases. */
+  private readonly _outreachWaits = new Set<( r: OutreachResult ) => void>()
+
+  /**
+   * The mind has stopped. A turn waiting on its decision will never get one —
+   * the facet that would decide is pumped by the tick — so it is released now
+   * rather than at its safety timeout, and a turn still queued starts nothing:
+   * the same rule as the inbound the stem discards on archive, one layer in.
+   * Outreach being authored waits on a facet decision the same way, and comes
+   * back with no words, as at its own timeout.
+   */
+  async onDetach(): Promise<void> {
+    this._detached = true
+    for( const release of [ ...this._turnDone.values() ] ) release()
+    for( const release of [ ...this._outreachWaits ] ) release( { bubbles: [] } )
+  }
+
+  /**
+   * Every queued turn, to the end of each entity's chain — including turns a
+   * running turn enqueues behind itself. Tails never reject. A turn waiting on
+   * the mind's decision holds this until it lands, so a stopping Will detaches
+   * first (`onDetach`).
+   */
+  async awaitPending(): Promise<void> {
+    const awaited = new Set<Promise<void>>()
+    for(;;){
+      const next = [ ...this._entityTail.values() ].filter( t => !awaited.has( t ) )
+      if( next.length === 0 ) return
+      for( const t of next ) awaited.add( t )
+      await Promise.all( next )
+    }
+  }
   /** Resolver for the in-flight turn per entity — fired by _onFacetDecision. */
   private _turnDone   = new Map<string, () => void>()
   /** Safety valve: release the entity queue if a reasoning cycle emits no decision. */
@@ -599,6 +633,7 @@ export class AuditionEngine extends BaseSenseEngine {
   private async _runCoalesced( entityId: string, entry: CoalesceWindow ): Promise<void> {
     entry.started = true
     if( this._coalesce.get( entityId ) === entry ) this._coalesce.delete( entityId )
+    if( this._detached ){ entry.resolve(); return }
 
     const merged = entry.parts.length === 1
       ? entry.base
@@ -740,6 +775,7 @@ export class AuditionEngine extends BaseSenseEngine {
    * fires — guaranteeing the per-entity queue can never deadlock.
    */
   private _beginTurn( entityId: string ): Promise<void> {
+    if( this._detached ) return Promise.resolve()
     return new Promise<void>( resolve => {
       const timer = setTimeout( () => {
         logger.warn(
@@ -978,7 +1014,7 @@ export class AuditionEngine extends BaseSenseEngine {
    * when no executive is attached or the facet budget is full (caller then awaits).
    */
   async authorOutreach( entityId: string, entityName: string, gist?: string ): Promise<OutreachResult> {
-    if( !this._executiveEngine ) return { bubbles: [] }
+    if( !this._executiveEngine || this._detached ) return { bubbles: [] }
 
     // One authoring pass per person at a time.
     //
@@ -1083,7 +1119,11 @@ export class AuditionEngine extends BaseSenseEngine {
         let settled = false
         let unsub:  () => void = () => {}
         let timer:  ReturnType<typeof setTimeout>
-        const done = ( r: OutreachResult ): void => { if( settled ) return; settled = true; clearTimeout( timer ); unsub(); resolve( r ) }
+        const done = ( r: OutreachResult ): void => {
+          if( settled ) return
+          settled = true; clearTimeout( timer ); unsub(); this._outreachWaits.delete( done ); resolve( r )
+        }
+        this._outreachWaits.add( done )
         timer = setTimeout(
           () => { logger.warn(`[audition-engine] outreach authoring timed out for ${ entityId }`); done( { bubbles: [] } ) },
           60_000,   // generous: the facet LLM authors in ~8–18s

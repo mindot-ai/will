@@ -420,6 +420,14 @@ export interface WillConfig {
   /** Stop automatically after this many ticks. 0 = run forever. Default: 0 */
   maxTicks?: number
 
+  /**
+   * How long archiving waits for work the mind already started — the tick in
+   * progress, then every call still in flight — before it gives that work up
+   * and says so in the log. Default 30s; nothing outlives the archive, either
+   * way, except work this gives up.
+   */
+  stopTimeoutMs?: number
+
   /** Seed for the PRNG inside the simulation. Default: Date.now() */
   randomSeed?: number
 
@@ -863,6 +871,14 @@ function _constructCognition(
 ): { cognition: Cognition; outbox: OutboxMessage[] } {
   const anatomy = config.anatomy ?? 'mind'
 
+  // Where this mind's debug dumps go — full prompts and responses, the token
+  // ledger — or null for none: the gate and the directory every other file a
+  // Will writes obeys (the session logger's), so a test or a replay leaves no
+  // trace on disk and a host's WILL_DATA_DIR holds all of it.
+  const debugDir = fileLoggingEnabled() && !config.testMode
+    ? `${process.env.WILL_DATA_DIR ?? './data'}/wills/${willId}/debug`
+    : null
+
   // ── Generic ──────────────────────────────────────────────
   // Per-Will token tracker (R4): a fresh instance per mind, not a process
   // global. It is added to the simulation as an engine (for per-tick cost
@@ -876,11 +892,10 @@ function _constructCognition(
     prices:                  mergeProviderPrices( config.llm?.providers ),
     emitCostEvents:          true,
     costWarningThresholdUsd: 0.02,
-    willId,
     // Records reach the consumer via TokenTracker.onRecord → the stem bridges
     // them onto the transport as `token_report` envelopes. The token-report.jsonl
-    // file is a dev-only mirror; off in test/replay.
-    writeLedger:             fileLoggingEnabled() && !config.testMode,
+    // file is a dev-only mirror beside the prompt dumps; off in test/replay.
+    ledgerDir:               debugDir,
   })
 
   // ── Regulatory ──────────────────────────────────────────
@@ -951,7 +966,7 @@ function _constructCognition(
   // ── Executive Engine ────────────────────────────────────────
   // Created for both anatomies so the Cognition type is always satisfied.
   // Only ADDED to the simulation for 'mind' — reflex runs heuristics only.
-  const executiveEngine   = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5 })
+  const executiveEngine   = new ExecutiveEngine({ executiveInterval, cooldownTicks: 5, debugDir })
 
   executiveEngine.willId = willId
   // Narrow the host's per-provider map to credentials for the call path; the

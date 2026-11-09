@@ -82,10 +82,28 @@ function steady( record: unknown ): string {
 }
 
 /**
+ * Whether each entry reached the mind between ticks — after a step's `tick`
+ * session entry and before the next `clock` entry — and so is handed back at
+ * the boundary rather than at once. A mock answer never is: a live mock call
+ * returned it before anything after it ran.
+ */
+export function arrivedBetweenTicks( entries: readonly ChainEntry[] ): Map<number, boolean> {
+  const between = new Map<number, boolean>()
+  let inStep = false
+  for( const e of entries ){
+    if( e.stream === 'clock') inStep = true
+    else if( e.stream === 'session' && rec( e ).type === 'tick') inStep = false
+    else if( e.stream === 'chain') inStep = false
+    between.set( e.seq, !inStep && rec( e ).mock !== true )
+  }
+  return between
+}
+
+/**
  * Hands each input back at its place. `through` is the last original entry
  * the replay has reproduced; an input is due once everything before it is.
  */
-class Schedule {
+export class Schedule {
   through: number
   private readonly _held: Array<{ seq: number; between: boolean; release: () => void }> = []
 
@@ -106,9 +124,12 @@ class Schedule {
       if( !h.between && this.due( h.seq ) ){ this._held.splice( this._held.indexOf( h ), 1 ); h.release() }
   }
 
-  /** Between ticks: hand over the next answer that arrived here, if it is due. */
+  /**
+   * Between ticks: hand over the answer that arrived here next, if it is due.
+   * Only the next entry can be due, so there is at most one.
+   */
   releaseBetween(): boolean {
-    const h = this._held.filter( x => x.between && this.due( x.seq ) ).sort( ( a, b ) => a.seq - b.seq )[ 0 ]
+    const h = this._held.find( x => x.between && this.due( x.seq ) )
     if( !h ) return false
     this._held.splice( this._held.indexOf( h ), 1 )
     h.release()
@@ -152,14 +173,7 @@ async function replaySegment( entries: readonly ChainEntry[], opts: ReplayOption
 
   // ── Where each input reached the mind ─────────────────────
   const bySeq   = new Map( entries.map( e => [ e.seq, e ] ) )
-  const between = new Map<number, boolean>()
-  let inStep = false
-  for( const e of entries ){
-    if( e.stream === 'clock') inStep = true
-    else if( e.stream === 'session' && rec( e ).type === 'tick') inStep = false
-    else if( e.stream === 'chain') inStep = false
-    between.set( e.seq, !inStep && rec( e ).mock !== true )
-  }
+  const between = arrivedBetweenTicks( entries )
   const unused = ( stream: ChainEntry['stream'] ) => entries.filter( e => e.stream === stream )
 
   const schedule = new Schedule( first.seq - 1 )
@@ -249,7 +263,7 @@ async function replaySegment( entries: readonly ChainEntry[], opts: ReplayOption
     WILL_FILE_LOGS: 'false',
     ...( genesis.recall
       ? { WILL_VECTOR_MEMORY: 'mock' }   // the index is never searched: recall is handed back
-      : { WILL_SEMANTIC_RECALL: 'false', WILL_EMBEDDING_MODEL: 'none' } ),
+      : { WILL_SEMANTIC_RECALL: 'false', WILL_EMBEDDING_MODEL: 'none', WILL_VECTOR_MEMORY: '' } ),
   } )
   if( !opts.verbose ) setLogger( quiet )
 

@@ -15,6 +15,7 @@ import { Will } from '#surface/sdk/will'
 import { fileAnchoring, ed25519Signer, RECORDS_FILE, DIGESTS_FILE } from '#stem/tracts/anchor.files'
 import { runVerify } from '#surface/verify'
 import { setLogger, resetLogger } from '#core/logger'
+import { entryHash, recordHash } from '#core/record.chain'
 
 let dir = '', keyPath = '', otherKey = ''
 beforeAll( async () => {
@@ -69,6 +70,22 @@ describe('will verify', () => {
     expect( out ).toMatch( new RegExp(`^chain    BROKEN at entry ${e.seq}: the record does not match its recordHash$`, 'm') )
     expect( out ).toMatch( /^replay   not run — the chain is broken$/m )
   })
+
+  it('fails when the mind, replayed, does not produce what was recorded — even where the chain was re-hashed to hide it', async () => {
+    const lines = readFileSync( join( dir, 'kept', RECORDS_FILE ), 'utf8').trim().split('\n').map( l => JSON.parse( l ) )
+    lines[ 0 ].record = { ...lines[ 0 ].record, seed: 99 }
+    for( let i = 0; i < lines.length; i++ ){
+      const e = lines[ i ]
+      if( i > 0 ) e.prev = lines[ i - 1 ].hash
+      e.recordHash = recordHash( e.record )
+      e.hash = entryHash( e.prev, e )
+    }
+    writeFileSync( join( dir, 'reforged.jsonl'), lines.map( l => JSON.stringify( l ) ).join('\n') + '\n')
+    const { code, out } = await verify( join( dir, 'reforged.jsonl'), '--replay')
+    expect( out ).toMatch( /^chain    ok/m )
+    expect( out ).toMatch( /^replay   DIVERGED at entry 1: the replay began a different chain$/m )
+    expect( code ).toBe( 1 )
+  }, 60_000 )
 
   it('a lone records file has no digests: everything in it is unanchored, and that is said', async () => {
     const { code, out } = await verify( join( dir, 'kept', RECORDS_FILE ) )

@@ -63,6 +63,13 @@ describe('verifyRecords', () => {
     expect( r.anchoredThrough ).toBe( 2 )
   })
 
+  it('a broken chain is not ok even with no digest to fail', () => {
+    const { entries } = kept( 4 )
+    const r = verifyRecords( entries.map( e => e.seq === 2 ? { ...e, tick: 77 } : e ) )
+    expect( r.digests ).toEqual( [] )
+    expect( r.ok ).toBe( false )
+  })
+
   it('refuses a digest that is not for this chain, this Will, this entry or this tick', () => {
     const { entries, digestOf } = kept( 4 )
     const d = digestOf( entries[ 2 ]! )

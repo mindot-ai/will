@@ -127,6 +127,19 @@ function explain( report: Awaited<ReturnType<typeof replayChain>>, entries: Chai
   }
 }
 
+/** The operator rewrites entry `at` and rebuilds every hash after it, so the chain still verifies. */
+function reforge( entries: ChainEntry[], at: number, record: unknown ): ChainEntry[] {
+  const out = entries.map( e => ( { ...e } ) ) as ChainEntry[]
+  out[ at ] = { ...out[ at ]!, record }
+  for( let i = at; i < out.length; i++ ){
+    const e = out[ i ]!
+    const prev = i === 0 ? e.prev : out[ i - 1 ]!.hash
+    const rh = e.record === undefined ? e.recordHash : recordHash( e.record )
+    out[ i ] = { ...e, prev, recordHash: rh, hash: entryHash( prev, { ...e, recordHash: rh } ) }
+  }
+  return out
+}
+
 const count = ( entries: ChainEntry[], stream: string ) => entries.filter( e => e.stream === stream ).length
 
 describe('replay from the record chain', () => {
@@ -160,14 +173,7 @@ describe('replay from the record chain', () => {
     // The operator rewrites what the mind said, and rebuilds every hash after it.
     const at = entries.findIndex( e => e.stream === 'session' && ( e.record as { type?: string } ).type === 'conversation.out')
     expect( at ).toBeGreaterThan( 0 )
-    const forged = entries.map( e => ( { ...e } ) ) as Array<ChainEntry & { record?: unknown }>
-    forged[ at ] = { ...forged[ at ]!, record: { ...( forged[ at ]!.record as object ), messages: [ 'I never looked.' ] } }
-    for( let i = at; i < forged.length; i++ ){
-      const e = forged[ i ]!
-      const prev = forged[ i - 1 ]!.hash
-      const rh = e.record === undefined ? e.recordHash : recordHash( e.record )
-      forged[ i ] = { ...e, prev, recordHash: rh, hash: entryHash( prev, { ...e, recordHash: rh } ) }
-    }
+    const forged = reforge( entries, at, { ...( entries[ at ]!.record as object ), messages: [ 'I never looked.' ] } )
     const report = await replayChain( forged, { stallMs: 10_000 } )
     if( report.divergence?.seq !== forged[ at ]!.seq ) explain( report, forged )
     expect( report.reproduced ).toBe( false )
@@ -216,4 +222,28 @@ describe('replay from the record chain', () => {
     }
     finally { rmSync( dir, { recursive: true, force: true } ) }
   }, 120_000 )
+
+  it('a forged input is found where it was forged, and a forged genesis at the first entry', async () => {
+    const dir = mkdtempSync( join( tmpdir(), 'will-forge-') )
+    try {
+      const will = await Will.create( { name: 'Ada', identity: { prompt: 'I am Ada.' }, llm: 'mock', seed: 4, tickMs: 15, anchoring: fileAnchoring( dir, { every: 5 } ) } )
+      await will.sense( { text: 'Hello.', from: 'bo', provenance: 'exafferent' } )
+      await sleep( 80 )
+      will.pause(); will.resume()
+      await sleep( 80 )
+      await will.stop()
+      const entries = readJsonLines<ChainEntry>( join( dir, RECORDS_FILE ) )
+      expect( ( await replayChain( entries ) ).reproduced ).toBe( true )
+
+      // An input the replay performs the same way either way: only comparing it finds this.
+      const pause = entries.findIndex( e => ( e.record as { lifecycle?: string } ).lifecycle === 'pause')
+      const byOperator = await replayChain( reforge( entries, pause, { lifecycle: 'pause', by: 'the operator' } ) )
+      expect( byOperator.divergence ).toMatchObject( { seq: entries[ pause ]!.seq, reason: 'the chain input differs' } )
+
+      const genesis = entries[ 0 ]!.record as Record<string, unknown>
+      const otherSeed = await replayChain( reforge( entries, 0, { ...genesis, seed: 99 } ) )
+      expect( otherSeed.divergence ).toMatchObject( { seq: 1, reason: 'the replay began a different chain' } )
+    }
+    finally { rmSync( dir, { recursive: true, force: true } ) }
+  }, 60_000 )
 })

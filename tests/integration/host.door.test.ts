@@ -13,6 +13,8 @@ import type { WillConfig } from '#stem/mind'
 import { setLogger, resetLogger } from '#core/logger'
 import type { ChainEntry } from '#core/record.chain'
 import type { PolicyArbiter, Verdict } from '#stem/policy/arbiter'
+import type { StorageAdapter } from '#core/abstracts'
+import { replayChain } from '#stem/replay.chain'
 
 const warnings: string[] = []
 beforeAll( () => {
@@ -157,5 +159,29 @@ describe('a verdict an async arbiter still owes', () => {
     expect( entries.length ).toBe( ended )
     expect( entries.some( e => e.stream === 'verdicts') ).toBe( false )
     expect( warnings.some( w => w.includes('arrived after verdict-late stopped') ) ).toBe( true )
+  }, 30_000 )
+})
+
+describe('a mind restored from a stored snapshot', () => {
+  it('commits its genesis to that snapshot, and a replay refuses to start from it', async () => {
+    const files = new Map<string, string>()
+    const storage: StorageAdapter = {
+      write: async ( p, c ) => { files.set( p, String( c ) ) },
+      read: async p => files.get( p )!,
+      readBytes: async p => new TextEncoder().encode( files.get( p ) ),
+      exists: async p => files.has( p ),
+    }
+    const first = await manualWill('restored', { snapshotStorage: storage, persistentMemory: true } )
+    for( let i = 0; i < 3; i++ ) await first.stem.runTick('restored')
+    await first.stem.archiveWill('restored')
+    expect( ( first.entries[ 0 ]!.record as Rec ).restored ).toBeNull()
+
+    const second = await manualWill('restored', { snapshotStorage: storage, persistentMemory: true } )
+    const restored = ( second.entries[ 0 ]!.record as Rec ).restored
+    expect( restored.tick ).toBe( 503 )
+    expect( restored.entities ).toBeGreaterThan( 0 )
+    expect( restored.hash ).toMatch( /^[0-9a-f]{64}$/ )
+    await second.stem.archiveWill('restored')
+    expect( ( await replayChain( second.entries ) ).refused ).toBe('the mind began from a stored snapshot at tick 503; the chain holds its hash, not the snapshot')
   }, 30_000 )
 })

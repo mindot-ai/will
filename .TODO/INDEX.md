@@ -250,5 +250,5 @@ a projection about a combination that does not exist — this engine fully reali
 
 **2026-11-09 · DESIGNED** · [Record anchoring — tamper-evident decision records](RECORD_ANCHORING.md)
 
-partial — designed 2026-07-08 and settled against the engine 2026-11-09; steps 1–3 (the chain, digests, the `anchor()` hook) landed, unreleased; step 4 (the verify CLI and its replay check) open
+built, unreleased — designed 2026-07-08 and settled against the engine 2026-11-09; all four steps landed (the chain, digests, the `anchor()` hook, and `will verify` with replay from the chain); SHIPPED at the next release
 

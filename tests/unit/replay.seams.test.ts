@@ -13,7 +13,9 @@ import { setRecallSource, clearRecallSource, type RecallRecord } from '#core/rec
 import { LLMDirector } from '#llm/index'
 import { EpisodicConsolidator } from '#cognition/faculties/episodic.consolidator'
 import { RecordChain, RECORD_CHAIN, type ChainEntry } from '#core/record.chain'
-import { replayChain } from '#stem/replay.chain'
+import { replayChain, Schedule, arrivedBetweenTicks } from '#stem/replay.chain'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 
 const W = 'seam-will'
 const sleep = ( ms: number ) => new Promise<void>( r => setTimeout( r, ms ) )
@@ -96,6 +98,70 @@ describe('a model call', () => {
     order.push('three microtasks on')
     await caller
     expect( order ).toEqual( [ 'chained', 'after the call', 'caller resumed', 'three microtasks on' ] )
+  })
+})
+
+describe('a model call, recorded', () => {
+  it('keeps how it stopped: a cut answer is recorded cut', async () => {
+    const server = createServer( ( _q, res ) => {
+      res.setHeader('content-type', 'application/json')
+      res.end( JSON.stringify( { choices: [ { message: { content: 'half an' }, finish_reason: 'length' } ], usage: { prompt_tokens: 1, completion_tokens: 2 } } ) )
+    } )
+    await new Promise<void>( r => server.listen( 0, '127.0.0.1', () => r() ) )
+    try {
+      const got = tapped()
+      const d = new LLMDirector( { willId: W, model: 'm', maxOutputTokens: 2, apiKey: 'k', provider: 'openai', sessionLogger: null,
+        baseUrl: `http://127.0.0.1:${( server.address() as AddressInfo ).port}/v1` } as never )
+      await d.call('s', 'u', 2 )
+      expect( got[ 0 ]!.record ).toMatchObject( { text: 'half an', truncated: true, stopReason: 'length' } )
+    }
+    finally { await new Promise<void>( r => server.close( () => r() ) ) }
+  })
+})
+
+describe('the replay schedule', () => {
+  const at = ( seq: number ) => ( { seq } as ChainEntry )
+
+  it('places each answer: inside a step, between ticks, or — a mock — at once', () => {
+    const c = new RecordChain()
+    const e = [
+      c.append('chain', 0, { chain: RECORD_CHAIN }),
+      c.append('clock', 1, { now: 1, delta: 1 }),
+      c.append('completions', 1, { mock: false }),            // a step awaited it
+      c.append('session', 1, { type: 'tick' }),
+      c.append('completions', 1, { mock: false }),            // arrived while the loop slept
+      c.append('completions', 1, { mock: true }),             // a mock: returned at once
+      c.append('clock', 2, { now: 2, delta: 1 }),
+      c.append('session', 2, { type: 'tick' }),
+      c.append('chain', 2, { lifecycle: 'archive' }),
+      c.append('verdicts', 2, { decision: 'allow' }),          // landed while the archive settled
+    ]
+    const between = arrivedBetweenTicks( e )
+    expect( [ 3, 5, 6, 10 ].map( s => between.get( s ) ) ).toEqual( [ false, true, false, true ] )
+  })
+
+  it('hands an in-step answer over the moment everything before it is reproduced', async () => {
+    const s = new Schedule( 3 )
+    expect( s.hold( at( 4 ), false, 'now') ).toBe('now')
+    let got = ''
+    void ( s.hold( at( 6 ), false, 'later') as Promise<string> ).then( v => { got = v } )
+    s.advance( 4 ); await Promise.resolve()
+    expect( got ).toBe('')
+    s.advance( 5 ); await Promise.resolve()
+    expect( got ).toBe('later')
+  })
+
+  it('holds an answer that arrived between ticks until the boundary hands it over, even once due', async () => {
+    const s = new Schedule( 3 )
+    let got = ''
+    void ( s.hold( at( 4 ), true, 'between') as Promise<string> ).then( v => { got = v } )
+    s.advance( 3 ); await Promise.resolve()
+    expect( got ).toBe('')
+    expect( s.releaseBetween() ).toBe( true ); await Promise.resolve()
+    expect( got ).toBe('between')
+    expect( s.releaseBetween() ).toBe( false )
+    void s.hold( at( 9 ), true, 'not yet')
+    expect( s.releaseBetween() ).toBe( false )
   })
 })
 

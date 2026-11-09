@@ -1,12 +1,15 @@
 # Record anchoring — tamper-evident decision records
 
-> **Standing:** DESIGNED · 2026-11-09 · partial — designed 2026-07-08 and settled against the engine 2026-11-09; steps 1–3 (the chain, digests, the `anchor()` hook) landed, unreleased; step 4 (the verify CLI and its replay check) open
+> **Standing:** DESIGNED · 2026-11-09 · built, unreleased — designed 2026-07-08 and settled against the engine 2026-11-09; all four steps landed (the chain, digests, the `anchor()` hook, and `will verify` with replay from the chain); SHIPPED at the next release
 >
-> **2026-11-09:** the engine was read end to end against this sketch, and the
-> design below settles each open choice. **Steps 1–3 (the chain, digests, the
-> `anchor()` hook) are BUILT** — `core/record.chain.ts`, `core/record.tap.ts`,
-> `stem/tracts/anchor.controller.ts`, and `anchoring` on `Will.create` /
-> `Will.wake`. Step 4 (the verify CLI and its replay check) is next.
+> **2026-11-09:** **all four steps are BUILT.** Steps 1–3: `core/record.chain.ts`,
+> `core/record.tap.ts`, `stem/tracts/anchor.controller.ts`, and `anchoring` on
+> `Will.create` / `Will.wake`. Step 4: `core/record.verify.ts`,
+> `stem/tracts/anchor.files.ts`, `stem/replay.chain.ts` and `will verify`.
+> A mind whose model answers over a network, with the answers landing at
+> varied ticks, replays entry for entry
+> (`tests/integration/replay.chain.test.ts`). Open: replay from a stored
+> snapshot, and wall-clock safety timeouts (see Step 4 below).
 
 ## Why
 

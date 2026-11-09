@@ -22,7 +22,7 @@
 
 import { logger } from '#core/logger'
 import { wallClock } from '#core/wall.clock'
-import { getInboundRecorder, getInboundSource } from '#core/inbound.recorder'
+import { getInboundRecorder, getInboundSource, type InboundRecord } from '#core/inbound.recorder'
 import { getRecordTap } from '#core/record.tap'
 import { asProvenance } from '#senses/index'
 import type { SensoryInput } from '#senses/index'
@@ -39,6 +39,12 @@ export interface InboundApplyDeps {
   effector: effectorController
   outbox:  OutboxController
   sensory: SensoryController
+  /**
+   * A host input's work, once applied: a `sense` resolves when the sense has
+   * taken it, which for audition is when its turn completes. The stem resolves
+   * the caller waiting on it.
+   */
+  applied?: ( instance: WillInstance, correlationId: string, done: Promise<void> ) => void
 }
 
 export class TransportController {
@@ -329,36 +335,34 @@ export class TransportController {
   applyInbound( instance: WillInstance, tick: number, deps: InboundApplyDeps ): void {
     const willId = instance.config.id
     const source = getInboundSource( willId )
+    const tap    = getRecordTap( willId )
 
-    // Replay re-feed (1.3): when a source is registered, pull the recorded
-    // envelopes for this tick instead of draining the live socket queue — the
-    // transport analog of the LLM completion re-feed. A live run drains the queue.
-    const envelopes: InboundEnvelope[] = source
-      ? ( source.envelopesAt( tick ) as InboundEnvelope[] )
-      : instance.inbound.drain( tick ).map( s => s.envelope )
+    // Replay re-feed (1.3): when a source is registered, take the records applied
+    // at this tick instead of draining the live queue — the transport analog of
+    // the LLM completion re-feed. Each is chained again exactly as it was live,
+    // so a replay's inbound entries match hash for hash; it is not re-recorded.
+    //
+    // A live run drains the queue and records each envelope at its applied tick
+    // (the simulation tick, the axis every other record is on): the transport and
+    // every host input are non-deterministic inputs, and the record chain takes
+    // each beside the replay recorder (RECORD_ANCHORING).
+    const records: InboundRecord[] = source
+      ? source.recordsAt( tick )
+      : instance.inbound.drain( tick ).map( s => ( { tick, willId, envelope: s.envelope, timestamp: wallClock() } ) )
 
-    if( envelopes.length === 0 ) return
+    if( records.length === 0 ) return
 
-    // Record the batch (live runs only — a source means we are replaying). The
-    // transport is a non-deterministic input; capturing each envelope at its
-    // applied tick lets a deterministic re-execution re-inject them.
-    // The record chain takes each envelope too, beside the replay recorder
-    // (RECORD_ANCHORING); a replay re-feeding a tape is not new input to it either.
-    if( !source ){
-      const recorder = getInboundRecorder( willId )
-      const tap      = getRecordTap( willId )
-      if( recorder || tap )
-        for( const envelope of envelopes ){
-          const record = { tick, willId, envelope, timestamp: wallClock() }
-          recorder?.recordInbound( record )
-          try { tap?.('inbound', record ) }
-          catch { /* the record chain must never block inbound dispatch */ }
-        }
+    const recorder = source ? undefined : getInboundRecorder( willId )
+    for( const record of records ){
+      recorder?.recordInbound( record )
+      try { tap?.('inbound', record ) }
+      catch { /* the record chain must never block inbound dispatch */ }
     }
 
-    for( const envelope of envelopes ){
-      try { this._dispatch( instance, envelope, deps ) }
-      catch( err ){ logger.error(`[transport] inbound dispatch failed (${envelope.channel}):`, err ) }
+    for( const { envelope } of records ){
+      const env = envelope as InboundEnvelope
+      try { this._dispatch( instance, env, deps ) }
+      catch( err ){ logger.error(`[transport] inbound dispatch failed (${env.channel}):`, err ) }
     }
   }
 
@@ -406,6 +410,23 @@ export class TransportController {
       case 'inbound_percept':
         // Materialize as an external event entity; perceptual engines pick it up next tick.
         deps.sensory.injectEvent( instance, { type: `senses.${env.domain}`, payload: env.payload } )
+        break
+
+      case 'sense': {
+        // A host's sense, at the tick it reached the mind. Its promise is the
+        // caller's: `await will.sense()` still resolves when its turn does.
+        const done = deps.sensory.senseSignal( instance, env.domain, env.input )
+        void done.catch( err => logger.error(`[transport] ${env.domain} sense failed:`, err ) )
+        deps.applied?.( instance, env.correlationId, done )
+        break
+      }
+
+      case 'event':
+        deps.sensory.injectEvent( instance, { type: env.type, payload: env.payload } )
+        break
+
+      case 'escalation':
+        deps.effector.resolveEscalation( instance, env.intentId, env.approved, env.finality )
         break
 
       case 'ack': {

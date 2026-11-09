@@ -42,6 +42,11 @@ export {
   type RecordStream,
 } from '#core/record.chain'
 export type { AnchoringOptions, RecordDigest } from '#stem/tracts/anchor.controller'
+// …and checking one (step 4): the verifier `will verify` runs, the files it
+// reads, Ed25519 signing for the digests, and replay from the chain.
+export { verifyRecords, type AnchoredDigest, type DigestCheck, type RecordsReport, type VerifyOptions } from '#core/record.verify'
+export { fileAnchoring, ed25519Signer, ed25519Verifier, readJsonLines, type FileAnchoringOptions } from '#stem/tracts/anchor.files'
+export { replayChain, type ReplayReport, type ReplayDivergence, type ReplayOptions } from '#stem/replay.chain'
 
 // Model routing — which model serves which call.
 //

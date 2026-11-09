@@ -7,9 +7,8 @@
 // point on, and a digest of the head can be anchored where the operator cannot
 // rewrite it.
 //
-// One chain per Will. Each entry names its stream (`session`, `completions`,
-// `inbound`, `verdicts`, and the `chain` entry that starts it), so the order
-// ACROSS streams is proven, not inferred from ticks.
+// One chain per Will. Each entry names its stream (see `RecordStream`), so the
+// order ACROSS streams is proven, not inferred from ticks.
 //
 // THE CONTRACT is VLX's hash contract, version 2 — written out here from its
 // specification, not imported, so one verifier checks both chains:
@@ -36,7 +35,15 @@ export const RECORD_CHAIN = 'will-record/1'
 /** The predecessor of a chain's first entry — VLX's genesis convention: never null, never a word. */
 export const GENESIS_HASH = '0'.repeat( 64 )
 
-export type RecordStream = 'chain' | 'session' | 'completions' | 'inbound' | 'verdicts'
+/**
+ * Inputs and outputs, in one order. `session` is what the mind produced; every
+ * other stream is something that reached it — the starting state and its
+ * lifecycle (`chain`), the oracles' answers (`completions`, `recall`,
+ * `verdicts`), the world's envelopes (`inbound`) and each step of the clock
+ * (`clock`). A replay feeds the inputs back at their places and checks the
+ * outputs (RECORD_ANCHORING step 4).
+ */
+export type RecordStream = 'chain' | 'session' | 'completions' | 'inbound' | 'verdicts' | 'recall' | 'clock'
 
 export interface ChainEntry {
   readonly stream:     RecordStream

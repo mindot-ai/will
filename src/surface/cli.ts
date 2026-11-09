@@ -8,6 +8,8 @@
 //   will discord   a presence in a Discord server — DISCORD_BOT_TOKEN
 //   will whatsapp  a presence on WhatsApp — QR-pairs a linked device (unofficial
 //                  protocol; see docs/channels/whatsapp.md before deploying)
+//   will verify    check a Will's records: the chain, its digests and, with
+//                  --replay, that the mind re-executed reproduces it
 //
 // Both hosts raise the same mind the same way (see host/boot.ts): env-configured,
 // woken from its PMA artifact when one exists, hibernated back on the way out —
@@ -29,11 +31,12 @@ import { buildWillMcpServer } from '#surface/mcp/server'
 import { buildWillHttpServer } from '#surface/serve/server'
 import { connectDiscord, parseChannels, parseMentionOnly } from '#surface/channels/discord'
 import { connectWhatsApp } from '#surface/channels/whatsapp'
+import { runVerify } from '#surface/verify'
 
 // stdout is the MCP protocol channel under `will mcp` — route logs FIRST.
 routeLogsToStderr()
 
-const USAGE = `usage: will <mcp | serve | discord | whatsapp>
+const USAGE = `usage: will <mcp | serve | discord | whatsapp | verify>
 
   mcp       host a persistent mind over MCP stdio (Claude Desktop / Claude Code)
   serve     host a persistent mind over HTTP (any language; WILL_PORT, default 7777)
@@ -47,6 +50,7 @@ const USAGE = `usage: will <mcp | serve | discord | whatsapp>
   whatsapp  put a persistent mind on WhatsApp — QR-pairs as a linked device; no token.
             UNOFFICIAL protocol (ban risk; use a spare number — docs/channels/whatsapp.md).
             Optional WILL_WHATSAPP_CHATS, WILL_WHATSAPP_MENTION_ONLY, WILL_WHATSAPP_HOME_CHAT
+  verify    check a Will's records — will verify <dir> [--key public.pem] [--replay]
 
 Shared env: WILL_NAME, WILL_IDENTITY, WILL_TIER, WILL_LLM, WILL_TICK_MS,
 WILL_SEED, WILL_PMA_PATH, WILL_MCP_SERVERS. The mind persists across runs via
@@ -54,6 +58,9 @@ its PMA artifact.`
 
 async function main(): Promise<void> {
   const sub = process.argv[2]
+
+  // Raises no mind of its own unless asked to replay one, and reads no env.
+  if( sub === 'verify') process.exit( await runVerify( process.argv.slice( 3 ) ) )
 
   if( sub !== 'mcp' && sub !== 'serve' && sub !== 'discord' && sub !== 'whatsapp'){
     console.error( sub ? `unknown subcommand: ${ sub }\n\n${ USAGE }` : USAGE )

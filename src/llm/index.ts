@@ -278,6 +278,17 @@ function stopped( reason: string | null | undefined, ceiling: string ): Pick<LLM
   return reason === ceiling ? { stopReason: reason, truncated: true } : { stopReason: reason }
 }
 
+/** What a recorded completion returned to its caller. */
+function resultOf( r: LLMCompletionRecord ): LLMCallResult {
+  return {
+    text: r.text, inputTok: r.inputTok, outputTok: r.outputTok,
+    ...( r.stopReason    !== undefined ? { stopReason:    r.stopReason    } : {} ),
+    ...( r.truncated     !== undefined ? { truncated:     r.truncated     } : {} ),
+    ...( r.cacheReadTok  !== undefined ? { cacheReadTok:  r.cacheReadTok  } : {} ),
+    ...( r.cacheWriteTok !== undefined ? { cacheWriteTok: r.cacheWriteTok } : {} ),
+  }
+}
+
 export interface LLMCallResult {
   text: string
   /** The provider's own reason for stopping, as it sent it. */
@@ -662,10 +673,14 @@ export class LLMDirector {
     // Replay re-feed takes precedence over both live and mock paths (R2-c).
     const replay = this._replayCompletion( systemPrompt, userMessage, tick )
     if( replay ){
+      // Handed over at once, it is used at once: a live mock call returns
+      // without awaiting, and the replay must resume its caller as soon.
+      const answer = this._answerFromTape( replay, meta, systemPrompt, userMessage )
+      const record = answer instanceof Promise ? await answer : answer
       // Mirror the original run's streaming: the live (non-mock) path streamed
       // raw text via onChunk, while the mock path intentionally did not.
-      if( !replay.mock ) onChunk( replay.text )
-      return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok }
+      if( !record.mock ) onChunk( record.text )
+      return resultOf( record )
     }
 
     // MODEL_ROUTING W3 — resolve once, then thread it: several calls can be in
@@ -684,14 +699,14 @@ export class LLMDirector {
       return result
     }
 
-    const result = ep.wire === 'anthropic'
-      ? await this._callAnthropicStream( ep, systemPrompt, userMessage, onChunk, temperature )
-      : await ( async () => {
+    const result = await this._chainingFailure( systemPrompt, userMessage, tick, start, ep, () => ep.wire === 'anthropic'
+      ? this._callAnthropicStream( ep, systemPrompt, userMessage, onChunk, temperature )
+      : ( async () => {
           // Other providers: fall back to regular call, emit whole response as one chunk
           const r = await this._callProvider( ep, systemPrompt, userMessage, temperature )
           onChunk( r.text )
           return r
-        } )()
+        } )() )
 
     // Token tracking lives here too: streamed calls (conversation facets, the
     // master when broadcasting) previously bypassed the tracker entirely, so all
@@ -782,6 +797,10 @@ export class LLMDirector {
       text:            result.text,
       inputTok:        result.inputTok,
       outputTok:       result.outputTok,
+      ...( result.stopReason    !== undefined ? { stopReason:    result.stopReason    } : {} ),
+      ...( result.truncated     !== undefined ? { truncated:     result.truncated     } : {} ),
+      ...( result.cacheReadTok  !== undefined ? { cacheReadTok:  result.cacheReadTok  } : {} ),
+      ...( result.cacheWriteTok !== undefined ? { cacheWriteTok: result.cacheWriteTok } : {} ),
       mock,
       latencyMs,
       timestamp:       Date.now(),
@@ -790,6 +809,59 @@ export class LLMDirector {
     catch { /* recorder is optional — never let recording break a completion */ }
     try { tap?.('completions', record ) }
     catch { /* nor the record chain */ }
+  }
+
+  /**
+   * A live call whose failure is chained like an answer: the caller sees a
+   * rejection, and a replay must hand it the same one at the same place
+   * (RECORD_ANCHORING step 4). Only the record chain takes it — the replay
+   * tape's sources have always treated a missing answer as the miss.
+   */
+  private async _chainingFailure(
+    systemPrompt: string, userMessage: string, tick: number, start: number, ep: CallEndpoint,
+    call: () => Promise<LLMCallResult>,
+  ): Promise<LLMCallResult> {
+    try { return await call() }
+    catch( err ){
+      const tap = getRecordTap( this._willId )
+      if( tap ){
+        const record: LLMCompletionRecord = {
+          tick, willId: this._willId, provider: ep.provider, model: ep.model, maxOutputTokens: ep.maxOutputTokens,
+          systemPrompt, userMessage, text: '', inputTok: 0, outputTok: 0, mock: false,
+          latencyMs: Date.now() - start, timestamp: Date.now(),
+          error: err instanceof Error ? err.message : String( err ),
+        }
+        try { tap('completions', record ) }
+        catch { /* never let the record chain change what a caller sees */ }
+      }
+      throw err
+    }
+  }
+
+  /**
+   * A recorded answer, when the replay hands it over. In a replay from the
+   * record chain it is chained again exactly as recorded, so the replay's
+   * completion entries match hash for hash; a recorded failure is thrown.
+   * One handed over at once is chained at once — a mock answer was chained
+   * inside the call, before anything after it ran.
+   */
+  private _answerFromTape(
+    replay: LLMCompletionRecord | Promise<LLMCompletionRecord>,
+    meta: LLMCallMeta, systemPrompt: string, userMessage: string,
+  ): LLMCompletionRecord | Promise<LLMCompletionRecord> {
+    const take = ( record: LLMCompletionRecord ): LLMCompletionRecord => {
+      try { getRecordTap( this._willId )?.('completions', record ) }
+      catch { /* nor here */ }
+      if( record.error !== undefined ) throw new Error( record.error )
+      // A live answer was counted where it arrived; so is its replay — usage is
+      // in the mind's metrics. A mock answer never was.
+      if( !record.mock && this._tokenTracker )
+        this._track( resultOf( record ), meta, record.tick, record.latencyMs, this._estPromptTokens( systemPrompt, userMessage ), {
+          ...this._defaultEndpoint, provider: record.provider as LLMProvider, model: record.model, maxOutputTokens: record.maxOutputTokens,
+        } )
+      return record
+    }
+    return replay instanceof Promise ? replay.then( take ) : take( replay )
   }
 
   /**
@@ -803,7 +875,7 @@ export class LLMDirector {
     systemPrompt: string,
     userMessage:  string,
     tick:         number,
-  ): LLMCompletionRecord | undefined {
+  ): LLMCompletionRecord | Promise<LLMCompletionRecord> | undefined {
     return getCompletionSource( this._willId )?.nextCompletion( tick, systemPrompt, userMessage )
   }
 
@@ -956,8 +1028,13 @@ export class LLMDirector {
 
     // Replay re-feed takes precedence over both live and mock paths (R2-c).
     const replay = this._replayCompletion( systemPrompt, userMessage, tick )
-    if( replay )
-      return { text: replay.text, inputTok: replay.inputTok, outputTok: replay.outputTok }
+    if( replay ){
+      // Handed over at once, it is used at once: a live mock call returns
+      // without awaiting, and the replay must resume its caller as soon.
+      const answer = this._answerFromTape( replay, meta, systemPrompt, userMessage )
+      const record = answer instanceof Promise ? await answer : answer
+      return resultOf( record )
+    }
 
     const ep = this._resolveEndpoint( meta )
 
@@ -973,7 +1050,7 @@ export class LLMDirector {
     // mid-generation. onChunk is a no-op here — call() returns the full
     // accumulated text; live token chunks go through callStream(). Other
     // providers keep the whole-request deadline.
-    const result = await withGate(
+    const result = await this._chainingFailure( systemPrompt, userMessage, tick, llmStart, ep, () => withGate(
       () => ep.wire === 'anthropic'
         ? this._callAnthropicStream( ep, systemPrompt, userMessage, () => {}, temperature )
         : this._callProvider( ep, systemPrompt, userMessage, temperature ),
@@ -981,7 +1058,7 @@ export class LLMDirector {
       // A reply to a waiting person takes the reserved lane; everything the
       // mind is doing for itself shares the general one. See `gateFor`.
       gateFor( meta.function ),
-    )
+    ) )
 
     // Record token usage + cost into this Will's injected tracker (R4), tagged
     // with the caller's attribution. Optional — absent on mock/replay directors.

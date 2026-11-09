@@ -56,6 +56,9 @@ describe('the wake event arrives through the sense door', () => {
     instance.pausedAt = new Date( Date.now() - 3 * 60 * 60 * 1000 )
     stem.resumeWill('wake-1')
 
+    // Through the stem's door: sensed at the next tick, and chained there.
+    expect( seen ).toHaveLength( 0 )
+    for( const end = Date.now() + 5_000; seen.length === 0 && Date.now() < end; ) await new Promise( r => setTimeout( r, 10 ) )
     expect( seen ).toHaveLength( 1 )
     const signal = seen[0] as SensoryInput & { signal: string; data: Record<string, unknown> }
     expect( signal.kind ).toBe('system')
@@ -115,6 +118,9 @@ describe('a mind woken from a PMA is told it was away', () => {
     expect( instance.pausedAt?.getTime() ).toBe( twoHoursAgo )
     stem.resumeWill('pma-wake')
 
+    // Through the stem's door: sensed at the next tick, and chained there.
+    expect( seen ).toHaveLength( 0 )
+    for( const end = Date.now() + 5_000; seen.length === 0 && Date.now() < end; ) await new Promise( r => setTimeout( r, 10 ) )
     expect( seen ).toHaveLength( 1 )
     const signal = seen[0] as SensoryInput & { data: Record<string, unknown> }
     expect( String( signal.data['summary'] ) ).toContain('2 hours')

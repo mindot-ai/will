@@ -135,14 +135,14 @@ describe('RecordedInboundSource', () => {
 
   it('groups by tick in record order and returns [] for a quiet tick', () => {
     const src = new RecordedInboundSource( [ rec( 1, 'a'), rec( 3, 'b'), rec( 3, 'c') ] )
-    expect( ( src.envelopesAt( 1 ) as any[] ).map( e => e.correlationId ) ).toEqual( [ 'a' ] )
-    expect( src.envelopesAt( 2 ) ).toEqual( [] )                       // quiet tick
-    expect( ( src.envelopesAt( 3 ) as any[] ).map( e => e.correlationId ) ).toEqual( [ 'b', 'c' ] )
+    expect( src.recordsAt( 1 ).map( r => ( r.envelope as any ).correlationId ) ).toEqual( [ 'a' ] )
+    expect( src.recordsAt( 2 ) ).toEqual( [] )                       // quiet tick
+    expect( src.recordsAt( 3 ).map( r => ( r.envelope as any ).correlationId ) ).toEqual( [ 'b', 'c' ] )
   } )
 
   it('consumes a tick once — a second read is empty', () => {
     const src = new RecordedInboundSource( [ rec( 1, 'a') ] )
-    expect( src.envelopesAt( 1 ) ).toHaveLength( 1 )
-    expect( src.envelopesAt( 1 ) ).toEqual( [] )
+    expect( src.recordsAt( 1 ) ).toHaveLength( 1 )
+    expect( src.recordsAt( 1 ) ).toEqual( [] )
   } )
 } )

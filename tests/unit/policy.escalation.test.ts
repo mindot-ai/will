@@ -221,16 +221,22 @@ describe('the facade can answer what it raised', () => {
     expect( calls ).toEqual([ [ 'w-facade', 'i-1', false, 'class' ], [ 'w-facade', 'i-2', true, undefined ] ])
   })
 
-  it('and the stem hands the finality on to the controller', async () => {
+  it('and the stem hands the finality on to the controller, through the inbound door', async () => {
     const { WillStem } = await import('#stem/index')
-    const calls: unknown[][] = []
-    const stem = Object.assign( Object.create( WillStem.prototype ), {
-      _get: ( id: string ) => ({ id }),
-      _effector: { resolveEscalation: ( ...a: unknown[] ) => { calls.push( a ) } },
-    } ) as InstanceType<typeof WillStem>
+    const { TransportController } = await import('#stem/tracts/transport.controller')
+    const { InboundQueue } = await import('#stem/tracts/inbound.queue')
+    const instance = { config: { id: 'w-1' }, status: 'active', _hostSeq: 0, _hostWaits: new Map(), inbound: new InboundQueue() }
+    const stem = Object.assign( Object.create( WillStem.prototype ), { _get: () => instance } ) as InstanceType<typeof WillStem>
 
     stem.resolveEscalation('w-1', 'i-1', false, 'context')
-    expect( calls ).toEqual([ [ { id: 'w-1' }, 'i-1', false, 'context' ] ])
+    // Queued, not applied: it reaches the mind at the next tick, and is chained there.
+    expect( instance.inbound.size ).toBe( 1 )
+
+    const calls: unknown[][] = []
+    new TransportController().applyInbound( instance as never, 0, {
+      effector: { resolveEscalation: ( ...a: unknown[] ) => { calls.push( a ) } },
+    } as never )
+    expect( calls ).toEqual([ [ instance, 'i-1', false, 'context' ] ])
   })
 })
 

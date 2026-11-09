@@ -615,6 +615,28 @@ const diff  = await manager.compareReplays(willId, runA, runB)  // tick-by-tick 
 
 Use it to reproduce a misbehaviour from a recorded session, or to A/B two configs and see exactly where their cognition forked. (Production runs normally leave the clock in wall-time mode; switch to deterministic only when you need a reproducible capture.)
 
+### Proving what a mind did — anchoring, `will verify`, replay
+
+A Will created with `anchoring` hash-chains everything that reached it and everything it produced, in the order it happened. That covers its starting state, each person's words, each model answer and recall, each policy verdict, each step of its clock, and its own session log. The Will hands you every entry to keep, and every few ticks a digest of the chain's head to publish somewhere the operator cannot rewrite. `fileAnchoring` keeps both in the files the verifier reads:
+
+```typescript
+import { Will, fileAnchoring, ed25519Signer } from '@mindot/will'
+
+const will = await Will.create({
+  name: 'Aria', identity: { prompt: 'I am Aria.' },
+  anchoring: fileAnchoring('./records/aria', { every: 50, sign: ed25519Signer(privateKeyPem) }),
+})
+```
+
+```bash
+will verify ./records/aria --key public.pem            # the chain, and every digest signed by that key
+will verify ./records/aria --key public.pem --replay   # …and the mind, re-executed, reproduces it
+```
+
+`--replay` raises the same mind from the chain's genesis and hands back every input at the place it arrived. Model answers, recalls and late verdicts are handed back at the moment they landed in the live run, whatever the network's latency was then. The replay checks the mind's output entry by entry and names the first that differs. It never calls a model: every answer comes from the chain. A woken mind replays from the PMA it woke from, which is chained whole. A mind restored from a stored snapshot cannot be replayed from its records, and the command says so. Design and limits: `.TODO/RECORD_ANCHORING.md`.
+
+Each host input — `sense()`, an effector ack, an escalation answer, `injectEvent` — reaches the mind at the next tick, as a transport peer's always has. That is how each input gets its place in the chain.
+
 ---
 
 ## API

@@ -115,6 +115,11 @@ export class effectorController {
    * BEFORE the step, stamped to this tick — so a denial reconciled here has the
    * exact lifecycle of a host rejection that arrived between ticks.
    */
+  /** Settles once every verdict an async arbiter still owes this Will has landed. */
+  awaitVerdicts( instance: WillInstance ): Promise<void> {
+    return this._policy.awaitPending( instance )
+  }
+
   applyPolicyOutcomes( instance: WillInstance ): void {
     const tick = instance.tickCount
     this._escalations.applyResolutions( instance )   // host answers land first

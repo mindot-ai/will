@@ -21,7 +21,8 @@
 // ─────────────────────────────────────────────────────────────
 
 import { logger } from '#core/logger'
-import { canonical, RECORD_CHAIN, RecordChain, type ChainEntry, type ChainHead } from '#core/record.chain'
+import { canonical, jsonForm, RECORD_CHAIN, RecordChain, recordHash, type ChainEntry, type ChainHead } from '#core/record.chain'
+import type { SimulationState } from '#core/types'
 import { clearRecordTap, setRecordTap } from '#core/record.tap'
 import type { WillInstance } from '#stem/index'
 
@@ -50,6 +51,53 @@ export interface AnchoringOptions {
   readonly resume?: ChainHead
 }
 
+/** A stored snapshot a mind was restored from: what the genesis commits to. */
+export interface RestoredStart {
+  readonly tick:     number
+  readonly entities: number
+  readonly hash:     string
+}
+
+/** The hash of a restored state: its tick and every entity, in id order. */
+export function stateHash( state: SimulationState ): string {
+  const entities = [ ...state.entities.values() ].map( jsonForm )
+    .sort( ( a, b ) => String( ( a as { id?: unknown } ).id ).localeCompare( String( ( b as { id?: unknown } ).id ) ) )
+  return recordHash( { tick: state.tick, entities } )
+}
+
+/** A name that says its value is a secret. Never chained. */
+export const SECRET = /api[-_]?key|secret|token|password|authori[sz]ation|credential/i
+
+/** Drop every field a secret's name marks, at any depth. */
+export function withoutSecrets( value: unknown ): unknown {
+  if( Array.isArray( value ) ) return value.map( withoutSecrets )
+  if( !value || typeof value !== 'object') return value
+  const out: Record<string, unknown> = {}
+  for( const [ k, v ] of Object.entries( value ) ) if( !SECRET.test( k ) ) out[ k ] = withoutSecrets( v )
+  return out
+}
+
+/**
+ * The config a mind was assembled from, as the genesis commits to it: its JSON
+ * form, without the hooks and adapters (objects, not settings) and without any
+ * secret. A replay assembles the same mind from this.
+ */
+export function startingConfig( config: WillInstance['config'] ): unknown {
+  const { anchoring: _a, transport: _t, snapshotStorage: _s, vectorMemoryAdapter: _v, ...settings } = config
+  return withoutSecrets( jsonForm( settings ) )
+}
+
+/** The `WILL_*` settings a mind reads from the environment, without secrets. */
+export function startingEnv( env: NodeJS.ProcessEnv = process.env ): Record<string, string> {
+  const out: Record<string, string> = {}
+  for( const k of Object.keys( env ).sort() )
+    if( k.startsWith('WILL_') && !SECRET.test( k ) && env[ k ] !== undefined ) out[ k ] = env[ k ]!
+  return out
+}
+
+/** What a host did to the mind itself — an input, chained where it happened. */
+export type Lifecycle = 'pause' | 'resume' | 'archive'
+
 const isHash = ( v: unknown ) => typeof v === 'string' && /^[0-9a-f]{64}$/.test( v )
 
 /** Refuse options that would anchor nothing, or anchor something unverifiable. */
@@ -76,7 +124,7 @@ export class AnchorController {
    * Begin (or continue) this Will's chain, before anything is logged. A no-op
    * for a Will without `anchoring`.
    */
-  attach( instance: WillInstance ): void {
+  attach( instance: WillInstance, restored: RestoredStart | null = null ): void {
     const o = instance.config.anchoring
     if( !o ) return
     const id      = instance.config.id
@@ -84,14 +132,37 @@ export class AnchorController {
     const a: Anchored = { chain, opts: o, lastDigestTick: null }
     this._anchored.set( id, a )
 
+    // The genesis commits to the state the mind starts from, so a replay can
+    // assemble the same mind (RECORD_ANCHORING step 4): the config and the
+    // environment settings it was assembled under, whether it has semantic
+    // memory, and the snapshot it was restored from, if any.
     this._append( instance, a, 'chain', {
       chain:     RECORD_CHAIN,
       willId:    id,
       seed:      instance.config.randomSeed ?? null,
       startTick: this._tick( instance ),
       ...( o.resume ? { resumed: true } : {} ),
+      config:    startingConfig( instance.config ),
+      env:       startingEnv(),
+      recall:    !!instance.cognition.vectorMemory,
+      restored,
     } )
     setRecordTap( id, ( stream, record ) => this._append( instance, a, stream, record ) )
+    // Each step of the clock, at the moment it is taken: the sim time a step
+    // runs at is an input, and its entry marks where the step began.
+    instance.simulation.clock.onStep( step => this._append( instance, a, 'clock', step ) )
+  }
+
+  /** A host's act on the mind. */
+  lifecycle( instance: WillInstance, act: Lifecycle ): void {
+    const a = this._anchored.get( instance.config.id )
+    if( a ) this._append( instance, a, 'chain', { lifecycle: act } )
+  }
+
+  /** The artifact a woken mind was loaded from, whole. */
+  loaded( instance: WillInstance, pma: unknown ): void {
+    const a = this._anchored.get( instance.config.id )
+    if( a ) this._append( instance, a, 'chain', { loaded: 'pma', pma } )
   }
 
   /**
@@ -114,6 +185,7 @@ export class AnchorController {
   /** Stop chaining: the Will is gone. */
   detach( instance: WillInstance ): void {
     clearRecordTap( instance.config.id )
+    if( this._anchored.has( instance.config.id ) ) instance.simulation.clock.onStep( null )
     this._anchored.delete( instance.config.id )
   }
 

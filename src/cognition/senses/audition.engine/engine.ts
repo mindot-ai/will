@@ -1379,7 +1379,10 @@ export class AuditionEngine extends BaseSenseEngine {
             entityName:   d.targetEntityId,   // actual display name resolved by facet
             bubbles:      d.replyBubbles,
             threadId,
-            tick:         wallClock(),        // wall-clock tick for session log (telemetry, R2)
+            // The simulation tick, as every other session record's \`tick\` is. This
+            // was the wall clock — a "tick" of 1.79 trillion that no reader could
+            // place beside anything else, and that no replay could reproduce.
+            tick:         this._now?.() ?? 0,
             pushToOutbox: !viaTransport,
           })
 

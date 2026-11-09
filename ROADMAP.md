@@ -139,8 +139,11 @@ be enacted, what happened is evidenced, and why it happened can be re-derived.
 **Community-facing outcome:** an anchored record you can verify yourself, with
 a CLI, independent of any hosted service.
 
-**Where it stands:** the chain, its digests and the `anchoring` hook are built
-(`verifyChain` is exported); the verify CLI, with its replay check, is next.
+**Where it stands:** built, unreleased. The chain carries every input and every
+output; `fileAnchoring` keeps it with signed digests; `will verify` checks the
+chain, the digests and their signatures, and with `--replay` re-executes the
+mind from the chain and names the first entry it does not reproduce. Replay
+from a stored snapshot, rather than a fresh start or a PMA, is not built.
 
 ### Per-call model routing
 

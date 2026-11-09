@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+- **`will verify`, and replay from the record chain.** `will verify <dir>
+  [--key public.pem] [--replay]` checks the files `fileAnchoring(dir, { every,
+  sign? })` keeps: the chain is unbroken, every digest names an entry in it, and
+  every digest is signed by the given Ed25519 key (`ed25519Signer`,
+  `ed25519Verifier`). It reports what is still unanchored. `--replay`
+  (`replayChain`) re-executes the mind from the chain's genesis, hands every
+  input back at its place — a model answer, a recall or a late verdict lands
+  where it landed live, whatever the latency was then — and names the first
+  entry the mind does not reproduce. It never calls a model. `verifyRecords`,
+  `fileAnchoring` and `replayChain` are exported.
+- **Everything that reaches a mind is in its record chain.** The genesis now
+  carries the config (without hooks, adapters or any secret), the `WILL_*`
+  settings, whether the mind has semantic memory, and a stored snapshot's hash.
+  Newly chained: a woken mind's PMA, whole; pause, resume and archive; each step
+  of the clock; every recall's answer; and a model call that failed, with why.
+  Replaying a mind's own answers now also returns `truncated`, `stopReason` and
+  cache tokens, and counts usage as the live call did.
+- **Host inputs reach the mind at the next tick, through the transport's door.**
+  `sense()` / `senseText` / `senseSignal`, `confirmEffectorExecution` (with its
+  `observation`), `confirmMessageDelivery`, `resolveEscalation`, `injectEvent`
+  and the wake signal are enqueued and applied at the next tick, as a transport
+  peer's envelopes always were, and are recorded and chained there. `await
+  will.sense()` still resolves when its turn completes. Inbound records are on
+  the simulation tick, the axis every other record uses.
+- **A wall-clock mind's clock holds still between ticks.** `clock.now` moves
+  only when the clock steps, as a fixed clock's always did. Work landing between
+  ticks used to read a time nothing recorded.
+- **Fixed:** a reply's `conversation.out` session record carried the wall clock
+  in its `tick` field. A verdict an async arbiter returned after `stop()` was
+  applied and chained after `session.end`. Archiving now waits for verdicts
+  still out, and gives up any that arrive later.
 - **Stopped means stopped.** Archiving a Will (`stop()`, `hibernate()`) used to
   sleep one tick interval and hope: a tick that ran longer finished after the
   archive snapshot was taken, and calls still in flight answered after the Will

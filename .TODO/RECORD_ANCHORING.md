@@ -1,12 +1,15 @@
 # Record anchoring — tamper-evident decision records
 
-> **Standing:** DESIGNED · 2026-11-09 · partial — designed 2026-07-08 and settled against the engine 2026-11-09; steps 1–3 (the chain, digests, the `anchor()` hook) landed, unreleased; step 4 (the verify CLI and its replay check) open
+> **Standing:** DESIGNED · 2026-11-09 · built, unreleased — designed 2026-07-08 and settled against the engine 2026-11-09; all four steps landed (the chain, digests, the `anchor()` hook, and `will verify` with replay from the chain); SHIPPED at the next release
 >
-> **2026-11-09:** the engine was read end to end against this sketch, and the
-> design below settles each open choice. **Steps 1–3 (the chain, digests, the
-> `anchor()` hook) are BUILT** — `core/record.chain.ts`, `core/record.tap.ts`,
-> `stem/tracts/anchor.controller.ts`, and `anchoring` on `Will.create` /
-> `Will.wake`. Step 4 (the verify CLI and its replay check) is next.
+> **2026-11-09:** **all four steps are BUILT.** Steps 1–3: `core/record.chain.ts`,
+> `core/record.tap.ts`, `stem/tracts/anchor.controller.ts`, and `anchoring` on
+> `Will.create` / `Will.wake`. Step 4: `core/record.verify.ts`,
+> `stem/tracts/anchor.files.ts`, `stem/replay.chain.ts` and `will verify`.
+> A mind whose model answers over a network, with the answers landing at
+> varied ticks, replays entry for entry
+> (`tests/integration/replay.chain.test.ts`). Open: replay from a stored
+> snapshot, and wall-clock safety timeouts (see Step 4 below).
 
 ## Why
 
@@ -256,3 +259,134 @@ the tests need it and it is the core of step 4.
 - The git and file adapters. A host's adapter is a few lines, as VLX's
   `anchorWillDigest` shows.
 
+
+---
+
+## Step 4 — verify, and replay from the chain (decided 2026-11-09)
+
+Settled against the engine before any code, read end to end. The finding
+that shaped it: a live mind's oracles answer at wall-clock moments, and
+*when* an answer reaches the mind decides what the mind does with it. The
+chain already records that moment: it is the answer's place in the chain.
+
+### 4a. `will verify`, without replay
+
+```
+will verify <records.jsonl> [--digests <digests.jsonl>] [--key <public.pem>] [--from <seq>:<hash>] [--replay]
+```
+
+- **Records** are the entries a host kept from `record()`, one JSON object
+  per line. **Digests** are `{ digest, signature? }` lines.
+- **Checks:**
+  - the chain verifies from genesis, or from `--from`, for a chain a woken
+    Will continued;
+  - every digest names an entry that is in the chain: same `seq`, same
+    head hash, and the same Will;
+  - with `--key`, every digest carries an Ed25519 signature over
+    `canonical(digest)` that the key verifies, encoded in base64.
+- **Reports:**
+  - the first broken entry by `seq`, with the reason;
+  - the unanchored tail, the entries after the last good digest. `every`
+    bounds this window.
+- **Exit codes:** 0 when everything checks; 1 when something fails; 2 for
+  a usage error.
+- **The engine ships the host side too:**
+  - `fileAnchoring(dir, { every, sign? })` writes exactly the files
+    `verify` reads, so the format belongs to the engine and not to each host;
+  - `ed25519Signer(privateKeyPem)` signs, and `ed25519Verifier(publicKeyPem)`
+    checks.
+
+### 4b. Replay from the chain
+
+Replay re-executes the mind from its starting state, feeding it every input
+the chain recorded at the place the chain recorded it. It then compares
+what the mind produces, entry by entry. The result is reproduced through the
+last entry, or diverged at a `seq` with both records.
+
+**Every input reaches the chain, and only through one door.** Inputs that
+were not on it before:
+
+| Input | Was | Now |
+| :--- | :--- | :--- |
+| SDK and stem `sense` / `senseText` / `senseSignal` | straight into the sense engine, at wall time | a `sense` envelope on the inbound queue, applied at the next tick. `await will.sense()` still resolves when its turn completes |
+| A host's effector ack (`confirmEffectorExecution`) | applied directly | an `ack` result envelope. `observation` included: the envelope now carries the whole `EffectorAck` |
+| A host's delivery ack (`confirmMessageDelivery`) | applied directly | an `ack` delivery envelope |
+| An escalation answer (`resolveEscalation`) | queued, unrecorded | an `escalation` envelope (POLICY_REAFFERENCE P4b's open item) |
+| `injectEvent` | written straight into state | an `event` envelope |
+| The wake signal on resume | sensed directly, with the offline time read from the wall | a `sense` envelope |
+| LLM answers, failures included | chained on success only | chained at arrival, success or failure |
+| Semantic recall | a second oracle, unrecorded | a `recall` entry at arrival: the results, or the timeout |
+| An async policy verdict | chained at arrival | unchanged; replay now delivers it there |
+| The clock | wall time read continuously | one `clock` entry at the start of every step, carrying the sim time the step runs at. Between ticks the clock now holds still |
+| Pause and resume | not chained | `chain` entries `{ lifecycle: 'pause' }` / `{ lifecycle: 'resume' }` |
+
+The inbound record's `tick` moves to the simulation tick, the axis every
+other entry is on.
+
+**What a host sees change:** a host input takes effect at the next tick
+rather than the moment it is called — at most one tick interval later. This
+is the transport's rule already, so the two doors stop differing. Applied
+between ticks, it was already first visible at the next step.
+
+**Genesis commits to the starting state.** The `chain` entry now carries:
+- `config`: the `WillConfig` in its JSON form, without the anchoring hooks,
+  the transport or storage adapters, and without any field whose name says it
+  is a secret (`apiKey`, `token`, `secret`, `password`). That is why the 2026-07 design
+  narrowed it to the seed.
+- `env`: the `WILL_*` settings the mind reads at assembly, filtered the same way;
+- `recall`: whether the mind has semantic memory;
+- `restored`: when a stored snapshot was restored, its tick, entity count and
+  hash.
+
+A PMA loaded by `Will.wake` is chained whole as a `chain` entry
+`{ loaded: 'pma', pma }`. It is the portable artifact, and an input like
+any other.
+
+**When an answer reaches the mind.** Each answer's place in the original
+chain decides when the replay hands it over:
+- **Between ticks**: after the step's `tick` session entry and before the
+  next `clock` entry. This is the normal case, since an answer is a network
+  callback and arrives while the loop sleeps. The replay hands it over at the
+  same boundary, in chain order, once every entry before it has been
+  reproduced. It then lets that answer's work settle before the next.
+- **Inside a step**: between a `clock` entry and that step's `tick` entry.
+  This happens only when an engine awaits an oracle inside `react()`. The
+  orchestrator already flags that as a defect. The replay hands it over as
+  soon as everything before it has been reproduced.
+
+The sources the replay registers are the existing seams. The completion,
+inbound and verdict sources now return a promise the schedule settles, and a
+recall source is added. In a replay, each capture site chains the recorded
+input **verbatim**, so input entries reproduce hash for hash.
+
+**What is compared.** The replay's own chain grows beside the original:
+- an input entry must match exactly;
+- an output entry must match its stream, its tick and its record, compared
+  without its wall-clock fields: `wallTime`, `startedAt`, `resumedAt`,
+  `durationMs`. The list lives in one place and every name on it is tested;
+- a shredded output is compared by position only, and the report says how
+  many were.
+
+The first difference is the divergence. A replay that produces nothing more
+when the original continues has diverged too.
+
+**What replay will not do, and says so:**
+- **Begin from a stored snapshot.** The chain commits to its hash, not its
+  contents, and a long-lived mind's snapshot is its whole memory. Replay
+  begins at a genesis that is fresh or woken from a PMA, and refuses
+  otherwise, naming the tick.
+- **Reproduce wall-clock safety timeouts.** These are audition's 60-second
+  turn and outreach timeouts, and a model call's own timeout. A timeout that
+  fired is reported as the divergence it causes. A failed model call is
+  chained, so its failure reproduces.
+- **Call a model, an embedder or an arbiter.** Every answer comes from the
+  chain; a request with no recorded answer is a divergence.
+
+**Alternatives considered.**
+
+| Alternative | Why not |
+| :--- | :--- |
+| Quantize every answer to the next tick in live runs | Deadlocks any engine that awaits an oracle inside a step, and adds a tick of latency to every call. The chain's order already says where an answer arrived. |
+| Record each answer's landing tick at every landing point (the inbox, `AsyncEngine`, the summariser, motor) | Four seams that each have to be found and kept, against one per oracle. A seam missed later would diverge silently. |
+| Replay to a final state and compare only that | It cannot say where a run went wrong, and the state is not on the chain. |
+| Store the starting snapshot in the chain | Megabytes at every restart, for a mind's whole memory. A PMA is the portable start and is chained whole. |

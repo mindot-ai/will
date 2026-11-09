@@ -50,33 +50,34 @@ export function getInboundRecorder( willId: string ): InboundSink | undefined {
 // ── Replay re-feed source (deferred re-execution) ────────────
 
 /**
- * Supplies recorded inbound envelopes back during a deterministic re-execution
- * replay, keyed by willId. Returns the envelopes recorded at `tick` (empty if
- * none). Registered only while replaying; absent during live runs.
+ * Supplies recorded inbound back during a re-execution, keyed by willId: the
+ * records applied at `tick`, whole, so the capture site can chain each one
+ * exactly as it was chained live (RECORD_ANCHORING step 4). Registered only
+ * while replaying; absent during live runs.
  */
 export interface InboundSource {
-  envelopesAt( tick: Tick ): unknown[]
+  recordsAt( tick: Tick ): InboundRecord[]
 }
 
 /**
- * Re-feed source backed by recorded inbound. Groups envelopes by their applied
+ * Re-feed source backed by recorded inbound. Groups records by their applied
  * tick (FIFO within a tick, preserving record order) and hands them back once.
  * Unlike the LLM source, a tick with no recorded inbound is normal (most ticks),
  * so a miss returns `[]` rather than throwing — only an upstream LLM/clock/PRNG
  * divergence (caught by their own sources) can invalidate the replay.
  */
 export class RecordedInboundSource implements InboundSource {
-  private readonly _byTick = new Map<Tick, unknown[]>()
+  private readonly _byTick = new Map<Tick, InboundRecord[]>()
 
   constructor( records: readonly InboundRecord[] ){
     for( const r of records ){
       const queue = this._byTick.get( r.tick )
-      if( queue ) queue.push( r.envelope )
-      else this._byTick.set( r.tick, [ r.envelope ] )
+      if( queue ) queue.push( r )
+      else this._byTick.set( r.tick, [ r ] )
     }
   }
 
-  envelopesAt( tick: Tick ): unknown[] {
+  recordsAt( tick: Tick ): InboundRecord[] {
     const queue = this._byTick.get( tick )
     if( !queue || queue.length === 0 ) return []
     // Consume so a tick is never re-fed twice within one replay.

@@ -133,7 +133,9 @@ describe('record anchoring — a live mind through the stem', () => {
     // It begins at genesis, with what the chain is.
     const [ first ] = entries
     expect( first ).toMatchObject( { stream: 'chain', seq: 1, prev: GENESIS_HASH } )
-    expect( first!.record ).toEqual( { chain: RECORD_CHAIN, willId: id, seed: 11, startTick: 0 } )
+    expect( first!.record ).toMatchObject( { chain: RECORD_CHAIN, willId: id, seed: 11, startTick: 0, recall: false, restored: null } )
+    /** The genesis commits to the config the mind was assembled from (step 4). */
+    expect( ( first!.record as { config: { id: string; randomSeed: number } } ).config ).toMatchObject( { id, randomSeed: 11 } )
 
     // Every stream a capture site produces reached it.
     const streams = new Set( entries.map( e => e.stream ) )
@@ -205,7 +207,9 @@ describe('record anchoring — a live mind through the stem', () => {
       await until( () => entries.length > sealed.meta.seq + 3 )
     }
     finally { await stem.archiveWill( id ) }
-    expect( entries.filter( e => e.stream === 'chain' ) ).toHaveLength( 1 )
+    /** The host's acts on the mind are inputs, chained where they happened (step 4). */
+    expect( entries.filter( e => e.stream === 'chain' ).map( e => rec( e ).lifecycle ?? rec( e ).chain ) )
+      .toEqual( [ RECORD_CHAIN, 'pause', 'resume', 'archive' ] )
     expect( verifyChain( entries ).valid ).toBe( true )
     /** The resumed session's log reaches the chain too: both places a logger opens share one bridge. */
     expect( entries.some( e => e.stream === 'session' && rec( e ).type === 'session.start' && 'resumedAt' in rec( e ) ) ).toBe( true )

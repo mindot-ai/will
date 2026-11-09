@@ -40,6 +40,8 @@ import type { CognitiveEvent, CognitiveBus } from '#cognition/bus'
 import type { VectorMemoryAdapter } from '#memory/vector.adapter'
 import type { EmbeddingProvider } from '#memory/vector.embedder'
 import { GenerativeModel } from '#cognition/generative.model'
+import { getRecordTap } from '#core/record.tap'
+import { getRecallSource, type RecallHit, type RecallRecord } from '#core/recall.source'
 
 export interface EpisodicConsolidatorConfig {
   /** Threshold above which a WM item is consolidated */
@@ -53,6 +55,8 @@ export interface EpisodicConsolidatorConfig {
   /** Whether to automatically index episodes (default true) */
   autoIndex?: boolean
   bus?: CognitiveBus
+  /** Whose recalls these are, so each can be chained (RECORD_ANCHORING step 4). */
+  willId?: string
 }
 
 export interface EpisodicMemory {
@@ -163,6 +167,8 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
   }
   private _embedder: EmbeddingProvider | null = null
   private _autoIndex: boolean
+  /** Whose recalls these are: the record chain and a replay's source are keyed by it. */
+  private _willId: string | null
 
   private readonly _model    = new GenerativeModel()
 
@@ -173,6 +179,7 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
     this._vectorMemory           = config.vectorMemory           ?? null
     this._embedder               = config.embedder               ?? null
     this._autoIndex              = config.autoIndex              ?? true
+    this._willId                 = config.willId                 ?? null
   }
   attachBus( bus: CognitiveBus ): void { this._bus = bus }
 
@@ -465,6 +472,59 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
    * Other metadata narrowing (sourceType / tags) remains the caller's job on the
    * returned episodes (which carry all metadata).
    */
+  /**
+   * Search, and chain what came back where it came back (RECORD_ANCHORING step 4).
+   * `null` when the recall timed out. In a replay the recorded answer is handed
+   * back instead, at its place in the chain, and chained again as recorded.
+   */
+  private async _recall( query: unknown, limit: number, minSimilarity: number | undefined ): Promise<RecallHit[] | null> {
+    const tap    = this._willId ? getRecordTap( this._willId ) : undefined
+    const source = this._willId ? getRecallSource( this._willId ) : undefined
+    const chain  = ( record: RecallRecord ) => {
+      try { tap?.('recall', record ) }
+      catch { /* the record chain must never change what is recalled */ }
+    }
+
+    if( source ){
+      const record = await source.nextRecall( query )
+      chain( record )
+      return record.timedOut ? null : record.hits
+    }
+
+    // Timeout guard — recall is BEST-EFFORT. The search embeds the query, which
+    // can be a real network call (OpenAI/Google embedder); a hanging endpoint
+    // must degrade to "no recall this time", never block a reasoning chain —
+    // facet chains await this inside prompt building, so an unbounded hang here
+    // stalls the mind's reasoning and everything downstream of it.
+    // WILL_RECALL_TIMEOUT_MS (default 5000) — read lazily for tests/live tuning.
+    const timeoutMs = parseInt( process.env.WILL_RECALL_TIMEOUT_MS ?? '5000')
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timedOut = Symbol('recall-timeout')
+
+    // The search keeps running after the race is lost — its own rate-limit retry
+    // chain can outlive this timeout by a minute. Its rejection is caught HERE
+    // rather than left to the race: a promise that loses a Promise.race still
+    // settles, and an unhandled 429 rejection surfaces as a process-level warning
+    // (or a crash, depending on host) long after the recall it belonged to gave up.
+    const results = await Promise.race( [
+      this._vectorMemory!.search( query, { maxResults: limit, minSimilarity } ).catch( ( err: unknown ) => {
+        logger.warn(`[EpisodicConsolidator] recall search failed — ${ err instanceof Error ? err.message : String( err ) }`)
+        return []
+      } ),
+      new Promise<typeof timedOut>( resolve => { timer = setTimeout( () => resolve( timedOut ), timeoutMs ) } ),
+    ] ).finally( () => clearTimeout( timer ) )
+
+    const base = { query, limit, ...( minSimilarity !== undefined ? { minSimilarity } : {} ) }
+    if( results === timedOut ){
+      logger.warn(`[EpisodicConsolidator] semanticQuery timed out after ${timeoutMs}ms — returning no recall (embedder slow/unreachable?)`)
+      chain( { ...base, hits: [], timedOut: true } )
+      return null
+    }
+    const hits: RecallHit[] = results.map( r => ( { episodeId: r.episodeId, similarity: r.similarity, ...( r.page ? { page: r.page } : {} ) } ) )
+    chain( { ...base, hits } )
+    return hits
+  }
+
   /** Await any background indexing still in flight. Shutdown and tests only. */
   async flushIndexing(): Promise<void> { while( this._indexing.size > 0 ) await Promise.all( this._indexing ) }
 
@@ -490,36 +550,8 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
     // ranked just outside the top-`limit` by pure similarity.
     const fetch = useAffect ? Math.min( limit * 3, 50 ) : limit
 
-    // Timeout guard — recall is BEST-EFFORT. The search embeds the query, which
-    // can be a real network call (OpenAI/Google embedder); a hanging endpoint
-    // must degrade to "no recall this time", never block a reasoning chain —
-    // facet chains await this inside prompt building, so an unbounded hang here
-    // stalls the mind's reasoning and everything downstream of it.
-    // WILL_RECALL_TIMEOUT_MS (default 5000) — read lazily for tests/live tuning.
-    const timeoutMs = parseInt( process.env.WILL_RECALL_TIMEOUT_MS ?? '5000')
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const timedOut = Symbol('recall-timeout')
-
-    // The search keeps running after the race is lost — its own rate-limit retry
-    // chain can outlive this timeout by a minute. Its rejection is caught HERE
-    // rather than left to the race: a promise that loses a Promise.race still
-    // settles, and an unhandled 429 rejection surfaces as a process-level warning
-    // (or a crash, depending on host) long after the recall it belonged to gave up.
-    const results = await Promise.race( [
-      this._vectorMemory.search( query, {
-        maxResults:    fetch,
-        minSimilarity: filters?.minSimilarity,
-      } ).catch( ( err: unknown ) => {
-        logger.warn(`[EpisodicConsolidator] recall search failed — ${ err instanceof Error ? err.message : String( err ) }`)
-        return []
-      } ),
-      new Promise<typeof timedOut>( resolve => { timer = setTimeout( () => resolve( timedOut ), timeoutMs ) } ),
-    ] ).finally( () => clearTimeout( timer ) )
-
-    if( results === timedOut ){
-      logger.warn(`[EpisodicConsolidator] semanticQuery timed out after ${timeoutMs}ms — returning no recall (embedder slow/unreachable?)`)
-      return []
-    }
+    const results = await this._recall( query, fetch, filters?.minSimilarity )
+    if( results === null ) return []
 
     const resolved: Array<{ episode: EpisodicMemory; similarity: number; page?: number }> = []
     for( const r of results ){

@@ -539,7 +539,7 @@ export class AuditionEngine extends BaseSenseEngine {
    * Each read file is laid down as an exafferent percept whose data is the file
    * whole — so P5a's view pages it, working memory and recall keep it, and
    * `[RECALL]` reaches any page of it by its handle. The words carry only a
-   * reference, `[Ada shared spec.md (412 KB) — doc:…]`: inlined, a document rode
+   * reference, `[Ada shared notes.txt (412 KB) — doc:…]`: inlined, a document rode
    * everywhere the words go — the focus, the thread digest, every "they answered"
    * line, conversation memory — and was cut to fit (24,000 characters, four
    * files). Done per message, before a burst is folded into one turn, so each

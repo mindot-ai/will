@@ -2,6 +2,11 @@
 
 > **Standing:** DESIGNED · 2026-11-09 · built, unreleased — designed 2026-07-08 and settled against the engine 2026-11-09; all four steps landed (the chain, digests, the `anchor()` hook, and `will verify` with replay from the chain); SHIPPED at the next release
 >
+> **The picture:** `docs/graphs/record-anchoring.svg` — the whole arc in one
+> diagram: what reaches the mind and what it does, chained in order; the host keeps
+> the chain, a signed digest goes where the operator cannot rewrite it, and anyone
+> can verify it or replay the mind from it.
+>
 > **2026-11-09:** **all four steps are BUILT.** Steps 1–3: `core/record.chain.ts`,
 > `core/record.tap.ts`, `stem/tracts/anchor.controller.ts`, and `anchoring` on
 > `Will.create` / `Will.wake`. Step 4: `core/record.verify.ts`,

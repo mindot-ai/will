@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="700" viewBox="0 0 1360 700" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-e2e8f0" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#e2e8f0"/></marker>
+<marker id="arr-f97316" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#f97316"/></marker>
+<marker id="arr-4ade80" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#4ade80"/></marker>
+<marker id="arr-94a3b8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#94a3b8"/></marker>
+</defs>
+<rect width="1360" height="700" fill="url(#sky)"/>
+<rect x="1" y="1" width="1358" height="698" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="25" font-weight="700" fill="#f8fafc" letter-spacing="0.2">Record anchoring — what a mind did, proven</text>
+<text x="40" y="80" font-size="10.7" fill="#8b93a7">Everything that reaches a mind and everything it does is hash-chained in the order it happened; the host keeps the chain, a signed digest of its head goes where the operator cannot rewrite it, and anyone can check it — or raise the same mind from it</text>
+<rect x="1159.9" y="42" width="160.1" height="22" rx="11" fill="#94a3b814" stroke="#94a3b855" stroke-width="1"/>
+<circle cx="1171.9" cy="53" r="3.4" fill="#94a3b8"/>
+<text x="1180.9" y="57" font-size="10.5" fill="#cbd5e1">Stem / infrastructure</text>
+<rect x="1028.4" y="42" width="123.5" height="22" rx="11" fill="#4ade8014" stroke="#4ade8055" stroke-width="1"/>
+<circle cx="1040.4" cy="53" r="3.4" fill="#4ade80"/>
+<text x="1049.4" y="57" font-size="10.5" fill="#cbd5e1">Agency (action)</text>
+<rect x="939.6000000000001" y="42" width="80.8" height="22" rx="11" fill="#f9731614" stroke="#f9731655" stroke-width="1"/>
+<circle cx="951.6000000000001" cy="53" r="3.4" fill="#f97316"/>
+<text x="960.6000000000001" y="57" font-size="10.5" fill="#cbd5e1">LLM seam</text>
+<rect x="826.4000000000001" y="42" width="105.19999999999999" height="22" rx="11" fill="#e2e8f014" stroke="#e2e8f055" stroke-width="1"/>
+<circle cx="838.4000000000001" cy="53" r="3.4" fill="#e2e8f0"/>
+<text x="847.4000000000001" y="57" font-size="10.5" fill="#cbd5e1">Host / world</text>
+<rect x="44" y="118" width="290" height="404" rx="16" fill="#e2e8f007" stroke="#e2e8f02e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#e2e8f0bb">WHAT REACHES THE MIND</text>
+<rect x="354" y="118" width="300" height="404" rx="16" fill="#94a3b807" stroke="#94a3b82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="370" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#94a3b8bb">ONE CHAIN</text>
+<rect x="674" y="118" width="300" height="404" rx="16" fill="#e2e8f007" stroke="#e2e8f02e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="690" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#e2e8f0bb">THE HOST KEEPS</text>
+<rect x="994" y="118" width="322" height="404" rx="16" fill="#e2e8f007" stroke="#e2e8f02e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="1010" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#e2e8f0bb">ANYONE CHECKS</text>
+<path d="M 314 187 C 371.8798756045657 187, 316.1201243954343 327, 374 327" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 314 327 C 348 327, 340 327, 374 327" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<path d="M 314 467 C 371.8798756045657 467, 316.1201243954343 327, 374 327" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-4ade80)"/>
+<path d="M 504 214 C 504 248, 504 266, 504 300" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 504 440 C 504 406, 504 388, 504 354" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 634 327 C 691.8798756045657 327, 636.1201243954343 187, 694 187" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-94a3b8)"/>
+<path d="M 824 214 C 824 248, 824 266, 824 300" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 824 354 C 824 388, 824 406, 824 440" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 954 187 C 988 187, 980 187, 1014 187" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 954 467 C 1062.8154400809003 467, 905.1845599190997 187, 1014 187" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 1155 214 C 1155 248, 1155 266, 1155 300" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 1155 354 C 1155 388, 1155 406, 1155 440" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-e2e8f0)"/>
+<path d="M 1155 494 C 1155 614, 900 612, 840 612 C 780 612, 504 614, 504 494" fill="none" stroke="#e2e8f0" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-e2e8f0)"/>
+<g>
+<rect x="64" y="160" width="250" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="64" y="160" width="250" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="65.2" y="169" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="189" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">A person, an ack, an event</text>
+<text x="189" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">through the door · at the next tick</text>
+</g>
+<g>
+<rect x="64" y="300" width="250" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="64" y="300" width="250" height="54" rx="12" fill="#f9731612"/>
+<rect x="65.2" y="309" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="189" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">A model answer, a recall</text>
+<text x="189" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">chained where it landed</text>
+</g>
+<g>
+<rect x="64" y="440" width="250" height="54" rx="12" fill="#10141d" stroke="#4ade8099" stroke-width="1.4"/>
+<rect x="64" y="440" width="250" height="54" rx="12" fill="#4ade8012"/>
+<rect x="65.2" y="449" width="3.2" height="36" rx="1.6" fill="#4ade80"/>
+<text x="189" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">A policy verdict</text>
+<text x="189" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">even a late one — until the Will stops</text>
+</g>
+<g filter="url(#glow)" color="#94a3b8">
+<rect x="374" y="160" width="260" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="374" y="160" width="260" height="54" rx="12" fill="#94a3b812"/>
+<rect x="375.2" y="169" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="504" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">The genesis</text>
+<text x="504" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">config, settings, the PMA it woke from</text>
+</g>
+<g filter="url(#glow)" color="#94a3b8">
+<rect x="374" y="300" width="260" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="374" y="300" width="260" height="54" rx="12" fill="#94a3b812"/>
+<rect x="375.2" y="309" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="504" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">will-record/1</text>
+<text x="504" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">each entry commits to the one before</text>
+</g>
+<g>
+<rect x="374" y="440" width="260" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="374" y="440" width="260" height="54" rx="12" fill="#94a3b812"/>
+<rect x="375.2" y="449" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="504" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">What the mind did</text>
+<text x="504" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">its session log · a clock step a tick</text>
+</g>
+<g>
+<rect x="694" y="160" width="260" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="694" y="160" width="260" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="695.2" y="169" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="824" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">record(entry)</text>
+<text x="824" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">records.jsonl — the host’s storage</text>
+</g>
+<g>
+<rect x="694" y="300" width="260" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="694" y="300" width="260" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="695.2" y="309" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="824" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">A digest of the head</text>
+<text x="824" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">every N ticks · Ed25519-signed</text>
+</g>
+<g filter="url(#glow)" color="#e2e8f0">
+<rect x="694" y="440" width="260" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="694" y="440" width="260" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="695.2" y="449" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="824" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">anchor() → VLX</text>
+<text x="824" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">where the operator cannot rewrite it</text>
+</g>
+<g filter="url(#glow)" color="#e2e8f0">
+<rect x="1014" y="160" width="282" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="1014" y="160" width="282" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="1015.2" y="169" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="1155" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">will verify</text>
+<text x="1155" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">unbroken · every digest names an entry, signed</text>
+</g>
+<g>
+<rect x="1014" y="300" width="282" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="1014" y="300" width="282" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="1015.2" y="309" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="1155" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">--replay</text>
+<text x="1155" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">the chain’s order is the schedule</text>
+</g>
+<g>
+<rect x="1014" y="440" width="282" height="54" rx="12" fill="#10141d" stroke="#e2e8f099" stroke-width="1.4"/>
+<rect x="1014" y="440" width="282" height="54" rx="12" fill="#e2e8f012"/>
+<rect x="1015.2" y="449" width="3.2" height="36" rx="1.6" fill="#e2e8f0"/>
+<text x="1155" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Reproduced — or not</text>
+<text x="1155" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">the first entry that differs, named</text>
+</g>
+<rect x="480.5" y="247" width="47" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="504" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">begins</text>
+<rect x="476.2" y="387" width="55.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#94a3b844" stroke-width="0.8"/>
+<text x="504" y="400.5" font-size="10" fill="#cbd5e1" text-anchor="middle">in order</text>
+<rect x="784.3" y="247" width="79.40000000000002" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="824" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">every N ticks</text>
+<rect x="800.5" y="387" width="47" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="824" y="400.5" font-size="10" fill="#cbd5e1" text-anchor="middle">signed</text>
+<rect x="1104.1" y="247" width="101.80000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="1155" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">and with --replay</text>
+<rect x="1111.5" y="387" width="87" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="1155" y="400.5" font-size="10" fill="#cbd5e1" text-anchor="middle">entry for entry</text>
+<rect x="769.5999999999999" y="602" width="140.80000000000007" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#e2e8f044" stroke-width="0.8"/>
+<text x="840" y="615.5" font-size="10" fill="#cbd5e1" text-anchor="middle">compared with what it did</text>
+<text x="40" y="678" font-size="10.5" fill="#5b6372">@mindot/will · record-anchoring</text>
+<text x="1320" y="678" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

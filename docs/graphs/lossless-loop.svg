@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="700" viewBox="0 0 1360 700" font-family="ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif">
+<defs>
+<radialGradient id="sky" cx="30%" cy="-10%" r="90%"><stop offset="0%" stop-color="#151b28"/><stop offset="55%" stop-color="#0d1119"/><stop offset="100%" stop-color="#0a0d13"/></radialGradient>
+<filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="7" flood-opacity="0.55"/></filter>
+<marker id="arr-38bdf8" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#38bdf8"/></marker>
+<marker id="arr-fbbf24" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#fbbf24"/></marker>
+<marker id="arr-a78bfa" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#a78bfa"/></marker>
+<marker id="arr-f97316" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M 0.8 1.2 L 8.8 5 L 0.8 8.8 L 3 5 Z" fill="#f97316"/></marker>
+</defs>
+<rect width="1360" height="700" fill="url(#sky)"/>
+<rect x="1" y="1" width="1358" height="698" rx="22" fill="none" stroke="#ffffff14" stroke-width="1.5"/>
+<text x="40" y="56" font-size="19.5" font-weight="700" fill="#f8fafc" letter-spacing="0.2">Lossless — nothing the mind takes in, thinks, says or keeps is cut</text>
+<text x="40" y="80" font-size="13" fill="#8b93a7">Every cut that lost data is gone. What one model call is shown stays bounded, but never silently: ranked, counted, paged, and reachable whole on the next call</text>
+<rect x="1159.9" y="42" width="160.1" height="22" rx="11" fill="#94a3b814" stroke="#94a3b855" stroke-width="1"/>
+<circle cx="1171.9" cy="53" r="3.4" fill="#94a3b8"/>
+<text x="1180.9" y="57" font-size="10.5" fill="#cbd5e1">Stem / infrastructure</text>
+<rect x="1071.1000000000001" y="42" width="80.8" height="22" rx="11" fill="#f9731614" stroke="#f9731655" stroke-width="1"/>
+<circle cx="1083.1000000000001" cy="53" r="3.4" fill="#f97316"/>
+<text x="1092.1000000000001" y="57" font-size="10.5" fill="#cbd5e1">LLM seam</text>
+<rect x="994.5000000000001" y="42" width="68.6" height="22" rx="11" fill="#a78bfa14" stroke="#a78bfa55" stroke-width="1"/>
+<circle cx="1006.5000000000001" cy="53" r="3.4" fill="#a78bfa"/>
+<text x="1015.5000000000001" y="57" font-size="10.5" fill="#cbd5e1">Memory</text>
+<rect x="832.5000000000001" y="42" width="154" height="22" rx="11" fill="#fbbf2414" stroke="#fbbf2455" stroke-width="1"/>
+<circle cx="844.5000000000001" cy="53" r="3.4" fill="#fbbf24"/>
+<text x="853.5000000000001" y="57" font-size="10.5" fill="#cbd5e1">Executive (System 2)</text>
+<rect x="676.6000000000001" y="42" width="147.89999999999998" height="22" rx="11" fill="#38bdf814" stroke="#38bdf855" stroke-width="1"/>
+<circle cx="688.6000000000001" cy="53" r="3.4" fill="#38bdf8"/>
+<text x="697.6000000000001" y="57" font-size="10.5" fill="#cbd5e1">Perception &amp; senses</text>
+<rect x="44" y="118" width="236" height="404" rx="16" fill="#38bdf807" stroke="#38bdf82e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="60" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#38bdf8bb">WHAT SHE TAKES IN</text>
+<rect x="300" y="118" width="250" height="404" rx="16" fill="#fbbf2407" stroke="#fbbf242e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="316" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#fbbf24bb">WHAT SHE THINKS</text>
+<rect x="570" y="118" width="250" height="404" rx="16" fill="#a78bfa07" stroke="#a78bfa2e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="586" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#a78bfabb">WHAT SHE KEEPS</text>
+<rect x="840" y="118" width="240" height="404" rx="16" fill="#f9731607" stroke="#f973162e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="856" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#f97316bb">WHAT ONE CALL SHOWS</text>
+<rect x="1100" y="118" width="222" height="404" rx="16" fill="#a78bfa07" stroke="#a78bfa2e" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="1116" y="140" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="#a78bfabb">REACHING PAST IT</text>
+<path d="M 262 187 C 296 187, 284 187, 318 187" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
+<path d="M 262 327 C 296 327, 284 327, 318 327" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
+<path d="M 262 467 C 296 467, 284 467, 318 467" fill="none" stroke="#38bdf8" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-38bdf8)"/>
+<path d="M 425 214 C 425 248, 425 266, 425 300" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<path d="M 425 354 C 425 388, 425 406, 425 440" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-fbbf24)"/>
+<path d="M 532 187 C 566 187, 554 187, 588 187" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-fbbf24)"/>
+<path d="M 695 214 C 695 248, 695 266, 695 300" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
+<path d="M 695 354 C 695 388, 695 406, 695 440" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
+<path d="M 802 187 C 836 187, 824 187, 858 187" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
+<path d="M 960 214 C 960 248, 960 266, 960 300" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<path d="M 960 354 C 960 388, 960 406, 960 440" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<path d="M 1209 300 C 1209 266, 1209 248, 1209 214" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-a78bfa)"/>
+<path d="M 1062 327 C 1096 327, 1080 327, 1114 327" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<path d="M 1062 467 C 1092 467, 1084 187, 1114 187" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-f97316)"/>
+<path d="M 1209 160 C 1209 110.02313735337121, 1150 104, 1090 104 C 1030 104, 960 106.2115402711697, 960 160" fill="none" stroke="#a78bfa" stroke-width="1.6" stroke-opacity="0.85" stroke-dasharray="5 4" marker-end="url(#arr-a78bfa)"/>
+<path d="M 1062 467 C 1096 467, 1080 467, 1114 467" fill="none" stroke="#f97316" stroke-width="1.6" stroke-opacity="0.85" marker-end="url(#arr-f97316)"/>
+<g>
+<rect x="62" y="160" width="200" height="54" rx="12" fill="#10141d" stroke="#38bdf899" stroke-width="1.4"/>
+<rect x="62" y="160" width="200" height="54" rx="12" fill="#38bdf812"/>
+<rect x="63.2" y="169" width="3.2" height="36" rx="1.6" fill="#38bdf8"/>
+<text x="162" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Every change, every signal</text>
+<text x="162" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">no cap at 50 or 20 a tick</text>
+</g>
+<g>
+<rect x="62" y="300" width="200" height="54" rx="12" fill="#10141d" stroke="#38bdf899" stroke-width="1.4"/>
+<rect x="62" y="300" width="200" height="54" rx="12" fill="#38bdf812"/>
+<rect x="63.2" y="309" width="3.2" height="36" rx="1.6" fill="#38bdf8"/>
+<text x="162" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">A file handed over</text>
+<text x="162" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">its own item, whole</text>
+</g>
+<g>
+<rect x="62" y="440" width="200" height="54" rx="12" fill="#10141d" stroke="#38bdf899" stroke-width="1.4"/>
+<rect x="62" y="440" width="200" height="54" rx="12" fill="#38bdf812"/>
+<rect x="63.2" y="449" width="3.2" height="36" rx="1.6" fill="#38bdf8"/>
+<text x="162" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">A host’s own summary</text>
+<text x="162" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">the engine bounds only its own words</text>
+</g>
+<g filter="url(#glow)" color="#fbbf24">
+<rect x="318" y="160" width="214" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="318" y="160" width="214" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="319.2" y="169" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="425" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Master ⇄ facets</text>
+<text x="425" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">reasoning crosses whole, not at 400</text>
+</g>
+<g>
+<rect x="318" y="300" width="214" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="318" y="300" width="214" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="319.2" y="309" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="425" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">A facet’s account of me</text>
+<text x="425" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">reaches the mind, and applies once</text>
+</g>
+<g>
+<rect x="318" y="440" width="214" height="54" rx="12" fill="#10141d" stroke="#fbbf2499" stroke-width="1.4"/>
+<rect x="318" y="440" width="214" height="54" rx="12" fill="#fbbf2412"/>
+<rect x="319.2" y="449" width="3.2" height="36" rx="1.6" fill="#fbbf24"/>
+<text x="425" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Every goal, every lesson</text>
+<text x="425" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">none dropped unread</text>
+</g>
+<g filter="url(#glow)" color="#a78bfa">
+<rect x="588" y="160" width="214" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="588" y="160" width="214" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="589.2" y="169" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="695" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">What she said and heard</text>
+<text x="695" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">every bubble · every conversation</text>
+</g>
+<g>
+<rect x="588" y="300" width="214" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="588" y="300" width="214" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="589.2" y="309" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="695" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">She forgets in days</text>
+<text x="695" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">not seconds — waking erases nothing</text>
+</g>
+<g>
+<rect x="588" y="440" width="214" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="588" y="440" width="214" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="589.2" y="449" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="695" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">What she let go of</text>
+<text x="695" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">stays gone — a store is her state</text>
+</g>
+<g filter="url(#glow)" color="#f97316">
+<rect x="858" y="160" width="204" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="858" y="160" width="204" height="54" rx="12" fill="#f9731612"/>
+<rect x="859.2" y="169" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="960" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">A window it knows</text>
+<text x="960" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">the routed model’s contextWindow</text>
+</g>
+<g>
+<rect x="858" y="300" width="204" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="858" y="300" width="204" height="54" rx="12" fill="#f9731612"/>
+<rect x="859.2" y="309" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="960" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">A page, not a cut</text>
+<text x="960" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">8k tokens · the same in every call</text>
+</g>
+<g>
+<rect x="858" y="440" width="204" height="54" rx="12" fill="#10141d" stroke="#f9731699" stroke-width="1.4"/>
+<rect x="858" y="440" width="204" height="54" rx="12" fill="#f9731612"/>
+<rect x="859.2" y="449" width="3.2" height="36" rx="1.6" fill="#f97316"/>
+<text x="960" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Honest counts</text>
+<text x="960" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">six of 179 — and it says so</text>
+</g>
+<g filter="url(#glow)" color="#a78bfa">
+<rect x="1114" y="160" width="190" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="1114" y="160" width="190" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="1115.2" y="169" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="1209" y="184" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">[RECALL]</text>
+<text x="1209" y="200.5" font-size="10" fill="#8b93a7" text-anchor="middle">a page or a section, next call</text>
+</g>
+<g>
+<rect x="1114" y="300" width="190" height="54" rx="12" fill="#10141d" stroke="#a78bfa99" stroke-width="1.4"/>
+<rect x="1114" y="300" width="190" height="54" rx="12" fill="#a78bfa12"/>
+<rect x="1115.2" y="309" width="3.2" height="36" rx="1.6" fill="#a78bfa"/>
+<text x="1209" y="324" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">Recall by meaning</text>
+<text x="1209" y="340.5" font-size="10" fill="#8b93a7" text-anchor="middle">every page embedded</text>
+</g>
+<g>
+<rect x="1114" y="440" width="190" height="54" rx="12" fill="#10141d" stroke="#94a3b899" stroke-width="1.4"/>
+<rect x="1114" y="440" width="190" height="54" rx="12" fill="#94a3b812"/>
+<rect x="1115.2" y="449" width="3.2" height="36" rx="1.6" fill="#94a3b8"/>
+<text x="1209" y="464" font-size="13" font-weight="600" fill="#f1f5f9" text-anchor="middle">The operator’s record</text>
+<text x="1209" y="480.5" font-size="10" fill="#8b93a7" text-anchor="middle">whole — judged on what she saw</text>
+</g>
+<rect x="395.9" y="247" width="58.2" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="425" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">and back</text>
+<rect x="348.99999999999994" y="387" width="152.00000000000009" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#fbbf2444" stroke-width="0.8"/>
+<text x="425" y="400.5" font-size="10" fill="#cbd5e1" text-anchor="middle">nothing asked for is dropped</text>
+<rect x="677.1" y="247" width="35.8" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="695" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">kept</text>
+<rect x="658.2" y="387" width="73.6" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="695" y="400.5" font-size="10" fill="#cbd5e1" text-anchor="middle">until it fades</text>
+<rect x="918.9" y="247" width="82.19999999999999" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="960" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">too large to fit</text>
+<rect x="908.6" y="387" width="102.80000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#f9731644" stroke-width="0.8"/>
+<text x="960" y="400.5" font-size="10" fill="#cbd5e1" text-anchor="middle">what is not shown</text>
+<rect x="1159.6" y="247" width="98.80000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="1209" y="260.5" font-size="10" fill="#cbd5e1" text-anchor="middle">found by meaning</text>
+<rect x="1051" y="94" width="78.00000000000001" height="19" rx="9.5" fill="#0b0e14" fill-opacity="0.92" stroke="#a78bfa44" stroke-width="0.8"/>
+<text x="1090" y="107.5" font-size="10" fill="#cbd5e1" text-anchor="middle">brought back</text>
+<text x="40" y="678" font-size="10.5" fill="#5b6372">@mindot/will · lossless-loop</text>
+<text x="1320" y="678" font-size="10.5" fill="#454c59" text-anchor="end">regenerate: bun docs/graphs/generate.ts</text>
+</svg>

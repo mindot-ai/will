@@ -262,7 +262,7 @@ There is **no synchronous reply** — `senseText` returns immediately; the Will 
 
 ## Architecture
 
-> **Visual map:** [`docs/graphs/`](docs/graphs/) holds twenty-eight architecture graphs — the cognitive stories (memory, executive & facets, agency, audition, body & affect, meta-cognition, the executive ⇄ agency seam, planning & goals, social cognition, proactive communication, competence, the two persona channels), the loops that close on the world (exafference, policy reafference and its joint RFC, the answered loop, identity vs route, the signal boundary), the machinery (the deterministic tick, the simulation core, the cognitive bus & wiring, one LLM call end-to-end, model routing, transports, the stem's tracts), the edges (host surfaces, the PMA lifecycle), and the [whole composition](docs/graphs/composition.svg). One palette across all of them: violet is always memory, amber executive, green agency. Regenerate with `bun docs/graphs/generate.ts`.
+> **Visual map:** [`docs/graphs/`](docs/graphs/) holds thirty architecture graphs — the cognitive stories (memory, executive & facets, agency, audition, body & affect, meta-cognition, the executive ⇄ agency seam, planning & goals, social cognition, proactive communication, competence, the two persona channels), the loops that close on the world (exafference, policy reafference and its joint RFC, the answered loop, identity vs route, the signal boundary, nothing cut (lossless), proving what a mind did (record anchoring)), the machinery (the deterministic tick, the simulation core, the cognitive bus & wiring, one LLM call end-to-end, model routing, transports, the stem's tracts), the edges (host surfaces, the PMA lifecycle), and the [whole composition](docs/graphs/composition.svg). One palette across all of them: violet is always memory, amber executive, green agency. Regenerate with `bun docs/graphs/generate.ts`.
 
 ![Will — the whole composition](docs/graphs/composition.svg)
 
@@ -395,6 +395,7 @@ Long-running Wills accumulate state. Two mechanisms prevent token blowout:
 |---|---|
 | **Rolling summariser** | Every N executive calls, a stateless `summary-agent` distils the last 12 reasoning excerpts into a digest injected as `## Memory Continuity` |
 | **Conversation thread isolation** | Each external entity gets its own conversation thread (`lastMessages: 50`). Only a one-line digest reaches the executive context |
+| **A window the engine knows, and nothing cut** | Each call is built to fit the routed model's `contextWindow`. An item larger than a page (8k tokens) becomes a paged document; each section shows the most relevant few and says how many it holds; the mind asks for a page or a section with `[RECALL]` on its next call. What the mind takes in, says and keeps is whole — only the view of one call is bounded, and never silently |
 
 ### Outbox + bidirectional ack
 
@@ -569,7 +570,8 @@ Traits seed the PersonaPrior as a *starting disposition*, not a fixed personalit
 | `llm.provider` | ✅ *(live)* | — | Which provider to speak to. No default: see [LLM provider](#llm-provider). `WILL_LLM_PROVIDER` env fills in |
 | `llm.model` | ✅ *(live)* | — | A concrete model id (`'claude-sonnet-4-5-20250929'`), **or** a per-role map `{ executive, summarizer, deliberation, conversation, embedding }`. Unset roles fall back to `executive`. `WILL_LLM_MODEL` pins every thinking role. Product tier labels resolve to a concrete id host-side, before the engine |
 | `llm.apiKey` / `llm.baseUrl` | — | env | Credential + endpoint for the default provider. Held in memory only — never state, logs, or PMA |
-| `llm.providers` | — | — | Everything the host knows per provider: `{ apiKey, baseUrl?, wire?, prices? }`. Needed to route *across* vendors, and the only place prices live — the engine ships none |
+| `llm.providers` | — | — | Everything the host knows per provider: `{ apiKey, baseUrl?, wire?, prices?, contextWindows? }`. Needed to route *across* vendors, and the only place prices live — the engine ships none |
+| `llm.contextWindow` | — | 128k | The default model's context window in tokens; other models' windows go in `providers.<name>.contextWindows`, matched like prices. It changes what a call is *shown* (anything larger is paged, never cut), so a replay must share it |
 | `llm.router` | — | `NULL_ROUTER` | A `ModelRouter` choosing a model per call from the call's attribution and `demand`. Chains ahead of the compiled role map. See [Different models for different thinking](#different-models-for-different-thinking) |
 | `persistentMemory` | ✅ | — | Persist snapshots so beliefs/goals/narrative survive restarts |
 | `snapshotInterval` | ✅ | — | Ticks between in-memory snapshots |

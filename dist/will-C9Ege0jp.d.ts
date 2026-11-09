@@ -208,6 +208,17 @@ interface SimulationClock {
     readonly isRunning: boolean;
     readonly multiplier: number;
     tick(): void;
+    /**
+     * Hear every step the clock takes, after it is taken. One listener; `null`
+     * removes it. The record chain uses this to chain each step at the moment it
+     * begins (RECORD_ANCHORING step 4).
+     */
+    onStep(listener: ClockStepListener | null): void;
+    /**
+     * Take each step from here instead of measuring one: a replay feeds the
+     * steps a live run chained. `null` returns the clock to its own time.
+     */
+    setStepSource(source: ClockStepSource | null): void;
     pause(): void;
     resume(): void;
     reset(): void;
@@ -218,6 +229,13 @@ interface SimulationClock {
     toWallMs(simMs: number): number;
     simSleep(simMs: number): Promise<void>;
 }
+/** One step of the clock: the sim time it reached and how far it moved. */
+interface ClockStep {
+    readonly now: Timestamp;
+    readonly delta: Duration;
+}
+type ClockStepListener = (step: ClockStep, tick: Tick) => void;
+type ClockStepSource = () => ClockStep;
 interface ClockConfig {
     startTime?: Timestamp;
     startTick?: Tick;
@@ -236,8 +254,19 @@ declare class DefaultSimulationClock implements SimulationClock {
     private _fixedDeltaMs;
     private _startWallMs;
     private _startSimMs;
+    private _onStep;
+    private _stepSource;
     constructor(config?: ClockConfig);
+    /**
+     * The sim time of the current tick. It moves only when the clock steps, in
+     * either mode: between ticks it holds still. Read continuously, a wall-mode
+     * clock handed whatever ran between ticks — an LLM answer landing, a sense
+     * turn — a time no record carried, so no replay could hand it back
+     * (RECORD_ANCHORING step 4). Fixed mode always held still (R2).
+     */
     get now(): Timestamp;
+    /** Where wall time has carried sim time to, read now. Wall mode only. */
+    private _wallNow;
     get currentTick(): Tick;
     get delta(): Duration;
     get isRunning(): boolean;
@@ -247,6 +276,8 @@ declare class DefaultSimulationClock implements SimulationClock {
      * source of tick advancement.
      */
     tick(): void;
+    onStep(listener: ClockStepListener | null): void;
+    setStepSource(source: ClockStepSource | null): void;
     pause(): void;
     resume(): void;
     reset(): void;
@@ -462,6 +493,15 @@ interface SimulationEngine {
     onError?(error: Error, tick: Tick, context: SimulationContext): Promise<EngineResult | null>;
     onAttach?(state: StateManager, context: SimulationContext): Promise<void>;
     onDetach?(state: StateManager, context: SimulationContext): Promise<void>;
+    /**
+     * Settles once nothing this engine started outside a tick — an LLM call, a
+     * queued turn, a background job — is still running. An engine that starts
+     * such work implements it: archiving a Will waits on it, so nothing a mind
+     * began answers after the mind is gone. Starts nothing new and changes
+     * nothing — work that waits on the mind's next decision is `onDetach`'s to
+     * end, and a stopping Will detaches first.
+     */
+    awaitPending?(): Promise<void>;
 }
 type TickMiddleware = (tick: Tick, state: ReadonlySimulationState, context: SimulationContext) => void | Promise<void>;
 /**
@@ -1078,8 +1118,22 @@ interface LLMCompletionRecord {
     text: string;
     inputTok: number;
     outputTok: number;
+    /**
+     * The rest of what the call returned, when it said: a replay hands the caller
+     * the whole answer, and a cut one or a cached one is not the same answer.
+     */
+    stopReason?: string;
+    truncated?: boolean;
+    cacheReadTok?: number;
+    cacheWriteTok?: number;
     /** True when produced by the deterministic mock path (no API call). */
     mock: boolean;
+    /**
+     * The call failed, and this is why: the caller saw this rejection rather than
+     * `text`. Chained like an answer, at the moment it arrived, so a replay fails
+     * the call at the same place (RECORD_ANCHORING step 4).
+     */
+    error?: string;
     latencyMs: number;
     timestamp: Timestamp;
 }
@@ -1604,14 +1658,13 @@ interface TokenTrackerConfig {
     /** Cost threshold for warning events */
     costWarningThresholdUsd?: number;
     /**
-     * When set together with `writeLedger`, every recorded call is appended (with
-     * full 5-axis attribution + cost) to `./data/wills/<willId>/debug/token-report.jsonl`
-     * — the complete, billable per-Will usage ledger (master, facets, summarizer,
-     * embedding, guard — not just the master path).
+     * When set, every recorded call is appended (with full 5-axis attribution +
+     * cost) to `<ledgerDir>/token-report.jsonl` — the complete, billable per-Will
+     * usage ledger (master, facets, summarizer, embedding, guard — not just the
+     * master path). A dev convenience: the stem passes the Will's debug directory
+     * only when file logging is on and the Will is not in test mode.
      */
-    willId?: string;
-    /** Append the attributed ledger to disk (dev convenience). Off in prod/tests/replay. */
-    writeLedger?: boolean;
+    ledgerDir?: string | null;
 }
 declare class TokenTracker implements SimulationEngine {
     readonly name = "token-tracker";
@@ -1819,6 +1872,8 @@ interface EpisodicConsolidatorConfig {
     /** Whether to automatically index episodes (default true) */
     autoIndex?: boolean;
     bus?: CognitiveBus;
+    /** Whose recalls these are, so each can be chained (RECORD_ANCHORING step 4). */
+    willId?: string;
 }
 interface EpisodicMemory {
     id: string;
@@ -1891,6 +1946,8 @@ declare class EpisodicConsolidator implements SimulationEngine, CognitiveEngine 
     private _track;
     private _embedder;
     private _autoIndex;
+    /** Whose recalls these are: the record chain and a replay's source are keyed by it. */
+    private _willId;
     private readonly _model;
     constructor(config?: EpisodicConsolidatorConfig);
     attachBus(bus: CognitiveBus): void;
@@ -1926,6 +1983,12 @@ declare class EpisodicConsolidator implements SimulationEngine, CognitiveEngine 
      * Other metadata narrowing (sourceType / tags) remains the caller's job on the
      * returned episodes (which carry all metadata).
      */
+    /**
+     * Search, and chain what came back where it came back (RECORD_ANCHORING step 4).
+     * `null` when the recall timed out. In a replay the recorded answer is handed
+     * back instead, at its place in the chain, and chained again as recorded.
+     */
+    private _recall;
     /** Await any background indexing still in flight. Shutdown and tests only. */
     flushIndexing(): Promise<void>;
     semanticQuery(query: unknown, filters?: {
@@ -4434,6 +4497,12 @@ interface LLMDirectorConfig {
      */
     timeoutMs?: number;
     /**
+     * Where `writeDebugPrompt` / `writeDebugResponse` put each call whole. Unset
+     * or null writes nothing: the stem passes one only when file logging is on and
+     * the Will is not in test mode, the gate every other file it writes obeys.
+     */
+    debugDir?: string | null;
+    /**
      * Per-Will token tracker (R4). When provided, completed live calls record
      * their usage/cost here. Omitted/null → recording is skipped (e.g. mock or
      * replay runs). This replaces the former process-global getTokenTracker().
@@ -4568,6 +4637,7 @@ declare class LLMDirector {
     private _mock;
     private _baseUrl;
     private _timeoutMs;
+    private _debugDir;
     private _tokenTracker;
     private _router;
     private _credentials;
@@ -4642,6 +4712,21 @@ declare class LLMDirector {
      */
     private _recordCompletion;
     /**
+     * A live call whose failure is chained like an answer: the caller sees a
+     * rejection, and a replay must hand it the same one at the same place
+     * (RECORD_ANCHORING step 4). Only the record chain takes it — the replay
+     * tape's sources have always treated a missing answer as the miss.
+     */
+    private _chainingFailure;
+    /**
+     * A recorded answer, when the replay hands it over. In a replay from the
+     * record chain it is chained again exactly as recorded, so the replay's
+     * completion entries match hash for hash; a recorded failure is thrown.
+     * One handed over at once is chained at once — a mock answer was chained
+     * inside the call, before anything after it ran.
+     */
+    private _answerFromTape;
+    /**
      * Replay re-feed (REORIENT R2-c). When a completion source is registered for
      * this Will, return the recorded completion for `tick` instead of calling the
      * non-deterministic model. The source verifies the prompt and throws on a miss
@@ -4681,16 +4766,17 @@ declare class LLMDirector {
     private _callOpenAI;
     private _callGoogle;
     /**
-     * Write the full prompt to a debug file for inspection.
-     * Mirrors the original _writeDebugPrompt behavior.
+     * Write the full prompt to a debug file for inspection. Returns the path, or
+     * '' when nothing was written (no `debugDir`, or the write failed).
      */
     writeDebugPrompt(tick: Tick, systemPrompt: string, userMessage: string): string;
     /**
      * Write the full LLM response text to `response-tick-N.txt` alongside the
      * corresponding `prompt-tick-N.txt`. This gives developers the complete
      * reasoning trace without truncation — useful for debugging planning failures.
+     * Returns the path, or '' when nothing was written.
      */
-    writeDebugResponse(tick: Tick, responseText: string, inputTok: number, outputTok: number, latencyMs: number): void;
+    writeDebugResponse(tick: Tick, responseText: string, inputTok: number, outputTok: number, latencyMs: number): string;
 }
 
 interface SummarizerConfig {
@@ -4704,6 +4790,7 @@ declare class ExecutiveSummarizer {
     private _summary;
     private _callCount;
     private _summarizing;
+    private _running;
     private _llmDirector;
     private readonly _interval;
     private readonly _bufferSize;
@@ -4727,6 +4814,8 @@ declare class ExecutiveSummarizer {
     get callCount(): number;
     /** Whether a summarization is currently running. */
     get isBusy(): boolean;
+    /** Settles once the summarisation in flight, if any, has finished. */
+    awaitPending(): Promise<void>;
     /**
      * Restore state from a persisted snapshot (called by ExecutiveEngine on first tick
      * after a restart). Picks up the summary and buffer without triggering a new LLM call.
@@ -5173,6 +5262,8 @@ interface ExecutiveEngineConfig {
     executiveInterval?: number;
     cooldownTicks?: number;
     bus?: CognitiveBus;
+    /** Where each call's full prompt and response are written; null writes none. */
+    debugDir?: string | null;
 }
 declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     readonly name = "executive-engine";
@@ -5182,6 +5273,7 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     private _consumedBufferEntries;
     private _llmDirector;
     private _testMode;
+    private readonly _debugDir;
     private _recentActionTypes;
     private _coherenceVersion;
     private _lastEpistemicUncertainty;
@@ -5300,6 +5392,11 @@ declare class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
     attachTokenTracker(t: TokenTracker): void;
     /** Enable test mode — all LLM calls return canned mock responses at zero cost. */
     setTestMode(enabled: boolean): void;
+    /**
+     * Its own reasoning, then what that reasoning sets going: the facets' and the
+     * rolling summariser's calls. Nothing it started is still running after this.
+     */
+    awaitPending(): Promise<void>;
     /** Called by CognitiveOrchestrator.addEngine() — injects the shared bus. */
     attachBus(bus: CognitiveBus): void;
     /**
@@ -6832,8 +6929,19 @@ type EffectorDeclaration = string | {
     binds?: 'none' | 'entity' | 'object';
     /**
      * Routing tags folded into the schema (merged with 'external'/'host').
-     * A tag the drive system recognises (e.g. 'social', 'nourishment') lets a
-     * homeostatic drive lift this ability in the competition when pressing.
+     * A tag the drive system recognises lets a homeostatic drive lift this
+     * ability in the competition when pressing. `driveUrgency`
+     * (agency/selection.scoring.ts) recognises exactly three families, and
+     * ANY OTHER TAG CONTRIBUTES ZERO to the drive term:
+     *
+     *   • 'regulatory' | 'self-care' | 'rest' → max(energy, sleep)
+     *   • 'social'                            → the social drive
+     *   • 'self-protection'                   → max(stress, threat)
+     *
+     * There is no epistemic or curiosity drive, so an ability whose purpose is
+     * knowing routes to nothing here and competes on goal relevance, reward
+     * and `novelty` instead. Tags outside these families are still useful as
+     * routing/provenance markers — they just do not reach a drive.
      */
     tags?: string[];
     /**
@@ -6914,6 +7022,21 @@ interface Verdict {
      *  `asFinality` for why that, and not 'context', is the safe default. */
     finality?: DenialFinality;
     counterfactual?: PolicyCounterfactual;
+    /**
+     * Meaningful on 'escalate' only: how many ticks the world needs to answer.
+     *
+     * The ask is held for this long, then degrades to a refusal exactly as it
+     * always has. Absent ⇒ `ESCALATION_TTL_TICKS`. It is the WORLD's number, not
+     * the mind's: a host whose approvals pass a review step or a veto window
+     * knows how long that takes, and a mind held to a constant shorter than it
+     * would let go of every such ask, and then learn from the expiry that nobody
+     * answers when in fact nobody was allowed to yet. A wrong lesson, taught by a
+     * number the mind cannot perceive.
+     *
+     * Recorded on the verdict tape and replayed with the verdict, so a replay
+     * holds for exactly as long as the live run did.
+     */
+    holdTicks?: number;
     /** Free-text for logs and host UX. NEVER parsed by cognition. */
     detail?: string;
 }
@@ -7880,6 +8003,10 @@ declare class MotorSchemaExecutor implements CognitiveEngine {
      * simply re-request.
      */
     private _authoring;
+    /** The authoring passes in flight, so a Will being archived can wait for them. */
+    private readonly _authorRuns;
+    /** Settles once no outreach authoring this executor asked for is still running. */
+    awaitPending(): Promise<void>;
     private _authored;
     /**
      * Intents whose facet considered speaking and chose NOT to.
@@ -8052,6 +8179,26 @@ declare class AuditionEngine extends BaseSenseEngine {
      * stream state, the facet's reasoning history, or the chunk stream.
      */
     private _entityTail;
+    /** Set when the mind stops: no turn waits on a decision, and no queued turn starts. */
+    private _detached;
+    /** Outreach being authored, each waiting on its facet's decision: what detaching releases. */
+    private readonly _outreachWaits;
+    /**
+     * The mind has stopped. A turn waiting on its decision will never get one —
+     * the facet that would decide is pumped by the tick — so it is released now
+     * rather than at its safety timeout, and a turn still queued starts nothing:
+     * the same rule as the inbound the stem discards on archive, one layer in.
+     * Outreach being authored waits on a facet decision the same way, and comes
+     * back with no words, as at its own timeout.
+     */
+    onDetach(): Promise<void>;
+    /**
+     * Every queued turn, to the end of each entity's chain — including turns a
+     * running turn enqueues behind itself. Tails never reject. A turn waiting on
+     * the mind's decision holds this until it lands, so a stopping Will detaches
+     * first (`onDetach`).
+     */
+    awaitPending(): Promise<void>;
     /** Resolver for the in-flight turn per entity — fired by _onFacetDecision. */
     private _turnDone;
     /** Safety valve: release the entity queue if a reasoning cycle emits no decision. */
@@ -8175,7 +8322,7 @@ declare class AuditionEngine extends BaseSenseEngine {
      * Each read file is laid down as an exafferent percept whose data is the file
      * whole — so P5a's view pages it, working memory and recall keep it, and
      * `[RECALL]` reaches any page of it by its handle. The words carry only a
-     * reference, `[Ada shared spec.md (412 KB) — doc:…]`: inlined, a document rode
+     * reference, `[Ada shared notes.txt (412 KB) — doc:…]`: inlined, a document rode
      * everywhere the words go — the focus, the thread digest, every "they answered"
      * line, conversation memory — and was cut to fit (24,000 characters, four
      * files). Done per message, before a burst is folded into one turn, so each
@@ -8630,6 +8777,49 @@ type EngineRegistry = {
     tokenTracker: TokenTracker;
 };
 
+/** What a host says came back. */
+interface EffectorAck {
+    success: boolean;
+    /**
+     * How the act WENT. The fate of the attempt — landed, refused, failed — which
+     * is what the mind learns competence from. Not what the act revealed.
+     */
+    description: string;
+    /**
+     * What the act REVEALED: new information about the world, as distinct from how
+     * the act went (SIGNAL_BOUNDARY P2).
+     *
+     * Present ⇒ this ack is ALSO afference. It arrives as a reafferent percept
+     * carrying `sourceIntentId`, so the mind perceives it, remembers it and can
+     * recall it — rather than only learning from it. `lookup`, `list_warnings`,
+     * `snapshot` carry one; `kick`, `warn`, a refusal do not.
+     *
+     * WHY THE HOST DECIDES, AND WHY THIS IS NOT INFERRED FROM `description`.
+     * An ack is not *always* new world information, and nothing inside the mind
+     * can tell "the kick landed" from "there are 47 people here" — both are
+     * strings that came back from an act. Only the host knows which it wrote.
+     * Same contract as `provenance`: asserted at the boundary, never guessed.
+     *
+     * Forcing every ack through the sense door would be the over-unification this
+     * epoch warns about — a mind perceiving "the kick landed" as a fresh event in
+     * the world, every time it kicks.
+     *
+     * ANY SHAPE, AND CARRIED WHOLE. A host with a member record, a channel
+     * snapshot, a list of warnings sends the record — not a paragraph about it.
+     * Making a host flatten its own data to prose is a quieter kind of cutting:
+     * it destroys the structure rather than the tail. Nothing here is truncated
+     * at any point on the way in; what the host sent is what the mind gets.
+     */
+    observation?: unknown;
+    metrics?: Record<string, number>;
+    /** POLICY_REAFFERENCE P2 — set when the ack is a policy refusal, so the
+     *  ReafferenceEngine routes it to availability rather than competence. */
+    refused?: boolean;
+    finality?: DenialFinality;
+    /** ENVELOPE_NARROWING P0 — the bound that was exceeded, if the arbiter said. */
+    counterfactual?: PolicyCounterfactual;
+}
+
 interface BaseEnvelope {
     /** Will instance this envelope belongs to (routing key for the peer). */
     willId: string;
@@ -8745,13 +8935,31 @@ interface AckEnvelope extends BaseEnvelope {
     channel: 'ack';
     ackKind: 'delivery' | 'result';
     delivered?: boolean;
-    result?: {
-        success: boolean;
-        description: string;
-        metrics?: Record<string, number>;
-    };
+    /** The host's whole ack, `observation` included (SIGNAL_BOUNDARY P2). */
+    result?: EffectorAck;
 }
-type InboundEnvelope = InboundMessageEnvelope | InboundPerceptEnvelope | AckEnvelope;
+/** A signal for one sense, as the sense takes it. */
+interface SenseEnvelope extends BaseEnvelope {
+    channel: 'sense';
+    /** `audition`, `vision`, `somatosensation`, `olfaction` or `gustation`. */
+    domain: string;
+    input: SensoryInput;
+}
+/** An event laid down in the world as an entity, as `injectEvent` does. */
+interface EventEnvelope extends BaseEnvelope {
+    channel: 'event';
+    type: string;
+    payload: Record<string, unknown>;
+}
+/** A host's answer to an escalation (POLICY_REAFFERENCE P4). */
+interface EscalationEnvelope extends BaseEnvelope {
+    channel: 'escalation';
+    /** The escalated act's `intentId`. */
+    intentId: string;
+    approved: boolean;
+    finality?: DenialFinality;
+}
+type InboundEnvelope = InboundMessageEnvelope | InboundPerceptEnvelope | AckEnvelope | SenseEnvelope | EventEnvelope | EscalationEnvelope;
 type Envelope = OutboundEnvelope | InboundEnvelope;
 type TransportStatus = 'connected' | 'disconnected' | 'reconnecting';
 interface AckResult {
@@ -8780,6 +8988,98 @@ interface ExternalTransport {
     onStatus(handler: (status: TransportStatus) => void): () => void;
     /** Tear down the connection and all handlers. */
     close(): void;
+}
+
+/** The contract a chain is built under, named in its first entry and in every digest. */
+declare const RECORD_CHAIN = "will-record/1";
+/** The predecessor of a chain's first entry — VLX's genesis convention: never null, never a word. */
+declare const GENESIS_HASH: string;
+/**
+ * Inputs and outputs, in one order. `session` is what the mind produced; every
+ * other stream is something that reached it — the starting state and its
+ * lifecycle (`chain`), the oracles' answers (`completions`, `recall`,
+ * `verdicts`), the world's envelopes (`inbound`) and each step of the clock
+ * (`clock`). A replay feeds the inputs back at their places and checks the
+ * outputs (RECORD_ANCHORING step 4).
+ */
+type RecordStream = 'chain' | 'session' | 'completions' | 'inbound' | 'verdicts' | 'recall' | 'clock';
+interface ChainEntry {
+    readonly stream: RecordStream;
+    /** 1 for a chain's first entry; one more for each entry after it. */
+    readonly seq: number;
+    /** The simulation tick at which the entry was chained. */
+    readonly tick: number;
+    readonly prev: string;
+    readonly hash: string;
+    readonly recordHash: string;
+    /** The record in its JSON form — exactly what was hashed. Absent once shredded. */
+    readonly record?: unknown;
+}
+/** Where a chain stands: the last entry's position and hash. */
+interface ChainHead {
+    readonly seq: number;
+    readonly hash: string;
+}
+/**
+ * Canonical JSON — VLX hash contract v2. Keys sorted, no whitespace, total on
+ * the JSON value domain. `undefined` and `null` both emit `null`. A `bigint`,
+ * and its wire form `{ "$bigint": "123" }`, emit the string `"$bigint:123"`.
+ * Any change here is a change to the contract and must change it in VLX too;
+ * the shared vector in tests/unit/record.chain.test.ts is the check.
+ */
+declare function canonical(value: unknown): string;
+declare const recordHash: (record: unknown) => string;
+/** Append-only. One per Will; the caller serializes appends (they are synchronous). */
+declare class RecordChain {
+    private _head;
+    constructor(from?: ChainHead);
+    get head(): ChainHead;
+    append(stream: RecordStream, tick: number, record: unknown): ChainEntry;
+}
+type ChainVerification = {
+    readonly valid: true;
+    readonly head: ChainHead;
+} | {
+    readonly valid: false;
+    readonly breakpoint: number;
+    readonly reason: string;
+};
+/**
+ * Walk entries from `from` (genesis by default), recomputing every hash. A
+ * record that is present must hash to its `recordHash`; a shredded one is
+ * taken on its hash. Valid only if every entry follows the one before it.
+ * Compare the returned head with an anchored digest's to know the records are
+ * the ones that were anchored.
+ */
+declare function verifyChain(entries: readonly ChainEntry[], from?: ChainHead): ChainVerification;
+
+/** What is anchored: the shape VLX takes a Will digest in, with the one chain's head. */
+interface RecordDigest {
+    readonly willId: string;
+    /** The simulation tick: everything chained up to the end of this tick's step is covered. */
+    readonly tick: number;
+    readonly streamHeads: {
+        readonly records: string;
+    };
+    readonly meta: {
+        readonly chain: typeof RECORD_CHAIN;
+        readonly seq: number;
+    };
+}
+interface AnchoringOptions {
+    /** A digest every this many ticks, besides the first tick, a pause and the end. */
+    readonly every: number;
+    /**
+     * Every chained entry, synchronously and in order. Persist it: a digest
+     * proves the records only to someone who has them.
+     */
+    readonly record: (entry: ChainEntry) => void;
+    /** Publish a digest where the operator cannot rewrite it. Not awaited. */
+    readonly anchor: (digest: RecordDigest, signature?: string) => void | Promise<void>;
+    /** Sign `canonical(digest)` with a key the host holds. The engine never sees one. */
+    readonly sign?: (material: string) => string;
+    /** The head this Will's chain last reached, to continue it rather than begin anew. */
+    readonly resume?: ChainHead;
 }
 
 /**
@@ -8946,6 +9246,13 @@ interface WillConfig {
     tickIntervalMs?: number;
     /** Stop automatically after this many ticks. 0 = run forever. Default: 0 */
     maxTicks?: number;
+    /**
+     * How long archiving waits for work the mind already started — the tick in
+     * progress, then every call still in flight — before it gives that work up
+     * and says so in the log. Default 30s; nothing outlives the archive, either
+     * way, except work this gives up.
+     */
+    stopTimeoutMs?: number;
     /** Seed for the PRNG inside the simulation. Default: Date.now() */
     randomSeed?: number;
     /**
@@ -9027,6 +9334,12 @@ interface WillConfig {
      * for outbound emission. Omit for the legacy outbox/SSE delivery path.
      */
     transport?: ExternalTransport;
+    /**
+     * Chain every record this Will produces and anchor digests of the chain
+     * (RECORD_ANCHORING). Omit and nothing is chained: the capture sites hand
+     * their records to no one, exactly as before.
+     */
+    anchoring?: AnchoringOptions;
     /**
      * Communication effectors explicitly granted to this Will.
      *
@@ -9465,49 +9778,6 @@ declare class InboundQueue {
     clear(): void;
 }
 
-/** What a host says came back. */
-interface EffectorAck {
-    success: boolean;
-    /**
-     * How the act WENT. The fate of the attempt — landed, refused, failed — which
-     * is what the mind learns competence from. Not what the act revealed.
-     */
-    description: string;
-    /**
-     * What the act REVEALED: new information about the world, as distinct from how
-     * the act went (SIGNAL_BOUNDARY P2).
-     *
-     * Present ⇒ this ack is ALSO afference. It arrives as a reafferent percept
-     * carrying `sourceIntentId`, so the mind perceives it, remembers it and can
-     * recall it — rather than only learning from it. `lookup`, `list_warnings`,
-     * `snapshot` carry one; `kick`, `warn`, a refusal do not.
-     *
-     * WHY THE HOST DECIDES, AND WHY THIS IS NOT INFERRED FROM `description`.
-     * An ack is not *always* new world information, and nothing inside the mind
-     * can tell "the kick landed" from "there are 47 people here" — both are
-     * strings that came back from an act. Only the host knows which it wrote.
-     * Same contract as `provenance`: asserted at the boundary, never guessed.
-     *
-     * Forcing every ack through the sense door would be the over-unification this
-     * epoch warns about — a mind perceiving "the kick landed" as a fresh event in
-     * the world, every time it kicks.
-     *
-     * ANY SHAPE, AND CARRIED WHOLE. A host with a member record, a channel
-     * snapshot, a list of warnings sends the record — not a paragraph about it.
-     * Making a host flatten its own data to prose is a quieter kind of cutting:
-     * it destroys the structure rather than the tail. Nothing here is truncated
-     * at any point on the way in; what the host sent is what the mind gets.
-     */
-    observation?: unknown;
-    metrics?: Record<string, number>;
-    /** POLICY_REAFFERENCE P2 — set when the ack is a policy refusal, so the
-     *  ReafferenceEngine routes it to availability rather than competence. */
-    refused?: boolean;
-    finality?: DenialFinality;
-    /** ENVELOPE_NARROWING P0 — the bound that was exceeded, if the arbiter said. */
-    counterfactual?: PolicyCounterfactual;
-}
-
 type WillStatus = 'initializing' | 'active' | 'paused' | 'archived';
 type StateSnapshot = ReturnType<DefaultSimulation['stateManager']['snapshot']>;
 type TickListener = (snapshot: SimulationState, tick: number, outboxMessages: OutboxMessage[], effectorInvocations: effectorInvocation[]) => void;
@@ -9575,6 +9845,19 @@ interface WillInstance {
     sessionLogger: SessionLogger | null;
     /** Resolver that interrupts the tick-sleep when a high-priority event (e.g. incoming message) arrives. */
     _tickWakeFn: (() => void) | null;
+    /** The tick loop itself; settles once the loop has exited. Archiving waits on it. */
+    _loop: Promise<void> | null;
+    /**
+     * Driven one tick at a time by `runTick()`, never by the loop: a replay
+     * decides when each tick runs (RECORD_ANCHORING step 4).
+     */
+    _manual: boolean;
+    /** Host inputs not yet applied, by correlation id → the caller waiting on each. */
+    _hostWaits: Map<string, () => void>;
+    /** Correlation ids for host inputs, per Will. */
+    _hostSeq: number;
+    /** Archiving has waited for all it will wait for: anything landing now is given up. */
+    _settled: boolean;
     /** Timestamp when the Will was last paused — used to compute offline duration for the wake percept on resume. */
     pausedAt: Date | null;
     /** Set of active LLM-chunk listeners (one per SSE connection). F3 word-level streaming. */
@@ -9622,6 +9905,15 @@ interface WillInstance {
         impulsiveActionCount: number;
     } | null;
 }
+/**
+ * How a replay raises a mind (RECORD_ANCHORING step 4). Not for hosts.
+ *   `manual` — ticks run only through `runTick()`, never on the loop;
+ *   `steps`  — the clock takes each step from here rather than measuring one.
+ */
+interface CreateOptions {
+    manual?: boolean;
+    steps?: ClockStepSource;
+}
 declare class WillStem {
     private readonly _wills;
     private readonly _replay;
@@ -9632,11 +9924,12 @@ declare class WillStem {
     private readonly _transport;
     private readonly _biography;
     private readonly _health;
+    private readonly _anchor;
     /**
      * Assemble a new Will and start its autonomous tick loop.
      * Returns the Will ID (same as config.id) once the loop is running.
      */
-    createWill(config: WillConfig, startPaused?: boolean): Promise<string>;
+    createWill(config: WillConfig, startPaused?: boolean, opts?: CreateOptions): Promise<string>;
     /**
      * Register a callback fired after every tick.
      * Use this to attach logging, metrics, or API push in the caller.
@@ -9695,12 +9988,25 @@ declare class WillStem {
      */
     addActivityListener(id: string, entityId: string, fn: ActivityEventHandler): () => void;
     pauseWill(id: string): void;
+    /**
+     * Where every session-log entry goes: the record chain, when the Will is
+     * anchored, then the transport. One bridge for both places a logger is
+     * opened (create, resume), so the two cannot drift.
+     */
+    private _bridgeSessionLog;
     resumeWill(id: string): void;
     /**
      * Stop a Will permanently. The tick loop exits after the current tick.
      * The instance remains in the map for state inspection.
      */
     archiveWill(id: string): Promise<void>;
+    /**
+     * Wait for the tick loop to exit, detach every engine (ending what waits on
+     * the mind), then wait for every engine's work in flight, within
+     * `stopTimeoutMs`. Work that outlasts it is given up and logged by
+     * name — a shutdown must not hang on one stuck call.
+     */
+    private _settle;
     /**
      * Inject a percept or external event into the Will's world.
      * The event is picked up by perceptual engines on the next tick.
@@ -9709,6 +10015,16 @@ declare class WillStem {
         type: string;
         payload: Record<string, unknown>;
     }): void;
+    /**
+     * Every input a host hands the stem directly reaches the mind the way a
+     * transport peer's does: enqueued now, applied at the next tick, recorded and
+     * chained there. Applied between ticks it was already first seen at the next
+     * step, so only the door changes — and with one door, every input is on the
+     * replay tape and in the record chain at the place it reached the mind
+     * (RECORD_ANCHORING step 4). `wait` returns a promise of the input's work,
+     * which for a sense is its turn; it resolves too if the Will stops first.
+     */
+    private _hostInput;
     getWillState(id: string): SimulationState;
     getWillCognition(id: string): Cognition;
     /**
@@ -9817,8 +10133,13 @@ declare class WillStem {
      * `approved` dispatches the held invocation to the world; otherwise it is
      * refused. Applied at the next tick boundary. `invocationId` is the awaiting
      * `agency.intent` id the escalation ask referenced.
+     *
+     * A refusal's `finality` is the host's to state, and defaults to
+     * `'parameter'` — no to this ask, which narrows what the Will reaches for and
+     * leaves the ability standing. Pass `'class'` only when the person meant
+     * never: that suppresses the affordance outright.
      */
-    resolveEscalation(id: string, invocationId: string, approved: boolean): void;
+    resolveEscalation(id: string, invocationId: string, approved: boolean, finality?: DenialFinality): void;
     /**
      * Install the Policy Decision Point consulted before every host-owned
      * effector invocation is handed to the world (POLICY_REAFFERENCE P0).
@@ -9909,6 +10230,13 @@ declare class WillStem {
     senseSignal(id: string, domain: string, input: SensoryInput): Promise<void>;
     listWills(): WillSummary[];
     private _runTickLoop;
+    /**
+     * Run one tick of a Will created `manual`, now. A replay drives a mind this
+     * way, so it decides what happens between ticks (RECORD_ANCHORING step 4).
+     */
+    runTick(id: string): Promise<void>;
+    /** One tick: everything the loop does between two sleeps. */
+    private _tick;
     private _get;
 }
 
@@ -10206,6 +10534,15 @@ interface CreateWillOptions {
     tickMs?: number;
     /** Stable id (default: derived from name + a random suffix). */
     id?: string;
+    /**
+     * Chain every record this Will produces and anchor digests of the chain
+     * where the operator cannot rewrite them (RECORD_ANCHORING). `record`
+     * receives every entry to persist; `anchor` receives a digest on the first
+     * tick, every `every` ticks, at a pause and at the end. A failure in either
+     * is reported on the `error` event and never stops the mind. On `wake`,
+     * pass the head you last persisted as `resume` to continue the same chain.
+     */
+    anchoring?: AnchoringOptions;
 }
 declare class Will {
     /** The underlying WillStem — drop here for the full contract. */
@@ -10310,6 +10647,17 @@ declare class Will {
      */
     setArbiter(arbiter: PolicyArbiter | null): this;
     /**
+     * Answer an ask the arbiter escalated (POLICY_REAFFERENCE P4): `true` sends
+     * the held act to the world, `false` refuses it. `intentId` is the one the
+     * arbiter saw on `PolicyInvocation`. A refusal's `finality` defaults to
+     * `'parameter'` — no to this ask — and `'class'` is for a person who meant
+     * never. Applied at the next tick; a no-op for an ask no longer held.
+     *
+     * It was reachable only as `will.stem.resolveEscalation(will.id, …)`, so a
+     * host on the facade could raise an escalation and had no way to answer it.
+     */
+    resolveEscalation(intentId: string, approved: boolean, finality?: DenialFinality): this;
+    /**
      * Checkpoint the living mind into a portable PMA artifact — NON-destructive.
      * The Will keeps ticking; the snapshot is a point-in-time copy you can archive
      * or wake elsewhere. Use this for periodic saves; use `hibernate()` to sleep.
@@ -10325,6 +10673,8 @@ declare class Will {
     /** Tear the Will down (its tick loop stops; state is discarded unless persisted). */
     stop(): Promise<void>;
     private _buildConfig;
+    /** The host's hooks, with their failures reported where a host listens. */
+    private _anchoring;
     /** Wire the single tick listener that drives messages + the effector ack loop. */
     private _attach;
     private _runEffector;
@@ -10334,4 +10684,4 @@ declare class Will {
     private _emitError;
 }
 
-export { type DeltaSnapshot as $, type AckEnvelope as A, BACKGROUND_DEMAND as B, type ChunkEnvelope as C, CircadianOscillator as D, type ClockConfig as E, type Cognition as F, type CognitiveHealth as G, ConfidenceCalibrator as H, type ConfidenceCalibratorConfig as I, type ConflictReport as J, type ConflictResolution as K, type ConflictStrategy as L, type Coordinates as M, type CreateWillOptions as N, DefaultEventBus as O, DefaultMetricCollector as P, DefaultOrchestrator as Q, DefaultReplayRecorder as R, DefaultReplaySession as S, DefaultScenario as T, DefaultSerializer as U, DefaultSimulation as V, DefaultSimulationClock as W, DefaultStateManager as X, DefaultVectorMemoryAdapter as Y, DeliberationEngine as Z, DeltaEncoder as _, type AckResult as a, type ModelRoute as a$, type DenialFinality as a0, DreamSimulator as a1, type DreamSimulatorConfig as a2, type Duration as a3, ESCALATION_DEMAND as a4, type EffectorDeclaration as a5, type EffectorEntry as a6, type EffectorHandler as a7, type EffectorResult as a8, type EffectorSpec as a9, GustationEngine as aA, type InboundEnvelope as aB, type InboundMessageEnvelope as aC, type InboundPerceptEnvelope as aD, InhibitionController as aE, type InhibitionControllerConfig as aF, Interoception as aG, type InteroceptionConfig as aH, IntrospectionEngine as aI, type IntrospectionEngineConfig as aJ, KNOWN_PROVIDERS as aK, KnownEntityTracker as aL, type KnownEntityTrackerConfig as aM, type KnownProvider as aN, type LLMCallMeta as aO, type LLMCompletionRecord as aP, type LLMCompletionSink as aQ, type LLMProvider as aR, type LLMWire as aS, LossEvaluator as aT, type LossEvaluatorConfig as aU, type MessageEnvelope as aV, type MetricCollector as aW, type MetricPoint as aX, type MinimalContext as aY, MockEmbedder as aZ, type ModelPrice as a_, type EmbeddingProvider as aa, EmpathySimulator as ab, type EmpathySimulatorConfig as ac, EnergyRegulator as ad, type EnergyRegulatorConfig as ae, type EngineRegistry as af, type EngineResult as ag, type Envelope as ah, EpisodicConsolidator as ai, type EpisodicConsolidatorConfig as aj, type EventBus as ak, type EventBusConfig as al, type EventFilter as am, type EventHandler as an, type EventPayload as ao, ExecutiveEngine as ap, type ExecutiveEngineConfig$1 as aq, type ExternalTransport as ar, Exteroception as as, type ExteroceptionConfig as at, ForgettingCurve as au, type ForgettingCurveConfig as av, FrustrationEvaluator as aw, type FrustrationEvaluatorConfig as ax, GoalManager as ay, type GoalManagerConfig as az, type ActionRequest as b, type SensoryInput as b$, type ModelRouter as b0, MoralEvaluator as b1, type MoralEvaluatorConfig as b2, MotorSchemaExecutor as b3, NULL_ARBITER as b4, NULL_ROUTER as b5, NoveltyDetector as b6, type NoveltyDetectorConfig as b7, OlfactionEngine as b8, OpenAICompatibleEmbedder as b9, type ReconstructionFidelityReport as bA, type ReconstructionFidelityScores as bB, type RecordUsageInput as bC, type ReplayComparison as bD, type ReplayConfig as bE, type ReplayDifference as bF, ReplayManager as bG, type ReplayMetadata as bH, type ReplayRecord as bI, type ReplayRecorder as bJ, type ReplaySession as bK, type ReplyEnvelope as bL, ReputationTracker as bM, type ReputationTrackerConfig as bN, type RestoreOptions as bO, RewardEvaluator as bP, type RewardEvaluatorConfig as bQ, type RoutingRule as bR, type Scenario as bS, type ScenarioConfig as bT, type ScenarioValidationResult as bU, type SchemaPrecondition as bV, type SeededPRNG as bW, SelfModelUpdater as bX, type SelfModelUpdaterConfig as bY, SemanticIntegrator as bZ, type SemanticIntegratorConfig as b_, type Orchestrator as ba, type OrchestratorConfig as bb, type OutboundEnvelope as bc, type OutboxMessage as bd, type PMABehavioral as be, type PMABelief as bf, type PMAEmotionalBaseline as bg, PMAEvalHarness as bh, type PMAGoal as bi, type PMAIdentity as bj, type PMAProbe as bk, type PMASnapshot as bl, type PerceptEnvelope as bm, PersonaConsolidator as bn, type PersonaConsolidatorConfig as bo, PlanningEngine as bp, type PlanningEngineConfig as bq, type PolicyArbiter as br, type PolicyCounterfactual as bs, type PolicyDecision as bt, type PolicyInvocation as bu, type PriceTable as bv, type ProviderCredential as bw, type ReadonlySimulationState as bx, ReafferenceEngine as by, type ReasoningFootprint as bz, type ActionResult as c, type WillEffectorAct as c$, type SensorySignal as c0, type SerializationConfig as c1, type SerializationFormat as c2, type SerializedEntity as c3, type SerializedState as c4, type Serializer as c5, type SessionLogEnvelope as c6, type SharedFile as c7, type SignalProvenance as c8, type Simulation as c9, type TextMessage as cA, TheoryOfMind as cB, type TheoryOfMindConfig as cC, ThreatEvaluator as cD, type ThreatEvaluatorConfig as cE, type Tick as cF, type TickListener as cG, type Timestamp as cH, type TokenLedgerRecord as cI, type TokenReportEnvelope as cJ, TokenTracker as cK, type TokenTrackerConfig as cL, type TokenUsage as cM, type Transduced as cN, type TransportStatus as cO, type VectorIndex as cP, type VectorMemoryAdapter as cQ, type VectorMemoryConfig as cR, type VectorQueryFilter as cS, type VectorQueryResult as cT, type VectorRecord as cU, type Verdict as cV, VisionEngine as cW, type VoiceChunk as cX, Will as cY, type WillAffect as cZ, type WillConfig as c_, type SimulationClock as ca, type SimulationConfig as cb, type SimulationContext as cc, type SimulationEngine as cd, type SimulationEntity as ce, type SimulationEvent as cf, type SimulationEventBase as cg, type SimulationEventListener as ch, type SimulationState as ci, type SleepPressureConfig as cj, SleepPressureRegulator as ck, SocialPerception as cl, type SocialPerceptionConfig as cm, SomatosensationEngine as cn, SpacedRepetition as co, type SpacedRepetitionConfig as cp, type StateCommands as cq, type StateManager as cr, type StateSnapshot as cs, type Stimulus as ct, type StorageAdapter as cu, StressRegulator as cv, type StressRegulatorConfig as cw, TableRouter as cx, TaskSwitcher as cy, type TaskSwitcherConfig as cz, ActionSelector as d, type WillInstance as d0, type WillMessage as d1, type WillStateSummary as d2, type WillStatus as d3, WillStem as d4, type WillSummary as d5, WorkingMemory as d6, type WorkingMemoryConfig as d7, type WorldEntity as d8, type WorldInterface as d9, asFinality as da, asProvenance as db, assembleMind as dc, chainRouters as dd, clearCompletionRecorder as de, defaultBaseFor as df, type effectorInvocation as dg, type effectorInvocationEnvelope as dh, finalityOf as di, getCompletionRecorder as dj, isNullArbiter as dk, isNullRouter as dl, knownWireFor as dm, resolvePricing as dn, setCompletionRecorder as dp, type ActivityEnvelope as e, type ActivityEvent as f, type ActivityEventHandler as g, AestheticEvaluator as h, type AestheticEvaluatorConfig as i, AffectiveBlender as j, type AffectiveBlenderConfig as k, AffordanceSynthesizer as l, AsyncEngine as m, type AsyncEngineConfig as n, AttachmentEvaluator as o, type AttachmentEvaluatorConfig as p, AttentionAllocator as q, type AttentionAllocatorConfig as r, AuditionEngine as s, AutobiographicalNarrator as t, type AutobiographicalNarratorConfig as u, type BehavioralProbeResult as v, BiasDetector as w, type BiasDetectorConfig as x, BunStorageAdapter as y, type CircadianConfig as z };
+export { DefaultStateManager as $, type AckEnvelope as A, BACKGROUND_DEMAND as B, type ChainEntry as C, type ChainHead as D, type ChainVerification as E, type ChunkEnvelope as F, type CircadianConfig as G, CircadianOscillator as H, type ClockConfig as I, type Cognition as J, type CognitiveHealth as K, ConfidenceCalibrator as L, type ConfidenceCalibratorConfig as M, type ConflictReport as N, type ConflictResolution as O, type ConflictStrategy as P, type Coordinates as Q, type CreateWillOptions as R, DefaultEventBus as S, DefaultMetricCollector as T, DefaultOrchestrator as U, DefaultReplayRecorder as V, DefaultReplaySession as W, DefaultScenario as X, DefaultSerializer as Y, DefaultSimulation as Z, DefaultSimulationClock as _, type AckResult as a, type MetricCollector as a$, DefaultVectorMemoryAdapter as a0, DeliberationEngine as a1, DeltaEncoder as a2, type DeltaSnapshot as a3, type DenialFinality as a4, DreamSimulator as a5, type DreamSimulatorConfig as a6, type Duration as a7, ESCALATION_DEMAND as a8, type EffectorDeclaration as a9, FrustrationEvaluator as aA, type FrustrationEvaluatorConfig as aB, GENESIS_HASH as aC, GoalManager as aD, type GoalManagerConfig as aE, GustationEngine as aF, type InboundEnvelope as aG, type InboundMessageEnvelope as aH, type InboundPerceptEnvelope as aI, InhibitionController as aJ, type InhibitionControllerConfig as aK, Interoception as aL, type InteroceptionConfig as aM, IntrospectionEngine as aN, type IntrospectionEngineConfig as aO, KNOWN_PROVIDERS as aP, KnownEntityTracker as aQ, type KnownEntityTrackerConfig as aR, type KnownProvider as aS, type LLMCallMeta as aT, type LLMCompletionRecord as aU, type LLMCompletionSink as aV, type LLMProvider as aW, type LLMWire as aX, LossEvaluator as aY, type LossEvaluatorConfig as aZ, type MessageEnvelope as a_, type EffectorEntry as aa, type EffectorHandler as ab, type EffectorResult as ac, type EffectorSpec as ad, type EmbeddingProvider as ae, EmpathySimulator as af, type EmpathySimulatorConfig as ag, EnergyRegulator as ah, type EnergyRegulatorConfig as ai, type EngineRegistry as aj, type EngineResult as ak, type Envelope as al, EpisodicConsolidator as am, type EpisodicConsolidatorConfig as an, type EventBus as ao, type EventBusConfig as ap, type EventFilter as aq, type EventHandler as ar, type EventPayload as as, ExecutiveEngine as at, type ExecutiveEngineConfig$1 as au, type ExternalTransport as av, Exteroception as aw, type ExteroceptionConfig as ax, ForgettingCurve as ay, type ForgettingCurveConfig as az, type ActionRequest as b, type Scenario as b$, type MetricPoint as b0, type MinimalContext as b1, MockEmbedder as b2, type ModelPrice as b3, type ModelRoute as b4, type ModelRouter as b5, MoralEvaluator as b6, type MoralEvaluatorConfig as b7, MotorSchemaExecutor as b8, NULL_ARBITER as b9, type PriceTable as bA, type ProviderCredential as bB, RECORD_CHAIN as bC, type ReadonlySimulationState as bD, ReafferenceEngine as bE, type ReasoningFootprint as bF, type ReconstructionFidelityReport as bG, type ReconstructionFidelityScores as bH, RecordChain as bI, type RecordDigest as bJ, type RecordStream as bK, type RecordUsageInput as bL, type ReplayComparison as bM, type ReplayConfig as bN, type ReplayDifference as bO, ReplayManager as bP, type ReplayMetadata as bQ, type ReplayRecord as bR, type ReplayRecorder as bS, type ReplaySession as bT, type ReplyEnvelope as bU, ReputationTracker as bV, type ReputationTrackerConfig as bW, type RestoreOptions as bX, RewardEvaluator as bY, type RewardEvaluatorConfig as bZ, type RoutingRule as b_, NULL_ROUTER as ba, NoveltyDetector as bb, type NoveltyDetectorConfig as bc, OlfactionEngine as bd, OpenAICompatibleEmbedder as be, type Orchestrator as bf, type OrchestratorConfig as bg, type OutboundEnvelope as bh, type OutboxMessage as bi, type PMABehavioral as bj, type PMABelief as bk, type PMAEmotionalBaseline as bl, PMAEvalHarness as bm, type PMAGoal as bn, type PMAIdentity as bo, type PMAProbe as bp, type PMASnapshot as bq, type PerceptEnvelope as br, PersonaConsolidator as bs, type PersonaConsolidatorConfig as bt, PlanningEngine as bu, type PlanningEngineConfig as bv, type PolicyArbiter as bw, type PolicyCounterfactual as bx, type PolicyDecision as by, type PolicyInvocation as bz, type ActionResult as c, type VectorQueryFilter as c$, type ScenarioConfig as c0, type ScenarioValidationResult as c1, type SchemaPrecondition as c2, type SeededPRNG as c3, SelfModelUpdater as c4, type SelfModelUpdaterConfig as c5, SemanticIntegrator as c6, type SemanticIntegratorConfig as c7, type SensoryInput as c8, type SensorySignal as c9, type StateManager as cA, type StateSnapshot as cB, type Stimulus as cC, type StorageAdapter as cD, StressRegulator as cE, type StressRegulatorConfig as cF, TableRouter as cG, TaskSwitcher as cH, type TaskSwitcherConfig as cI, type TextMessage as cJ, TheoryOfMind as cK, type TheoryOfMindConfig as cL, ThreatEvaluator as cM, type ThreatEvaluatorConfig as cN, type Tick as cO, type TickListener as cP, type Timestamp as cQ, type TokenLedgerRecord as cR, type TokenReportEnvelope as cS, TokenTracker as cT, type TokenTrackerConfig as cU, type TokenUsage as cV, type Transduced as cW, type TransportStatus as cX, type VectorIndex as cY, type VectorMemoryAdapter as cZ, type VectorMemoryConfig as c_, type SerializationConfig as ca, type SerializationFormat as cb, type SerializedEntity as cc, type SerializedState as cd, type Serializer as ce, type SessionLogEnvelope as cf, type SharedFile as cg, type SignalProvenance as ch, type Simulation as ci, type SimulationClock as cj, type SimulationConfig as ck, type SimulationContext as cl, type SimulationEngine as cm, type SimulationEntity as cn, type SimulationEvent as co, type SimulationEventBase as cp, type SimulationEventListener as cq, type SimulationState as cr, type SleepPressureConfig as cs, SleepPressureRegulator as ct, SocialPerception as cu, type SocialPerceptionConfig as cv, SomatosensationEngine as cw, SpacedRepetition as cx, type SpacedRepetitionConfig as cy, type StateCommands as cz, ActionSelector as d, type VectorQueryResult as d0, type VectorRecord as d1, type Verdict as d2, VisionEngine as d3, type VoiceChunk as d4, Will as d5, type WillAffect as d6, type WillConfig as d7, type WillEffectorAct as d8, type WillInstance as d9, setCompletionRecorder as dA, verifyChain as dB, type WillMessage as da, type WillStateSummary as db, type WillStatus as dc, WillStem as dd, type WillSummary as de, WorkingMemory as df, type WorkingMemoryConfig as dg, type WorldEntity as dh, type WorldInterface as di, asFinality as dj, asProvenance as dk, assembleMind as dl, canonical as dm, chainRouters as dn, clearCompletionRecorder as dp, defaultBaseFor as dq, type effectorInvocation as dr, type effectorInvocationEnvelope as ds, finalityOf as dt, getCompletionRecorder as du, isNullArbiter as dv, isNullRouter as dw, knownWireFor as dx, recordHash as dy, resolvePricing as dz, type ActivityEnvelope as e, type ActivityEvent as f, type ActivityEventHandler as g, AestheticEvaluator as h, type AestheticEvaluatorConfig as i, AffectiveBlender as j, type AffectiveBlenderConfig as k, AffordanceSynthesizer as l, type AnchoringOptions as m, AsyncEngine as n, type AsyncEngineConfig as o, AttachmentEvaluator as p, type AttachmentEvaluatorConfig as q, AttentionAllocator as r, type AttentionAllocatorConfig as s, AuditionEngine as t, AutobiographicalNarrator as u, type AutobiographicalNarratorConfig as v, type BehavioralProbeResult as w, BiasDetector as x, type BiasDetectorConfig as y, BunStorageAdapter as z };

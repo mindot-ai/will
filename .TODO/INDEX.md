@@ -4,13 +4,13 @@
 > document in this folder and the release headers in `CHANGELOG.md`.
 > Do not edit by hand — edit the document, then re-emit.
 
-Day zero is **2026-05-28**. 47 documents, 8 releases.
+Day zero is **2026-05-28**. 50 documents, 8 releases.
 What each level means, and what it may be cited for, is [STANDING.md](STANDING.md).
 
 - **SHIPPED** · 30 — in the engine, gated by CI, carried by a release
 - **OBSERVED** · 8 — true of the real system at a moment, established by looking
-- **DESIGNED** · 8 — reasoned to a plan of record — intent, not capability
-- **SPECULATIVE** · 1 — a hypothesis the project is holding
+- **DESIGNED** · 10 — reasoned to a plan of record — intent, not capability
+- **SPECULATIVE** · 2 — a hypothesis the project is holding
 
 > Dates before 2026-07-02 predate this repository — `will` was split out and
 > squashed on that date. These come from the documents, not from `git log`.
@@ -136,7 +136,7 @@ found 2026-07-02 while making the suite CI-green for the public release; all thr
 
 **2026-07-06 · SHIPPED** · [Will — Custom (host-owned) effector wiring](CUSTOM_ABILITY_WIRING.md)
 
-partial — gap found 2026-06-15, Phase 1 wired; entity binding, per-effector metadata, preconditions and the learning surface are open
+partial — gap found 2026-06-15, Phase 1 wired; entity **and object** binding, per-effector metadata (cost, valence, preconditions, description), deliberation surfacing and routing tags all landed 2026-07-05/06 and are marked ✅ in Phase 2+ below. Still open: **field width** (N objectless effectors all enter the floor uncapped), **revoking** a runtime grant plus the backend `PATCH /v1/wills/:id/effectors` route, and **verifying** host acks feed `recordOutcome` with a meaningful `outcomeQuality`
 
 **2026-07-08 · SHIPPED** · [Audition conversation-reply determinism + reliability gap](AUDITION_REPLY_DETERMINISM.md)
 
@@ -184,7 +184,7 @@ the clock resumes from the snapshot tick, so the arithmetic is correct; the *sen
 
 **2026-08-03 · DESIGNED** · [High-Value Engineering Contributions](__CONTRIBUTION_TOPICS.md)
 
-scoped invitations for contributors, not commitments — the four shell sense engines are still empty scaffolds
+scoped invitations for contributors, not commitments. Two have since been overtaken by the engine and are marked so inline (§1 partially, §5 fully) — check an item against `src/` before taking it, because this document does not update itself
 
 **2026-08-03 · DESIGNED** · [DeliberationCache — Production Proposal for Will](DELIBERATION_CACHE_PROPOSAL.md)
 
@@ -237,4 +237,18 @@ scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments)
 **2026-10-01 · DESIGNED** · [LOSSLESS P5 — every call fits its window, and nothing leaves a call silently](LOSSLESS_P5.md)
 
 traced from prompt.factory, context, facet, the MCP and channel bridges and the replay contract, and measured on 242 of Lora's master calls; the owner took all six recommendations (D1–D6) the same day; P5a–P5d landed
+
+## November 2026
+
+**2026-11-02 · DESIGNED** · [CONTAINMENT_BOUNDARY — what the mind's process may reach, under what the mind may do](CONTAINMENT_BOUNDARY.md)
+
+no code; the gap is verified by reading it — the PEP is an in-process call at `effectorController.bufferInvocation` and a host handler runs with the host process's full ambient authority. Opened from an external comparison, not from a fault in a live run, which is the weakest provenance in this folder
+
+**2026-11-02 · DESIGNED** · [ORGANS — the body a Will needs, and the contract every organ signs](ORGANS.md)
+
+§2 and §3 are read from `main` — the declaration's seven fields, `externalSchemas`, the floor/candidate split and salience formula in `affordance.synthesizer`, `scoreAffordance`/`driveUrgency`/`goalRelevance` and the weight table, `enactionFootprint` and the satiation arms in `consequence.ts`, `repeatWindowTicks` and its persona gains, `BaseSenseEngine`, and the PEP site — and against the unmerged `fix/live-scenario-findings`, which already moves Rules 2 and 3 (§2a). §4 onward is a plan of record with no code. Five stale-record defects found while tracing it are listed in §2 and are NOT fixed here
+
+**2026-11-02 · SPECULATIVE** · [EMBODIMENT_PROJECTION — what a whole mind in a whole body would, and would not, be good at](EMBODIMENT_PROJECTION.md)
+
+a projection about a combination that does not exist — this engine fully realised, in a body of the class Meta shipped with Muse. The regime table is reasoning and nothing in it is measured; one claim it originally made about drives was wrong and is corrected inline against `selection.scoring.ts`, which is the only part of this document with code behind it
 

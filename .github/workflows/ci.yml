@@ -35,6 +35,13 @@ jobs:
           git diff --exit-code -- .TODO/INDEX.md \
             || { echo '::error::INDEX.md is stale — run `bun .TODO/index.ts` and commit it'; exit 1; }
 
+      # The record must not point at what is not there. Dead file paths and dead
+      # type/function names in comments, prose and the README, against a checked-in
+      # baseline of the ones that predate the check — so only NEW ones fail, and
+      # the baseline can only shrink. See the header of .TODO/references.ts.
+      - name: Record references
+        run: bun .TODO/references.ts
+
   secrets:
     runs-on: ubuntu-latest
     steps:

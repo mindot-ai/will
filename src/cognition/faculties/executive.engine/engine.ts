@@ -18,7 +18,9 @@
  */
 
 import { logger } from '#core/logger'
-import { readAliases, canonicalOf } from '#cognition/social.identity'
+import { readAliases, canonicalOf, nameOf } from '#cognition/social.identity'
+import { INNATE_SCHEMAS } from '#agency/schemas/innate'
+import { schemaEntityId } from '#agency/schemas/repertoire'
 import type { SessionLogger } from '#stem/tracts/session.logger'
 import type {
   Tick,
@@ -30,7 +32,7 @@ import type {
 } from '#core/types'
 import { AsyncEngine } from '#core/async.engine'
 import {
-  actionRecordEntity, staleActionRecordIds, type ActionStatus,
+  actionRecordEntity, staleActionRecordIds, readActionRecord, actMemoryEntity, ACTION_RECORD_TYPE, type ActionStatus, type ActKind,
 } from '#faculties/executive.engine/action.record'
 import type { IntermediateStream } from '#core/async.engine'
 import type { WorkingMemory } from '#faculties/working.memory'
@@ -268,6 +270,8 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
    * so a failed call does not lose the request.
    */
   private _pendingRecall: RecallRequest[] = []
+  /** Action records already offered to memory — see `_actsToRemember`. */
+  private _actsOffered = new Set<string>()
 
   // ── Cognitive models ───────────────────────────────────────
   private readonly _model = new GenerativeModel()
@@ -737,7 +741,42 @@ export class ExecutiveEngine extends AsyncEngine implements CognitiveEngine {
       result.commands.delete = [ ...( result.commands.delete ?? [] ), ...stale ]
     }
 
+    // ...and offer each act, once, to memory — the record is a working window; the
+    // episode is what she keeps (see `actMemoryEntity`).
+    const acts = this._actsToRemember( state )
+    if( acts.length > 0 ){
+      result.commands ??= {}
+      result.commands.set = [ ...( result.commands.set ?? [] ), ...acts ]
+    }
+
     return result
+  }
+
+  /**
+   * The memory item for each act recorded since last tick, named for whom it was
+   * toward as she knows them now. Each act is offered once: the consolidator reads
+   * the item the tick it lands and working memory sweeps it after, as with a
+   * conversation turn. A woken mind offers its last few again; the consolidator
+   * knows an act it already remembers by the item's id.
+   */
+  private _actsToRemember( state: ReadonlySimulationState ): EntityInput[] {
+    const out: EntityInput[] = []
+    const present = new Set<string>()
+    const aliases = readAliases( state.entities as never )
+    for( const [ id, e ] of state.entities ){
+      if( e.type !== ACTION_RECORD_TYPE ) continue
+      present.add( id )
+      if( this._actsOffered.has( id ) ) continue
+      const r = readActionRecord( e.metadata as never )
+      if( !r ) continue
+      this._actsOffered.add( id )
+      const target = r.targetEntityId ? canonicalOf( aliases, r.targetEntityId ) : undefined
+      const innate = INNATE_SCHEMAS.find( x => x.id === r.type )
+      const held   = state.entities.get( schemaEntityId( r.type ) )?.metadata as ActKind | undefined
+      out.push( actMemoryEntity( id, r, target ? nameOf( state.entities as never, target ) : undefined, innate ?? held ) )
+    }
+    for( const id of this._actsOffered ) if( !present.has( id ) ) this._actsOffered.delete( id )
+    return out
   }
 
   /**

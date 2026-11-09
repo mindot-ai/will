@@ -31,6 +31,7 @@ import { DefaultVectorMemoryAdapter } from '#memory/vector.adapter'
 import { OpenAICompatibleEmbedder, MockEmbedder } from '#memory/vector.embedder'
 import type { VectorMemoryAdapter } from '#memory/vector.adapter'
 import type { ExternalTransport } from '#stem/tracts/transport'
+import type { AnchoringOptions } from '#stem/tracts/anchor.controller'
 import type { Cognition, OutboxMessage } from '#types'
 import type { StorageAdapter } from '#core/abstracts'
 import '#stem/profiles/built-in'
@@ -509,6 +510,13 @@ export interface WillConfig {
    * for outbound emission. Omit for the legacy outbox/SSE delivery path.
    */
   transport?: ExternalTransport
+
+  /**
+   * Chain every record this Will produces and anchor digests of the chain
+   * (RECORD_ANCHORING). Omit and nothing is chained: the capture sites hand
+   * their records to no one, exactly as before.
+   */
+  anchoring?: AnchoringOptions
 
   /**
    * Communication effectors explicitly granted to this Will.

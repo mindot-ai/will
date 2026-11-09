@@ -26,6 +26,23 @@ export {
 
 export { assembleMind, type WillConfig } from '#stem/mind'
 
+// Record anchoring — the record chain, its contract and its digests
+// (RECORD_ANCHORING). `verifyChain` is what a verifier runs over the entries a
+// host persisted; compare its head with an anchored digest's.
+export {
+  canonical,
+  GENESIS_HASH,
+  RECORD_CHAIN,
+  RecordChain,
+  recordHash,
+  verifyChain,
+  type ChainEntry,
+  type ChainHead,
+  type ChainVerification,
+  type RecordStream,
+} from '#core/record.chain'
+export type { AnchoringOptions, RecordDigest } from '#stem/tracts/anchor.controller'
+
 // Model routing — which model serves which call.
 //
 // These were reachable only through `WillConfig.llm.router`'s structural type,

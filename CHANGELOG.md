@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **What a mind did can be proven unaltered.** A Will created or woken with
+  `anchoring: { every, record, anchor, sign?, resume? }` hash-chains every
+  record it produces — session log, completions, inbound envelopes, policy
+  verdicts — into one chain, in the order produced, and hands the host each
+  entry to keep and, every `every` simulation ticks (and at the first tick, a
+  pause and the end), a digest of the chain's head to anchor where the operator
+  cannot rewrite it. The chain is VLX hash contract v2, so one verifier checks
+  both; it commits to each record's hash, so a shredded record still verifies.
+  `verifyChain(entries, from)` is exported. Anchoring is off the mind's path:
+  replay is byte-identical with it on, and a failing hook reaches the `error`
+  event, never the tick loop.
 - **An escalation is held as long as the world needs, and a person's no means
   "not this one".** `Verdict.holdTicks` lets an arbiter say how long its answer
   takes: a review step or a veto window outlasting the fixed 30-tick hold used

@@ -146,7 +146,7 @@ found 2026-07-05 while building the SDK facade; root cause measured — not the 
 
 partial — the graphs ship and regenerate from declarative specs (28 as of 2026-09-02); the next phase, pairing each graph with prose, is open (9 items)
 
-**2026-07-08 · DESIGNED** · [Record anchoring — tamper-evident decision records (parked, do not lose)](RECORD_ANCHORING.md)
+**2026-11-09 · STEPS 1–3 BUILT** · [Record anchoring — tamper-evident decision records](RECORD_ANCHORING.md)
 
 parked the day it was written so it would survive context loss. Upgrades the audit story from operator-trusted logs to tamper-evident records — no blockchain, no new dependency
 

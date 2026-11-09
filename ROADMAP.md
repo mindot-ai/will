@@ -139,6 +139,9 @@ be enacted, what happened is evidenced, and why it happened can be re-derived.
 **Community-facing outcome:** an anchored record you can verify yourself, with
 a CLI, independent of any hosted service.
 
+**Where it stands:** the chain, its digests and the `anchoring` hook are built
+(`verifyChain` is exported); the verify CLI, with its replay check, is next.
+
 ### Per-call model routing
 
 One Will currently sends every call to one model — the master's decision, each

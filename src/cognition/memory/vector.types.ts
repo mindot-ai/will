@@ -48,6 +48,11 @@ export interface VectorRecord {
 export interface VectorQueryResult {
   episodeId: string
   similarity: number
+  /**
+   * The page of what the episode held that matched, when it was a page that did
+   * (LOSSLESS P5e) — the page `[RECALL]` names, as the prompt pages it.
+   */
+  page?: number
 }
 
 /**

@@ -35,6 +35,7 @@ import type { effectorInvocation } from '#types'
 import type { EffectorDeclaration, SchemaPrecondition } from '#agency/types'
 import type { DenialFinality, PolicyArbiter } from '#stem/policy/arbiter'
 import type { SignalProvenance } from '#senses/provenance'
+import type { SharedFile } from '#senses/index'
 
 // ── Public surface ────────────────────────────────────────────
 
@@ -89,6 +90,13 @@ export interface Stimulus {
   direct?: boolean
   /** What the room is called, e.g. `#general`. A label, not an address. See TextMessage.threadName. */
   threadName?: string
+  /**
+   * Files handed over with these words — each read WHOLE (`text`), or named with
+   * why it was not (`unread`). Each read file becomes its own percept, larger than
+   * a page as a document she pages through; the words carry only a reference to
+   * it. Nothing here is cut: read it whole or say why not (LOSSLESS P5d).
+   */
+  attachments?: SharedFile[]
 }
 
 /** A message the Will emitted to someone. */
@@ -244,6 +252,11 @@ export interface EffectorSpec {
    * presses.
    */
   tags?: string[]
+  /**
+   * Args the ability cannot be done without. It is then not offered on its own —
+   * no situation supplies them — and is reached when the mind wills it with them.
+   */
+  requires?: string[]
   /** Your implementation. */
   handler: EffectorHandler
 }
@@ -490,6 +503,7 @@ export class Will {
       // this mind, which was the point of the epoch.
       provenance: stimulus.provenance,
       ...( stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {} ),
+      ...( stimulus.attachments?.length ? { attachments: stimulus.attachments } : {} ),
     } )
   }
 
@@ -567,7 +581,7 @@ export class Will {
     this._effectors.set( name, entry.handler )
     const hasMeta = entry.description !== undefined || entry.cost !== undefined
       || entry.valence !== undefined || entry.preconditions !== undefined
-      || entry.binds !== undefined || entry.tags !== undefined
+      || entry.binds !== undefined || entry.tags !== undefined || !!entry.requires?.length
     this._effectorDecls.set( name, hasMeta
       ? {
           name,
@@ -577,6 +591,7 @@ export class Will {
           ...( entry.preconditions !== undefined ? { preconditions: entry.preconditions } : {} ),
           ...( entry.binds         !== undefined ? { binds:         entry.binds         } : {} ),
           ...( entry.tags          !== undefined ? { tags:          entry.tags          } : {} ),
+          ...( entry.requires?.length ? { requires: entry.requires } : {} ),
         }
       : name )
   }

@@ -1,6 +1,6 @@
 # LOSSLESS — nothing the mind takes in, thinks, says or keeps is cut
 
-> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P4 and P5a–P5c landed, unreleased
+> **Standing:** DESIGNED · 2026-09-30 · scoped from a trace of every cut in `src/` (281 sites read, 64 of them comments); P0–P5 landed (P5a–P5e), unreleased
 
 > **The rule:** *lossless, not unbounded.* Every cut that loses data — at intake, in
 > transit between the mind's own parts, in what it keeps, in its artifact, in its
@@ -517,6 +517,55 @@ over reasoning the master keeps whole in its own records — and the digest's ol
 turns are conversation episodes, already reachable by a memories search. Whether
 each says so is the next look.
 
+**P5d — a file someone hands over is its own item, whole ✅**
+
+- [x] **The channel reads each file whole, or names it and says why not.** The
+      24,000-character inline cap, the four-file limit and the 256 KB fetch are
+      gone; Discord's CDN allowlist stays (security, not size), and above one
+      declared ceiling (`ATTACHMENT_READ_CEILING`, 20 MB — D4) a file is named,
+      not read at all, and she is told why. A `SharedFile` rides beside the
+      words (`Stimulus.attachments` → `TextMessage.attachments`).
+- [x] **Each read file is its own percept**, exafferent, from who shared it, its
+      text the percept's data — so P5a pages it (a header and a page in a call,
+      any page by `[RECALL]`), working memory holds it and an episode keeps it.
+- [x] **The words carry a reference, not the file**: `[Ada shared notes.txt
+      (text/plain, 412 KB) — doc:…; a document I was handed, not something said
+      to me]`. Inlined, a document rode everywhere the words go — the focus, the
+      thread digest, every "they answered" line, conversation memory. Done per
+      message before a burst is folded into one turn, so each keeps its files.
+
+**P5e — what she read is recallable by meaning, a page at a time ✅**
+
+- [x] **Every page of what an observation held is embedded** — `<episode>#<page>`,
+      the pages P5a shows and `[RECALL]` names, each split into pieces where it is
+      longer than the embedder takes (Jina 8,192, OpenAI 8,191, Gemini 2,048, a
+      host's own `maxInputTokens`, else 2,048 — three-quarters of it, by the
+      conservative estimate), never cut. It was embedded by its label alone, at
+      most a hundred characters: recall found that she had read a listing, never
+      the part that answered. Shared files (P5d) are observations too.
+- [x] **A search maps a page's hit back to its episode**, keeps each episode once
+      by its best match, and says which page it was (`VectorQueryResult.page` →
+      `EpisodicMemory.matchedPage`, never stored). Mapped in the adapter, before
+      anything sees it: recall lets go of a hit whose id is no episode, and would
+      otherwise have deleted every page vector as dead.
+- [x] **The memory she is shown names that page as the way in** — *"page 3 is the
+      part that brought it to mind: {"recall": [{"doc": …, "page": 3}]}"*.
+- [x] **Forgetting the episode forgets its pages** — on delete, on eviction, after
+      a restart (page ids are known by their episode on load), and while they are
+      still being embedded (one in-flight set for an episode's label and pages,
+      P3a's cancel). Found on the way: `restoreEpisodes` filled the store and not
+      the id map recall resolves through (tests only; production restores from
+      state) — every hit read as a dead memory and its vector was deleted.
+- [x] **The conversation digest says what it leaves out** — "last 5 turns; 18
+      earlier turns are in my memories", with the search that reaches them: each
+      exchange is an episode.
+
+**Classified MIND, with the reason:** a facet's master-sync (5) and its own
+reasoning history (10) are a seat's train of thought — working windows, as working
+memory's seven chunks are. What leaves them is not lost: the master's reasoning is
+condensed whole into `## Memory Continuity` (P5b), and what a facet worked out is
+synced back to the master as "What I worked out there".
+
 The sketch it started from — the design work, in three parts:
 
 1. **A context window the engine knows.** Host-declared per model, beside prices
@@ -532,9 +581,7 @@ The sketch it started from — the design work, in three parts:
    window, an observation or attachment renders as its size plus a handle; the
    mind reads it in pages through the same act. Every byte stays reachable.
 
-Attachments land here, moved from P2: the bridge delivers a file whole
-(`surface/channels/types.ts` 24,000 chars / 4 files, `discord.ts` 256 KB fetch
-today), the mind keeps it whole, and a call sees it through part 3.
+~~Attachments land here, moved from P2~~ — landed as P5d, above.
 
 **Done ahead of P5 (owner's call, 2026-10-01): a Will sees every ability it holds,
 whole.** `MAX_SURFACED_ABILITIES` (the first 8 of the affordance field by iteration
@@ -565,7 +612,18 @@ Count caps that become ranked + counted + recallable: ~~`MAX_SURFACED_ABILITIES`
 (removed — abilities are not a ranked view, every one is shown), ~~`BELIEF_PROMPT_LIMIT` 30 /
 `PER_CATEGORY_CAP` 8, known entities 6, percepts 10, recalled memories 8,
 `SPOKEN_TURNS_SHOWN`, `TRAIT_SURFACE_CAP` 6~~ (P5c), `ACTION_RECORD_KEEP` 6 (the working
-window stays; every act that matters is now an episode), thread digest 5 turns, facet master-sync 5 / reasoning history 10.
+window stays; every act that matters is now an episode), ~~thread digest 5 turns~~ (P5e, counted),
+facet master-sync 5 / reasoning history 10 (MIND — P5e).
+
+**Run against the world** (#202, [[FIELD_NOTES]] 2026-10-01). Her real GitHub tools
+and real Jina embeddings were used, with only the brain scripted. The 220 KB listing
+came back as a ten-page document, and `[RECALL]` brought back page 2 and sections. A
+shared file was laid down whole, and recall by meaning landed on page 10. Two cuts
+were found that no fixture reached, both of the LOSS kind. An answer that arrived
+after its act was given up on was dropped with the fate. It is taken in now. And
+the drain before the vector index is written waited for the latest batch only, so
+a listing's pages still embedding were left out of the index. Every batch is
+drained now.
 
 ---
 

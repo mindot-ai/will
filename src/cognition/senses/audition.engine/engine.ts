@@ -78,6 +78,20 @@ import type {
 } from '#senses/index'
 import { validateFacetHandoff, type HandoffBody } from '#faculties/executive.engine/escalation.buffer'
 import { fnv1a } from '#agency/consequence'
+import { perceptEntity } from '#cognition/percept.entity'
+
+/**
+ * How loud a file someone hands over is: as loud as a system signal — something
+ * done TO the mind, deliberately — so it clears the rupture gate (0.4) and holds
+ * its place in working memory against the ambient world (0.3).
+ */
+const SHARED_FILE_SALIENCE = 0.75
+
+function fileSize( bytes: number ): string {
+  return bytes < 1024 ? `${ bytes } B`
+       : bytes < 1024 * 1024 ? `${ ( bytes / 1024 ).toFixed( 1 ) } KB`
+       : `${ ( bytes / 1024 / 1024 ).toFixed( 1 ) } MB`
+}
 import type { OutreachResult } from '#agency/engines/motor.schema.executor'
 
 // ── Internal types ─────────────────────────────────────────────
@@ -274,8 +288,11 @@ For simple, single-exchange requests (questions, opinions, short tasks) — do N
 export class ThreadDigestManager {
   static readonly MAX_TURNS = 5
   private _threads = new Map<string, string[]>()
+  /** Every turn appended to a thread, so the digest can say how many it is not showing. */
+  private _turns = new Map<string, number>()
 
   append( threadId: string, role: 'user' | 'will', content: string ): void {
+    this._turns.set( threadId, ( this._turns.get( threadId ) ?? 0 ) + 1 )
     const lines = this._threads.get( threadId ) ?? []
     // Each turn whole. How MANY turns a facet sees is a per-call question
     // (LOSSLESS P5); what a turn said is not up for cutting (P0).
@@ -302,11 +319,18 @@ export class ThreadDigestManager {
     const lines = this._threads.get( threadId )
     if( !lines || lines.length === 0 ) return ''
 
-    return `[Thread — last ${lines.length} turn${lines.length === 1 ? '' : 's'}]\n${lines.join('\n')}`
+    // How many earlier turns this is not showing, and where they are: each exchange
+    // is a memory, reachable by a search of them (LOSSLESS P5c).
+    const earlier = ( this._turns.get( threadId ) ?? 0 ) - lines.length
+    const more = earlier > 0
+      ? `; ${ earlier } earlier turn${ earlier === 1 ? ' is' : 's are' } in my memories — {"recall": [{"section": "memories", "query": "…"}]}`
+      : ''
+    return `[Thread — last ${lines.length} turn${lines.length === 1 ? '' : 's'}${ more }]\n${lines.join('\n')}`
   }
 
   clear( threadId: string ): void {
     this._threads.delete( threadId )
+    this._turns.delete( threadId )
   }
 }
 
@@ -499,7 +523,7 @@ export class AuditionEngine extends BaseSenseEngine {
    * so callers awaiting ingest() still see their turn through.
    */
   protected async _perceive( input: SensoryInput ): Promise<void> {
-    const msg      = input as TextMessage | VoiceChunk
+    const msg      = this._withSharedFiles( input as TextMessage | VoiceChunk )
     const entityId = msg.entityId
 
     // Fold into the open window if its turn hasn't started yet (§6).
@@ -517,6 +541,46 @@ export class AuditionEngine extends BaseSenseEngine {
     this._coalesce.set( entityId, entry )
     void this._enqueue( entityId, () => this._runCoalesced( entityId, entry ) )
     return done
+  }
+
+  /**
+   * Files handed over with a message become their own percepts (LOSSLESS P5d).
+   *
+   * Each read file is laid down as an exafferent percept whose data is the file
+   * whole — so P5a's view pages it, working memory and recall keep it, and
+   * `[RECALL]` reaches any page of it by its handle. The words carry only a
+   * reference, `[Ada shared notes.txt (412 KB) — doc:…]`: inlined, a document rode
+   * everywhere the words go — the focus, the thread digest, every "they answered"
+   * line, conversation memory — and was cut to fit (24,000 characters, four
+   * files). Done per message, before a burst is folded into one turn, so each
+   * message's files stay its own.
+   *
+   * Fenced and labelled as handed over, as before: a document is long,
+   * structured and looks authoritative — the shape of an effective injection —
+   * so the mind reads it as something it was given, not something it was told.
+   */
+  private _withSharedFiles<M extends TextMessage | VoiceChunk>( msg: M ): M {
+    if( msg.kind !== 'text' || !( msg as TextMessage ).attachments?.length ) return msg
+    const text = msg as TextMessage
+    const who  = text.speakerName ?? 'someone'
+    const tick = this._now?.() ?? 0
+    const refs = text.attachments!.map( f => {
+      const meta  = [ f.contentType, f.size !== undefined ? fileSize( f.size ) : undefined ].filter( Boolean ).join(', ')
+      const label = `${ f.name }${ meta ? ` (${ meta })` : '' }`
+      if( f.text === undefined || !this._trace )
+        return `[${ who } shared a file I have not read: ${ label }${ f.unread ? ` — ${ f.unread }` : '' }]`
+      const id = `heard-file-${ tick }-${ fnv1a( `${ text.entityId }\u0000${ f.name }\u0000${ f.text }` ) }`
+      this._trace( perceptEntity( {
+        id, tick, salience: SHARED_FILE_SALIENCE, category: this.domain,
+        summary:    `${ who } shared ${ label }`,
+        provenance: text.provenance,
+        entityId:   text.entityId,
+        ...( text.sourceIntentId ? { sourceIntentId: text.sourceIntentId } : {} ),
+        data:       f.text,
+      } ) )
+      return `[${ who } shared ${ label } — doc:${ id }; a document I was handed, not something said to me]`
+    } )
+    return { ...msg, content: [ text.content, ...refs ].filter( Boolean ).join('\n') }
   }
 
   /** Extract the textual content of a message (voice → transcription). */

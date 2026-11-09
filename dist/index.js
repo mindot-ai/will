@@ -5089,7 +5089,8 @@ function schemaEntity(s) {
       composedOf: s.composedOf,
       baseValence: s.baseValence,
       description: s.description,
-      tags: s.tags
+      tags: s.tags,
+      ...s.requires?.length ? { requires: s.requires } : {}
     }
   };
 }
@@ -5108,7 +5109,8 @@ function readSchema(m) {
     composedOf: Array.isArray(meta3["composedOf"]) ? meta3["composedOf"] : void 0,
     baseValence: typeof meta3["baseValence"] === "number" ? meta3["baseValence"] : void 0,
     description: typeof meta3["description"] === "string" ? meta3["description"] : void 0,
-    tags: Array.isArray(meta3["tags"]) ? meta3["tags"] : void 0
+    tags: Array.isArray(meta3["tags"]) ? meta3["tags"] : void 0,
+    ...Array.isArray(meta3["requires"]) && meta3["requires"].length ? { requires: meta3["requires"] } : {}
   };
 }
 
@@ -5374,6 +5376,10 @@ var MIND_OWN_ENTITY_TYPES = /* @__PURE__ */ new Set([
   "engine.config",
   "will.identity",
   "effector.created",
+  // How the mind has tuned its own faculties. Perceived as the world, it arrived
+  // every consolidation as "New persona.prior: persona-prior" — 367 of the lines
+  // a live run's working memory held, crowding out every answer it had sought.
+  PERSONA_PRIOR_TYPE,
   "dream.activity"
 ]);
 function endogenousTypes(engines) {
@@ -8450,8 +8456,18 @@ var EpisodicConsolidator = class {
    * react() (a rate-limit retry chain would stall the whole tick loop), so this is
    * the handle for the two callers that genuinely must wait for it: shutdown,
    * before persisting the index, and tests asserting on it.
+   *
+   * EVERY batch still in flight, not the latest. A single promise was overwritten
+   * by each new batch, so a draining shutdown waited for the last few episodes and
+   * not for a 220 KB listing's pages still embedding before them — or a whole-store
+   * rebuild — and wrote an index without them (found running her pipeline live).
    */
-  _indexing = Promise.resolve();
+  _indexing = /* @__PURE__ */ new Set();
+  /** Hold a background indexing run until it settles. It must already be caught. */
+  _track(run) {
+    this._indexing.add(run);
+    void run.finally(() => this._indexing.delete(run));
+  }
   _embedder = null;
   _autoIndex;
   _model = new GenerativeModel();
@@ -8562,11 +8578,11 @@ var EpisodicConsolidator = class {
         episode: ep,
         content: ep.content
       }));
-      this._indexing = this._vectorMemory.indexBatch(episodesWithContent).catch((err) => {
+      this._track(this._vectorMemory.indexBatch(episodesWithContent).catch((err) => {
         logger.warn(
           `[EpisodicConsolidator] indexing deferred for ${newEpisodes.length} episode(s) \u2014 ${err instanceof Error ? err.message : String(err)}`
         );
-      });
+      }));
     }
     this._ticksSinceSync++;
     if (this._ticksSinceSync >= this._syncInterval && this._store.length > 0) {
@@ -8646,7 +8662,7 @@ var EpisodicConsolidator = class {
    */
   /** Await any background indexing still in flight. Shutdown and tests only. */
   async flushIndexing() {
-    await this._indexing;
+    while (this._indexing.size > 0) await Promise.all(this._indexing);
   }
   async semanticQuery(query, filters) {
     if (!this._vectorMemory) {
@@ -8679,7 +8695,7 @@ var EpisodicConsolidator = class {
     const resolved = [];
     for (const r of results) {
       const episode = this._storeMap.get(r.episodeId);
-      if (episode) resolved.push({ episode, similarity: r.similarity });
+      if (episode) resolved.push({ episode, similarity: r.similarity, ...r.page ? { page: r.page } : {} });
       else void this._vectorMemory.delete(r.episodeId).catch(() => {
       });
     }
@@ -8689,7 +8705,7 @@ var EpisodicConsolidator = class {
       const score = (s) => (1 - w) * s.similarity + w * (1 - Math.abs(s.episode.affectiveContext.valence - target) / 2);
       resolved.sort((a, b) => score(b) - score(a) || (a.episode.id < b.episode.id ? -1 : 1));
     }
-    return resolved.slice(0, limit).map((s) => s.episode);
+    return resolved.slice(0, limit).map((s) => s.page ? { ...s.episode, matchedPage: s.page } : s.episode);
   }
   /**
    * Mark an episode as retrieved (boosts its strength slightly).
@@ -8819,6 +8835,7 @@ var EpisodicConsolidator = class {
       // is a deterministic sentinel (0), never wall-clock, so replay is stable (R2).
       createdAt: e.createdAt ?? 0
     }));
+    this._storeMap = new Map(this._store.map((e) => [e.id, e]));
   }
   // ── Internal helpers ─────────────────────────────────────
   /**
@@ -8876,11 +8893,11 @@ var EpisodicConsolidator = class {
     if (this._vectorMemory) {
       await this._vectorMemory.load();
       if (this._vectorMemory.size === 0 && this._store.length > 0) {
-        this._indexing = this._vectorMemory.rebuildFromStore(this._store).then(() => {
+        this._track(this._vectorMemory.rebuildFromStore(this._store).then(() => {
           logger.info(`[episodic] vector index rebuilt with ${this._store.length} episodes`);
         }).catch((err) => {
           logger.warn(`[episodic] vector index rebuild deferred \u2014 ${err instanceof Error ? err.message : String(err)}`);
-        });
+        }));
       } else if (this._vectorMemory.size > 0) {
         logger.info(`[episodic] vector index loaded from disk (${this._vectorMemory.size} entries)`);
       }
@@ -12063,7 +12080,7 @@ function compactText(data) {
     return "";
   }
 }
-function renderItemData(data, handle, view) {
+function renderItemData(data, handle, view, matched) {
   const compact2 = compactText(data);
   if (compact2 === "") return "";
   if (!view || !handle || estimateTokens(compact2) <= view.inlineTokens) return `
@@ -12071,6 +12088,9 @@ function renderItemData(data, handle, view) {
   const text = itemText(data);
   const pages = paginate(text, PAGE_TOKENS);
   const size = `${humanSize(text)} \u2248 ${estimateTokens(text).toLocaleString("en-US")} tokens, ${pages.length} pages \xB7 doc:${handle}`;
+  if (matched !== void 0 && matched <= pages.length && (view.mode === "reference" || pages.length === 1))
+    return `
+    [${size} \u2014 whole in memory, not shown here; page ${matched} is the part that brought it to mind: ${recallHint(handle, matched)}]`;
   if (view.mode === "reference")
     return `
     [${size} \u2014 whole in memory, not shown here; ${recallHint(handle, 1)} to read it]`;
@@ -12545,7 +12565,7 @@ function mapEpisodeToMemory(ep) {
     emotionalContext: dominantEmotion,
     tick: typeof ep.timestamp === "number" ? ep.timestamp : void 0,
     ...ep.id ? { id: ep.id } : {},
-    ...data !== void 0 ? { data, ...itemHandle(held) } : {}
+    ...data !== void 0 ? { data, ...itemHandle(held), ...ep.matchedPage ? { matchedPage: ep.matchedPage } : {} } : {}
   };
 }
 function itemHandle(content) {
@@ -12704,7 +12724,7 @@ function beliefLine(b) {
 function memoryLine(m, currentTick, view) {
   const asMemory = view ? { ...view, mode: "reference" } : void 0;
   const age = m.tick != null ? `, ~${currentTick - m.tick} ticks ago` : "";
-  return `- ${m.content} (relevance: ${m.relevance.toFixed(2)}, emotional: ${m.emotionalContext}${age})${renderItemData(m.data, m.handle, asMemory)}`;
+  return `- ${m.content} (relevance: ${m.relevance.toFixed(2)}, emotional: ${m.emotionalContext}${age})${renderItemData(m.data, m.handle, asMemory, m.matchedPage)}`;
 }
 function spokenTurnLine(t) {
   const words2 = t.text.trim();
@@ -21793,6 +21813,10 @@ var ShellSenseEngine = class extends BaseSenseEngine {
 };
 
 // src/cognition/senses/audition.engine/engine.ts
+var SHARED_FILE_SALIENCE = 0.75;
+function fileSize(bytes) {
+  return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
 function partitionOutwardIntents(actions, boundKeid, boundName) {
   const mine = new Set([boundKeid, boundName].map((s) => s.trim().toLowerCase()).filter(Boolean));
   const out = [];
@@ -21886,7 +21910,10 @@ For simple, single-exchange requests (questions, opinions, short tasks) \u2014 d
 var ThreadDigestManager = class _ThreadDigestManager {
   static MAX_TURNS = 5;
   _threads = /* @__PURE__ */ new Map();
+  /** Every turn appended to a thread, so the digest can say how many it is not showing. */
+  _turns = /* @__PURE__ */ new Map();
   append(threadId, role, content) {
+    this._turns.set(threadId, (this._turns.get(threadId) ?? 0) + 1);
     const lines = this._threads.get(threadId) ?? [];
     lines.push(`${role}: ${content}`);
     if (lines.length > _ThreadDigestManager.MAX_TURNS)
@@ -21907,11 +21934,14 @@ var ThreadDigestManager = class _ThreadDigestManager {
   getDigest(threadId) {
     const lines = this._threads.get(threadId);
     if (!lines || lines.length === 0) return "";
-    return `[Thread \u2014 last ${lines.length} turn${lines.length === 1 ? "" : "s"}]
+    const earlier = (this._turns.get(threadId) ?? 0) - lines.length;
+    const more = earlier > 0 ? `; ${earlier} earlier turn${earlier === 1 ? " is" : "s are"} in my memories \u2014 {"recall": [{"section": "memories", "query": "\u2026"}]}` : "";
+    return `[Thread \u2014 last ${lines.length} turn${lines.length === 1 ? "" : "s"}${more}]
 ${lines.join("\n")}`;
   }
   clear(threadId) {
     this._threads.delete(threadId);
+    this._turns.delete(threadId);
   }
 };
 var AuditionEngine = class extends BaseSenseEngine {
@@ -22103,7 +22133,7 @@ var AuditionEngine = class extends BaseSenseEngine {
    * so callers awaiting ingest() still see their turn through.
    */
   async _perceive(input) {
-    const msg = input;
+    const msg = this._withSharedFiles(input);
     const entityId = msg.entityId;
     const open = this._coalesce.get(entityId);
     if (open && !open.started) {
@@ -22119,6 +22149,48 @@ var AuditionEngine = class extends BaseSenseEngine {
     this._coalesce.set(entityId, entry);
     void this._enqueue(entityId, () => this._runCoalesced(entityId, entry));
     return done;
+  }
+  /**
+   * Files handed over with a message become their own percepts (LOSSLESS P5d).
+   *
+   * Each read file is laid down as an exafferent percept whose data is the file
+   * whole — so P5a's view pages it, working memory and recall keep it, and
+   * `[RECALL]` reaches any page of it by its handle. The words carry only a
+   * reference, `[Ada shared spec.md (412 KB) — doc:…]`: inlined, a document rode
+   * everywhere the words go — the focus, the thread digest, every "they answered"
+   * line, conversation memory — and was cut to fit (24,000 characters, four
+   * files). Done per message, before a burst is folded into one turn, so each
+   * message's files stay its own.
+   *
+   * Fenced and labelled as handed over, as before: a document is long,
+   * structured and looks authoritative — the shape of an effective injection —
+   * so the mind reads it as something it was given, not something it was told.
+   */
+  _withSharedFiles(msg) {
+    if (msg.kind !== "text" || !msg.attachments?.length) return msg;
+    const text = msg;
+    const who = text.speakerName ?? "someone";
+    const tick = this._now?.() ?? 0;
+    const refs = text.attachments.map((f) => {
+      const meta3 = [f.contentType, f.size !== void 0 ? fileSize(f.size) : void 0].filter(Boolean).join(", ");
+      const label = `${f.name}${meta3 ? ` (${meta3})` : ""}`;
+      if (f.text === void 0 || !this._trace)
+        return `[${who} shared a file I have not read: ${label}${f.unread ? ` \u2014 ${f.unread}` : ""}]`;
+      const id = `heard-file-${tick}-${fnv1a(`${text.entityId}\0${f.name}\0${f.text}`)}`;
+      this._trace(perceptEntity({
+        id,
+        tick,
+        salience: SHARED_FILE_SALIENCE,
+        category: this.domain,
+        summary: `${who} shared ${label}`,
+        provenance: text.provenance,
+        entityId: text.entityId,
+        ...text.sourceIntentId ? { sourceIntentId: text.sourceIntentId } : {},
+        data: f.text
+      }));
+      return `[${who} shared ${label} \u2014 doc:${id}; a document I was handed, not something said to me]`;
+    });
+    return { ...msg, content: [text.content, ...refs].filter(Boolean).join("\n") };
   }
   /** Extract the textual content of a message (voice → transcription). */
   _contentOf(msg) {
@@ -23011,7 +23083,7 @@ var AffordanceSynthesizer = class {
     const del = [];
     for (const [id, e] of state.entities)
       if (e.type === "affordance") del.push(id);
-    const floor = schemas.filter((s) => s.binds === "none");
+    const floor = schemas.filter((s) => s.binds === "none" && !s.requires?.length);
     for (const schema of floor)
       set.push(this._toEntity(this._build(schema, tick, state, valence, energyLow, skills, {})));
     const candidates = [];
@@ -23324,6 +23396,17 @@ var ActionSelector = class {
   // ACP §2b: sense-channel percepts buffered off the bus for the next react's
   // rupture computation (they never become entities). Cross-tick ⇒ FN9.
   _senseBuffer = [];
+  // Sent acts the Will stopped waiting on. Preempting an await frees the body,
+  // and for words not yet authored that is the whole act — the intent is
+  // deleted, nothing was said. But an act already SENT (a host running it, words
+  // handed over) cannot be unsent: deleting its intent made its answer a
+  // straggler, so its fate never reconciled — no record that she did it, nothing
+  // learned from it (found running her GitHub reads live: a message arrived
+  // while one was in flight). Released instead: still 'awaiting' for everyone
+  // who reconciles or times it out, no longer the incumbent here. Held in the
+  // engine, not written to the intent — a write here could resurrect an intent
+  // reafference or the executor deletes the same tick. Cross-tick ⇒ FN9.
+  _released = /* @__PURE__ */ new Set();
   attachBus(bus) {
     this._bus = bus;
   }
@@ -23372,7 +23455,8 @@ var ActionSelector = class {
       lastEntropy: this._lastEntropy,
       lastDeliberate: this._lastDeliberate,
       lastRevoked: this._lastRevoked,
-      senseBuffer: this._senseBuffer
+      senseBuffer: this._senseBuffer,
+      released: [...this._released]
     };
   }
   /** FN9: `_lastRevoked` has behavioral effect (the Channel-B `revokedBy` stamp),
@@ -23385,16 +23469,23 @@ var ActionSelector = class {
     this._lastRevoked = lr && typeof lr === "object" && typeof lr.schema === "string" && typeof lr.tick === "number" ? { schema: lr.schema, tick: lr.tick } : null;
     const sb = s["senseBuffer"];
     this._senseBuffer = Array.isArray(sb) ? sb.filter((it) => it && typeof it.salience === "number").map((it) => ({ salience: it.salience, ...typeof it.text === "string" ? { text: it.text } : {} })) : [];
+    const rl = s["released"];
+    this._released = new Set(Array.isArray(rl) ? rl.filter((x) => typeof x === "string") : []);
   }
   async react(_delta, tick, state, _context) {
     const eligible = [];
     const intents = [];
     const expandingParents = /* @__PURE__ */ new Set();
+    const stillOut = /* @__PURE__ */ new Set();
     for (const [id, e] of state.entities) {
       if (e.type === "agency.intent") {
         const m = e.metadata ?? {};
         const st = str4(m["status"]) ?? "";
         if (st === "expanding") expandingParents.add(id);
+        if (st === "awaiting" && this._released.has(id)) {
+          stillOut.add(id);
+          continue;
+        }
         intents.push({
           id,
           st,
@@ -23402,7 +23493,8 @@ var ActionSelector = class {
           activation: num3(m["activation"], 0),
           schema: str4(m["schema"]) ?? "",
           target: str4(m["targetEntityId"]) ?? "",
-          dispatchedAt: num3(m["dispatchedAt"], tick)
+          dispatchedAt: num3(m["dispatchedAt"], tick),
+          sent: m["sent"] === true
         });
         continue;
       }
@@ -23410,6 +23502,7 @@ var ActionSelector = class {
       const a = readAffordance(id, e.metadata);
       if (a.available) eligible.push(a);
     }
+    for (const id of this._released) if (!stillOut.has(id)) this._released.delete(id);
     let blocking = false;
     let awaiting = null;
     let composite = null;
@@ -23419,7 +23512,7 @@ var ActionSelector = class {
         blocking = true;
         deliberating = { id: it.id, schema: it.schema };
       } else if (it.st === "expanding") composite = { id: it.id, activation: it.activation, schema: it.schema };
-      else if (it.st === "awaiting") awaiting = { id: it.id, activation: it.activation, schema: it.schema, target: it.target, dispatchedAt: it.dispatchedAt };
+      else if (it.st === "awaiting") awaiting = { id: it.id, activation: it.activation, schema: it.schema, target: it.target, dispatchedAt: it.dispatchedAt, sent: it.sent };
       else if (it.st === "selected") {
         const activeMacroSub = it.parentIntentId !== void 0 && expandingParents.has(it.parentIntentId);
         if (!activeMacroSub) blocking = true;
@@ -23554,7 +23647,8 @@ var ActionSelector = class {
           );
         return busy(eligible.length);
       }
-      preemptDelete = awaiting.id;
+      if (awaiting.sent) this._released.add(awaiting.id);
+      else preemptDelete = awaiting.id;
       preemptedFrom = awaiting.schema;
     }
     const entropy = competitionEntropy(scored.map((s) => s.activation));
@@ -24308,15 +24402,14 @@ var MotorSchemaExecutor = class {
       set.push(outcomeEntity(tick, intent, timedOut, predicted));
       del.push(id);
       this._emitEnacted(intent, timedOut, predicted, tick);
-      if (intent.planId && intent.planStepId)
-        this._emitActionOutcome(
-          intent,
-          false,
-          0,
-          1,
-          tick,
-          `No answer came back \u2014 I gave up waiting after ${tick - dispatchedAt} ticks.`
-        );
+      this._emitActionOutcome(
+        intent,
+        false,
+        0,
+        1,
+        tick,
+        `No answer came back \u2014 I gave up waiting after ${tick - dispatchedAt} ticks.`
+      );
       logger.info(`[motor] \u23F1 "${intent.schema}" timed out after ${tick - dispatchedAt} ticks`);
     }
     const selected = [...state.entities.entries()].filter(([, e]) => e.type === "agency.intent" && str7(e.metadata?.["status"]) === "selected").sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
@@ -24363,6 +24456,7 @@ var MotorSchemaExecutor = class {
         if (delivered) {
           enactedCount++;
         } else {
+          const awaitingText = enaction.mode === "communicate" ? str7(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]) : void 0;
           set.push({
             id,
             type: "agency.intent",
@@ -24371,10 +24465,14 @@ var MotorSchemaExecutor = class {
               status: "awaiting",
               dispatchedAt: tick,
               predictedReward: predicted.expectedReward,
-              predictedValence: predicted.expectedValence
+              predictedValence: predicted.expectedValence,
+              // Out in the world: a host is doing it now, or holds the words to
+              // deliver. A communicate still waiting for its words is not — it has
+              // not happened yet. The selector may stop waiting on a sent act; it
+              // cannot unsend it (see ActionSelector `_released`).
+              ...enaction.mode !== "communicate" || awaitingText ? { sent: true } : {}
             }
           });
-          const awaitingText = enaction.mode === "communicate" ? str7(intent.parameters["content"]) ?? firstMessage(intent.parameters["messages"]) : void 0;
           set.push(consequenceEntity({
             intentId: id,
             schema: intent.schema,
@@ -24968,7 +25066,7 @@ var ReafferenceEngine = class {
         const heldIntent = str8(m["intentId"]);
         if (heldIntent) del.push(heldIntent);
         const heldPlan = str8(m["planId"]);
-        if (heldPlan) this._emitPlanOutcome(heldPlan, str8(m["stepId"]), schema, false, 0, 0, tick);
+        if (heldPlan) this._emitHostOutcome(heldPlan, str8(m["stepId"]), schema, false, 0, 0, tick);
         withheld++;
         continue;
       }
@@ -24980,7 +25078,7 @@ var ReafferenceEngine = class {
         const refusedIntent = str8(m["intentId"]);
         if (refusedIntent) del.push(refusedIntent);
         const refusedPlan = str8(m["planId"]);
-        if (refusedPlan) this._emitPlanOutcome(refusedPlan, str8(m["stepId"]), schema, false, 0, 0, tick);
+        if (refusedPlan) this._emitHostOutcome(refusedPlan, str8(m["stepId"]), schema, false, 0, 0, tick);
         refused++;
         continue;
       }
@@ -24997,9 +25095,8 @@ var ReafferenceEngine = class {
       const intentId = str8(m["intentId"]);
       if (intentId) del.push(intentId);
       updates++;
-      const planId = str8(m["planId"]);
-      if (planId)
-        this._emitPlanOutcome(planId, str8(m["stepId"]), schema, m["success"] === true, num5(m["outcomeQuality"], 0), num5(m["surprise"], 0), tick, str8(m["description"]));
+      if (m["reconciled"] === true || str8(m["planId"]))
+        this._emitHostOutcome(str8(m["planId"]), str8(m["stepId"]), schema, m["success"] === true, num5(m["outcomeQuality"], 0), num5(m["surprise"], 0), tick, str8(m["description"]), str8(m["targetEntityId"]));
       if (skill.enactments === 1) {
         discovered++;
         this._emitDiscovered(schema, tick);
@@ -25123,11 +25220,11 @@ var ReafferenceEngine = class {
     }
   }
   /**
-   * Emit the `action.outcome{planId,stepId}` for an async (host-acked) plan-step
-   * enaction. Mirrors the executor's `_emitActionOutcome` payload so the
-   * PlanningEngine's consumer can't tell which path produced it.
+   * Emit the `action.outcome` for an async (host-acked) enaction — a plan step's
+   * carrying `{planId, stepId}`. Mirrors the executor's `_emitActionOutcome`
+   * payload so no consumer can tell which path produced it.
    */
-  _emitPlanOutcome(planId, stepId, schema, success, outcomeQuality, surprise, tick, description) {
+  _emitHostOutcome(planId, stepId, schema, success, outcomeQuality, surprise, tick, description, targetEntityId) {
     if (!this._bus) return;
     try {
       this._bus.publish({
@@ -25149,13 +25246,14 @@ var ReafferenceEngine = class {
           // real description the whole time (`reconcile.learning.ts:89`); it was
           // read here as `m['description']` and dropped on the floor.
           description: description ?? (success ? "The world confirmed the action." : "The world rejected the action."),
-          planId,
+          ...planId ? { planId } : {},
           ...stepId ? { stepId } : {},
+          ...targetEntityId ? { targetEntityId } : {},
           tick
         }
       });
     } catch (err) {
-      logger.warn(`[reafference] plan outcome publish failed: ${err instanceof Error ? err.message : String(err)}`);
+      logger.warn(`[reafference] outcome publish failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   _emitDiscovered(schema, tick) {
@@ -26535,6 +26633,18 @@ var HNSWIndex = class {
 };
 
 // src/cognition/memory/vector.adapter.ts
+function heldData(content) {
+  if (!content || typeof content !== "object") return void 0;
+  const c = content;
+  const inner = c["content"];
+  if (inner && typeof inner === "object" && inner["data"] !== void 0)
+    return inner["data"];
+  return c["data"];
+}
+function chunkOf(id) {
+  const m = /^(.*)#(\d+)(?:\.\d+)?$/.exec(id);
+  return m ? { episodeId: m[1], page: Number(m[2]) } : { episodeId: id };
+}
 var DefaultVectorMemoryAdapter = class {
   _index;
   _embedder;
@@ -26560,6 +26670,8 @@ var DefaultVectorMemoryAdapter = class {
    */
   _inFlight = /* @__PURE__ */ new Set();
   _cancelled = /* @__PURE__ */ new Set();
+  /** Each episode's page vectors — what it held, embedded a page at a time (LOSSLESS P5e). */
+  _pageIds = /* @__PURE__ */ new Map();
   constructor(embedder, config = {}, storage = new BunStorageAdapter(), indexImpl = new HNSWIndex(config)) {
     this._embedder = embedder;
     this._storage = storage;
@@ -26578,55 +26690,58 @@ var DefaultVectorMemoryAdapter = class {
     return this._index.size;
   }
   async index(episode, content) {
-    if (this._indexedIds.has(episode.id)) return;
-    if (this._index.size >= this._maxIndexedEpisodes)
-      await this._evictColdest();
-    const embedding = await this._embedInFlight([episode.id], () => this._embedder.embed(episodeContentToText(content), "index"));
-    if (this._cancelled.delete(episode.id)) return;
-    const record = {
-      id: episode.id,
-      vector: embedding,
-      embeddingModel: this._embedder.modelName,
-      createdAt: wallClock(),
-      // determinism-ok: secondary index telemetry, rebuilt from _store, never in replay state
-      metadata: {
-        tick: episode.timestamp,
-        sourceType: episode.sourceType,
-        emotionalValence: episode.affectiveContext.valence,
-        tags: episode.tags
-      }
-    };
-    await this._index.insert(record);
-    this._indexedIds.add(episode.id);
-    this._touch(episode.id);
-    this._dirty = true;
-    this._schedulePersist();
+    await this.indexBatch([{ episode, content }]);
+  }
+  /**
+   * What one episode is embedded as: its label, and — for an observation — every
+   * page of what it held (LOSSLESS P5e). An observation was embedded by its label
+   * alone, at most a hundred characters, so recall could find that she had read a
+   * listing and never the part of it that answered. A page longer than the
+   * embedder takes is split into pieces, never cut.
+   */
+  _texts(episode, content) {
+    const out = [{ id: episode.id, text: episodeContentToText(content) }];
+    const data = heldData(content);
+    if (data === void 0) return out;
+    const piece = Math.max(64, Math.floor((this._embedder.maxInputTokens ?? 2048) * 0.75));
+    paginate(itemText(data), PAGE_TOKENS).forEach((page, i) => {
+      if (!page.trim()) return;
+      const pieces = estimateTokens(page) <= piece ? [page] : paginate(page, piece);
+      pieces.forEach((text, k) => out.push({ id: pieces.length === 1 ? `${episode.id}#${i + 1}` : `${episode.id}#${i + 1}.${k + 1}`, text }));
+    });
+    return out;
   }
   async indexBatch(episodes) {
     const newEpisodes = episodes.filter((e) => !this._indexedIds.has(e.episode.id));
     if (newEpisodes.length === 0) return;
-    while (this._index.size > 0 && this._index.size + newEpisodes.length > this._maxIndexedEpisodes)
+    while (this._indexedIds.size > 0 && this._indexedIds.size + newEpisodes.length > this._maxIndexedEpisodes)
       await this._evictColdest();
-    const contents = newEpisodes.map((e) => episodeContentToText(e.content));
-    const embeddings = await this._embedInFlight(newEpisodes.map((e) => e.episode.id), () => this._embedder.embedBatch(contents, "index"));
+    const texts = newEpisodes.map((e) => this._texts(e.episode, e.content));
+    const flat = texts.flat();
+    const embeddings = await this._embedInFlight(newEpisodes.map((e) => e.episode.id), () => this._embedder.embedBatch(flat.map((t) => t.text), "index"));
+    let at = 0;
     for (let i = 0; i < newEpisodes.length; i++) {
       const { episode } = newEpisodes[i];
-      const embedding = embeddings[i];
+      const mine = texts[i];
+      const vectors = embeddings.slice(at, at + mine.length);
+      at += mine.length;
       if (this._cancelled.delete(episode.id)) continue;
-      const record = {
-        id: episode.id,
-        vector: embedding,
-        embeddingModel: this._embedder.modelName,
-        createdAt: wallClock(),
-        // determinism-ok: secondary index telemetry, rebuilt from _store, never in replay state
-        metadata: {
-          tick: episode.timestamp,
-          sourceType: episode.sourceType,
-          emotionalValence: episode.affectiveContext.valence,
-          tags: episode.tags
-        }
-      };
-      await this._index.insert(record);
+      for (let j = 0; j < mine.length; j++)
+        await this._index.insert({
+          id: mine[j].id,
+          vector: vectors[j],
+          embeddingModel: this._embedder.modelName,
+          createdAt: wallClock(),
+          // determinism-ok: secondary index telemetry, rebuilt from _store, never in replay state
+          metadata: {
+            tick: episode.timestamp,
+            sourceType: episode.sourceType,
+            emotionalValence: episode.affectiveContext.valence,
+            tags: episode.tags,
+            ...j > 0 ? { page: chunkOf(mine[j].id).page } : {}
+          }
+        });
+      if (mine.length > 1) this._pageIds.set(episode.id, mine.slice(1).map((t) => t.id));
       this._indexedIds.add(episode.id);
       this._touch(episode.id);
     }
@@ -26650,24 +26765,40 @@ var DefaultVectorMemoryAdapter = class {
     return this.searchWithVector(embedding, filter);
   }
   async searchWithVector(embedding, filter) {
-    const results = await this._index.search(embedding, filter?.maxResults ?? 10, {
+    const k = filter?.maxResults ?? 10;
+    const hits = await this._index.search(embedding, this._pageIds.size > 0 ? k * 4 : k, {
       minSimilarity: filter?.minSimilarity ?? this._minSimilarity
     });
+    const best = /* @__PURE__ */ new Map();
+    for (const h of hits) {
+      const { episodeId, page } = chunkOf(h.episodeId);
+      const was = best.get(episodeId);
+      if (!was || h.similarity > was.similarity) best.set(episodeId, { episodeId, similarity: h.similarity, ...page ? { page } : {} });
+    }
+    const results = [...best.values()].sort((a, b) => b.similarity - a.similarity || (a.episodeId < b.episodeId ? -1 : 1)).slice(0, k);
     for (const r of results) this._touch(r.episodeId);
     return results;
   }
   async delete(episodeId) {
     if (this._inFlight.has(episodeId)) this._cancelled.add(episodeId);
-    if (await this._index.delete(episodeId)) {
-      this._indexedIds.delete(episodeId);
-      this._accessTick.delete(episodeId);
+    if (await this._deleteVectors(episodeId)) {
       this._dirty = true;
       this._schedulePersist();
     }
   }
+  /** An episode's vector and every page's. True when there was any. */
+  async _deleteVectors(episodeId) {
+    let any = await this._index.delete(episodeId);
+    for (const id of this._pageIds.get(episodeId) ?? []) any = await this._index.delete(id) || any;
+    this._pageIds.delete(episodeId);
+    this._indexedIds.delete(episodeId);
+    this._accessTick.delete(episodeId);
+    return any;
+  }
   async rebuildFromStore(store) {
     await this._index.clear();
     this._indexedIds.clear();
+    this._pageIds.clear();
     this._accessTick.clear();
     this._accessClock = 0;
     const episodesWithContent = store.map((episode) => ({
@@ -26710,10 +26841,16 @@ var DefaultVectorMemoryAdapter = class {
       if (this._index.deserialize) {
         await this._index.deserialize(bytes);
         this._indexedIds.clear();
+        this._pageIds.clear();
         this._accessTick.clear();
         this._accessClock = 0;
         if (this._index.keys)
           for (const id of this._index.keys()) {
+            const { episodeId, page } = chunkOf(id);
+            if (page !== void 0) {
+              this._pageIds.set(episodeId, [...this._pageIds.get(episodeId) ?? [], id]);
+              continue;
+            }
             this._indexedIds.add(id);
             this._touch(id);
           }
@@ -26725,11 +26862,7 @@ var DefaultVectorMemoryAdapter = class {
   async _evictColdest() {
     const target = Math.max(1, Math.floor(this._maxIndexedEpisodes * 0.1));
     const victims = Array.from(this._indexedIds).sort((a, b) => (this._accessTick.get(a) ?? 0) - (this._accessTick.get(b) ?? 0)).slice(0, target);
-    for (const id of victims) {
-      await this._index.delete(id);
-      this._indexedIds.delete(id);
-      this._accessTick.delete(id);
-    }
+    for (const id of victims) await this._deleteVectors(id);
     if (victims.length > 0) this._dirty = true;
   }
   /**
@@ -26754,9 +26887,16 @@ var DefaultVectorMemoryAdapter = class {
 };
 
 // src/cognition/memory/vector.embedder.ts
+var KNOWN_INPUT_TOKENS = [
+  [/^jina-embeddings-v[34]/i, 8192],
+  [/^text-embedding-3-/i, 8191],
+  [/^text-embedding-ada-002$/i, 8191],
+  [/gemini-embedding|text-embedding-00[45]/i, 2048]
+];
 var OpenAICompatibleEmbedder = class {
   modelName;
   dimensions;
+  maxInputTokens;
   _apiUrl;
   _apiKey;
   _maxConcurrency;
@@ -26772,6 +26912,8 @@ var OpenAICompatibleEmbedder = class {
   constructor(config) {
     this.modelName = config.modelName;
     this.dimensions = config.dimensions;
+    const known = config.maxInputTokens ?? KNOWN_INPUT_TOKENS.find(([re]) => re.test(config.modelName))?.[1];
+    if (known !== void 0) this.maxInputTokens = known;
     this._apiUrl = config.apiUrl;
     this._apiKey = config.apiKey ?? null;
     this._maxConcurrency = Math.max(1, config.maxConcurrency ?? 4);
@@ -27322,6 +27464,7 @@ function externalSchemas(effectors) {
       baseValence: typeof meta3?.valence === "number" ? clamp(meta3.valence, -1, 1) : 0,
       ...meta3?.preconditions ? { preconditions: meta3.preconditions } : {},
       ...meta3?.description ? { description: meta3.description } : {},
+      ...meta3?.requires?.length ? { requires: [...meta3.requires] } : {},
       tags
     });
   }
@@ -30549,6 +30692,7 @@ function errMsg2(err) {
 }
 
 // src/stem/tracts/effector.controller.ts
+var LATE_ANSWER_TICKS = 600;
 var effectorController = class {
   // The two collaborators are wired with arrow closures rather than a shared
   // `this` reference, which is what lets the cycle exist without either class
@@ -30612,9 +30756,27 @@ var effectorController = class {
     this._escalations.applyNew(instance, tick);
     this._policy.applyRefusals(instance);
   }
+  /**
+   * What each act sent to a host was, by its correlation handle — so an answer
+   * that arrives after the act was given up on can still say what it answers.
+   * Held until the answer comes, or for `LATE_ANSWER_TICKS`.
+   */
+  _dispatched = /* @__PURE__ */ new WeakMap();
+  _sentBy(instance) {
+    let m = this._dispatched.get(instance);
+    if (!m) {
+      m = /* @__PURE__ */ new Map();
+      this._dispatched.set(instance, m);
+    }
+    return m;
+  }
   /** Queue an approved invocation for the delivery layer. */
   _buffer(instance, payload) {
     const intentId = payload.intentId ?? "";
+    const sent = payload.tick ?? 0;
+    const dispatched = this._sentBy(instance);
+    for (const [k, v] of dispatched) if (sent - v.tick > LATE_ANSWER_TICKS) dispatched.delete(k);
+    dispatched.set(intentId, { schema: payload.schema ?? "", tick: sent });
     instance.pendingEffectorInvocations.push({
       id: intentId,
       intentId,
@@ -30654,8 +30816,21 @@ var effectorController = class {
    */
   confirmExecution(instance, invocationId, result) {
     const tick = instance.tickCount;
+    const sent = this._sentBy(instance).get(invocationId);
+    this._sentBy(instance).delete(invocationId);
     const intent = instance.simulation.stateManager.snapshot().entities.get(invocationId);
     if (!intent || intent.type !== "agency.intent") {
+      if (sent && result.observation !== void 0 && result.observation !== null) {
+        logger.info(`[effector] a late answer to "${sent.schema}" (${invocationId}) \u2014 taken in as what the act found`);
+        void instance.cognition.somatosensationEngine.sense({
+          kind: "system",
+          signal: sent.schema,
+          provenance: "reafferent",
+          sourceIntentId: invocationId,
+          data: result.observation
+        });
+        return;
+      }
       logger.warn(`[effector] confirmExecution: no awaiting agency.intent "${invocationId}" (timed out / already reconciled?) \u2014 ignored`);
       return;
     }
@@ -30666,8 +30841,10 @@ var effectorController = class {
       valence: num6(m["predictedValence"], num6(m["expectedValence"], 0))
     };
     const planLink = { planId: m["planId"], stepId: m["stepId"] };
+    const reconciled = reconcileInvocation(invocationId, schema, result, tick, predicted, planLink);
+    const toward = typeof m["targetEntityId"] === "string" ? m["targetEntityId"] : void 0;
     instance.simulation.stateManager.setEntity(
-      reconcileInvocation(invocationId, schema, result, tick, predicted, planLink)
+      toward ? { ...reconciled, metadata: { ...reconciled.metadata, targetEntityId: toward } } : reconciled
     );
     if (result.observation !== void 0 && result.observation !== null)
       void instance.cognition.somatosensationEngine.sense({
@@ -32136,7 +32313,8 @@ var Will = class _Will {
       // left to fall back to — the four-state hole is closed at every door into
       // this mind, which was the point of the epoch.
       provenance: stimulus.provenance,
-      ...stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {}
+      ...stimulus.sourceIntentId ? { sourceIntentId: stimulus.sourceIntentId } : {},
+      ...stimulus.attachments?.length ? { attachments: stimulus.attachments } : {}
     });
   }
   /**
@@ -32203,7 +32381,7 @@ var Will = class _Will {
       return;
     }
     this._effectors.set(name, entry.handler);
-    const hasMeta = entry.description !== void 0 || entry.cost !== void 0 || entry.valence !== void 0 || entry.preconditions !== void 0 || entry.binds !== void 0 || entry.tags !== void 0;
+    const hasMeta = entry.description !== void 0 || entry.cost !== void 0 || entry.valence !== void 0 || entry.preconditions !== void 0 || entry.binds !== void 0 || entry.tags !== void 0 || !!entry.requires?.length;
     this._effectorDecls.set(name, hasMeta ? {
       name,
       ...entry.description !== void 0 ? { description: entry.description } : {},
@@ -32211,7 +32389,8 @@ var Will = class _Will {
       ...entry.valence !== void 0 ? { valence: entry.valence } : {},
       ...entry.preconditions !== void 0 ? { preconditions: entry.preconditions } : {},
       ...entry.binds !== void 0 ? { binds: entry.binds } : {},
-      ...entry.tags !== void 0 ? { tags: entry.tags } : {}
+      ...entry.tags !== void 0 ? { tags: entry.tags } : {},
+      ...entry.requires?.length ? { requires: entry.requires } : {}
     } : name);
   }
   // ── Introspection ──────────────────────────────────────────

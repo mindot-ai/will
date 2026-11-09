@@ -82,6 +82,12 @@ export interface EpisodicMemory {
    * on episodes written before it existed, which simply never block anything.
    */
   sourceId?: string
+  /**
+   * Set on what a semantic query returns, never stored: the page of what this
+   * episode held that matched the query (LOSSLESS P5e) — so recall can say which
+   * part of a long read brought it to mind.
+   */
+  matchedPage?: number
 }
 
 /**
@@ -143,8 +149,18 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
    * react() (a rate-limit retry chain would stall the whole tick loop), so this is
    * the handle for the two callers that genuinely must wait for it: shutdown,
    * before persisting the index, and tests asserting on it.
+   *
+   * EVERY batch still in flight, not the latest. A single promise was overwritten
+   * by each new batch, so a draining shutdown waited for the last few episodes and
+   * not for a 220 KB listing's pages still embedding before them — or a whole-store
+   * rebuild — and wrote an index without them (found running her pipeline live).
    */
-  private _indexing: Promise<void> = Promise.resolve()
+  private _indexing = new Set<Promise<void>>()
+  /** Hold a background indexing run until it settles. It must already be caught. */
+  private _track( run: Promise<void> ): void {
+    this._indexing.add( run )
+    void run.finally( () => this._indexing.delete( run ) )
+  }
   private _embedder: EmbeddingProvider | null = null
   private _autoIndex: boolean
 
@@ -337,12 +353,12 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
       // turned a 15-tick timeout into 15 minutes, left one communicate intent stuck
       // 'awaiting', and — because the selector is serial — blocked every subsequent
       // action. 45 executive decisions produced 1 intent and 0 delivered messages.
-      this._indexing = this._vectorMemory.indexBatch( episodesWithContent ).catch( ( err: unknown ) => {
+      this._track( this._vectorMemory.indexBatch( episodesWithContent ).catch( ( err: unknown ) => {
         logger.warn(
           `[EpisodicConsolidator] indexing deferred for ${ newEpisodes.length } episode(s) — ` +
           `${ err instanceof Error ? err.message : String( err ) }`
         )
-      } )
+      } ) )
     }
 
     // 5. Periodic full-store sync — captures activationStrength decay (forgetting curve),
@@ -450,7 +466,7 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
    * returned episodes (which carry all metadata).
    */
   /** Await any background indexing still in flight. Shutdown and tests only. */
-  async flushIndexing(): Promise<void> { await this._indexing }
+  async flushIndexing(): Promise<void> { while( this._indexing.size > 0 ) await Promise.all( this._indexing ) }
 
   async semanticQuery(
     query: unknown,
@@ -505,10 +521,10 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
       return []
     }
 
-    const resolved: Array<{ episode: EpisodicMemory; similarity: number }> = []
+    const resolved: Array<{ episode: EpisodicMemory; similarity: number; page?: number }> = []
     for( const r of results ){
       const episode = this._storeMap.get( r.episodeId )
-      if( episode ) resolved.push( { episode, similarity: r.similarity } )
+      if( episode ) resolved.push( { episode, similarity: r.similarity, ...( r.page ? { page: r.page } : {} ) } )
       // A vector for a memory that is gone took a slot a living one should have
       // had, and would take it again on every query near it. Let it go now.
       // (An index saved before the race was closed can hold thousands.)
@@ -527,7 +543,7 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
       resolved.sort( ( a, b ) => ( score( b ) - score( a ) ) || ( a.episode.id < b.episode.id ? -1 : 1 ) )
     }
 
-    return resolved.slice( 0, limit ).map( s => s.episode )
+    return resolved.slice( 0, limit ).map( s => s.page ? { ...s.episode, matchedPage: s.page } : s.episode )
   }
 
   /**
@@ -671,6 +687,9 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
       // is a deterministic sentinel (0), never wall-clock, so replay is stable (R2).
       createdAt: e.createdAt ?? 0,
     } ) )
+    // The id map recall resolves through. Left empty, every hit read as a memory
+    // that is gone — returned nothing, and deleted the vector it found.
+    this._storeMap = new Map( this._store.map( e => [ e.id, e ] ) )
   }
 
   // ── Internal helpers ─────────────────────────────────────
@@ -746,11 +765,11 @@ export class EpisodicConsolidator implements SimulationEngine, CognitiveEngine {
         // Detached: recall degrades to "not yet indexed" until it lands, which is the
         // same best-effort contract semanticQuery already has. `flushIndexing()` is
         // what shutdown drains, so a rebuild in flight is still written out.
-        this._indexing = this._vectorMemory.rebuildFromStore( this._store )
+        this._track( this._vectorMemory.rebuildFromStore( this._store )
           .then( () => { logger.info(`[episodic] vector index rebuilt with ${ this._store.length } episodes`) } )
           .catch( ( err: unknown ) => {
             logger.warn(`[episodic] vector index rebuild deferred — ${ err instanceof Error ? err.message : String( err ) }`)
-          } )
+          } ) )
       } else if( this._vectorMemory.size > 0 ){
         logger.info(`[episodic] vector index loaded from disk (${this._vectorMemory.size} entries)`)
       }

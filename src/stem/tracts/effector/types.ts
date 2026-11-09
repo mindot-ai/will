@@ -38,6 +38,8 @@ export interface Escalation {
   reasonCode: string
   /** The withheld invocation payload — replayed to the host on approval. */
   payload:    Record<string, unknown>
+  /** How long the world said it needs (`Verdict.holdTicks`), defaulted at the PEP. */
+  holdTicks:  number
   expiresAt:  number
 }
 
@@ -45,6 +47,8 @@ export interface Escalation {
 export interface PendingResolution {
   intentId: string
   approved: boolean
+  /** A denial's finality. The host's to state; `'parameter'` when it does not. */
+  finality: 'class' | 'parameter' | 'context'
 }
 
 /** What a host says came back. */
@@ -106,5 +110,7 @@ export interface EffectorOps {
 }
 
 /** How long an escalated intent is held awaiting a resolution before it degrades
- *  to a refusal — 2× the host-ack timeout, so a human has real time to answer. */
+ *  to a refusal — 2× the host-ack timeout, so a human has real time to answer.
+ *  The DEFAULT: an arbiter that knows its answer takes longer says so with
+ *  `Verdict.holdTicks`. */
 export const ESCALATION_TTL_TICKS = 30

@@ -11,6 +11,10 @@ import { effectorController } from '#stem/tracts/effector.controller'
 import { MotorSchemaExecutor } from '#agency/engines/motor.schema.executor'
 import { readSpokenTurns, SENT_TYPE } from '#agency/conversation.aim'
 import type { PolicyArbiter, Verdict } from '#stem/policy/arbiter'
+import {
+  setVerdictRecorder, clearVerdictRecorder, setVerdictSource, clearVerdictSource,
+  RecordedVerdictSource, type PolicyVerdictRecord,
+} from '#stem/policy/verdict.recorder'
 import type { WillInstance } from '#stem/index'
 import type {
   effectorInvocation,
@@ -90,7 +94,7 @@ describe('P4 — resolution', () => {
     expect( entities.get('i-1')!.metadata!['escalated'] ).toBeUndefined() // hold released
   })
 
-  it('denial refuses the held intent (refused outcome, class)', () => {
+  it('denial refuses the held intent — no to this ask, so parameter, not class', () => {
     const { instance, entities } = stub('i-1')
     const c = new effectorController(); c.setArbiter( escalateArbiter )
     c.bufferInvocation( asInstance( instance ), payload() )
@@ -101,8 +105,21 @@ describe('P4 — resolution', () => {
 
     const outcome = entities.get('agency-outcome-8-i-1')
     expect( outcome ).toBeDefined()
-    expect( outcome!.metadata ).toMatchObject({ refused: true, finality: 'class', success: false })
+    // It was 'class' — "never this action" — which taught a mind turned down
+    // once to stop proposing the ability at all. Nobody said never.
+    expect( outcome!.metadata ).toMatchObject({ refused: true, finality: 'parameter', success: false })
     expect( instance.pendingEffectorInvocations ).toHaveLength( 0 )
+  })
+
+  it('a host that means never says so, and the refusal carries it', () => {
+    const { instance, entities } = stub('i-1')
+    const c = new effectorController(); c.setArbiter( escalateArbiter )
+    c.bufferInvocation( asInstance( instance ), payload() )
+    c.applyPolicyOutcomes( asInstance( instance ) )
+
+    c.resolveEscalation( asInstance( instance ), 'i-1', false, 'class' )
+    c.applyPolicyOutcomes( asInstance( instance ) )
+    expect( entities.get('agency-outcome-8-i-1')!.metadata ).toMatchObject({ refused: true, finality: 'class' })
   })
 
   it('resolving an unknown intent is a harmless no-op', () => {
@@ -132,6 +149,88 @@ describe('P4 — expiry degrades to a refusal', () => {
     const outcome = entities.get('agency-outcome-38-i-1')
     expect( outcome ).toBeDefined()
     expect( outcome!.metadata ).toMatchObject({ refused: true, finality: 'parameter' })
+  })
+})
+
+describe('the hold is the world\'s: Verdict.holdTicks', () => {
+  const holding = ( holdTicks: unknown ): PolicyArbiter => ({
+    name: 'hold', evaluate: (): Verdict => ({ decision: 'escalate', reasonCode: 'VETO_WINDOW', holdTicks: holdTicks as number }),
+  })
+
+  it('an arbiter that needs longer holds the ask that long, and expiry comes only after it', () => {
+    const { instance, entities } = stub('i-1', 8 )
+    const c = new effectorController(); c.setArbiter( holding( 100 ) )
+    c.bufferInvocation( asInstance( instance ), payload() )
+    c.applyPolicyOutcomes( asInstance( instance ) )
+    expect( entities.get('i-1')!.metadata!['escalationExpiresAt'] ).toBe( 8 + 100 )
+
+    instance.tickCount = 38                               // where the default would have let go
+    c.applyPolicyOutcomes( asInstance( instance ) )
+    expect( entities.get('i-1')!.metadata!['escalated'] ).toBe( true )
+
+    instance.tickCount = 108
+    c.applyPolicyOutcomes( asInstance( instance ) )
+    expect( entities.get('agency-outcome-108-i-1')!.metadata ).toMatchObject({ refused: true, finality: 'parameter' })
+  })
+
+  it('a malformed hold is the default — never an ask dropped at once, never one held for ever', () => {
+    for( const bad of [ 0, -5, 2.5, Infinity, Number.NaN, '50' ] ){
+      const { instance, entities } = stub('i-1', 8 )
+      const c = new effectorController(); c.setArbiter( holding( bad ) )
+      c.bufferInvocation( asInstance( instance ), payload() )
+      c.applyPolicyOutcomes( asInstance( instance ) )
+      expect( entities.get('i-1')!.metadata!['escalationExpiresAt'], String( bad ) ).toBe( 8 + 30 )
+    }
+  })
+
+  it('the hold rides the verdict tape, and a replay holds for exactly as long', () => {
+    const records: PolicyVerdictRecord[] = []
+    setVerdictRecorder( WILL_ID, { recordVerdict: r => records.push( r ) } )
+    try {
+      const live = stub('i-1', 8 )
+      const c = new effectorController(); c.setArbiter( holding( 100 ) )
+      c.bufferInvocation( asInstance( live.instance ), payload() )
+      expect( records[0] ).toMatchObject({ decision: 'escalate', holdTicks: 100 })
+    }
+    finally { clearVerdictRecorder( WILL_ID ) }
+
+    setVerdictSource( WILL_ID, new RecordedVerdictSource( records ) )
+    try {
+      const replay = stub('i-1', 8 )
+      const c = new effectorController()
+      c.setArbiter({ name: 'forbidden', evaluate: () => { throw new Error('arbiter consulted during replay') } })
+      c.bufferInvocation( asInstance( replay.instance ), payload() )
+      c.applyPolicyOutcomes( asInstance( replay.instance ) )
+      expect( replay.entities.get('i-1')!.metadata!['escalationExpiresAt'] ).toBe( 8 + 100 )
+    }
+    finally { clearVerdictSource( WILL_ID ) }
+  })
+})
+
+describe('the facade can answer what it raised', () => {
+  it('Will.resolveEscalation reaches the stem with its own id and the finality given', async () => {
+    const { Will } = await import('#surface/sdk/will')
+    const calls: unknown[][] = []
+    const will = Object.assign( Object.create( Will.prototype ), {
+      id: 'w-facade',
+      stem: { resolveEscalation: ( ...a: unknown[] ) => { calls.push( a ) } },
+    } ) as { resolveEscalation: ( i: string, a: boolean, f?: 'class' | 'parameter' | 'context' ) => unknown }
+
+    expect( will.resolveEscalation('i-1', false, 'class') ).toBe( will )
+    will.resolveEscalation('i-2', true )
+    expect( calls ).toEqual([ [ 'w-facade', 'i-1', false, 'class' ], [ 'w-facade', 'i-2', true, undefined ] ])
+  })
+
+  it('and the stem hands the finality on to the controller', async () => {
+    const { WillStem } = await import('#stem/index')
+    const calls: unknown[][] = []
+    const stem = Object.assign( Object.create( WillStem.prototype ), {
+      _get: ( id: string ) => ({ id }),
+      _effector: { resolveEscalation: ( ...a: unknown[] ) => { calls.push( a ) } },
+    } ) as InstanceType<typeof WillStem>
+
+    stem.resolveEscalation('w-1', 'i-1', false, 'context')
+    expect( calls ).toEqual([ [ { id: 'w-1' }, 'i-1', false, 'context' ] ])
   })
 })
 

@@ -33,7 +33,7 @@ import { PROVIDER_KEY_ENV, providerKeyFromEnv, type LLMProvider } from '#llm/ind
 import type { PMASnapshot } from '#pma/index'
 import type { effectorInvocation } from '#types'
 import type { EffectorDeclaration, SchemaPrecondition } from '#agency/types'
-import type { PolicyArbiter } from '#stem/policy/arbiter'
+import type { DenialFinality, PolicyArbiter } from '#stem/policy/arbiter'
 import type { SignalProvenance } from '#senses/provenance'
 import type { SharedFile } from '#senses/index'
 
@@ -649,6 +649,21 @@ export class Will {
    */
   setArbiter( arbiter: PolicyArbiter | null ): this {
     this.stem.setArbiter( arbiter )
+    return this
+  }
+
+  /**
+   * Answer an ask the arbiter escalated (POLICY_REAFFERENCE P4): `true` sends
+   * the held act to the world, `false` refuses it. `intentId` is the one the
+   * arbiter saw on `PolicyInvocation`. A refusal's `finality` defaults to
+   * `'parameter'` — no to this ask — and `'class'` is for a person who meant
+   * never. Applied at the next tick; a no-op for an ask no longer held.
+   *
+   * It was reachable only as `will.stem.resolveEscalation(will.id, …)`, so a
+   * host on the facade could raise an escalation and had no way to answer it.
+   */
+  resolveEscalation( intentId: string, approved: boolean, finality?: DenialFinality ): this {
+    this.stem.resolveEscalation( this.id, intentId, approved, finality )
     return this
   }
 

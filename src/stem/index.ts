@@ -39,7 +39,7 @@ import { InboundQueue } from '#stem/tracts/inbound.queue'
 import type { ExternalTransport } from '#stem/tracts/transport'
 import { effectorController } from '#stem/tracts/effector.controller'
 import type { EffectorAck } from '#stem/tracts/effector/types'
-import type { PolicyArbiter } from '#stem/policy/arbiter'
+import type { DenialFinality, PolicyArbiter } from '#stem/policy/arbiter'
 import { externalSchemas } from '#agency/schemas/external'
 import { inFlightOnRestore } from '#agency/restart'
 import { buildEngineConfigEntities } from '#cognition/config.mirror.entities'
@@ -938,9 +938,16 @@ export class WillStem {
    * `approved` dispatches the held invocation to the world; otherwise it is
    * refused. Applied at the next tick boundary. `invocationId` is the awaiting
    * `agency.intent` id the escalation ask referenced.
+   *
+   * A refusal's `finality` is the host's to state, and defaults to
+   * `'parameter'` — no to this ask, which narrows what the Will reaches for and
+   * leaves the ability standing. Pass `'class'` only when the person meant
+   * never: that suppresses the affordance outright.
    */
-  resolveEscalation( id: string, invocationId: string, approved: boolean ): void {
-    this._effector.resolveEscalation( this._get( id ), invocationId, approved )
+  resolveEscalation(
+    id: string, invocationId: string, approved: boolean, finality?: DenialFinality,
+  ): void {
+    this._effector.resolveEscalation( this._get( id ), invocationId, approved, finality )
   }
 
 

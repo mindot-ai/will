@@ -12,6 +12,7 @@
 // (POLICY_REAFFERENCE P1/P2).
 
 import { logger } from '#core/logger'
+import { getRecordTap } from '#core/record.tap'
 import { NULL_ARBITER, isNullArbiter, finalityOf } from '#stem/policy/arbiter'
 import type {
   PolicyArbiter, PolicyInvocation, Verdict, DenialFinality,
@@ -149,7 +150,8 @@ export class PolicyEnforcement {
     verdict:    Verdict,
   ): void {
     const sink = getVerdictRecorder( instance.config.id )
-    sink?.recordVerdict({
+    const tap  = getRecordTap( instance.config.id )
+    const record: PolicyVerdictRecord | null = !sink && !tap ? null : {
       tick:       invocation.tick,
       willId:     instance.config.id,
       intentId:   invocation.intentId,
@@ -161,7 +163,13 @@ export class PolicyEnforcement {
       ...( verdict.counterfactual ? { counterfactual: verdict.counterfactual } : {} ),
       ...( verdict.holdTicks !== undefined ? { holdTicks: verdict.holdTicks } : {} ),
       timestamp:  Date.now(),
-    })
+    }
+    if( record ){
+      sink?.recordVerdict( record )
+      // The record chain takes the verdict beside the tape (RECORD_ANCHORING).
+      try { tap?.('verdicts', record ) }
+      catch { /* never let the record chain change what is enforced */ }
+    }
     this._applyVerdict( instance, payload, invocation, verdict )
   }
 

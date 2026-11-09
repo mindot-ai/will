@@ -23,6 +23,7 @@
 import { logger } from '#core/logger'
 import { wallClock } from '#core/wall.clock'
 import { getInboundRecorder, getInboundSource } from '#core/inbound.recorder'
+import { getRecordTap } from '#core/record.tap'
 import { asProvenance } from '#senses/index'
 import type { SensoryInput } from '#senses/index'
 import type { effectorInvocation, OutboxMessage } from '#types'
@@ -341,11 +342,18 @@ export class TransportController {
     // Record the batch (live runs only — a source means we are replaying). The
     // transport is a non-deterministic input; capturing each envelope at its
     // applied tick lets a deterministic re-execution re-inject them.
+    // The record chain takes each envelope too, beside the replay recorder
+    // (RECORD_ANCHORING); a replay re-feeding a tape is not new input to it either.
     if( !source ){
       const recorder = getInboundRecorder( willId )
-      if( recorder )
-        for( const envelope of envelopes )
-          recorder.recordInbound({ tick, willId, envelope, timestamp: wallClock() })
+      const tap      = getRecordTap( willId )
+      if( recorder || tap )
+        for( const envelope of envelopes ){
+          const record = { tick, willId, envelope, timestamp: wallClock() }
+          recorder?.recordInbound( record )
+          try { tap?.('inbound', record ) }
+          catch { /* the record chain must never block inbound dispatch */ }
+        }
     }
 
     for( const envelope of envelopes ){

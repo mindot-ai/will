@@ -14,6 +14,7 @@ import { normalizeModelKey } from '#cognition/utilities/token.tracker'
 import { DEFAULT_CONTEXT_WINDOW } from '#faculties/executive.engine/view'
 import { type ModelRouter, isNullRouter } from '#llm/routing'
 import { getCompletionRecorder, getCompletionSource } from '#core/completion.recorder'
+import { getRecordTap } from '#core/record.tap'
 import type { LLMCompletionRecord } from '#core/completion.recorder'
 import { withGate, gateFor } from '#llm/gate'
 import { matchConversationFocus, wrapReplyText } from '#llm/wire.contracts'
@@ -755,26 +756,32 @@ export class LLMDirector {
     mock:         boolean,
     ep:           CallEndpoint = this._defaultEndpoint,
   ): void {
-    try {
-      getCompletionRecorder( this._willId )?.recordCompletion({
-        tick,
-        willId:          this._willId,
-        // Record the endpoint that actually served the call: the tape is what
-        // replay re-feeds, so it must say which model produced this text.
-        provider:        ep.provider,
-        model:           ep.model,
-        maxOutputTokens: ep.maxOutputTokens,
-        systemPrompt,
-        userMessage,
-        text:            result.text,
-        inputTok:        result.inputTok,
-        outputTok:       result.outputTok,
-        mock,
-        latencyMs,
-        timestamp:       Date.now(),
-      })
+    // The replay recorder and the record chain each get the completion; either
+    // may be absent, and neither may break a completion (RECORD_ANCHORING).
+    const sink = getCompletionRecorder( this._willId )
+    const tap  = getRecordTap( this._willId )
+    if( !sink && !tap ) return
+    const record: LLMCompletionRecord = {
+      tick,
+      willId:          this._willId,
+      // Record the endpoint that actually served the call: the tape is what
+      // replay re-feeds, so it must say which model produced this text.
+      provider:        ep.provider,
+      model:           ep.model,
+      maxOutputTokens: ep.maxOutputTokens,
+      systemPrompt,
+      userMessage,
+      text:            result.text,
+      inputTok:        result.inputTok,
+      outputTok:       result.outputTok,
+      mock,
+      latencyMs,
+      timestamp:       Date.now(),
     }
+    try { sink?.recordCompletion( record ) }
     catch { /* recorder is optional — never let recording break a completion */ }
+    try { tap?.('completions', record ) }
+    catch { /* nor the record chain */ }
   }
 
   /**

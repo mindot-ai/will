@@ -34,6 +34,7 @@ import type { PMASnapshot } from '#pma/index'
 import type { effectorInvocation } from '#types'
 import type { EffectorDeclaration, SchemaPrecondition } from '#agency/types'
 import type { DenialFinality, PolicyArbiter } from '#stem/policy/arbiter'
+import { checkAnchoring, type AnchoringOptions } from '#stem/tracts/anchor.controller'
 import type { SignalProvenance } from '#senses/provenance'
 import type { SharedFile } from '#senses/index'
 
@@ -334,6 +335,15 @@ export interface CreateWillOptions {
   tickMs?: number
   /** Stable id (default: derived from name + a random suffix). */
   id?: string
+  /**
+   * Chain every record this Will produces and anchor digests of the chain
+   * where the operator cannot rewrite them (RECORD_ANCHORING). `record`
+   * receives every entry to persist; `anchor` receives a digest on the first
+   * tick, every `every` ticks, at a pause and at the end. A failure in either
+   * is reported on the `error` event and never stops the mind. On `wake`,
+   * pass the head you last persisted as `resume` to continue the same chain.
+   */
+  anchoring?: AnchoringOptions
 }
 
 type WillEvent = 'message' | 'state' | 'effector' | 'emotion' | 'error'
@@ -733,6 +743,25 @@ export class Will {
       allowedGenericEffectors: [ ...COMMUNICATION, ...this._effectorDecls.values() ],
       initialGoals: opts.initialGoals ?? [],
       ...( opts.seed !== undefined ? { randomSeed: opts.seed, clock: { fixedDeltaMs: 1000, startTime: 0 } } : {} ),
+      ...( opts.anchoring ? { anchoring: this._anchoring( opts.anchoring ) } : {} ),
+    }
+  }
+
+  /** The host's hooks, with their failures reported where a host listens. */
+  private _anchoring( o: AnchoringOptions ): AnchoringOptions {
+    checkAnchoring( o )
+    const fail = ( what: string, err: unknown ) =>
+      this._emitError( new Error(`anchoring.${what} failed: ${( err as Error )?.message ?? String( err )}`) )
+    return {
+      ...o,
+      record: entry => {
+        try { o.record( entry ) }
+        catch( err ){ fail('record', err ) }
+      },
+      anchor: ( digest, signature ) =>
+        Promise.resolve()
+          .then( () => o.anchor( digest, signature ) )
+          .catch( err => fail('anchor', err ) ),
     }
   }
 

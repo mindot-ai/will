@@ -146,10 +146,6 @@ found 2026-07-05 while building the SDK facade; root cause measured — not the 
 
 partial — the graphs ship and regenerate from declarative specs (28 as of 2026-09-02); the next phase, pairing each graph with prose, is open (9 items)
 
-**2026-07-08 · DESIGNED** · [Record anchoring — tamper-evident decision records (parked, do not lose)](RECORD_ANCHORING.md)
-
-parked the day it was written so it would survive context loss. Upgrades the audit story from operator-trusted logs to tamper-evident records — no blockchain, no new dependency
-
 **2026-07-15 · RELEASE v0.5.0** — *WhatsApp, and a choice of executive*
 
 **2026-07-15 · RELEASE v0.4.0** — *a mind in your Discord server*
@@ -251,4 +247,8 @@ no code; the gap is verified by reading it — the PEP is an in-process call at 
 **2026-11-02 · SPECULATIVE** · [EMBODIMENT_PROJECTION — what a whole mind in a whole body would, and would not, be good at](EMBODIMENT_PROJECTION.md)
 
 a projection about a combination that does not exist — this engine fully realised, in a body of the class Meta shipped with Muse. The regime table is reasoning and nothing in it is measured; one claim it originally made about drives was wrong and is corrected inline against `selection.scoring.ts`, which is the only part of this document with code behind it
+
+**2026-11-09 · DESIGNED** · [Record anchoring — tamper-evident decision records](RECORD_ANCHORING.md)
+
+partial — designed 2026-07-08 and settled against the engine 2026-11-09; steps 1–3 (the chain, digests, the `anchor()` hook) landed, unreleased; step 4 (the verify CLI and its replay check) open
 

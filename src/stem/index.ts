@@ -47,6 +47,8 @@ import type { EffectorDeclaration } from '#agency/types'
 import { SensoryController } from '#stem/tracts/sensory.controller'
 import { BiographyWriter } from '#stem/tracts/biography.writer'
 import { HealthReporter } from '#stem/tracts/health.reporter'
+import { AnchorController, checkAnchoring } from '#stem/tracts/anchor.controller'
+import { getRecordTap } from '#core/record.tap'
 import { mergeIdentity } from '#cognition/identity.entity'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -204,6 +206,7 @@ export class WillStem {
   private readonly _transport        = new TransportController()  // External transport ↔ tick boundary
   private readonly _biography         = new BiographyWriter()     // R5-f: session-biography writers
   private readonly _health            = new HealthReporter()      // R5-f2: cognitive-health view
+  private readonly _anchor            = new AnchorController()    // RECORD_ANCHORING: record chain + digests
 
   // ── Create ─────────────────────────────────────────────────
 
@@ -214,6 +217,7 @@ export class WillStem {
   async createWill( config: WillConfig, startPaused = false ): Promise<string> {
     if( this._wills.has( config.id ) )
       throw new Error(`Will already exists: ${config.id}`)
+    if( config.anchoring ) checkAnchoring( config.anchoring )
 
     const
     { simulation, cognition, outbox } = assembleMind( config.id, config )
@@ -341,10 +345,13 @@ export class WillStem {
     cognition.planningEngine.attachSessionLogger( sessionLogger )
     cognition.goalManager.attachSessionLogger( sessionLogger )
 
+    // The record chain begins before the first entry is logged (RECORD_ANCHORING).
+    this._anchor.attach( instance )
+
     // Bridge telemetry onto the configured transport (StreamTransport / SocketIo /
     // Loopback) as 'session_log' / 'token_report' envelopes. No-op when no
     // transport is set; the dev file mirrors still happen inside the producers.
-    sessionLogger.attachEmit( record => this._transport.emitSessionLog( instance, record ) )
+    this._bridgeSessionLog( instance, sessionLogger )
     cognition.tokenTracker.onRecord( record => this._transport.emitTokenReport( instance, record ) )
 
     sessionLogger.write({
@@ -534,6 +541,21 @@ export class WillStem {
     instance.sessionLogger = null
     instance.pausedAt      = new Date()
     instance.status        = 'paused'
+    // A digest covering the session that just ended, `session.end` included.
+    this._anchor.seal( instance )
+  }
+
+  /**
+   * Where every session-log entry goes: the record chain, when the Will is
+   * anchored, then the transport. One bridge for both places a logger is
+   * opened (create, resume), so the two cannot drift.
+   */
+  private _bridgeSessionLog( instance: WillInstance, sessionLogger: SessionLogger ): void {
+    sessionLogger.attachEmit( record => {
+      try { getRecordTap( instance.config.id )?.('session', record ) }
+      catch( err ){ logger.error(`[WillStem] record chain refused a session entry (${instance.config.id}):`, err ) }
+      this._transport.emitSessionLog( instance, record )
+    } )
   }
 
   resumeWill( id: string ): void {
@@ -545,7 +567,7 @@ export class WillStem {
     const newLogger   = new SessionLogger( id, dataDir, {
       fileLogging: fileLoggingEnabled() && !instance.config.testMode,
     } )
-    newLogger.attachEmit( record => this._transport.emitSessionLog( instance, record ) )
+    this._bridgeSessionLog( instance, newLogger )
 
     instance.sessionLogger = newLogger
 
@@ -649,24 +671,32 @@ export class WillStem {
     const wait = instance.config.tickIntervalMs ?? 1000
     await _sleep( wait + 200 )
 
-    // Flush all in-memory episode mutations to state entities, then await a
-    // final disk persist.  The tick loop has exited by now so no concurrent
-    // state mutations can race with the flush.
-    const flushCmds = instance.cognition.episodicConsolidator.flushToState()
-    if( flushCmds.set?.length )
-      instance.simulation.stateManager.applyCommands( flushCmds )
-    const archiveState = instance.simulation.stateManager.snapshot()
-    await instance.simulation.snapshotManager.persistNow( archiveState )
+    try {
+      // Flush all in-memory episode mutations to state entities, then await a
+      // final disk persist.  The tick loop has exited by now so no concurrent
+      // state mutations can race with the flush.
+      const flushCmds = instance.cognition.episodicConsolidator.flushToState()
+      if( flushCmds.set?.length )
+        instance.simulation.stateManager.applyCommands( flushCmds )
+      const archiveState = instance.simulation.stateManager.snapshot()
+      await instance.simulation.snapshotManager.persistNow( archiveState )
 
-    // …and the vector index, which is NOT part of that snapshot. Awaited here (unlike
-    // the pause path) because the process usually exits straight after this: a
-    // fire-and-forget write would simply be lost, which is exactly how a mind ended a
-    // session having consolidated episodes and left a 198-byte index on disk.
-    // Indexing runs in the background (it must not stall the tick loop), so drain it
-    // first — otherwise the last episodes consolidated are still mid-embed when the
-    // index is written and are absent from the file this session leaves behind.
-    await instance.cognition.episodicConsolidator.flushIndexing()
-    await instance.cognition.vectorMemory?.persist()
+      // …and the vector index, which is NOT part of that snapshot. Awaited here (unlike
+      // the pause path) because the process usually exits straight after this: a
+      // fire-and-forget write would simply be lost, which is exactly how a mind ended a
+      // session having consolidated episodes and left a 198-byte index on disk.
+      // Indexing runs in the background (it must not stall the tick loop), so drain it
+      // first — otherwise the last episodes consolidated are still mid-embed when the
+      // index is written and are absent from the file this session leaves behind.
+      await instance.cognition.episodicConsolidator.flushIndexing()
+      await instance.cognition.vectorMemory?.persist()
+    }
+    finally {
+      // The last digest, once the loop has stopped: a failed persist must not
+      // leave the end of the record chain unanchored.
+      this._anchor.seal( instance )
+      this._anchor.detach( instance )
+    }
   }
 
   // Session-biography writers (behavioral + emotional) extracted to
@@ -1281,6 +1311,9 @@ export class WillStem {
       // and what the transport still holds for a reconnect that the mind no longer awaits.
       this._outbox.expireStale( instance )
       this._transport.expireStale( instance, this._outbox )
+
+      // A digest of the record chain, on the simulation tick (RECORD_ANCHORING).
+      this._anchor.afterTick( instance )
 
       // Pause when the per-session tick budget is exhausted.
       // maxTicks is a run-length limit, not a TTL — the Will stays alive

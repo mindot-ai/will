@@ -353,4 +353,4 @@ If fidelity drops below 0.85, raise `θ` and re-evaluate. This is not a one-time
 
 ---
 
-*Document generated from a code audit of mindot-ai/will (July 2026). The research sketch is a synthesis of established techniques applied to a novel domain. It is not a proven recipe — it is an experimental direction that requires empirical validation before deployment.*
+*Document generated from a code audit of mindot-labs/will (July 2026). The research sketch is a synthesis of established techniques applied to a novel domain. It is not a proven recipe — it is an experimental direction that requires empirical validation before deployment.*

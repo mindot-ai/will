@@ -6,7 +6,7 @@ name: Announce release on Discord
 #
 # Setup (one-time, human): in the Discord server, channel settings →
 # Integrations → Webhooks → New Webhook, then store its URL as the repo secret
-#   gh secret set DISCORD_WEBHOOK_URL --repo mindot-ai/will
+#   gh secret set DISCORD_WEBHOOK_URL --repo mindot-labs/will
 # No secret ⇒ the job logs a notice and exits green (never blocks a release).
 #
 # The release body is passed through the environment (never interpolated into

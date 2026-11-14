@@ -11,9 +11,9 @@ name: Publish to npm
 # Auth: NONE stored. npm authenticates this run through GitHub's OIDC identity
 # (id-token: write) against the trusted publisher configured on the package —
 #   npmjs.com → @mindot/will → Settings → Trusted Publisher
-#   = GitHub Actions · mindot-ai/will · workflow publish.yml
+#   = GitHub Actions · mindot-labs/will · workflow publish.yml
 # Provenance attestations are generated automatically (no --provenance flag), so
-# the npm page shows the verified "built and published from mindot-ai/will" badge.
+# the npm page shows the verified "built and published from mindot-labs/will" badge.
 #
 # Requires npm >= 11.5.1 (trusted-publishing support) — Node 24 ships npm 11.16.
 

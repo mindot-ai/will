@@ -38,9 +38,9 @@ question sat past the cut. Three caps existed for that one string — 120 (actio
 record → the prompt), 300 (session log), 700 (MCP) — and the tightest was the
 only one that reached her. She could not stop asking because she was never told.
 
-→ Fixed by [#150](https://github.com/mindot-ai/will/pull/150) (acks split by what
+→ Fixed by [#150](https://github.com/mindot-labs/will/pull/150) (acks split by what
 they carry; a host is never truncated) and
-[#152](https://github.com/mindot-ai/will/pull/152) (the host sends data, the mind
+[#152](https://github.com/mindot-labs/will/pull/152) (the host sends data, the mind
 makes the meaning).
 
 ---
@@ -65,7 +65,7 @@ about itself is not noticing anything. It had been true for weeks and nothing
 reported it, because every part was working: the outbox wrote a correct percept,
 and nothing swept it.
 
-→ Fixed by [#141](https://github.com/mindot-ai/will/pull/141) (the four percept
+→ Fixed by [#141](https://github.com/mindot-labs/will/pull/141) (the four percept
 writers retrofitted onto one builder). **After 628 ticks (11998 → 12626):**
 percepts in state 0 at boot and 0 at stop, entities 968 → 986, bounded growth, no
 leak, window clear throughout.
@@ -87,7 +87,7 @@ ordinary run. Five faults surfaced in one sitting.
 
 **She decided to contact someone, said it was done, and nothing was sent.** Four
 independent faults, one outcome
-([#163](https://github.com/mindot-ai/will/pull/163)):
+([#163](https://github.com/mindot-labs/will/pull/163)):
 
 1. **An empty answer was indistinguishable from an empty non-answer.** A facet
    that reasoned and came back holding neither words nor a declared silence
@@ -112,7 +112,7 @@ and again, **seven messages across four minutes.** She was right every time: the
 ask goes out through the outbox directly, so nothing wrote the
 `conversation.sent` that `## What I've Said Lately` is built from. The one
 utterance missing from her record was the one she was being asked about.
-→ [#164](https://github.com/mindot-ai/will/pull/164), and see 2026-08-31 below —
+→ [#164](https://github.com/mindot-labs/will/pull/164), and see 2026-08-31 below —
 that fix was itself defective.
 
 **An act with no object was damped later than one with an object, not less.**
@@ -123,7 +123,7 @@ same run sat at 30–60 ticks under the same weights. Those were not damped hard
 they read a descriptor written at the enacting tick, while the objectless arm
 read a skill record that only lands when an async ack reconciles, some ticks
 later. Half the repeats were slipping through the reconciliation window.
-→ [#165](https://github.com/mindot-ai/will/pull/165).
+→ [#165](https://github.com/mindot-labs/will/pull/165).
 
 **A person she had just answered was a different person to satiation.** A reply
 is addressed to the transport id the percept arrived on (`discord:1019…`); a
@@ -134,7 +134,7 @@ answers someone, its sync wakes the master, the master forms a `reach-out` towar
 that same person — and the reply that should damp it does not, because the two
 halves are holding two ids for one person. **Both ids for both people were in the
 live logs.** The prompt read them as one person; satiation read them as two.
-→ [#166](https://github.com/mindot-ai/will/pull/166).
+→ [#166](https://github.com/mindot-labs/will/pull/166).
 
 ---
 
@@ -147,12 +147,12 @@ fix is a claim like any other, whether they did what they said.
 tick counters live at that crossing and they are thousands apart:
 `applyPolicyOutcomes` passes `instance.tickCount`, which is process-local and
 resets to 0 every boot, while `conversation.sent` is read in sim-clock space.
-[#164](https://github.com/mindot-ai/will/pull/164) had used the process counter,
+[#164](https://github.com/mindot-labs/will/pull/164) had used the process counter,
 which on a live Will put the ask **~17,000 ticks in the past** — the record
 existed, and `## What I've Said Lately` keeps only the newest few, so it was
 dropped from the one section it had been added to appear in. Both halves were
 internally consistent; only a live run could tell they disagreed.
-→ [#169](https://github.com/mindot-ai/will/pull/169). Confirmed on the next run:
+→ [#169](https://github.com/mindot-labs/will/pull/169). Confirmed on the next run:
 a fresh escalation record, age 51 ticks.
 
 **A guard that had never once fired since the day it was written.**
@@ -166,7 +166,7 @@ comment claimed it did. The rival cannot see the thread digest, so it composes
 blind. **Seen live: a reply at 10:25:03, and an unprompted second answer to the
 same question at 10:25:30 — opening "To answer your question:", 27 seconds after
 the first had already answered it.**
-→ [#168](https://github.com/mindot-ai/will/pull/168). Confirmed on the next run:
+→ [#168](https://github.com/mindot-labs/will/pull/168). Confirmed on the next run:
 `composing outreach to ke:1sqlkux inside the open conversation (facet-5)` — a
 path that had never executed before.
 
@@ -227,6 +227,6 @@ whole-store rebuild on restore was exposed the same way.
 `CHANGELOG.md` 0.10.0 tells this as *"one afternoon of watching a mind run
 surfaced six faults."* That is the story, and it is compressed: those six
 came from **two** runs six days apart, and six is a curated count —
-[#163](https://github.com/mindot-ai/will/pull/163) alone carried four. The
+[#163](https://github.com/mindot-labs/will/pull/163) alone carried four. The
 CHANGELOG is where an epoch gets its narrative. This file is where it keeps its
 arithmetic.

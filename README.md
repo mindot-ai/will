@@ -1,6 +1,6 @@
 # Will — an engine for persistent machine minds
 
-[![CI](https://github.com/mindot-ai/will/actions/workflows/ci.yml/badge.svg)](https://github.com/mindot-ai/will/actions/workflows/ci.yml)
+[![CI](https://github.com/mindot-labs/will/actions/workflows/ci.yml/badge.svg)](https://github.com/mindot-labs/will/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **A self-aware synthetic mind. Not a chatbot.**
@@ -45,7 +45,7 @@ Embed it six ways — [**SDK facade**](#the-will-sdk-facade--recommended) (Node/
 ## Quick start — a mind in 60 seconds, no API key
 
 ```bash
-git clone https://github.com/mindot-ai/will.git
+git clone https://github.com/mindot-labs/will.git
 cd will
 bun install
 bun run examples/hello-will.ts

@@ -1008,4 +1008,4 @@ describe('extractFingerprint', () => {
 
 ---
 
-*Proposal generated from code audit of mindot-ai/will. Ready for issue discussion and incremental implementation.*
+*Proposal generated from code audit of mindot-labs/will. Ready for issue discussion and incremental implementation.*

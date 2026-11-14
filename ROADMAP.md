@@ -10,8 +10,8 @@ It is written for the people who use and contribute to Will. It is honest by
 construction — every item carries a status, and nothing is listed as coming
 unless it is genuinely being worked on.
 
-- **Discussions & proposals:** [GitHub Discussions](https://github.com/mindot-ai/will/discussions)
-- **Issues & bugs:** [GitHub Issues](https://github.com/mindot-ai/will/issues)
+- **Discussions & proposals:** [GitHub Discussions](https://github.com/mindot-labs/will/discussions)
+- **Issues & bugs:** [GitHub Issues](https://github.com/mindot-labs/will/issues)
 - **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - **Release history:** [CHANGELOG.md](CHANGELOG.md)
 
@@ -179,7 +179,7 @@ and reducing the inference needed per tick without reducing what the mind does.
 
 **Not committed.** These are directions we find compelling and are actively
 gathering input on. If one matters to you, say so in
-[Discussions](https://github.com/mindot-ai/will/discussions) — real demand is
+[Discussions](https://github.com/mindot-labs/will/discussions) — real demand is
 how these move.
 
 | Direction | What it would be | What would move it |
